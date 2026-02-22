@@ -1,0 +1,50 @@
+{
+  "name": "@openread/sdk",
+  "version": "0.1.0",
+  "description": "OpenRead Platform SDK - Type-safe API client for the OpenRead platform",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@openread/types": "workspace:*"
+  },
+  "devDependencies": {
+    "@openread/tsconfig": "workspace:*",
+    "typescript": "^5",
+    "vitest": "^4.0.15"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/openread-ai/platform.git",
+    "directory": "packages/sdk"
+  },
+  "keywords": [
+    "openread",
+    "sdk",
+    "api",
+    "ebook",
+    "typescript"
+  ]
+}

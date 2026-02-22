@@ -1,0 +1,19 @@
+{
+  "name": "@openread/eslint-config",
+  "version": "0.0.1",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./base": "./base.js",
+    "./reader": "./reader-restrictions.js"
+  },
+  "files": [
+    "*.js"
+  ],
+  "peerDependencies": {
+    "eslint": ">=9.0.0"
+  }
+}

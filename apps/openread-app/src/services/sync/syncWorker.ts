@@ -1,0 +1,171 @@
+/**
+ * @module services/sync/syncWorker
+ * P9.22: Background sync worker that drains the offline queue.
+ *
+ * - Runs every 30 seconds when online
+ * - Pauses when offline, resumes on reconnection
+ * - Uses SyncClient to push queued changes
+ * - Dispatches status events for UI updates
+ */
+
+import { offlineQueue, type QueueItem } from './offlineQueue';
+import { SyncClient } from '@/libs/sync';
+
+const SYNC_INTERVAL_MS = 30_000;
+
+export interface SyncWorkerStatus {
+  pending: number;
+  syncing: boolean;
+  lastDrainResult: { synced: number; failed: number; remaining: number } | null;
+  error: string | null;
+}
+
+/**
+ * Background sync worker.
+ * Call start() to begin periodic queue draining.
+ */
+export class SyncWorker {
+  private intervalId: ReturnType<typeof setInterval> | null = null;
+  private isRunning = false;
+  private syncClient = new SyncClient();
+  private _status: SyncWorkerStatus = {
+    pending: 0,
+    syncing: false,
+    lastDrainResult: null,
+    error: null,
+  };
+  private listeners = new Set<(status: SyncWorkerStatus) => void>();
+
+  /**
+   * Start the background sync worker.
+   * Drains the queue immediately, then every SYNC_INTERVAL_MS.
+   */
+  start(): void {
+    if (this.intervalId) return; // Already started
+
+    // Listen to online/offline events
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', this.handleOnline);
+      window.addEventListener('offline', this.handleOffline);
+    }
+
+    // Drain immediately on start (replay pending items from previous session)
+    this.drainQueue();
+
+    // Schedule periodic draining
+    this.intervalId = setInterval(() => this.drainQueue(), SYNC_INTERVAL_MS);
+  }
+
+  /**
+   * Stop the background sync worker.
+   */
+  stop(): void {
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+    }
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('online', this.handleOnline);
+      window.removeEventListener('offline', this.handleOffline);
+    }
+  }
+
+  /**
+   * Manually trigger a drain (e.g., user presses "Sync now").
+   */
+  async syncNow(): Promise<void> {
+    await this.drainQueue();
+  }
+
+  /**
+   * Get current status.
+   */
+  get status(): SyncWorkerStatus {
+    return { ...this._status };
+  }
+
+  /**
+   * Subscribe to status changes.
+   */
+  subscribe(callback: (status: SyncWorkerStatus) => void): () => void {
+    this.listeners.add(callback);
+    callback(this._status);
+    return () => this.listeners.delete(callback);
+  }
+
+  private handleOnline = (): void => {
+    // Resume: drain immediately when coming back online
+    this.drainQueue();
+  };
+
+  private handleOffline = (): void => {
+    // Nothing to do — drainQueue checks navigator.onLine
+    this.updateStatus({ error: 'Offline — changes will sync when connected' });
+  };
+
+  /**
+   * Process all pending queue items.
+   */
+  private async drainQueue(): Promise<void> {
+    // Skip if offline
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      this.updateStatus({ pending: offlineQueue.pendingCount });
+      return;
+    }
+
+    // Skip if already running
+    if (this.isRunning) return;
+    this.isRunning = true;
+    this.updateStatus({ syncing: true, error: null });
+
+    try {
+      const result = await offlineQueue.drain((item) => this.processItem(item));
+      this.updateStatus({
+        syncing: false,
+        pending: result.remaining,
+        lastDrainResult: result,
+        error: result.failed > 0 ? `${result.failed} items failed to sync` : null,
+      });
+    } catch (error) {
+      this.updateStatus({
+        syncing: false,
+        error: error instanceof Error ? error.message : 'Sync failed',
+      });
+    } finally {
+      this.isRunning = false;
+    }
+  }
+
+  /**
+   * Process a single queue item via SyncClient.
+   */
+  private async processItem(item: QueueItem): Promise<boolean> {
+    try {
+      switch (item.type) {
+        case 'book':
+          await this.syncClient.pushChanges({ books: [item.payload] });
+          return true;
+        case 'config':
+          await this.syncClient.pushChanges({ configs: [item.payload] });
+          return true;
+        case 'note':
+          await this.syncClient.pushChanges({ notes: [item.payload] });
+          return true;
+        default:
+          console.warn(`[SyncWorker] Unknown queue item type: ${item.type}`);
+          return false;
+      }
+    } catch (error) {
+      console.error(`[SyncWorker] Failed to process item ${item.id}:`, error);
+      return false;
+    }
+  }
+
+  private updateStatus(partial: Partial<SyncWorkerStatus>): void {
+    this._status = { ...this._status, ...partial };
+    this.listeners.forEach((cb) => cb(this._status));
+  }
+}
+
+/** Singleton instance */
+export const syncWorker = new SyncWorker();

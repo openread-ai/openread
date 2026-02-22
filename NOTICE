@@ -1,0 +1,9 @@
+OpenRead — Copyright (C) 2025 OpenRead Contributors
+
+This product includes software developed by:
+  Readest (https://github.com/readest/readest)
+  Copyright (C) 2024 Bilingify LLC — Licensed under AGPL-3.0
+
+OpenRead is a fork of Readest. The reader application and open-source
+packages are licensed under AGPL-3.0. Proprietary platform components
+are separately licensed. See LICENSE in each package directory.

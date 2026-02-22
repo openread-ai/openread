@@ -1,0 +1,59 @@
+{
+  "name": "@openread/monorepo",
+  "private": true,
+  "repository": "openread-ai/platform",
+  "scripts": {
+    "tauri": "pnpm --filter @openread/openread-app tauri",
+    "dev-web": "pnpm --filter @openread/openread-app dev-web",
+    "format": "prettier --write \"**/*.{js,jsx,ts,tsx,css,json,md,html,yml}\"",
+    "format:check": "prettier --check \"**/*.{js,jsx,ts,tsx,css,json,md,html,yml}\"",
+    "prepare": "husky || true"
+  },
+  "packageManager": "pnpm@10.28.1+sha512.7d7dbbca9e99447b7c3bf7a73286afaaf6be99251eb9498baefa7d406892f67b879adb3a1d7e687fc4ccc1a388c7175fbaae567a26ab44d1067b54fcb0d6a316",
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.1",
+    "@eslint/js": "^9.9.1",
+    "@sindresorhus/tsconfig": "^6.0.0",
+    "eslint": "^9.28.0",
+    "eslint-config-prettier": "^9.1.0",
+    "husky": "^9.1.6",
+    "lint-staged": "^16.2.7",
+    "lru-cache": "^11.2.5",
+    "prettier": "^3.3.3",
+    "prettier-plugin-tailwindcss": "^0.6.8",
+    "typescript": "^5"
+  },
+  "lint-staged": {
+    "apps/openread-app/**/*.{ts,tsx,js,jsx}": [
+      "eslint --fix --max-warnings=0 --config apps/openread-app/eslint.config.mjs",
+      "prettier --write"
+    ],
+    "*.{ts,tsx,js,jsx}": [
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml,css,html}": [
+      "prettier --write"
+    ]
+  },
+  "pnpm": {
+    "overrides": {
+      "glob": ">=11.1.0",
+      "jws": ">=4.0.1",
+      "vite": ">=7.0.8",
+      "body-parser": ">=2.2.1",
+      "@babel/runtime": ">=7.26.10",
+      "@babel/helpers": ">=7.26.10",
+      "mdast-util-gfm-autolink-literal": "2.0.1",
+      "minimatch@3/brace-expansion": "^1.1.7",
+      "brace-expansion@>=2.0.0 <4.0.1": ">=4.0.1",
+      "cross-spawn@>=7.0.0 <7.0.5": ">=7.0.5",
+      "cookie@<0.7.0": ">=0.7.0",
+      "tmp@<=0.2.3": ">=0.2.4",
+      "esbuild@<0.25.0": ">=0.25.0",
+      "fast-xml-parser": ">=5.3.5"
+    },
+    "patchedDependencies": {
+      "mdast-util-gfm-autolink-literal@2.0.1": "patches/mdast-util-gfm-autolink-literal@2.0.1.patch"
+    }
+  }
+}

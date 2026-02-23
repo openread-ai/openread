@@ -92,7 +92,7 @@ const nextConfig = {
               "script-src 'self' 'unsafe-eval' 'unsafe-inline' *.posthog.com *.sentry.io js.stripe.com cdnjs.cloudflare.com cdn.jsdelivr.net",
               "style-src 'self' 'unsafe-inline' fonts.googleapis.com cdnjs.cloudflare.com cdn.jsdelivr.net",
               "font-src 'self' fonts.gstatic.com cdnjs.cloudflare.com data:",
-              "img-src 'self' data: blob: *.supabase.co cdn.openread.com storage.openread.com *.r2.cloudflarestorage.com",
+              "img-src 'self' data: blob: *.supabase.co cdn.openread.com storage.openread.com *.r2.cloudflarestorage.com *.googleusercontent.com",
               "connect-src 'self' *.supabase.co *.posthog.com *.sentry.io js.stripe.com speech.platform.bing.com *.googleapis.com api.openread.com *.r2.cloudflarestorage.com",
               "media-src 'self' blob: data:",
               "object-src 'none'",

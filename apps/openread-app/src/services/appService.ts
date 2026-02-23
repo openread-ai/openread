@@ -736,14 +736,14 @@ export abstract class BaseAppService implements AppService {
     const coverPath = getCoverFilename(book);
     const exists = await this.fs.exists(coverPath, 'Books');
     if (!exists) {
-      logger.debug(`[cover] no file for "${book.title}" at ${coverPath}`);
+      logger.info(`[cover] no file for "${book.title}" at ${coverPath}`);
       return null;
     }
     const url =
       this.appPlatform === 'web'
         ? await this.getCoverImageBlobUrl(book)
         : this.getCoverImageUrl(book);
-    logger.debug(`[cover] generated url for "${book.title}": ${url?.slice(0, 60)}`);
+    logger.info(`[cover] generated url for "${book.title}": ${url?.slice(0, 60)}`);
     return url;
   }
 

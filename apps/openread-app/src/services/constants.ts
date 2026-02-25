@@ -666,7 +666,7 @@ export const BOOK_IDS_SEPARATOR = '+';
 
 export const DOWNLOAD_READEST_URL = 'https://openread.com?utm_source=openread_web';
 
-export const READEST_WEB_BASE_URL = 'https://web.openread.com';
+export const READEST_WEB_BASE_URL = 'https://app.openread.ai';
 export const READEST_NODE_BASE_URL = 'https://node.openread.com';
 
 const LATEST_DOWNLOAD_BASE_URL = 'https://download.openread.com/releases';

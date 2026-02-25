@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>com.bilingify.openread</id>
+  <id>com.reglity.openread</id>
 
   <name>Openread</name>
   <summary>Modern, feature-rich ebook reader</summary>
@@ -56,7 +56,7 @@
   <url type="help">https://github.com/openread/openread/wiki</url>
   <url type="donation">https://github.com/sponsors/openread</url>
 
-  <launchable type="desktop-id">com.bilingify.openread.desktop</launchable>
+  <launchable type="desktop-id">com.reglity.openread.desktop</launchable>
 
   <releases>
     <release version="0.9.98" date="2026-01-21">

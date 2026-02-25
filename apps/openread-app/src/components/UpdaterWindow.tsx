@@ -505,7 +505,7 @@ export const UpdaterContent = ({
 
                     {appService?.isAndroidApp && (
                       <Link
-                        href='https://play.google.com/store/apps/details?id=com.bilingify.openread'
+                        href='https://play.google.com/store/apps/details?id=com.reglity.openread'
                         target='_blank'
                         rel='noopener noreferrer'
                         className='btn btn-primary btn-sm'

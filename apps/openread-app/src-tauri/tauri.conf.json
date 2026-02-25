@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Openread",
   "mainBinaryName": "openread",
-  "identifier": "com.bilingify.openread",
+  "identifier": "com.reglity.openread",
   "version": "../package.json",
   "build": {
     "frontendDist": "../out",

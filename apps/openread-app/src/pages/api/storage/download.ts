@@ -67,8 +67,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(200).json({ downloadUrls });
     }
   } catch (error) {
-    logger.error('Something went wrong', error);
-    return res.status(500).json({ error: 'Something went wrong' });
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    logger.error('Download API failed', { message: errorMessage, stack: errorStack });
+    return res.status(500).json({ error: errorMessage || 'Something went wrong' });
   }
 }
 

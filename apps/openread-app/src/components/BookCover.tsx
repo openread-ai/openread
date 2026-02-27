@@ -59,9 +59,13 @@ const BookCover: React.FC<BookCoverProps> = memo<BookCoverProps>(
       onImageError?.();
     };
 
+    const coverSrc = book.metadata?.coverImageUrl || book.coverImageUrl || null;
+
     useEffect(() => {
-      toggleImageVisibility(true);
-    }, [book.metadata?.coverImageUrl, book.coverImageUrl]);
+      if (coverSrc) {
+        toggleImageVisibility(true);
+      }
+    }, [coverSrc]);
 
     return (
       <div
@@ -70,14 +74,16 @@ const BookCover: React.FC<BookCoverProps> = memo<BookCoverProps>(
       >
         {coverFit === 'crop' ? (
           <>
-            <Image
-              src={book.metadata?.coverImageUrl || book.coverImageUrl!}
-              alt={book.title}
-              fill={true}
-              className={clsx('cover-image crop-cover-img object-cover', imageClassName)}
-              onLoad={handleImageLoad}
-              onError={handleImageError}
-            />
+            {coverSrc && (
+              <Image
+                src={coverSrc}
+                alt={book.title}
+                fill={true}
+                className={clsx('cover-image crop-cover-img object-cover', imageClassName)}
+                onLoad={handleImageLoad}
+                onError={handleImageError}
+              />
+            )}
             <div
               className={`book-spine absolute inset-0 ${shouldShowSpine ? 'visible' : 'invisible'}`}
             />
@@ -90,19 +96,21 @@ const BookCover: React.FC<BookCoverProps> = memo<BookCoverProps>(
                 mode === 'grid' ? 'items-end' : 'items-center',
               )}
             >
-              <Image
-                src={book.metadata?.coverImageUrl || book.coverImageUrl!}
-                alt={book.title}
-                width={0}
-                height={0}
-                sizes='100vw'
-                className={clsx(
-                  'cover-image fit-cover-img h-auto max-h-full w-auto max-w-full shadow-md',
-                  imageClassName,
-                )}
-                onLoad={handleImageLoad}
-                onError={handleImageError}
-              />
+              {coverSrc && (
+                <Image
+                  src={coverSrc}
+                  alt={book.title}
+                  width={0}
+                  height={0}
+                  sizes='100vw'
+                  className={clsx(
+                    'cover-image fit-cover-img h-auto max-h-full w-auto max-w-full shadow-md',
+                    imageClassName,
+                  )}
+                  onLoad={handleImageLoad}
+                  onError={handleImageError}
+                />
+              )}
               <div
                 className={`book-spine absolute inset-0 ${shouldShowSpine ? 'visible' : 'invisible'}`}
               />
@@ -112,7 +120,7 @@ const BookCover: React.FC<BookCoverProps> = memo<BookCoverProps>(
 
         <div
           className={clsx(
-            'fallback-cover invisible absolute inset-0 p-2',
+            `fallback-cover absolute inset-0 p-2 ${coverSrc ? 'invisible' : ''}`,
             'text-neutral-content text-center font-serif font-medium',
             isPreview ? 'bg-base-200/50' : 'bg-base-100',
             imageClassName,

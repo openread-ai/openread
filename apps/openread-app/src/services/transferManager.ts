@@ -242,7 +242,6 @@ class TransferManager {
 
       if (transfer.type === 'upload') {
         await this.appService.uploadBook(book, progressHandler);
-        book.uploadedAt = Date.now();
         await this.updateBook(book);
       } else if (transfer.type === 'download') {
         await this.appService.downloadBook(book, false, false, progressHandler);
@@ -256,6 +255,7 @@ class TransferManager {
       }
 
       useTransferStore.getState().setTransferStatus(transfer.id, 'completed');
+      eventDispatcher.dispatch('transfer-completed', { book, type: transfer.type });
 
       const successMessages = {
         upload: _('Book uploaded: {{title}}', { title: transfer.bookTitle }),

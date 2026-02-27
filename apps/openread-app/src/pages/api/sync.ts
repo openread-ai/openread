@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { NextRequest, NextResponse } from 'next/server';
 import { PostgrestError } from '@supabase/supabase-js';
 import { createSupabaseClient, createSupabaseAdminClient } from '@/utils/supabase';
-import { upsertPlatformBook, deletePlatformBook } from '@/utils/platformBooks';
+import { upsertPlatformBook } from '@/utils/platformBooks';
 import { BookDataRecord } from '@/types/book';
 import { transformBookConfigToDB } from '@/utils/transform';
 import { transformBookNoteToDB } from '@/utils/transform';
@@ -315,57 +315,48 @@ export async function POST(req: NextRequest) {
     const resultConfigs = syncResult?.configs || [];
     const resultNotes = syncResult?.notes || [];
 
-    // Populate/delete books for synced books (supplementary, don't fail on errors)
+    // Populate platform_books for synced books (supplementary, don't fail on errors)
+    // Skip soft-deleted books — tombstones must survive for cross-device sync propagation
     if (resultBooks.length > 0) {
       const adminSupabase = createSupabaseAdminClient();
 
       for (const book of resultBooks) {
-        if (!book.book_hash) continue;
+        if (!book.book_hash || book.deleted_at) continue;
 
-        if (book.deleted_at) {
-          const result = await deletePlatformBook(book.book_hash, user.id);
+        // P9.3: Use file_type column instead of ILIKE pattern matching
+        const { data: fileRecord, error: fileError } = await adminSupabase
+          .from('files')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('book_hash', book.book_hash)
+          .eq('file_type', 'book')
+          .is('deleted_at', null)
+          .limit(1)
+          .single();
+
+        if (fileError) {
+          console.error(
+            `[sync] requestId=${requestId || 'none'} file lookup failed for book_hash=${book.book_hash}:`,
+            fileError.message,
+          );
+        }
+
+        if (fileRecord) {
+          const result = await upsertPlatformBook({
+            hash: book.book_hash,
+            metaHash: book.meta_hash || book.book_hash,
+            title: book.title || 'Untitled',
+            author: book.author || '',
+            format: book.format || 'epub',
+            sizeBytes: fileRecord.file_size,
+            storagePath: fileRecord.file_key,
+            userId: user.id,
+          });
           if (!result.success) {
             console.error(
-              `[sync] requestId=${requestId || 'none'} books delete failed for book_hash=${book.book_hash}:`,
+              `[sync] requestId=${requestId || 'none'} books upsert failed for book_hash=${book.book_hash}:`,
               result.error,
             );
-          }
-        } else {
-          // P9.3: Use file_type column instead of ILIKE pattern matching
-          const { data: fileRecord, error: fileError } = await adminSupabase
-            .from('files')
-            .select('*')
-            .eq('user_id', user.id)
-            .eq('book_hash', book.book_hash)
-            .eq('file_type', 'book')
-            .is('deleted_at', null)
-            .limit(1)
-            .single();
-
-          if (fileError) {
-            console.error(
-              `[sync] requestId=${requestId || 'none'} file lookup failed for book_hash=${book.book_hash}:`,
-              fileError.message,
-            );
-          }
-
-          if (fileRecord) {
-            const result = await upsertPlatformBook({
-              hash: book.book_hash,
-              metaHash: book.meta_hash || book.book_hash,
-              title: book.title || 'Untitled',
-              author: book.author || '',
-              format: book.format || 'epub',
-              sizeBytes: fileRecord.file_size,
-              storagePath: fileRecord.file_key,
-              userId: user.id,
-            });
-            if (!result.success) {
-              console.error(
-                `[sync] requestId=${requestId || 'none'} books upsert failed for book_hash=${book.book_hash}:`,
-                result.error,
-              );
-            }
           }
         }
       }

@@ -7,6 +7,8 @@ import { useLibraryViewStore } from '@/store/libraryViewStore';
 import { eventDispatcher } from '@/utils/event';
 import envConfig from '@/services/environment';
 import { cloudRemoveBookRef, clearBookIndex } from '@/services/ai';
+import { offlineQueue } from '@/services/sync/offlineQueue';
+import { syncWorker } from '@/services/sync/syncWorker';
 import type { Book, ReadingStatus } from '@/types/book';
 import { createLogger } from '@/utils/logger';
 
@@ -118,6 +120,14 @@ export function useBookActions() {
         });
       });
 
+      // Enqueue for immediate push to remote
+      offlineQueue.enqueue({
+        type: 'book',
+        action: 'delete',
+        payload: updatedBook as unknown as Record<string, unknown>,
+      });
+      syncWorker.syncNow();
+
       // Fire-and-forget: clean up AI data (cloud ref + local cache)
       const bookHash = book.hash;
       if (bookHash) {
@@ -209,6 +219,22 @@ export function useBookActions() {
           message: `Failed to remove ${hashes.length > 1 ? 'books' : 'book'}`,
         });
       });
+
+      // Enqueue each deleted book for immediate push to remote
+      for (const hash of hashes) {
+        const book = getBookByHash(hash);
+        if (book) {
+          offlineQueue.enqueue({
+            type: 'book',
+            action: 'delete',
+            payload: { ...book, deletedAt, updatedAt: deletedAt } as unknown as Record<
+              string,
+              unknown
+            >,
+          });
+        }
+      }
+      syncWorker.syncNow();
 
       // Fire-and-forget: clean up AI data for all removed books
       for (const hash of hashes) {

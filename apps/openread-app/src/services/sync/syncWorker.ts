@@ -10,6 +10,11 @@
 
 import { offlineQueue, type QueueItem } from './offlineQueue';
 import { SyncClient } from '@/libs/sync';
+import { transformBookFromDB } from '@/utils/transform';
+import { useLibraryStore } from '@/store/libraryStore';
+import { useSettingsStore } from '@/store/settingsStore';
+import envConfig from '@/services/environment';
+import type { DBBook } from '@/types/records';
 
 const SYNC_INTERVAL_MS = 30_000;
 
@@ -49,11 +54,11 @@ export class SyncWorker {
       window.addEventListener('offline', this.handleOffline);
     }
 
-    // Drain immediately on start (replay pending items from previous session)
-    this.drainQueue();
+    // Run full cycle immediately on start (replay pending + pull remote)
+    this.runSyncCycle();
 
-    // Schedule periodic draining
-    this.intervalId = setInterval(() => this.drainQueue(), SYNC_INTERVAL_MS);
+    // Schedule periodic sync cycles
+    this.intervalId = setInterval(() => this.runSyncCycle(), SYNC_INTERVAL_MS);
   }
 
   /**
@@ -133,6 +138,57 @@ export class SyncWorker {
       });
     } finally {
       this.isRunning = false;
+    }
+  }
+
+  /**
+   * Full sync cycle: drain push queue, then pull remote changes.
+   */
+  private async runSyncCycle(): Promise<void> {
+    await this.drainQueue();
+    await this.pullRemoteChanges();
+  }
+
+  /**
+   * Pull remote book changes since lastSyncedAtBooks and merge into library.
+   */
+  private async pullRemoteChanges(): Promise<void> {
+    // Skip if offline
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+
+    try {
+      const settings = useSettingsStore.getState().settings;
+      const since = (settings.lastSyncedAtBooks ?? 0) + 1;
+
+      const result = await this.syncClient.pullChanges(since, 'books');
+      const dbBooks = result.books;
+      if (!dbBooks?.length) return;
+
+      // Transform DB records to client Book type
+      const books = dbBooks.map((dbBook) => transformBookFromDB(dbBook as unknown as DBBook));
+
+      // Merge into library store
+      await useLibraryStore.getState().updateBooks(envConfig, books);
+
+      // Compute max timestamp from pulled records and update settings
+      let maxTime = 0;
+      for (const rec of dbBooks) {
+        if (rec.updated_at) {
+          maxTime = Math.max(maxTime, new Date(rec.updated_at).getTime());
+        }
+        if (rec.deleted_at) {
+          maxTime = Math.max(maxTime, new Date(rec.deleted_at).getTime());
+        }
+      }
+
+      if (maxTime > 0) {
+        const freshSettings = useSettingsStore.getState().settings;
+        freshSettings.lastSyncedAtBooks = maxTime;
+        useSettingsStore.getState().setSettings(freshSettings);
+        useSettingsStore.getState().saveSettings(envConfig, freshSettings);
+      }
+    } catch (error) {
+      console.error('[SyncWorker] Pull remote changes failed:', error);
     }
   }
 

@@ -61,14 +61,25 @@ export class SyncWorker {
       window.addEventListener('offline', this.handleOffline);
     }
 
-    // Subscribe to Supabase Realtime broadcast for instant pull
+    // Subscribe to Supabase Realtime broadcast for instant pull.
+    // Tauri's custom protocol (tauri://localhost) isn't a secure context,
+    // so WebSocket fails there — polling is the fallback.
     if (this.userId) {
-      this.realtimeChannel = supabase
-        .channel(`sync:${this.userId}`)
-        .on('broadcast', { event: 'books-changed' }, () => {
-          this.pullRemoteChanges();
-        })
-        .subscribe();
+      try {
+        this.realtimeChannel = supabase
+          .channel(`sync:${this.userId}`)
+          .on('broadcast', { event: 'books-changed' }, () => {
+            this.pullRemoteChanges();
+          })
+          .subscribe((status) => {
+            if (status === 'CHANNEL_ERROR') {
+              console.warn('[SyncWorker] Realtime channel error, using polling fallback');
+            }
+          });
+      } catch {
+        console.warn('[SyncWorker] Realtime unavailable, using polling fallback');
+        this.realtimeChannel = null;
+      }
     }
 
     // Run full cycle immediately on start (replay pending + pull remote)

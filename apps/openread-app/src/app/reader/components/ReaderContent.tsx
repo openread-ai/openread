@@ -27,7 +27,6 @@ import { BookDetailModal } from '@/components/metadata';
 
 import useBooksManager from '../hooks/useBooksManager';
 import useBookShortcuts from '../hooks/useBookShortcuts';
-import { useBackgroundIndexing } from '../hooks/useBackgroundIndexing';
 import Spinner from '@/components/Spinner';
 import SideBar from './sidebar/SideBar';
 import Notebook from './notebook/Notebook';
@@ -57,7 +56,6 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
 
   useBookShortcuts({ sideBarBookKey, bookKeys });
   useGamepad();
-  useBackgroundIndexing(sideBarBookKey);
 
   useEffect(() => {
     if (isInitiating.current) return;

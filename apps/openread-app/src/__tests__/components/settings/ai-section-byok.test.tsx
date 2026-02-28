@@ -33,8 +33,6 @@ vi.mock('@/store/settingsStore', () => {
         ollamaModel: 'llama3.2',
         ollamaEmbeddingModel: 'nomic-embed-text',
         spoilerProtection: true,
-        maxContextChunks: 10,
-        indexingMode: 'background',
       },
     },
     setSettings: vi.fn(),
@@ -100,8 +98,6 @@ describe('migrateAISettings', () => {
       ollamaModel: 'llama3.2',
       ollamaEmbeddingModel: 'nomic-embed-text',
       spoilerProtection: true,
-      maxContextChunks: 10,
-      indexingMode: 'background' as const,
     };
     const migrated = migrateAISettings(settings);
     expect(migrated.provider).toBe('groq');
@@ -115,8 +111,6 @@ describe('migrateAISettings', () => {
       ollamaModel: 'llama3.2',
       ollamaEmbeddingModel: 'nomic-embed-text',
       spoilerProtection: true,
-      maxContextChunks: 10,
-      indexingMode: 'background' as const,
     };
     const migrated = migrateAISettings(settings);
     expect(migrated.provider).toBe('groq');

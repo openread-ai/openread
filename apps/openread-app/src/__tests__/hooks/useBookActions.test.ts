@@ -38,12 +38,6 @@ vi.mock('@/services/environment', () => ({
   },
 }));
 
-// Mock AI services used by cleanup on book deletion
-vi.mock('@/services/ai', () => ({
-  cloudRemoveBookRef: vi.fn(),
-  clearBookIndex: vi.fn().mockResolvedValue(undefined),
-}));
-
 // Mock event dispatcher
 vi.mock('@/utils/event', () => ({
   eventDispatcher: {

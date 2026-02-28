@@ -6,7 +6,6 @@ import { usePlatformSidebarStore } from '@/store/platformSidebarStore';
 import { useLibraryViewStore } from '@/store/libraryViewStore';
 import { eventDispatcher } from '@/utils/event';
 import envConfig from '@/services/environment';
-import { cloudRemoveBookRef, clearBookIndex } from '@/services/ai';
 import { offlineQueue } from '@/services/sync/offlineQueue';
 import { syncWorker } from '@/services/sync/syncWorker';
 import type { Book, ReadingStatus } from '@/types/book';
@@ -127,13 +126,6 @@ export function useBookActions() {
         payload: updatedBook as unknown as Record<string, unknown>,
       });
       syncWorker.syncNow();
-
-      // Fire-and-forget: clean up AI data (cloud ref + local cache)
-      const bookHash = book.hash;
-      if (bookHash) {
-        cloudRemoveBookRef(bookHash);
-        clearBookIndex(bookHash).catch(() => {});
-      }
     },
     [updateBook],
   );
@@ -235,12 +227,6 @@ export function useBookActions() {
         }
       }
       syncWorker.syncNow();
-
-      // Fire-and-forget: clean up AI data for all removed books
-      for (const hash of hashes) {
-        cloudRemoveBookRef(hash);
-        clearBookIndex(hash).catch(() => {});
-      }
     },
     [getBookByHash, updateBook, clearSelection, setSelectMode],
   );

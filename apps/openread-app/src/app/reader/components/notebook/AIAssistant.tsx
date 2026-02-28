@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   AssistantRuntimeProvider,
   useAssistantRuntime,
@@ -17,8 +17,9 @@ import { useAIChatStore } from '@/store/aiChatStore';
 import { useAIQuotaStore } from '@/store/aiQuotaStore';
 import { useAuth } from '@/context/AuthContext';
 import { getUserProfilePlan } from '@/utils/access';
-import { createTauriAdapter, getLastSources, clearLastSources } from '@/services/ai';
+import { createAgenticAdapter } from '@/services/ai';
 import type { AISettings, AIMessage } from '@/services/ai/types';
+import { useBookChapters } from '@/app/reader/hooks/useBookChapters';
 
 import { Thread } from '@/components/assistant/Thread';
 
@@ -68,6 +69,7 @@ const AIAssistantChat = ({
   authorName,
   currentPage,
   chapterTitle,
+  bookDoc,
 }: {
   aiSettings: AISettings;
   bookHash: string;
@@ -75,7 +77,9 @@ const AIAssistantChat = ({
   authorName: string;
   currentPage: number;
   chapterTitle?: string;
+  bookDoc: import('@/libs/document').BookDoc | null;
 }) => {
+  const chapters = useBookChapters(bookDoc);
   const {
     activeConversationId,
     messages: storedMessages,
@@ -92,6 +96,7 @@ const AIAssistantChat = ({
     authorName,
     currentPage,
     chapterTitle,
+    chapters,
   });
 
   // update ref on every render with latest values
@@ -103,13 +108,14 @@ const AIAssistantChat = ({
       authorName,
       currentPage,
       chapterTitle,
+      chapters,
     };
   });
 
   // create adapter ONCE and keep it stable
   const adapter = useMemo(() => {
     // eslint-disable-next-line react-hooks/refs -- intentional: we read optionsRef inside a deferred callback, not during render
-    return createTauriAdapter(() => optionsRef.current);
+    return createAgenticAdapter(() => optionsRef.current);
   }, []);
 
   // Create history adapter to load/persist messages
@@ -199,7 +205,7 @@ const AIAssistantWithRuntime = ({
   byokModel,
   onSelectModel,
 }: {
-  adapter: NonNullable<ReturnType<typeof createTauriAdapter>>;
+  adapter: NonNullable<ReturnType<typeof createAgenticAdapter>>;
   historyAdapter?: ThreadHistoryAdapter;
   bookHash: string;
   isLoadingHistory: boolean;
@@ -248,16 +254,8 @@ const ThreadWrapper = ({
   onSelectModel?: (modelId: string) => void;
 }) => {
   const _ = useTranslation();
-  const [sources, setSources] = useState(getLastSources());
   const assistantRuntime = useAssistantRuntime();
   const { createConversation, pendingQuestion, setPendingQuestion } = useAIChatStore();
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setSources(getLastSources());
-    }, 500);
-    return () => clearInterval(interval);
-  }, []);
 
   // Auto-submit pending question from inline bar.
   // Read directly from store to avoid strict-mode double-fire with stale closure values.
@@ -277,7 +275,6 @@ const ThreadWrapper = ({
   }, [pendingQuestion, setPendingQuestion, assistantRuntime]);
 
   const handleNewChat = useCallback(async () => {
-    clearLastSources();
     // createConversation sets activeConversationId, which changes the key on
     // AIAssistant causing a full remount with a fresh runtime — no need to
     // call switchToNewThread() on this (soon-stale) runtime.
@@ -286,7 +283,6 @@ const ThreadWrapper = ({
 
   return (
     <Thread
-      sources={sources}
       onNewChat={handleNewChat}
       isLoadingHistory={isLoadingHistory}
       hasActiveConversation={hasActiveConversation}
@@ -332,9 +328,8 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
     );
   }
 
-  // Always render chat immediately — no indexing UI, no spinners, no status checks.
-  // The TauriChatAdapter gracefully handles unindexed books by responding
-  // without RAG context. Background indexing runs silently via useBackgroundIndexing.
+  // Always render chat immediately — the agentic adapter uses tools to access
+  // book content on demand. No indexing or pre-fetching needed.
   return (
     <AIAssistantChat
       aiSettings={aiSettings}
@@ -343,6 +338,7 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
       authorName={authorName}
       currentPage={currentPage}
       chapterTitle={chapterTitle}
+      bookDoc={bookData?.bookDoc ?? null}
     />
   );
 };

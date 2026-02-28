@@ -79,7 +79,7 @@ const AIAssistantChat = ({
   chapterTitle?: string;
   bookDoc: import('@/libs/document').BookDoc | null;
 }) => {
-  const chapters = useBookChapters(bookDoc);
+  const { getChapters } = useBookChapters(bookDoc);
   const {
     activeConversationId,
     messages: storedMessages,
@@ -96,7 +96,7 @@ const AIAssistantChat = ({
     authorName,
     currentPage,
     chapterTitle,
-    chapters,
+    getChapters,
   });
 
   // update ref on every render with latest values
@@ -108,7 +108,7 @@ const AIAssistantChat = ({
       authorName,
       currentPage,
       chapterTitle,
-      chapters,
+      getChapters,
     };
   });
 

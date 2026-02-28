@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useRef } from 'react';
 import type { BookDoc, TOCItem } from '@/libs/document';
 import type { ReaderChapter } from '@/services/ai/tools/bookTools';
 import { createLogger } from '@/utils/logger';
@@ -23,60 +23,58 @@ function extractText(doc: Document): string {
   return clone.textContent?.trim() || '';
 }
 
+async function extractAllChapters(bookDoc: BookDoc): Promise<ReaderChapter[]> {
+  const sections = bookDoc.sections || [];
+  const toc = bookDoc.toc;
+  const result: ReaderChapter[] = [];
+
+  for (let i = 0; i < sections.length; i++) {
+    const section = sections[i]!;
+    if (section.linear === 'no') continue;
+
+    try {
+      const doc = await section.createDocument();
+      const text = extractText(doc);
+      if (text.length < 50) continue;
+
+      result.push({
+        id: section.id,
+        index: i,
+        title: getChapterTitle(toc, i),
+        text,
+      });
+    } catch {
+      // Skip sections that fail to parse
+    }
+  }
+
+  logger.info(`Extracted ${result.length} chapters for agent tools`);
+  return result;
+}
+
 /**
- * Extract chapter text from a parsed BookDoc for the agentic chat adapter.
+ * Provides a lazy chapter extractor for the agentic chat adapter.
  *
- * Runs once per book load — iterates through all linear sections,
- * calls createDocument() on each, and extracts the text content.
+ * Returns a `getChapters()` function that extracts all chapter text from the
+ * BookDoc on first call, then caches the result. Subsequent calls return
+ * the cached chapters instantly. Cache is invalidated when bookDoc changes.
  */
-export function useBookChapters(bookDoc: BookDoc | null | undefined): ReaderChapter[] {
-  const [state, setState] = useState<{
-    forDoc: BookDoc | null | undefined;
-    chapters: ReaderChapter[];
-  }>({ forDoc: undefined, chapters: [] });
+export function useBookChapters(bookDoc: BookDoc | null | undefined) {
+  const cacheRef = useRef<{ forDoc: BookDoc; chapters: ReaderChapter[] } | null>(null);
 
-  useEffect(() => {
-    if (!bookDoc) return;
+  const getChapters = useCallback(async (): Promise<ReaderChapter[]> => {
+    if (!bookDoc) return [];
 
-    const sections = bookDoc.sections || [];
-    const toc = bookDoc.toc;
-    let cancelled = false;
+    // Cache hit — same book, already extracted
+    if (cacheRef.current?.forDoc === bookDoc) {
+      return cacheRef.current.chapters;
+    }
 
-    (async () => {
-      const result: ReaderChapter[] = [];
-
-      for (let i = 0; i < sections.length; i++) {
-        if (cancelled) return;
-        const section = sections[i]!;
-        if (section.linear === 'no') continue;
-
-        try {
-          const doc = await section.createDocument();
-          const text = extractText(doc);
-          if (text.length < 50) continue;
-
-          result.push({
-            id: section.id,
-            index: i,
-            title: getChapterTitle(toc, i),
-            text,
-          });
-        } catch {
-          // Skip sections that fail to parse
-        }
-      }
-
-      if (!cancelled) {
-        logger.info(`Extracted ${result.length} chapters for agent tools`);
-        setState({ forDoc: bookDoc, chapters: result });
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
+    // First call: extract all chapters
+    const chapters = await extractAllChapters(bookDoc);
+    cacheRef.current = { forDoc: bookDoc, chapters };
+    return chapters;
   }, [bookDoc]);
 
-  // Derive effective chapters: return empty when bookDoc doesn't match stored state
-  return useMemo(() => (state.forDoc === bookDoc ? state.chapters : []), [state, bookDoc]);
+  return { getChapters };
 }

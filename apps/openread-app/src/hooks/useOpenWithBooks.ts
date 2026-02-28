@@ -122,10 +122,10 @@ export function useOpenWithBooks() {
     };
     const unlistenOpenUrl = listenOpenWithFiles();
     return () => {
-      unlistenDeeplink.then((f) => f());
-      unlistenOpenFiles.then((f) => f());
-      unlistenOpenUrl.then((f) => f());
-      unlistenSharedIntent?.then((f) => f.unregister());
+      unlistenDeeplink.then((f) => f()).catch(() => {});
+      unlistenOpenFiles.then((f) => f()).catch(() => {});
+      unlistenOpenUrl.then((f) => f()).catch(() => {});
+      unlistenSharedIntent?.then((f) => f.unregister()).catch(() => {});
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appService]);

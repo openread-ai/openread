@@ -107,9 +107,13 @@ export const UpdaterContent = ({
 
   useEffect(() => {
     const checkDesktopUpdate = async () => {
-      const update = await check();
-      if (update) {
-        setUpdate(update);
+      try {
+        const update = await check();
+        if (update) {
+          setUpdate(update);
+        }
+      } catch {
+        // Updater endpoint not available yet (no published releases)
       }
     };
     const checkAndroidUpdate = async () => {

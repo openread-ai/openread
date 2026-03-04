@@ -19,6 +19,9 @@
       "allow": [
         {
           "path": "$APPDATA/Openread/**/*"
+        },
+        {
+          "path": "$APPDATA/Images/Openread/**/*"
         }
       ],
       "deny": []

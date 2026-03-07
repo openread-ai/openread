@@ -328,8 +328,8 @@ export class SyncWorker {
 
       const configs = dbConfigs.map((c) => transformBookConfigFromDB(c as unknown as DBBookConfig));
       const bookDataStore = useBookDataStore.getState();
-      // Build lookup map once to avoid O(N*M) scans
-      const library = useLibraryStore.getState().library;
+      // Build lookup map of active (non-deleted) books to skip orphaned configs
+      const library = useLibraryStore.getState().getVisibleLibrary();
       const bookByHash = new Map(library.map((b) => [b.hash, b]));
 
       for (const config of configs) {
@@ -378,8 +378,8 @@ export class SyncWorker {
         notesByBook.set(note.bookHash, existing);
       }
 
-      // Build lookup map once
-      const library = useLibraryStore.getState().library;
+      // Build lookup map of active (non-deleted) books to skip orphaned notes
+      const library = useLibraryStore.getState().getVisibleLibrary();
       const bookByHash = new Map(library.map((b) => [b.hash, b]));
 
       for (const [bookHash, bookNotes] of notesByBook) {

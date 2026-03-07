@@ -481,6 +481,66 @@ export async function POST(req: NextRequest) {
   }
 }
 
+/**
+ * DELETE /api/sync?book_hash=X
+ * Hard-delete all server-side data for a book: configs, notes, AI conversations, files metadata.
+ * The books table row is kept as a tombstone (deletedAt set) for cross-device sync propagation.
+ */
+export async function DELETE(req: NextRequest) {
+  const { user, token } = await validateUserAndToken(req.headers.get('authorization'));
+  if (!user || !token) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 403 });
+  }
+
+  const { searchParams } = new URL(req.url);
+  const bookHash = searchParams.get('book_hash');
+  if (!bookHash) {
+    return NextResponse.json({ error: 'Missing book_hash parameter' }, { status: 400 });
+  }
+
+  const supabase = createSupabaseClient(token);
+  const errors: string[] = [];
+
+  // Run independent deletions in parallel
+  const [configResult, notesResult, filesResult, aiResult] = await Promise.all([
+    supabase.from('book_configs').delete().eq('user_id', user.id).eq('book_hash', bookHash),
+    supabase.from('book_notes').delete().eq('user_id', user.id).eq('book_hash', bookHash),
+    supabase.from('files').delete().eq('user_id', user.id).eq('book_hash', bookHash),
+    // AI cleanup: fetch conversation IDs, then delete messages, then conversations (sequential)
+    (async () => {
+      const { data: conversations } = await supabase
+        .from('ai_conversations')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('book_hash', bookHash);
+      if (!conversations?.length) return { error: null };
+      const convIds = conversations.map((c) => c.id);
+      const { error: msgErr } = await supabase
+        .from('ai_messages')
+        .delete()
+        .eq('user_id', user.id)
+        .in('conversation_id', convIds);
+      if (msgErr) return { error: msgErr };
+      return supabase
+        .from('ai_conversations')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('book_hash', bookHash);
+    })(),
+  ]);
+
+  if (configResult.error) errors.push(`book_configs: ${configResult.error.message}`);
+  if (notesResult.error) errors.push(`book_notes: ${notesResult.error.message}`);
+  if (filesResult.error) errors.push(`files: ${filesResult.error.message}`);
+  if (aiResult.error) errors.push(`ai: ${aiResult.error.message}`);
+
+  if (errors.length > 0) {
+    return NextResponse.json({ error: errors.join('; '), partial: true }, { status: 207 });
+  }
+
+  return NextResponse.json({ ok: true });
+}
+
 const handler = async (req: NextApiRequest, res: NextApiResponse) => {
   if (!req.url) {
     return res.status(400).json({ error: 'Invalid request URL' });
@@ -508,8 +568,14 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
         body: JSON.stringify(req.body), // Ensure the body is a string
       });
       response = await POST(nextReq);
+    } else if (req.method === 'DELETE') {
+      const nextReq = new NextRequest(url.toString(), {
+        headers: new Headers(req.headers as Record<string, string>),
+        method: 'DELETE',
+      });
+      response = await DELETE(nextReq);
     } else {
-      res.setHeader('Allow', ['GET', 'POST']);
+      res.setHeader('Allow', ['GET', 'POST', 'DELETE']);
       return res.status(405).json({ error: 'Method Not Allowed' });
     }
 

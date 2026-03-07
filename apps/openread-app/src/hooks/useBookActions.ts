@@ -8,6 +8,7 @@ import { eventDispatcher } from '@/utils/event';
 import envConfig from '@/services/environment';
 import { enqueueAndSync, enqueueBatchAndSync } from '@/services/sync/helpers';
 import { useBookDataStore } from '@/store/bookDataStore';
+import { getAccessToken } from '@/utils/access';
 import type { Book, ReadingStatus } from '@/types/book';
 import { createLogger } from '@/utils/logger';
 
@@ -182,66 +183,6 @@ export function useBookActions() {
   );
 
   /**
-   * Soft delete multiple books.
-   * Uses optimistic update: clears selection and exits select mode immediately.
-   * On failure, library is rolled back to its previous state.
-   */
-  const bulkRemove = useCallback(
-    (hashes: string[]) => {
-      // Snapshot current library for rollback
-      const snapshot = useLibraryStore.getState().library.slice();
-
-      const deletedAt = Date.now();
-      const updatePromises = hashes
-        .map((hash) => {
-          const book = getBookByHash(hash);
-          if (!book) return null;
-
-          const updatedBook: Book = {
-            ...book,
-            deletedAt,
-            updatedAt: deletedAt,
-          };
-          return updateBook(envConfig, updatedBook);
-        })
-        .filter(Boolean);
-
-      // Clear selection and exit select mode immediately (optimistic)
-      clearSelection();
-      setSelectMode(false);
-
-      // Fire-and-forget: persist in background, rollback on failure
-      Promise.all(updatePromises).catch((error) => {
-        logger.error('Failed to remove books, rolling back:', error);
-        try {
-          useLibraryStore.getState().setLibrary(snapshot);
-        } catch (rollbackError) {
-          logger.error('Rollback also failed:', rollbackError);
-        }
-        eventDispatcher.dispatch('toast', {
-          type: 'error',
-          message: `Failed to remove ${hashes.length > 1 ? 'books' : 'book'}`,
-        });
-      });
-
-      // Enqueue all deleted books in a single batch
-      const items = hashes
-        .map((hash) => {
-          const book = getBookByHash(hash);
-          if (!book) return null;
-          return {
-            type: 'book' as const,
-            action: 'delete' as const,
-            payload: bookPayload({ ...book, deletedAt, updatedAt: deletedAt }),
-          };
-        })
-        .filter((item): item is NonNullable<typeof item> => item !== null);
-      enqueueBatchAndSync(items);
-    },
-    [getBookByHash, updateBook, clearSelection, setSelectMode],
-  );
-
-  /**
    * Add multiple books to a collection
    * Clears selection and exits select mode after completion
    */
@@ -264,22 +205,53 @@ export function useBookActions() {
     try {
       const appService = await envConfig.getAppService();
 
-      // Delete local + cloud files
+      // 1. Delete local + cloud files (book file, cover)
       await appService.deleteBook(book, 'both');
 
-      // Remove from library entirely (not soft-delete)
+      // 2. Delete local config directory ({hash}/)
+      try {
+        await appService.deleteDir(`${book.hash}`, 'Books');
+      } catch {
+        // Directory may not exist or be partially deleted — continue
+      }
+
+      // 3. Remove from library entirely (not soft-delete)
       const { library, setLibrary } = useLibraryStore.getState();
       const remaining = library.filter((b) => b.hash !== book.hash);
       setLibrary(remaining);
       appService.saveLibraryBooks(remaining);
 
-      // Push a tombstone with deletedAt to sync deletion to other devices
+      // 4. Push a tombstone for cross-device sync
       const tombstone: Book = { ...book, deletedAt: Date.now(), updatedAt: Date.now() };
       enqueueAndSync({ type: 'book', action: 'delete', payload: bookPayload(tombstone) });
 
-      // Clear local book data (configs, notes, highlights)
+      // 5. Clear local book data from in-memory store
       const bookKey = `${book.hash}-${book.format}`;
       useBookDataStore.getState().setConfig(bookKey, { booknotes: [], progress: undefined });
+
+      // 6. Delete AI conversations from IndexedDB
+      try {
+        const { aiStore } = await import('@/services/ai/storage/aiStore');
+        const conversations = await aiStore.getConversations(book.hash);
+        for (const conv of conversations) {
+          await aiStore.deleteConversation(conv.id);
+        }
+      } catch {
+        // AI store may not be initialized — continue
+      }
+
+      // 7. Hard-delete server-side data (configs, notes, AI, files metadata)
+      try {
+        const token = await getAccessToken();
+        if (token) {
+          await fetch(`/api/sync?book_hash=${encodeURIComponent(book.hash)}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${token}` },
+          });
+        }
+      } catch {
+        // Server cleanup is best-effort — tombstone sync handles cross-device
+      }
     } catch (error) {
       logger.error('Failed to permanently delete book:', error);
       eventDispatcher.dispatch('toast', {
@@ -288,6 +260,28 @@ export function useBookActions() {
       });
     }
   }, []);
+
+  /**
+   * Permanently delete multiple books.
+   * Removes all from library immediately (optimistic), then cleans up in sequence.
+   */
+  const bulkRemove = useCallback(
+    async (hashes: string[]) => {
+      const books = hashes.map((hash) => getBookByHash(hash)).filter(Boolean) as Book[];
+      if (books.length === 0) return;
+
+      clearSelection();
+      setSelectMode(false);
+
+      // Delete sequentially to avoid library state races
+      for (const book of books) {
+        await permanentlyDeleteBook(book).catch((error) => {
+          logger.error(`Failed to permanently delete ${book.title}:`, error);
+        });
+      }
+    },
+    [getBookByHash, clearSelection, setSelectMode, permanentlyDeleteBook],
+  );
 
   return {
     // Single actions

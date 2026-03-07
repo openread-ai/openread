@@ -163,10 +163,8 @@ export class SyncWorker {
       }
     }
 
-    // Run full reconciliation on start (replay pending + reconcile books)
-    this.runFullSyncCycle();
-
-    // Schedule lightweight periodic sync cycles (watermark-based, fast)
+    // Run sync immediately on start, then every SYNC_INTERVAL_MS
+    this.runSyncCycle();
     this.intervalId = setInterval(() => this.runSyncCycle(), SYNC_INTERVAL_MS);
   }
 
@@ -231,8 +229,7 @@ export class SyncWorker {
     } else if (type === 'settings') {
       await this.pullRemoteSettings();
     } else {
-      // Full reconciliation + pull all types in parallel
-      await this.runFullSyncCycle();
+      await this.runSyncCycle();
     }
   }
 
@@ -328,24 +325,11 @@ export class SyncWorker {
   }
 
   /**
-   * Lightweight periodic sync: drain queue, then pull configs/notes/settings via watermark.
-   * Books use watermark pull here (fast). Full reconciliation runs separately.
+   * Periodic sync: drain queue, reconcile books, pull configs/notes/settings.
+   * Books always use reconciliation (watermark can't detect deletions).
+   * Configs/notes/settings use fast watermark GET.
    */
   private async runSyncCycle(): Promise<void> {
-    await this.drainQueue();
-    await Promise.all([
-      this.pullRemoteBooks(),
-      this.pullRemoteConfigs(),
-      this.pullRemoteNotes(),
-      this.pullRemoteSettings(),
-    ]);
-  }
-
-  /**
-   * Full sync cycle: drain queue, then reconcile books + pull configs/notes/settings.
-   * Used on startup, after pushes, and on Realtime events.
-   */
-  private async runFullSyncCycle(): Promise<void> {
     await this.drainQueue();
     await Promise.all([
       this.reconcileBooks(),
@@ -353,33 +337,6 @@ export class SyncWorker {
       this.pullRemoteNotes(),
       this.pullRemoteSettings(),
     ]);
-  }
-
-  /**
-   * Fast watermark-based pull for books (used in periodic polling).
-   */
-  private async pullRemoteBooks(): Promise<void> {
-    if (isOffline()) return;
-
-    try {
-      const settings = useSettingsStore.getState().settings;
-      const since = (settings.lastSyncedAtBooks ?? 0) + 1;
-
-      const result = await this.syncClient.pullChanges(since, 'books');
-      const dbBooks = result.books;
-      if (!dbBooks?.length) return;
-
-      const books = dbBooks.map((dbBook) => transformBookFromDB(dbBook as unknown as DBBook));
-      await useLibraryStore.getState().updateBooks(envConfig, books);
-      this.queueMissingDownloads(books);
-
-      const maxTime = computeMaxTimestamp(dbBooks as unknown as BookDataRecord[]);
-      if (maxTime > 0) {
-        await saveWatermarks({ lastSyncedAtBooks: maxTime });
-      }
-    } catch (error) {
-      console.error('[SyncWorker] Pull remote books failed:', error);
-    }
   }
 
   /**

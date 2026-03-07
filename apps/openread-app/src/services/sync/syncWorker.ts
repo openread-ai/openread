@@ -62,6 +62,36 @@ async function saveWatermarks(updates: Partial<SystemSettings>): Promise<void> {
   await appService.saveSettings(settings);
 }
 
+interface SyncableCollection {
+  id: string;
+  name?: string;
+  bookHashes?: string[];
+  createdAt?: string;
+  updatedAt?: number;
+  deletedAt?: number | null;
+}
+
+/**
+ * Merge local and remote collections using per-collection LWW.
+ * New collections from either side are added; conflicts resolved by updatedAt.
+ */
+function mergeCollections(
+  local: SyncableCollection[],
+  remote: SyncableCollection[],
+): SyncableCollection[] {
+  const localMap = new Map(local.map((c) => [c.id, c]));
+  for (const r of remote) {
+    if (!r.id) continue;
+    const l = localMap.get(r.id);
+    if (!l) {
+      localMap.set(r.id, r);
+    } else if ((r.updatedAt ?? 0) > (l.updatedAt ?? 0)) {
+      localMap.set(r.id, r);
+    }
+  }
+  return Array.from(localMap.values()).filter((c) => !c.deletedAt);
+}
+
 export interface SyncWorkerStatus {
   pending: number;
   syncing: boolean;
@@ -219,6 +249,24 @@ export class SyncWorker {
       await saveWatermarks({ lastSyncedAtSettings: Date.now() });
     } catch (error) {
       console.error('[SyncWorker] Push settings failed:', error);
+    }
+  }
+
+  /**
+   * Push collections to server via the settings sync channel.
+   * Collections are stored as a `_collections` key in user_settings JSON.
+   */
+  async pushCollections(): Promise<void> {
+    if (isOffline()) return;
+
+    try {
+      const { usePlatformSidebarStore } = await import('@/store/platformSidebarStore');
+      const collections = usePlatformSidebarStore.getState().collections;
+      await this.syncClient.pushChanges({
+        settings: { _collections: collections, _updatedAt: new Date().toISOString() },
+      });
+    } catch (error) {
+      console.error('[SyncWorker] Push collections failed:', error);
     }
   }
 
@@ -437,6 +485,19 @@ export class SyncWorker {
       useSettingsStore.getState().setSettings(merged);
       const appService = await envConfig.getAppService();
       await appService.saveSettings(merged);
+
+      // Merge remote collections if present
+      if (remoteSettings._collections && Array.isArray(remoteSettings._collections)) {
+        const { usePlatformSidebarStore } = await import('@/store/platformSidebarStore');
+        const localCollections = usePlatformSidebarStore.getState().collections;
+        const mergedCollections = mergeCollections(
+          localCollections,
+          remoteSettings._collections as SyncableCollection[],
+        );
+        usePlatformSidebarStore.setState({
+          collections: mergedCollections as typeof localCollections,
+        });
+      }
     } catch (error) {
       console.error('[SyncWorker] Pull remote settings failed:', error);
     }

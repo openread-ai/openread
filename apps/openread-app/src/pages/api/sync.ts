@@ -434,9 +434,14 @@ export async function POST(req: NextRequest) {
           new Date(incomingTime).getTime() > new Date(existing.updated_at).getTime();
 
         if (shouldUpdate) {
+          // Merge incoming keys into existing settings (don't overwrite unrelated keys)
+          const mergedSettings = {
+            ...((existing?.settings as Record<string, unknown>) ?? {}),
+            ...incomingSettings,
+          };
           const { error: settingsError } = await supabase.from('user_settings').upsert({
             user_id: user.id,
-            settings: incomingSettings,
+            settings: mergedSettings,
             updated_at: incomingTime
               ? new Date(incomingTime).toISOString()
               : new Date().toISOString(),
@@ -445,8 +450,7 @@ export async function POST(req: NextRequest) {
           if (settingsError) {
             console.error('[sync] settings upsert failed:', settingsError.message);
           }
-          // We just wrote incomingSettings, return it directly (no second read needed)
-          resultSettings = incomingSettings;
+          resultSettings = mergedSettings;
         } else {
           // Existing settings are newer, return those from the first read
           resultSettings = existing.settings as Record<string, unknown>;

@@ -482,7 +482,26 @@ export abstract class BaseAppService implements AppService {
           }
         }
         if (cover) {
-          await this.fs.writeFile(getCoverFilename(book), 'Books', await cover.arrayBuffer());
+          const coverBuffer = await cover.arrayBuffer();
+          await this.fs.writeFile(getCoverFilename(book), 'Books', coverBuffer);
+
+          // Create a small thumbnail data URL for instant cross-device sync.
+          // Stored in metadata.coverImageUrl — syncs with the book record so
+          // other devices show the cover immediately without waiting for R2.
+          try {
+            const blob = new Blob([coverBuffer], { type: cover.type || 'image/png' });
+            const blobUrl = URL.createObjectURL(blob);
+            const { fetchImageAsBase64 } = await import('@/utils/image');
+            const dataUrl = await fetchImageAsBase64(blobUrl, {
+              targetWidth: 128,
+              format: 'image/jpeg',
+              quality: 0.6,
+            });
+            URL.revokeObjectURL(blobUrl);
+            book.metadata = { ...book.metadata, coverImageUrl: dataUrl } as typeof book.metadata;
+          } catch {
+            // Non-critical — cover will still load via R2 download
+          }
         }
       }
       // Never overwrite the config file only when it's not existed

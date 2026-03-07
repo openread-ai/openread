@@ -499,8 +499,9 @@ export abstract class BaseAppService implements AppService {
             });
             URL.revokeObjectURL(blobUrl);
             book.metadata = { ...book.metadata, coverImageUrl: dataUrl } as typeof book.metadata;
-          } catch {
-            // Non-critical — cover will still load via R2 download
+            logger.info('Cover thumbnail generated:', `${dataUrl.length} chars`);
+          } catch (thumbErr) {
+            logger.warn('Thumbnail generation failed:', thumbErr);
           }
         }
       }

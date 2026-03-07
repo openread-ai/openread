@@ -23,6 +23,8 @@ export interface Book extends BookCore {
   url?: string;
   // Metadata md5 hash, used to aggregate different versions of the same book
   metaHash?: string;
+  // Full-file SHA-256 hash matching the platform API's computeHash(), for cross-user intelligence sharing
+  platformHash?: string;
   sourceTitle?: string; // parsed when the book is imported and used to locate the file
   author: string;
   group?: string; // deprecated in favor of groupId and groupName

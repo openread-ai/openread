@@ -6,12 +6,16 @@ import { usePlatformSidebarStore } from '@/store/platformSidebarStore';
 import { useLibraryViewStore } from '@/store/libraryViewStore';
 import { eventDispatcher } from '@/utils/event';
 import envConfig from '@/services/environment';
-import { offlineQueue } from '@/services/sync/offlineQueue';
-import { syncWorker } from '@/services/sync/syncWorker';
+import { enqueueAndSync, enqueueBatchAndSync } from '@/services/sync/helpers';
 import type { Book, ReadingStatus } from '@/types/book';
 import { createLogger } from '@/utils/logger';
 
 const logger = createLogger('bookActions');
+
+/** Cast a Book to the queue payload format. */
+function bookPayload(book: Book): Record<string, unknown> {
+  return book as unknown as Record<string, unknown>;
+}
 
 /**
  * Hook that provides book mutation actions for single and bulk operations.
@@ -48,6 +52,7 @@ export function useBookActions() {
           updatedAt: Date.now(),
         };
         await updateBook(envConfig, updatedBook);
+        enqueueAndSync({ type: 'book', action: 'upsert', payload: bookPayload(updatedBook) });
       } catch (error) {
         logger.error('Failed to update reading status:', error);
         eventDispatcher.dispatch('toast', {
@@ -76,6 +81,7 @@ export function useBookActions() {
           updatedAt: Date.now(),
         };
         await updateBook(envConfig, updatedBook);
+        enqueueAndSync({ type: 'book', action: 'upsert', payload: bookPayload(updatedBook) });
       } catch (error) {
         logger.error('Failed to rename book:', error);
         eventDispatcher.dispatch('toast', {
@@ -119,13 +125,7 @@ export function useBookActions() {
         });
       });
 
-      // Enqueue for immediate push to remote
-      offlineQueue.enqueue({
-        type: 'book',
-        action: 'delete',
-        payload: updatedBook as unknown as Record<string, unknown>,
-      });
-      syncWorker.syncNow();
+      enqueueAndSync({ type: 'book', action: 'delete', payload: bookPayload(updatedBook) });
     },
     [updateBook],
   );
@@ -140,6 +140,7 @@ export function useBookActions() {
     async (hashes: string[], status: ReadingStatus) => {
       try {
         const updatedAt = Date.now();
+        const updatedBooks: Book[] = [];
         const updatePromises = hashes
           .map((hash) => {
             const book = getBookByHash(hash);
@@ -150,11 +151,21 @@ export function useBookActions() {
               readingStatus: status,
               updatedAt,
             };
+            updatedBooks.push(updatedBook);
             return updateBook(envConfig, updatedBook);
           })
           .filter(Boolean);
 
         await Promise.all(updatePromises);
+
+        enqueueBatchAndSync(
+          updatedBooks.map((b) => ({
+            type: 'book' as const,
+            action: 'upsert' as const,
+            payload: bookPayload(b),
+          })),
+        );
+
         clearSelection();
         setSelectMode(false);
       } catch (error) {
@@ -212,21 +223,19 @@ export function useBookActions() {
         });
       });
 
-      // Enqueue each deleted book for immediate push to remote
-      for (const hash of hashes) {
-        const book = getBookByHash(hash);
-        if (book) {
-          offlineQueue.enqueue({
-            type: 'book',
-            action: 'delete',
-            payload: { ...book, deletedAt, updatedAt: deletedAt } as unknown as Record<
-              string,
-              unknown
-            >,
-          });
-        }
-      }
-      syncWorker.syncNow();
+      // Enqueue all deleted books in a single batch
+      const items = hashes
+        .map((hash) => {
+          const book = getBookByHash(hash);
+          if (!book) return null;
+          return {
+            type: 'book' as const,
+            action: 'delete' as const,
+            payload: bookPayload({ ...book, deletedAt, updatedAt: deletedAt }),
+          };
+        })
+        .filter((item): item is NonNullable<typeof item> => item !== null);
+      enqueueBatchAndSync(items);
     },
     [getBookByHash, updateBook, clearSelection, setSelectMode],
   );

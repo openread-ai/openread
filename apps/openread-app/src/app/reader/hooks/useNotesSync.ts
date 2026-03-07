@@ -5,6 +5,7 @@ import { BookNote } from '@/types/book';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { SYNC_NOTES_INTERVAL_SEC } from '@/services/constants';
 import { throttle } from '@/utils/throttle';
+import { enqueueBatchAndSync } from '@/services/sync/helpers';
 
 export const useNotesSync = (bookKey: string) => {
   const { user } = useAuth();
@@ -51,6 +52,23 @@ export const useNotesSync = (bookKey: string) => {
     handleAutoSync();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config?.booknotes, handleAutoSync]);
+
+  // Flush unsent notes to offline queue on unmount so changes
+  // aren't lost if the user closes the reader before the throttle fires.
+  useEffect(() => {
+    return () => {
+      const { notes } = getNewNotes();
+      if (!notes?.length || !user) return;
+      enqueueBatchAndSync(
+        notes.map((note) => ({
+          type: 'note' as const,
+          action: 'upsert' as const,
+          payload: note as unknown as Record<string, unknown>,
+        })),
+      );
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookKey]);
 
   useEffect(() => {
     const processNewNote = (note: BookNote) => {

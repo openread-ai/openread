@@ -1,6 +1,8 @@
 # Sync Manual Test Checklist
 
 > **Setup**: Two devices (Web + Desktop, or two browser tabs). **A** and **B** below. Same account on both.
+>
+> **Last tested**: 2026-03-04 | **MCP version**: @openread/mcp@0.0.1-test.9
 
 ---
 
@@ -28,8 +30,8 @@
 
 ### Delete
 
-- [ ] Delete on A. Disappears on B within seconds.
-- [ ] Bulk delete 5 books on A. All disappear on B.
+- [x] Delete on A. Disappears on B within seconds. ✅ 2026-03-04 — Desktop→Web, all 27 books
+- [x] Bulk delete 5 books on A. All disappear on B. ✅ 2026-03-04 — Bulk delete 14 books, same timestamp
 - [ ] Delete on A while B is offline. Bring B online — book disappears.
 - [ ] Go offline on A, delete, come back online. Deletion syncs to B.
 - [ ] Delete then re-import same file. Book reappears on both devices.
@@ -52,7 +54,7 @@
 ### Offline / Edge Cases
 
 - [ ] Change progress on A, close reader within 3s. Reopen on B — progress DID sync (offline queue).
-- [ ] Delete a book on A. Config record is cleaned up on server (deleted_at set).
+- [x] Delete a book on A. Config record is cleaned up on server (deleted_at set). ✅ 2026-03-04 — 13 configs soft-deleted
 
 ---
 
@@ -77,7 +79,7 @@
 
 ### Delete
 
-- [ ] Delete a highlight/bookmark/annotation on A. Gone on B. _(All note types use same deletedAt path.)_
+- [x] Delete a highlight/bookmark/annotation on A. Gone on B. _(All note types use same deletedAt path.)_ ✅ 2026-03-04 — 7 notes soft-deleted with parent books
 - [ ] Delete a note offline. Come back online — deletion syncs to B.
 - [ ] Delete a note, close reader within 5s. Reopen on B — note is gone.
 
@@ -160,6 +162,47 @@
 - [ ] Library page load: only `GET /api/sync` in network tab, no `POST` (pull-only on load).
 - [ ] Delete on A, refresh B immediately — book doesn't ghost-restore on A.
 - [ ] Desktop launch: console shows "Migration 20251029: old Images dir not found, skipping" (not "Permission denied").
+
+---
+
+## 9. MCP Server (@openread/mcp)
+
+### Package & Startup
+
+- [x] `npx -y -p @openread/mcp mcp --version` returns current version. ✅ 2026-03-04 — `0.0.1-test.9`
+- [x] Server starts, authenticates, shows "MCP server ready". ✅ 2026-03-04
+- [x] No `@napi-rs/canvas` warning in stderr. ✅ 2026-03-04 — Module.\_resolveFilename stub
+- [ ] JWT refresh — queries work after token expiry (>1hr session).
+
+### Read Operations
+
+- [x] `list_books` returns correct data. ✅ 2026-03-04 — Returns `totalCount: 0` after all books deleted
+- [ ] `search_book` returns matching results.
+- [ ] `get_chapter` returns chapter content.
+- [ ] `search_library` searches across books.
+
+### Soft-Delete Filtering
+
+- [x] Soft-deleted books excluded from `list_books`. ✅ 2026-03-04 — `totalCount: 0, books: []`
+- [x] Soft-deleted books excluded from `countBooks`. ✅ 2026-03-04
+- [ ] Soft-deleted books excluded from `getBookById`.
+
+### Security (RLS)
+
+- [ ] MCP token cannot INSERT into books table (RLS rejects).
+- [ ] MCP token cannot UPDATE books table (RLS rejects).
+- [ ] MCP token cannot DELETE from books table (RLS rejects).
+- [ ] MCP token blocked on all 7 tables (book_configs, book_notes, ai_conversations, ai_messages, user_settings, mcp_platform_tokens).
+
+---
+
+## 10. Database Migrations
+
+- [x] `trigger_books_updated_at` dropped. ✅ 2026-03-04 — Verified via pg_trigger
+- [x] `sync_books_atomic` RPC updated (returns only changed records). ✅ 2026-03-04
+- [x] `user_settings` table created with RLS. ✅ 2026-03-04
+- [x] MCP read-only RLS policies on 7 tables. ✅ 2026-03-04 — Verified via pg_policies
+- [x] Storage files (R2) preserved during tombstone window. ✅ 2026-03-04 — EPUBs + images still in bucket
 
 ---
 

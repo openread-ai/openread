@@ -8,7 +8,7 @@ import { transformBookConfigToDB } from '@/utils/transform';
 import { transformBookNoteToDB } from '@/utils/transform';
 import { transformBookToDB } from '@/utils/transform';
 import { runMiddleware, corsAllMethods } from '@/utils/cors';
-import { SyncData, SyncRecord, SyncResult, SyncType } from '@/libs/sync';
+import { SyncData, SyncRecord, SyncType } from '@/libs/sync';
 import { validateUserAndToken } from '@/utils/access';
 import {
   validateProtocolVersion,
@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const sinceParam = searchParams.get('since');
-  const validSyncTypes: SyncType[] = ['books', 'configs', 'notes'];
+  const validSyncTypes: SyncType[] = ['books', 'configs', 'notes', 'settings'];
   const rawType = searchParams.get('type');
   const typeParam: SyncType | undefined =
     rawType && validSyncTypes.includes(rawType as SyncType) ? (rawType as SyncType) : undefined;
@@ -84,7 +84,7 @@ export async function GET(req: NextRequest) {
   const sinceIso = since.toISOString();
 
   try {
-    const results: SyncResult = { books: [], configs: [], notes: [] };
+    const results: Record<string, unknown> = { books: [], configs: [], notes: [] };
     const errors: Record<TableName, DBError | null> = {
       books: null,
       book_notes: null,
@@ -162,6 +162,25 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    // Settings sync: pull from user_settings table
+    if (typeParam === 'settings') {
+      try {
+        const { data: settingsRow, error: settingsError } = await supabase
+          .from('user_settings')
+          .select('settings, updated_at')
+          .eq('user_id', user.id)
+          .single();
+        if (settingsError && settingsError.code !== 'PGRST116') {
+          console.error('[sync] settings pull error:', settingsError.message);
+        }
+        if (settingsRow && new Date(settingsRow.updated_at).getTime() > since.getTime()) {
+          (results as Record<string, unknown>).settings = settingsRow.settings;
+        }
+      } catch (err) {
+        console.error('[sync] settings pull failed:', err);
+      }
+    }
+
     const dbErrors = Object.values(errors).filter((err) => err !== null);
     if (dbErrors.length > 0) {
       console.error('Errors occurred:', dbErrors);
@@ -214,7 +233,7 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
-  const { books = [], configs = [], notes = [] } = body as SyncData;
+  const { books = [], configs = [], notes = [], settings: incomingSettings } = body as SyncData;
   const requestId = (body as Record<string, unknown>).requestId as string | undefined;
   const deviceId = (body as Record<string, unknown>).deviceId as string | undefined;
 
@@ -395,11 +414,54 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Settings sync: upsert roaming settings with LWW
+    let resultSettings: Record<string, unknown> | null = null;
+    if (incomingSettings && Object.keys(incomingSettings).length > 0) {
+      try {
+        // LWW: check existing updated_at before overwriting
+        const { data: existing } = await supabase
+          .from('user_settings')
+          .select('settings, updated_at')
+          .eq('user_id', user.id)
+          .single();
+
+        const incomingTime = (incomingSettings as Record<string, unknown>)._updatedAt as
+          | string
+          | undefined;
+        const shouldUpdate =
+          !existing ||
+          !incomingTime ||
+          new Date(incomingTime).getTime() > new Date(existing.updated_at).getTime();
+
+        if (shouldUpdate) {
+          const { error: settingsError } = await supabase.from('user_settings').upsert({
+            user_id: user.id,
+            settings: incomingSettings,
+            updated_at: incomingTime
+              ? new Date(incomingTime).toISOString()
+              : new Date().toISOString(),
+            device_id: deviceId || null,
+          });
+          if (settingsError) {
+            console.error('[sync] settings upsert failed:', settingsError.message);
+          }
+          // We just wrote incomingSettings, return it directly (no second read needed)
+          resultSettings = incomingSettings;
+        } else {
+          // Existing settings are newer, return those from the first read
+          resultSettings = existing.settings as Record<string, unknown>;
+        }
+      } catch (err) {
+        console.error('[sync] settings sync failed:', err);
+      }
+    }
+
     return NextResponse.json(
       {
         books: resultBooks,
         configs: resultConfigs,
         notes: resultNotes,
+        ...(resultSettings ? { settings: resultSettings } : {}),
       },
       { status: 200 },
     );

@@ -18,8 +18,10 @@ import { useAIQuotaStore } from '@/store/aiQuotaStore';
 import { useAuth } from '@/context/AuthContext';
 import { getUserProfilePlan } from '@/utils/access';
 import { createAgenticAdapter } from '@/services/ai';
-import type { AISettings, AIMessage } from '@/services/ai/types';
+import type { AISettings, AIMessage, AIConversation } from '@/services/ai/types';
 import { useBookChapters } from '@/app/reader/hooks/useBookChapters';
+import { useAIChatSync } from '@/hooks/useAIChatSync';
+import { eventDispatcher } from '@/utils/event';
 
 import { Thread } from '@/components/assistant/Thread';
 
@@ -305,7 +307,7 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
   const bookData = getBookData(bookKey);
   const progress = getProgress(bookKey);
 
-  const bookHash = bookKey.split('-')[0] || '';
+  const bookHash = bookData?.book?.platformHash || bookKey.split('-')[0] || '';
   const bookTitle = bookData?.book?.title || 'Unknown';
   const authorName = bookData?.book?.author || '';
   const currentPage = progress?.pageinfo?.current ?? 0;
@@ -319,6 +321,25 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
       fetchInitialQuota(plan, userId);
     }
   }, [token, userId, aiSettings?.enabled, fetchInitialQuota]);
+
+  // Wire up AI chat sync: push conversations and messages to Supabase
+  const { pushConversation, pushMessage } = useAIChatSync(bookHash);
+  useEffect(() => {
+    const handleConversationChanged = (event: CustomEvent) => {
+      const { conversation } = event.detail as { conversation: AIConversation };
+      pushConversation(conversation);
+    };
+    const handleMessageAdded = (event: CustomEvent) => {
+      const { message } = event.detail as { message: AIMessage };
+      pushMessage(message);
+    };
+    eventDispatcher.on('ai-conversation-changed', handleConversationChanged);
+    eventDispatcher.on('ai-message-added', handleMessageAdded);
+    return () => {
+      eventDispatcher.off('ai-conversation-changed', handleConversationChanged);
+      eventDispatcher.off('ai-message-added', handleMessageAdded);
+    };
+  }, [pushConversation, pushMessage]);
 
   if (!aiSettings?.enabled) {
     return (

@@ -11,6 +11,7 @@ import {
   ViewSettings,
 } from '@/types/book';
 import type { BookMetadata } from '@/libs/document';
+import type { SystemSettings } from '@/types/settings';
 import { DBBookConfig, DBBook, DBBookNote } from '@/types/records';
 import { sanitizeString } from './sanitize';
 
@@ -235,3 +236,55 @@ export const transformBookNoteFromDB = (dbBookNote: DBBookNote): BookNote => {
     deletedAt: deleted_at ? new Date(deleted_at).getTime() : null,
   };
 };
+
+/**
+ * Keys that should roam across devices (sync to server).
+ * Per-device keys (paths, screen settings, migration, watermarks) are excluded.
+ */
+const ROAMING_KEYS: (keyof SystemSettings)[] = [
+  'libraryViewMode',
+  'librarySortBy',
+  'libraryGroupBy',
+  'librarySortAscending',
+  'libraryCoverFit',
+  'libraryAutoColumns',
+  'libraryColumns',
+  'aiSettings',
+  'globalReadSettings',
+  'globalViewSettings',
+  'keepLogin',
+  'autoUpload',
+  'telemetryEnabled',
+];
+
+/**
+ * Extract the roaming subset of settings for sync.
+ * Includes a _updatedAt timestamp for LWW resolution on the server.
+ */
+export function extractRoamingSettings(settings: SystemSettings): Record<string, unknown> {
+  const roaming: Record<string, unknown> = {};
+  for (const key of ROAMING_KEYS) {
+    if (key in settings) {
+      roaming[key] = settings[key];
+    }
+  }
+  roaming._updatedAt = new Date().toISOString();
+  return roaming;
+}
+
+/**
+ * Merge remote roaming settings into local settings.
+ * Only overwrites roaming keys; per-device keys are preserved.
+ */
+export function applyRoamingSettings(
+  local: SystemSettings,
+  remote: Record<string, unknown>,
+): SystemSettings {
+  const merged = { ...local };
+  for (const key of ROAMING_KEYS) {
+    if (key in remote && remote[key] !== undefined) {
+      (merged as Record<string, unknown>)[key] = remote[key];
+    }
+  }
+  return merged;
+}

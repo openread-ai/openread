@@ -74,6 +74,27 @@ export class OfflineQueue {
   }
 
   /**
+   * Add multiple items in a single localStorage read/write cycle.
+   * Avoids O(N^2) thrashing when enqueueing bulk operations.
+   */
+  enqueueBatch(items: Pick<QueueItem, 'type' | 'action' | 'payload'>[]): void {
+    if (items.length === 0) return;
+    const queue = readQueue();
+    const now = Date.now();
+    for (const item of items) {
+      queue.push({
+        ...item,
+        id: typeof crypto !== 'undefined' ? crypto.randomUUID() : `${now}-${Math.random()}`,
+        createdAt: now,
+        retries: 0,
+        maxRetries: DEFAULT_MAX_RETRIES,
+        status: 'pending',
+      });
+    }
+    writeQueue(queue);
+  }
+
+  /**
    * Drain pending items from the queue.
    * Calls the provided handler for each item.
    * Items that fail are retried up to maxRetries times. The interval between drain cycles provides implicit spacing.

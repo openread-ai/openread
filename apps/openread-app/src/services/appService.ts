@@ -32,6 +32,7 @@ import {
   getLibraryBackupFilename,
 } from '@/utils/book';
 import { md5, partialMD5 } from '@/utils/md5';
+import { computeFileHash } from '@/services/platform/storage';
 import { getBaseFilename, getFilename } from '@/utils/path';
 import { BookDoc, DocumentLoader, EXTS } from '@/libs/document';
 import {
@@ -410,6 +411,10 @@ export abstract class BaseAppService implements AppService {
       }
 
       const hash = await partialMD5(fileobj);
+
+      // Compute full-file SHA-256 for cross-user intelligence sharing
+      const platformHash = await computeFileHash(fileobj);
+
       const existingBook = books.filter((b) => b.hash === hash)[0];
       if (existingBook) {
         existingBook.deletedAt = null;
@@ -421,6 +426,7 @@ export abstract class BaseAppService implements AppService {
       const book: Book = {
         hash,
         format,
+        platformHash,
         title: formatTitle(loadedBook.metadata.title),
         sourceTitle: formatTitle(loadedBook.metadata.title),
         primaryLanguage,
@@ -438,6 +444,7 @@ export abstract class BaseAppService implements AppService {
         existingBook.sourceTitle = existingBook.sourceTitle ?? book.sourceTitle;
         existingBook.author = existingBook.author ?? book.author;
         existingBook.primaryLanguage = existingBook.primaryLanguage ?? book.primaryLanguage;
+        existingBook.platformHash = platformHash;
         existingBook.downloadedAt = Date.now();
       }
 

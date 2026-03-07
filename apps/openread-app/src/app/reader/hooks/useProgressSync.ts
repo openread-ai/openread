@@ -13,6 +13,7 @@ import { eventDispatcher } from '@/utils/event';
 import { DEFAULT_BOOK_SEARCH_CONFIG, SYNC_PROGRESS_INTERVAL_SEC } from '@/services/constants';
 import { getCFIFromXPointer, getXPointerFromCFI, normalizeProgressXPointer } from '@/utils/xcfi';
 import { createLogger } from '@/utils/logger';
+import { enqueueAndSync } from '@/services/sync/helpers';
 
 const logger = createLogger('progress-sync');
 
@@ -85,6 +86,30 @@ export const useProgressSync = (bookKey: string) => {
     eventDispatcher.on('sync-book-progress', handleSyncBookProgress);
     return () => {
       eventDispatcher.off('sync-book-progress', handleSyncBookProgress);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookKey]);
+
+  // Flush unsaved config to offline queue on unmount so changes
+  // aren't lost if the user closes the reader before the throttle fires.
+  useEffect(() => {
+    return () => {
+      const config = getConfig(bookKey);
+      const book = getBookData(bookKey)?.book;
+      if (!config || !book || !user) return;
+
+      const bookHash = bookKey.split('-')[0]!;
+      const lastSynced = config.lastSyncedAtConfig ?? 0;
+      if (config.updatedAt && config.updatedAt > lastSynced) {
+        enqueueAndSync({
+          type: 'config',
+          action: 'upsert',
+          payload: { ...config, bookHash, metaHash: book.metaHash } as unknown as Record<
+            string,
+            unknown
+          >,
+        });
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookKey]);

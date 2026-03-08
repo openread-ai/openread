@@ -126,27 +126,35 @@ const BookCover: React.FC<BookCoverProps> = memo<BookCoverProps>(
             imageClassName,
           )}
         >
-          <div className='flex h-1/2 items-center justify-center'>
-            <span
-              className={clsx(
-                isPreview ? 'line-clamp-2' : mode === 'grid' ? 'line-clamp-3' : 'line-clamp-2',
-                isPreview ? 'text-[0.5em]' : mode === 'grid' ? 'text-lg' : 'text-sm',
-              )}
-            >
-              {formatTitle(book.title)}
-            </span>
-          </div>
-          <div className='h-1/6'></div>
-          <div className='flex h-1/3 items-center justify-center'>
-            <span
-              className={clsx(
-                'text-neutral-content/50 line-clamp-1',
-                isPreview ? 'text-[0.4em]' : mode === 'grid' ? 'text-base' : 'text-xs',
-              )}
-            >
-              {formatAuthors(book.author)}
-            </span>
-          </div>
+          {!coverSrc && book.uploadedAt && !imageError ? (
+            <div className='flex h-full w-full items-center justify-center'>
+              <div className='bg-base-300 h-full w-full animate-pulse rounded' />
+            </div>
+          ) : (
+            <>
+              <div className='flex h-1/2 items-center justify-center'>
+                <span
+                  className={clsx(
+                    isPreview ? 'line-clamp-2' : mode === 'grid' ? 'line-clamp-3' : 'line-clamp-2',
+                    isPreview ? 'text-[0.5em]' : mode === 'grid' ? 'text-lg' : 'text-sm',
+                  )}
+                >
+                  {formatTitle(book.title)}
+                </span>
+              </div>
+              <div className='h-1/6'></div>
+              <div className='flex h-1/3 items-center justify-center'>
+                <span
+                  className={clsx(
+                    'text-neutral-content/50 line-clamp-1',
+                    isPreview ? 'text-[0.4em]' : mode === 'grid' ? 'text-base' : 'text-xs',
+                  )}
+                >
+                  {formatAuthors(book.author)}
+                </span>
+              </div>
+            </>
+          )}
         </div>
       </div>
     );

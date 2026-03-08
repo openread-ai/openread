@@ -425,16 +425,24 @@ export class SyncWorker {
       if (needsCover.length > 0) {
         console.log(`[SyncWorker] Downloading covers for ${needsCover.length} books`);
         await appService.downloadBookCovers(needsCover);
-        // Regenerate cover URLs after download
-        const updated: Book[] = [];
+
+        // Update cover URLs directly in the library store (bypass updateBooks
+        // which uses LWW merge and would overwrite the new coverImageUrl)
+        const coverUrls = new Map<string, string>();
         for (const book of needsCover) {
           const coverUrl = await appService.generateCoverImageUrl(book);
           if (coverUrl) {
-            updated.push({ ...book, coverImageUrl: coverUrl });
+            coverUrls.set(book.hash, coverUrl);
           }
         }
-        if (updated.length > 0) {
-          await useLibraryStore.getState().updateBooks(envConfig, updated);
+        if (coverUrls.size > 0) {
+          const library = useLibraryStore.getState().library;
+          const updated = library.map((b) => {
+            const url = coverUrls.get(b.hash);
+            return url ? { ...b, coverImageUrl: url } : b;
+          });
+          useLibraryStore.getState().setLibrary(updated);
+          await appService.saveLibraryBooks(updated);
         }
       }
     } catch (error) {

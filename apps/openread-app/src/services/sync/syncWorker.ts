@@ -22,7 +22,7 @@ import { useLibraryStore } from '@/store/libraryStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import envConfig from '@/services/environment';
-import type { Book, BookDataRecord } from '@/types/book';
+import type { BookConfig, BookDataRecord } from '@/types/book';
 import type { DBBook, DBBookConfig, DBBookNote } from '@/types/records';
 import type { SystemSettings } from '@/types/settings';
 import type { RealtimeChannel } from '@supabase/supabase-js';
@@ -478,7 +478,11 @@ export class SyncWorker {
       const library = useLibraryStore.getState().library;
       const bookByHash = new Map(library.map((b) => [b.hash, b]));
 
-      const booksToUpdate: Book[] = [];
+      const booksToUpdate: Array<{
+        hash: string;
+        progress: BookConfig['progress'];
+        updatedAt: number;
+      }> = [];
 
       for (const config of configs) {
         if (!config.bookHash) continue;
@@ -500,16 +504,27 @@ export class SyncWorker {
 
           // Sync progress from config back to library book for card display
           if (config.progress) {
-            booksToUpdate.push({ ...book, progress: config.progress, updatedAt: Date.now() });
+            booksToUpdate.push({
+              hash: book.hash,
+              progress: config.progress,
+              updatedAt: Date.now(),
+            });
           }
         }
       }
 
-      // Batch-update library books with synced progress
+      // Batch-update library books with synced progress only.
+      // Merge only the changed fields (progress, updatedAt) into current state —
+      // never spread a stale full-book snapshot which would clobber fields set
+      // concurrently by downloadMissingCovers (e.g., coverImageUrl). See #63.
       if (booksToUpdate.length > 0) {
         const currentLibrary = useLibraryStore.getState().library;
         const updateMap = new Map(booksToUpdate.map((b) => [b.hash, b]));
-        const updatedLibrary = currentLibrary.map((b) => updateMap.get(b.hash) ?? b);
+        const updatedLibrary = currentLibrary.map((b) => {
+          const update = updateMap.get(b.hash);
+          if (!update) return b;
+          return { ...b, progress: update.progress, updatedAt: update.updatedAt };
+        });
         useLibraryStore.getState().setLibrary(updatedLibrary);
       }
 

@@ -416,54 +416,46 @@ export class SyncWorker {
       const { getCoverFilename } = await import('@/utils/book');
 
       const library = useLibraryStore.getState().library;
-      // Debug: log why books are filtered out of cover download
-      const skipped = library.filter((b) => !b.uploadedAt || b.coverImageUrl);
-      if (skipped.length > 0) {
-        console.log(
-          `[SyncWorker] Cover skip reasons:`,
-          skipped.map((b) => ({
-            title: b.title,
-            uploadedAt: b.uploadedAt,
-            hasCoverUrl: !!b.coverImageUrl,
-          })),
-        );
-      }
       const candidates = library.filter((b) => b.uploadedAt && !b.coverImageUrl);
       const existResults = await Promise.all(
         candidates.map((book) => appService.exists(getCoverFilename(book), 'Books')),
       );
-      const needsCover = candidates.filter((_, i) => !existResults[i]);
+      const needsDownload = candidates.filter((_, i) => !existResults[i]);
 
-      if (needsCover.length > 0) {
+      if (needsDownload.length > 0) {
         console.log(
-          `[SyncWorker] Downloading covers for ${needsCover.length} books:`,
-          needsCover.map((b) => b.title),
+          `[SyncWorker] Downloading covers for ${needsDownload.length} books:`,
+          needsDownload.map((b) => b.title),
         );
         try {
-          await appService.downloadBookCovers(needsCover);
+          await appService.downloadBookCovers(needsDownload);
         } catch (dlErr) {
           console.error('[SyncWorker] Cover download failed:', dlErr);
-          return;
+          // Don't return — still generate URLs for books that already have files
         }
+      }
 
-        // Update cover URLs directly in the library store
-        const coverUrls = new Map<string, string>();
-        for (const book of needsCover) {
+      // Generate URLs for ALL candidates: both freshly downloaded and books
+      // that already have the file locally but no URL. generateCoverImageUrl
+      // returns null for books whose files don't exist (safe after download failure).
+      const coverUrls = new Map<string, string>();
+      await Promise.all(
+        candidates.map(async (book) => {
           const coverUrl = await appService.generateCoverImageUrl(book);
           if (coverUrl) {
             coverUrls.set(book.hash, coverUrl);
           }
-        }
-        if (coverUrls.size > 0) {
-          const currentLib = useLibraryStore.getState().library;
-          const updated = currentLib.map((b) => {
-            const url = coverUrls.get(b.hash);
-            return url ? { ...b, coverImageUrl: url } : b;
-          });
-          useLibraryStore.getState().setLibrary(updated);
-          await appService.saveLibraryBooks(updated);
-          console.log(`[SyncWorker] Updated ${coverUrls.size} cover URLs in library`);
-        }
+        }),
+      );
+      if (coverUrls.size > 0) {
+        const currentLib = useLibraryStore.getState().library;
+        const updated = currentLib.map((b) => {
+          const url = coverUrls.get(b.hash);
+          return url ? { ...b, coverImageUrl: url } : b;
+        });
+        useLibraryStore.getState().setLibrary(updated);
+        await appService.saveLibraryBooks(updated);
+        console.log(`[SyncWorker] Updated ${coverUrls.size} cover URLs in library`);
       }
     } catch (error) {
       console.error('[SyncWorker] Failed to download covers:', error);

@@ -114,6 +114,7 @@ export interface SyncWorkerStatus {
 export class SyncWorker {
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private isRunning = false;
+  private isReconciling = false;
   private pendingDrainRequested = false;
   private syncClient = new SyncClient();
   private realtimeChannel: RealtimeChannel | null = null;
@@ -149,7 +150,6 @@ export class SyncWorker {
           .channel(`sync:${this.userId}`)
           .on('broadcast', { event: SYNC_EVENTS.BOOKS }, () => {
             this.reconcileBooks();
-            this.downloadMissingCovers();
           })
           .on('broadcast', { event: SYNC_EVENTS.CONFIGS }, () => {
             this.pullRemoteConfigs();
@@ -365,6 +365,8 @@ export class SyncWorker {
    */
   private async reconcileBooks(): Promise<void> {
     if (isOffline()) return;
+    if (this.isReconciling) return;
+    this.isReconciling = true;
 
     try {
       const library = useLibraryStore.getState().library;
@@ -384,8 +386,6 @@ export class SyncWorker {
         await useLibraryStore.getState().updateBooks(envConfig, books);
       }
 
-      // Download covers for any library books missing them (runs every cycle)
-      this.downloadMissingCovers();
       if (reconcile.remove?.length) {
         const removeSet = new Set(reconcile.remove);
         const current = useLibraryStore.getState().library;
@@ -394,8 +394,14 @@ export class SyncWorker {
         const appService = await envConfig.getAppService();
         await appService.saveLibraryBooks(remaining);
       }
+
+      // Download covers AFTER all store mutations are complete.
+      // Must be sequential — see docs/epics/sync-fixes/005_cover_sync_race_condition.md
+      await this.downloadMissingCovers();
     } catch (error) {
       console.error('[SyncWorker] Reconciliation failed:', error);
+    } finally {
+      this.isReconciling = false;
     }
   }
 
@@ -410,15 +416,11 @@ export class SyncWorker {
       const { getCoverFilename } = await import('@/utils/book');
 
       const library = useLibraryStore.getState().library;
-      const needsCover: Book[] = [];
-      for (const book of library) {
-        if (!book.uploadedAt) continue;
-        if (book.coverImageUrl) continue; // already has a local cover URL
-        const coverExists = await appService.exists(getCoverFilename(book), 'Books');
-        if (!coverExists) {
-          needsCover.push(book);
-        }
-      }
+      const candidates = library.filter((b) => b.uploadedAt && !b.coverImageUrl);
+      const existResults = await Promise.all(
+        candidates.map((book) => appService.exists(getCoverFilename(book), 'Books')),
+      );
+      const needsCover = candidates.filter((_, i) => !existResults[i]);
 
       if (needsCover.length > 0) {
         console.log(

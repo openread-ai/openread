@@ -25,7 +25,33 @@ import envConfig from '@/services/environment';
 import type { BookConfig, BookDataRecord } from '@/types/book';
 import type { DBBook, DBBookConfig, DBBookNote } from '@/types/records';
 import type { SystemSettings } from '@/types/settings';
-import type { RealtimeChannel } from '@supabase/supabase-js';
+import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js';
+import { createSupabaseClient } from '@/utils/supabase';
+import { getAccessToken } from '@/utils/access';
+import type { AIConversation, AIMessage } from '@/services/ai/types';
+import { aiStore } from '@/services/ai/storage/aiStore';
+import { useAIChatStore } from '@/store/aiChatStore';
+
+/** Supabase row shape for ai_conversations table */
+interface SupabaseAIConversation {
+  id: string;
+  user_id: string;
+  book_hash: string;
+  title: string;
+  deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Supabase row shape for ai_messages table */
+interface SupabaseAIMessage {
+  id: string;
+  conversation_id: string;
+  user_id: string;
+  role: string;
+  content: string;
+  created_at: string;
+}
 
 /** Realtime broadcast event names for cross-device sync */
 export const SYNC_EVENTS = {
@@ -33,6 +59,7 @@ export const SYNC_EVENTS = {
   CONFIGS: 'configs-changed',
   NOTES: 'notes-changed',
   SETTINGS: 'settings-changed',
+  AI_CONVERSATIONS: 'ai-conversations-changed',
 } as const;
 
 /** Fallback polling interval — only used if Realtime WebSocket fails */
@@ -152,6 +179,7 @@ export class SyncWorker {
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private drainGuard = createCoalescingGuard();
   private reconcileGuard = createCoalescingGuard();
+  private aiPullGuard = createCoalescingGuard();
   private syncClient = new SyncClient();
   private realtimeChannel: RealtimeChannel | null = null;
   private userId: string | null = null;
@@ -196,6 +224,9 @@ export class SyncWorker {
           .on('broadcast', { event: SYNC_EVENTS.SETTINGS }, () => {
             this.pullRemoteSettings();
           })
+          .on('broadcast', { event: SYNC_EVENTS.AI_CONVERSATIONS }, () => {
+            this.pullRemoteAIConversations();
+          })
           .subscribe((status) => {
             if (status === 'SUBSCRIBED') {
               console.log('[SyncWorker] Realtime connected — polling disabled');
@@ -230,6 +261,7 @@ export class SyncWorker {
     this.userId = null;
     this.drainGuard.reset();
     this.reconcileGuard.reset();
+    this.aiPullGuard.reset();
     if (typeof window !== 'undefined') {
       window.removeEventListener('online', this.handleOnline);
       window.removeEventListener('offline', this.handleOffline);
@@ -319,6 +351,72 @@ export class SyncWorker {
   }
 
   /**
+   * Get an authenticated Supabase client for direct table access.
+   * Used by AI sync methods that bypass the SyncClient/API route.
+   */
+  private async getAuthenticatedSupabase(): Promise<SupabaseClient | null> {
+    const token = await getAccessToken();
+    if (!token) return null;
+    return createSupabaseClient(token);
+  }
+
+  /**
+   * Push an AI conversation to Supabase. Online-only — skips if offline.
+   * Does NOT use the offline queue; AI data persists in IndexedDB locally.
+   */
+  async pushAIConversation(conversation: AIConversation): Promise<void> {
+    if (isOffline() || !this.userId) return;
+
+    try {
+      const sb = await this.getAuthenticatedSupabase();
+      if (!sb) return;
+      const { error } = await sb.from('ai_conversations').upsert({
+        id: conversation.id,
+        user_id: this.userId,
+        book_hash: conversation.bookHash,
+        title: conversation.title,
+        deleted_at: conversation.deletedAt ? new Date(conversation.deletedAt).toISOString() : null,
+        created_at: new Date(conversation.createdAt).toISOString(),
+        updated_at: new Date(conversation.updatedAt).toISOString(),
+      });
+      if (error) {
+        console.error('[SyncWorker] Push AI conversation failed:', error.message);
+      } else {
+        this.broadcast(SYNC_EVENTS.AI_CONVERSATIONS);
+      }
+    } catch (error) {
+      console.error('[SyncWorker] Push AI conversation error:', error);
+    }
+  }
+
+  /**
+   * Push an AI message to Supabase. Online-only — skips if offline.
+   */
+  async pushAIMessage(message: AIMessage): Promise<void> {
+    if (isOffline() || !this.userId) return;
+
+    try {
+      const sb = await this.getAuthenticatedSupabase();
+      if (!sb) return;
+      const { error } = await sb.from('ai_messages').upsert({
+        id: message.id,
+        conversation_id: message.conversationId,
+        user_id: this.userId,
+        role: message.role,
+        content: message.content,
+        created_at: new Date(message.createdAt).toISOString(),
+      });
+      if (error) {
+        console.error('[SyncWorker] Push AI message failed:', error.message);
+      } else {
+        this.broadcast(SYNC_EVENTS.AI_CONVERSATIONS);
+      }
+    } catch (error) {
+      console.error('[SyncWorker] Push AI message error:', error);
+    }
+  }
+
+  /**
    * Start fallback polling (only when Realtime WebSocket fails).
    */
   private startFallbackPolling(): void {
@@ -373,9 +471,10 @@ export class SyncWorker {
   }
 
   /**
-   * Periodic sync: drain queue, reconcile books, pull configs/notes/settings.
+   * Periodic sync: drain queue, reconcile books, pull configs/notes/settings/AI.
    * Books always use reconciliation (watermark can't detect deletions).
    * Configs/notes/settings use fast watermark GET.
+   * AI conversations pulled directly from Supabase (no-op if no book is active).
    */
   private async runSyncCycle(): Promise<void> {
     await this.drainQueue();
@@ -384,6 +483,7 @@ export class SyncWorker {
       this.pullRemoteConfigs(),
       this.pullRemoteNotes(),
       this.pullRemoteSettings(),
+      this.pullRemoteAIConversations(),
     ]);
   }
 
@@ -676,6 +776,129 @@ export class SyncWorker {
       }
     } catch (error) {
       console.error('[SyncWorker] Pull remote settings failed:', error);
+    }
+  }
+
+  /**
+   * Pull AI conversations and messages from Supabase for the active book.
+   * Merges into IndexedDB (LWW by updatedAt), then refreshes Zustand store.
+   * Uses coalescing guard to prevent duplicate pulls from rapid broadcasts.
+   */
+  private async pullRemoteAIConversations(): Promise<void> {
+    if (isOffline() || !this.userId) return;
+
+    const bookHash = useAIChatStore.getState().currentBookHash;
+    if (!bookHash) return;
+
+    if (!this.aiPullGuard.tryEnter()) return;
+
+    try {
+      const sb = await this.getAuthenticatedSupabase();
+      if (!sb) return;
+
+      // Pull conversations for this book
+      const { data: remoteConversations, error: convError } = await sb
+        .from('ai_conversations')
+        .select('*')
+        .eq('book_hash', bookHash)
+        .eq('user_id', this.userId);
+
+      if (convError) {
+        console.error('[SyncWorker] Pull AI conversations failed:', convError.message);
+        return;
+      }
+
+      if (!remoteConversations || remoteConversations.length === 0) return;
+
+      // Get local conversations (including soft-deleted) for LWW merge
+      const localConversations = await aiStore.getAllConversations(bookHash);
+      const localMap = new Map(localConversations.map((c) => [c.id, c]));
+
+      // Merge: remote wins if updatedAt is newer (LWW)
+      const merged: AIConversation[] = [];
+      for (const remote of remoteConversations as SupabaseAIConversation[]) {
+        const local = localMap.get(remote.id);
+        const remoteConv: AIConversation = {
+          id: remote.id,
+          bookHash: remote.book_hash,
+          title: remote.title,
+          createdAt: new Date(remote.created_at).getTime(),
+          updatedAt: new Date(remote.updated_at).getTime(),
+          deletedAt: remote.deleted_at ? new Date(remote.deleted_at).getTime() : undefined,
+        };
+
+        if (!local || remoteConv.updatedAt > local.updatedAt) {
+          merged.push(remoteConv);
+        }
+      }
+
+      if (merged.length > 0) {
+        await aiStore.upsertConversations(merged);
+      }
+
+      // Pull messages for all conversations
+      const conversationIds = (remoteConversations as SupabaseAIConversation[]).map((c) => c.id);
+      let newMessages: AIMessage[] = [];
+      if (conversationIds.length > 0) {
+        const { data: remoteMessages, error: msgError } = await sb
+          .from('ai_messages')
+          .select('*')
+          .in('conversation_id', conversationIds)
+          .eq('user_id', this.userId)
+          .order('created_at', { ascending: true })
+          .limit(1000);
+
+        if (msgError) {
+          console.error('[SyncWorker] Pull AI messages failed:', msgError.message);
+          return;
+        }
+
+        if (remoteMessages && remoteMessages.length > 0) {
+          const localMessageArrays = await Promise.all(
+            conversationIds.map((id) => aiStore.getMessages(id)),
+          );
+          const localMsgIds = new Set(localMessageArrays.flat().map((m) => m.id));
+
+          newMessages = (remoteMessages as SupabaseAIMessage[])
+            .filter((m) => !localMsgIds.has(m.id))
+            .map((m) => ({
+              id: m.id,
+              conversationId: m.conversation_id,
+              role: m.role as 'user' | 'assistant',
+              content: m.content,
+              createdAt: new Date(m.created_at).getTime(),
+            }));
+
+          if (newMessages.length > 0) {
+            await aiStore.upsertMessages(newMessages);
+          }
+        }
+      }
+
+      // Refresh Zustand store so the UI re-renders with remote data
+      if (merged.length > 0) {
+        const { currentBookHash } = useAIChatStore.getState();
+        if (currentBookHash === bookHash) {
+          const freshConversations = await aiStore.getConversations(bookHash);
+          useAIChatStore.setState({ conversations: freshConversations });
+        }
+      }
+      if (newMessages.length > 0) {
+        const { activeConversationId } = useAIChatStore.getState();
+        if (
+          activeConversationId &&
+          newMessages.some((m) => m.conversationId === activeConversationId)
+        ) {
+          const freshMessages = await aiStore.getMessages(activeConversationId);
+          useAIChatStore.setState({ messages: freshMessages });
+        }
+      }
+    } catch (error) {
+      console.error('[SyncWorker] Pull AI conversations error:', error);
+    } finally {
+      if (this.aiPullGuard.exit()) {
+        this.pullRemoteAIConversations();
+      }
     }
   }
 

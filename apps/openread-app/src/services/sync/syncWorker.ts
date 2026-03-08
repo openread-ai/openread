@@ -27,6 +27,14 @@ import type { DBBook, DBBookConfig, DBBookNote } from '@/types/records';
 import type { SystemSettings } from '@/types/settings';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
+/** Realtime broadcast event names for cross-device sync */
+export const SYNC_EVENTS = {
+  BOOKS: 'books-changed',
+  CONFIGS: 'configs-changed',
+  NOTES: 'notes-changed',
+  SETTINGS: 'settings-changed',
+} as const;
+
 /** Fallback polling interval — only used if Realtime WebSocket fails */
 const SYNC_FALLBACK_INTERVAL_MS = 30_000;
 
@@ -140,17 +148,17 @@ export class SyncWorker {
       try {
         this.realtimeChannel = supabase
           .channel(`sync:${this.userId}`)
-          .on('broadcast', { event: 'books-changed' }, () => {
+          .on('broadcast', { event: SYNC_EVENTS.BOOKS }, () => {
             this.reconcileBooks();
             this.downloadMissingCovers();
           })
-          .on('broadcast', { event: 'configs-changed' }, () => {
+          .on('broadcast', { event: SYNC_EVENTS.CONFIGS }, () => {
             this.pullRemoteConfigs();
           })
-          .on('broadcast', { event: 'notes-changed' }, () => {
+          .on('broadcast', { event: SYNC_EVENTS.NOTES }, () => {
             this.pullRemoteNotes();
           })
-          .on('broadcast', { event: 'settings-changed' }, () => {
+          .on('broadcast', { event: SYNC_EVENTS.SETTINGS }, () => {
             this.pullRemoteSettings();
           })
           .subscribe((status) => {
@@ -250,7 +258,7 @@ export class SyncWorker {
       const roaming = extractRoamingSettings(settings);
       await this.syncClient.pushChanges({ settings: roaming });
       await saveWatermarks({ lastSyncedAtSettings: Date.now() });
-      this.broadcastChange('settings-changed');
+      this.broadcast(SYNC_EVENTS.SETTINGS);
     } catch (error) {
       console.error('[SyncWorker] Push settings failed:', error);
     }
@@ -269,7 +277,7 @@ export class SyncWorker {
       await this.syncClient.pushChanges({
         settings: { _collections: collections, _updatedAt: new Date().toISOString() },
       });
-      this.broadcastChange('settings-changed');
+      this.broadcast(SYNC_EVENTS.SETTINGS);
     } catch (error) {
       console.error('[SyncWorker] Push collections failed:', error);
     }
@@ -600,15 +608,15 @@ export class SyncWorker {
       switch (item.type) {
         case 'book':
           await this.syncClient.pushChanges({ books: [item.payload] });
-          this.broadcastChange('books-changed');
+          this.broadcast(SYNC_EVENTS.BOOKS);
           return true;
         case 'config':
           await this.syncClient.pushChanges({ configs: [item.payload] });
-          this.broadcastChange('configs-changed');
+          this.broadcast(SYNC_EVENTS.CONFIGS);
           return true;
         case 'note':
           await this.syncClient.pushChanges({ notes: [item.payload] });
-          this.broadcastChange('notes-changed');
+          this.broadcast(SYNC_EVENTS.NOTES);
           return true;
         default:
           console.warn(`[SyncWorker] Unknown queue item type: ${item.type}`);
@@ -624,10 +632,6 @@ export class SyncWorker {
    * Broadcast a sync event to other devices via Supabase Realtime.
    */
   broadcast(event: string): void {
-    this.broadcastChange(event);
-  }
-
-  private broadcastChange(event: string): void {
     if (!this.realtimeChannel) return;
     this.realtimeChannel.send({
       type: 'broadcast',

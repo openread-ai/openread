@@ -183,9 +183,11 @@ export async function GET(req: NextRequest) {
 
     const dbErrors = Object.values(errors).filter((err) => err !== null);
     if (dbErrors.length > 0) {
-      console.error('Errors occurred:', dbErrors);
-      const errorMsg = dbErrors.map((err) => `${err.table}: ${err.error.message}`).join('; ');
-      return NextResponse.json({ error: errorMsg }, { status: 500 });
+      console.error(
+        'Errors occurred:',
+        dbErrors.map((e) => `${e.table}: ${e.error.message}`),
+      );
+      return NextResponse.json({ error: 'Sync query failed' }, { status: 500 });
     }
 
     const response = NextResponse.json(results, { status: 200 });
@@ -476,6 +478,21 @@ export async function POST(req: NextRequest) {
       !Array.isArray(body.reconcile.books)
     ) {
       const clientHashes = body.reconcile.books as Record<string, number>;
+      const hashKeys = Object.keys(clientHashes);
+
+      // P58: Cap entry count and validate hash format to prevent abuse
+      const MAX_RECONCILE_ENTRIES = 10_000;
+      if (hashKeys.length > MAX_RECONCILE_ENTRIES) {
+        return NextResponse.json(
+          { error: `reconcile.books exceeds max ${MAX_RECONCILE_ENTRIES} entries` },
+          { status: 400 },
+        );
+      }
+      const HASH_RE = /^[0-9a-f]{32}$/i;
+      const hasInvalidHash = hashKeys.some((k) => !HASH_RE.test(k));
+      if (hasInvalidHash) {
+        return NextResponse.json({ error: 'Invalid hash in reconcile.books' }, { status: 400 });
+      }
 
       const { data: serverBooks, error: serverErr } = await supabase
         .from('books')
@@ -524,8 +541,8 @@ export async function POST(req: NextRequest) {
     if (pgError.code === '23503') {
       return NextResponse.json({ error: 'Invalid user reference' }, { status: 400 });
     }
-    const errorMessage = pgError.message || 'Unknown error';
-    return NextResponse.json({ error: errorMessage }, { status: 500 });
+    console.error('[sync] POST failed:', pgError.message || 'Unknown error');
+    return NextResponse.json({ error: 'Sync operation failed' }, { status: 500 });
   }
 }
 
@@ -544,6 +561,10 @@ export async function DELETE(req: NextRequest) {
   const bookHash = searchParams.get('book_hash');
   if (!bookHash) {
     return NextResponse.json({ error: 'Missing book_hash parameter' }, { status: 400 });
+  }
+  const HASH_REGEX = /^[0-9a-f]{32}$/i;
+  if (!HASH_REGEX.test(bookHash)) {
+    return NextResponse.json({ error: 'Invalid book_hash format' }, { status: 400 });
   }
 
   const supabase = createSupabaseClient(token);

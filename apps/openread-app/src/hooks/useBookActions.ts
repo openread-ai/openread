@@ -7,6 +7,7 @@ import { useLibraryViewStore } from '@/store/libraryViewStore';
 import { eventDispatcher } from '@/utils/event';
 import envConfig from '@/services/environment';
 import { enqueueAndSync, enqueueBatchAndSync } from '@/services/sync/helpers';
+import { syncWorker, SYNC_EVENTS } from '@/services/sync/syncWorker';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { getAccessToken } from '@/utils/access';
 import type { Book, ReadingStatus } from '@/types/book';
@@ -57,17 +58,15 @@ async function cleanupDeletedBook(book: Book, remainingLibrary: Book[]): Promise
       .catch(() => {});
 
     // Hard-delete server-side data, then broadcast to other devices
-    getAccessToken().then((token) => {
-      if (token) {
-        fetch(`/api/sync?book_hash=${encodeURIComponent(book.hash)}`, {
+    getAccessToken()
+      .then((token) => {
+        if (!token) return;
+        return fetch(`/api/sync?book_hash=${encodeURIComponent(book.hash)}`, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
-        })
-          .then(() => import('@/services/sync/syncWorker'))
-          .then(({ syncWorker }) => syncWorker.broadcast('books-changed'))
-          .catch(() => {});
-      }
-    });
+        }).then(() => syncWorker.broadcast(SYNC_EVENTS.BOOKS));
+      })
+      .catch((err) => createLogger('bookActions').warn('Server delete failed:', err));
   } catch (error) {
     createLogger('bookActions').error('Background cleanup failed:', error);
   }

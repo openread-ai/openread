@@ -27,7 +27,8 @@ import type { DBBook, DBBookConfig, DBBookNote } from '@/types/records';
 import type { SystemSettings } from '@/types/settings';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
-const SYNC_INTERVAL_MS = 3_000;
+/** Fallback polling interval — only used if Realtime WebSocket fails */
+const SYNC_FALLBACK_INTERVAL_MS = 30_000;
 
 /** Check if the browser is offline. */
 function isOffline(): boolean {
@@ -133,15 +134,15 @@ export class SyncWorker {
       window.addEventListener('offline', this.handleOffline);
     }
 
-    // Subscribe to Supabase Realtime broadcast for instant reconciliation.
-    // Tauri's custom protocol (tauri://localhost) isn't a secure context,
-    // so WebSocket fails there — polling is the fallback.
+    // Subscribe to Supabase Realtime broadcast for instant sync.
+    // Primary sync mechanism — triggers immediately when another device pushes changes.
     if (this.userId) {
       try {
         this.realtimeChannel = supabase
           .channel(`sync:${this.userId}`)
           .on('broadcast', { event: 'books-changed' }, () => {
             this.reconcileBooks();
+            this.downloadMissingCovers();
           })
           .on('broadcast', { event: 'configs-changed' }, () => {
             this.pullRemoteConfigs();
@@ -153,19 +154,22 @@ export class SyncWorker {
             this.pullRemoteSettings();
           })
           .subscribe((status) => {
-            if (status === 'CHANNEL_ERROR') {
-              console.warn('[SyncWorker] Realtime channel error, using polling fallback');
+            if (status === 'SUBSCRIBED') {
+              console.log('[SyncWorker] Realtime connected — polling disabled');
+            } else if (status === 'CHANNEL_ERROR') {
+              console.warn('[SyncWorker] Realtime failed — enabling fallback polling');
+              this.startFallbackPolling();
             }
           });
       } catch {
-        console.warn('[SyncWorker] Realtime unavailable, using polling fallback');
+        console.warn('[SyncWorker] Realtime unavailable — enabling fallback polling');
         this.realtimeChannel = null;
+        this.startFallbackPolling();
       }
     }
 
-    // Run sync immediately on start, then every SYNC_INTERVAL_MS
+    // Run full sync once on startup
     this.runSyncCycle();
-    this.intervalId = setInterval(() => this.runSyncCycle(), SYNC_INTERVAL_MS);
   }
 
   /**
@@ -271,6 +275,14 @@ export class SyncWorker {
     }
   }
 
+  /**
+   * Start fallback polling (only when Realtime WebSocket fails).
+   */
+  private startFallbackPolling(): void {
+    if (this.intervalId) return;
+    this.intervalId = setInterval(() => this.runSyncCycle(), SYNC_FALLBACK_INTERVAL_MS);
+  }
+
   private handleOnline = (): void => {
     // Resume: drain immediately when coming back online
     this.drainQueue();
@@ -363,9 +375,10 @@ export class SyncWorker {
       if (reconcile.upsert?.length) {
         const books = reconcile.upsert.map((b) => transformBookFromDB(b as unknown as DBBook));
         await useLibraryStore.getState().updateBooks(envConfig, books);
-        // Download covers for synced books (fast, cover-only, no full book download)
-        this.downloadMissingCovers(books);
       }
+
+      // Download covers for any library books missing them (runs every cycle)
+      this.downloadMissingCovers();
       if (reconcile.remove?.length) {
         const removeSet = new Set(reconcile.remove);
         const current = useLibraryStore.getState().library;
@@ -380,18 +393,20 @@ export class SyncWorker {
   }
 
   /**
-   * Download covers for upserted books that are missing them locally.
-   * Uses batch cover download (fast, ~50-100KB per cover) instead of
-   * downloading the entire book file.
+   * Download covers for books that have uploadedAt but no local cover file.
+   * Checks ALL library books, not just upserted ones, because uploadedAt
+   * may arrive in a later reconciliation cycle after the book was first synced.
    */
-  private async downloadMissingCovers(books: Book[]): Promise<void> {
+  private async downloadMissingCovers(): Promise<void> {
     try {
       const appService = await envConfig.getAppService();
       const { getCoverFilename } = await import('@/utils/book');
 
-      const needsCover = [];
-      for (const book of books) {
+      const library = useLibraryStore.getState().library;
+      const needsCover: Book[] = [];
+      for (const book of library) {
         if (!book.uploadedAt || this.downloadAttempted.has(book.hash)) continue;
+        if (book.coverImageUrl) continue; // already has a local cover URL
         const coverExists = await appService.exists(getCoverFilename(book), 'Books');
         if (!coverExists) {
           this.downloadAttempted.add(book.hash);
@@ -400,13 +415,19 @@ export class SyncWorker {
       }
 
       if (needsCover.length > 0) {
+        console.log(`[SyncWorker] Downloading covers for ${needsCover.length} books`);
         await appService.downloadBookCovers(needsCover);
         // Regenerate cover URLs after download
+        const updated: Book[] = [];
         for (const book of needsCover) {
-          book.coverImageUrl = await appService.generateCoverImageUrl(book);
+          const coverUrl = await appService.generateCoverImageUrl(book);
+          if (coverUrl) {
+            updated.push({ ...book, coverImageUrl: coverUrl });
+          }
         }
-        // Update library with cover URLs
-        await useLibraryStore.getState().updateBooks(envConfig, needsCover);
+        if (updated.length > 0) {
+          await useLibraryStore.getState().updateBooks(envConfig, updated);
+        }
       }
     } catch (error) {
       console.error('[SyncWorker] Failed to download covers:', error);

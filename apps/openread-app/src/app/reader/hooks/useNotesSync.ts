@@ -6,6 +6,7 @@ import { useBookDataStore } from '@/store/bookDataStore';
 import { SYNC_NOTES_INTERVAL_SEC } from '@/services/constants';
 import { throttle } from '@/utils/throttle';
 import { enqueueBatchAndSync } from '@/services/sync/helpers';
+import { syncWorker, SYNC_EVENTS } from '@/services/sync/syncWorker';
 
 export const useNotesSync = (bookKey: string) => {
   const { user } = useAuth();
@@ -36,13 +37,15 @@ export const useNotesSync = (bookKey: string) => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const handleAutoSync = useCallback(
     throttle(
-      () => {
+      async () => {
         const book = getBookData(bookKey)?.book;
         const newNotes = getNewNotes();
-        syncNotes(newNotes.notes, book?.hash, book?.metaHash, 'both');
+        if (!newNotes.notes?.length) return;
+        await syncNotes(newNotes.notes, book?.hash, book?.metaHash, 'both');
+        syncWorker.broadcast(SYNC_EVENTS.NOTES);
       },
       SYNC_NOTES_INTERVAL_SEC * 1000,
-      { emitLast: false },
+      { emitLast: true },
     ),
     [syncNotes],
   );
@@ -76,10 +79,9 @@ export const useNotesSync = (bookKey: string) => {
       const oldNotes = config?.booknotes ?? [];
       const existingNote = oldNotes.find((oldNote) => oldNote.id === note.id);
       if (existingNote) {
-        if (
-          existingNote.updatedAt < note.updatedAt ||
-          (existingNote.deletedAt ?? 0) < (note.deletedAt ?? 0)
-        ) {
+        const remoteTime = Math.max(note.updatedAt ?? 0, note.deletedAt ?? 0);
+        const localTime = Math.max(existingNote.updatedAt ?? 0, existingNote.deletedAt ?? 0);
+        if (remoteTime > localTime) {
           return { ...existingNote, ...note };
         } else {
           return { ...note, ...existingNote };

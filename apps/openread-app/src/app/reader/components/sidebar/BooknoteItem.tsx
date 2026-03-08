@@ -58,7 +58,9 @@ const BooknoteItem: React.FC<BooknoteItemProps> = ({ bookKey, item, onClick }) =
     const { booknotes = [] } = config;
     booknotes.forEach((item) => {
       if (item.id === note.id) {
-        item.deletedAt = Date.now();
+        const now = Date.now();
+        item.deletedAt = now;
+        item.updatedAt = now;
         const views = getViewsById(bookKey.split('-')[0]!);
         views.forEach((view) =>
           view?.addAnnotation({ ...item, value: `${NOTE_PREFIX}${item.cfi}` }, true),

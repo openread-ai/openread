@@ -641,7 +641,9 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
         annotations[existingIndex] = annotation;
         views.forEach((view) => view?.addAnnotation(annotation));
       } else {
-        annotations[existingIndex]!.deletedAt = Date.now();
+        const now = Date.now();
+        annotations[existingIndex]!.deletedAt = now;
+        annotations[existingIndex]!.updatedAt = now;
         handleDismissPopup();
       }
     } else {

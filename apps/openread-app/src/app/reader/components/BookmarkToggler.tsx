@@ -68,7 +68,9 @@ const BookmarkToggler: React.FC<BookmarkTogglerProps> = ({ bookKey }) => {
       setIsBookmarked(false);
       bookmarks.forEach((item) => {
         if (item.type === 'bookmark' && isCfiInLocation(item.cfi, cfi)) {
-          item.deletedAt = Date.now();
+          const now = Date.now();
+          item.deletedAt = now;
+          item.updatedAt = now;
         }
       });
       const updatedConfig = updateBooknotes(bookKey, bookmarks);

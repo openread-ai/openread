@@ -93,7 +93,9 @@ function mergeCollections(
     const l = localMap.get(r.id);
     if (!l) {
       localMap.set(r.id, r);
-    } else if ((r.updatedAt ?? 0) > (l.updatedAt ?? 0)) {
+    } else if (
+      Math.max(r.updatedAt ?? 0, r.deletedAt ?? 0) > Math.max(l.updatedAt ?? 0, l.deletedAt ?? 0)
+    ) {
       localMap.set(r.id, r);
     }
   }
@@ -614,7 +616,12 @@ export class SyncWorker {
         for (const note of bookNotes) {
           const idx = noteIdxMap.get(note.id);
           if (idx !== undefined) {
-            if ((note.updatedAt ?? 0) > (mergedNotes[idx]!.updatedAt ?? 0)) {
+            const remoteTime = Math.max(note.updatedAt ?? 0, note.deletedAt ?? 0);
+            const localTime = Math.max(
+              mergedNotes[idx]!.updatedAt ?? 0,
+              mergedNotes[idx]!.deletedAt ?? 0,
+            );
+            if (remoteTime > localTime) {
               mergedNotes[idx] = { ...mergedNotes[idx]!, ...note };
             }
           } else {

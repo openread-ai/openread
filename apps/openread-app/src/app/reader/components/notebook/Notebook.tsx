@@ -151,10 +151,10 @@ const Notebook: React.FC = ({}) => {
     const { booknotes: annotations = [] } = config;
     const existingIndex = annotations.findIndex((item) => item.id === note.id);
     if (existingIndex === -1) return;
+    const now = Date.now();
+    note.updatedAt = now;
     if (isDelete) {
-      note.deletedAt = Date.now();
-    } else {
-      note.updatedAt = Date.now();
+      note.deletedAt = now;
     }
     annotations[existingIndex] = note;
     view?.addAnnotation({ ...note, value: `${NOTE_PREFIX}${note.cfi}` }, true);

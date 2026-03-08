@@ -203,7 +203,7 @@ export const useProgressSync = (bookKey: string) => {
     }
   };
 
-  // Pull: proccess the pulled progress
+  // Pull: process the pulled progress
   useEffect(() => {
     if (!configPulled.current && syncedConfigs) {
       configPulled.current = true;

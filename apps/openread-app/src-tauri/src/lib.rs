@@ -207,7 +207,19 @@ pub fn run() {
     let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
 
     #[cfg(desktop)]
-    let builder = builder.plugin(tauri_plugin_window_state::Builder::default().build());
+    let builder = builder.plugin(
+        tauri_plugin_window_state::Builder::default()
+            // Only restore maximized/fullscreen/visible/decorations state.
+            // Size is capped dynamically to the current screen in setup,
+            // and position is set via center() so saved values don't push
+            // the window off-screen after monitor changes.
+            .with_state_flags(
+                tauri_plugin_window_state::StateFlags::all()
+                    & !tauri_plugin_window_state::StateFlags::SIZE
+                    & !tauri_plugin_window_state::StateFlags::POSITION,
+            )
+            .build(),
+    );
 
     #[cfg(target_os = "macos")]
     let builder = builder.plugin(macos::traffic_light::init());
@@ -355,8 +367,10 @@ pub fn run() {
                     true
                 });
 
+            // Default initial size — cap_window_to_screen() in traffic_light.rs
+            // adjusts to 85% of the actual monitor in on_window_ready.
             #[cfg(desktop)]
-            let win_builder = win_builder.inner_size(800.0, 600.0).resizable(true);
+            let win_builder = win_builder.inner_size(1280.0, 820.0).resizable(true);
 
             #[cfg(target_os = "macos")]
             let win_builder = win_builder
@@ -386,9 +400,8 @@ pub fn run() {
                 builder
             };
 
-            win_builder.build().unwrap();
-            // let win = win_builder.build().unwrap();
-            // win.open_devtools();
+            let win = win_builder.build().unwrap();
+            let _ = win.center();
 
             #[cfg(target_os = "macos")]
             macos::menu::setup_macos_menu(app.handle())?;

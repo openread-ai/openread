@@ -10,19 +10,162 @@ static mut WINDOW_CONTROL_PAD_X: f64 = 10.0;
 static mut WINDOW_CONTROL_PAD_Y: f64 = 22.0;
 static mut TRAFFIC_LIGHTS_VISIBLE: bool = true;
 
+/// Height of the native drag region overlay (matches Tailwind h-11 = 2.75rem = 44px)
+const DRAG_REGION_HEIGHT: f64 = 44.0;
+
 struct UnsafeWindowHandle(*mut std::ffi::c_void);
 unsafe impl Send for UnsafeWindowHandle {}
 unsafe impl Sync for UnsafeWindowHandle {}
+
+/// Register a custom NSView subclass that handles window dragging synchronously.
+///
+/// On macOS with TitleBarStyle::Overlay, Tauri's built-in drag.js uses async IPC
+/// (JS → Tokio → event proxy → main thread → [NSApp currentEvent]). By the time
+/// the native drag_window() runs, [NSApp currentEvent] is stale and the drag fails.
+///
+/// This view sits on top of the webview in the titlebar area and handles mouseDown:
+/// by calling performWindowDragWithEvent: synchronously with the original event.
+fn get_drag_view_class() -> &'static objc::runtime::Class {
+    use cocoa::base::id;
+    use objc::declare::ClassDecl;
+    use objc::runtime::{Class, Object, Sel, BOOL, YES};
+    use std::sync::Once;
+
+    static INIT: Once = Once::new();
+    static mut CLASS: *const Class = std::ptr::null();
+
+    INIT.call_once(|| {
+        let superclass = Class::get("NSView").unwrap();
+        let mut decl = ClassDecl::new("OpenreadDragRegionView", superclass).unwrap();
+
+        extern "C" fn mouse_down(this: &Object, _sel: Sel, event: id) {
+            unsafe {
+                let click_count: i64 = msg_send![event, clickCount];
+                let window: id = msg_send![this, window];
+                if click_count == 2 {
+                    // Double-click toggles zoom (maximize), matching standard macOS behavior
+                    let _: () = msg_send![window, zoom: this];
+                } else {
+                    // Synchronous drag — the event is fresh, no stale [NSApp currentEvent]
+                    let _: () = msg_send![window, performWindowDragWithEvent: event];
+                }
+            }
+        }
+
+        extern "C" fn accepts_first_mouse(
+            _this: &Object,
+            _sel: Sel,
+            _event: id,
+        ) -> BOOL {
+            // Accept clicks even when the window isn't focused, so users can
+            // drag an unfocused window without an extra click to focus first
+            YES
+        }
+
+        unsafe {
+            decl.add_method(
+                sel!(mouseDown:),
+                mouse_down as extern "C" fn(&Object, Sel, id),
+            );
+            decl.add_method(
+                sel!(acceptsFirstMouse:),
+                accepts_first_mouse as extern "C" fn(&Object, Sel, id) -> BOOL,
+            );
+            CLASS = decl.register();
+        }
+    });
+
+    unsafe { &*CLASS }
+}
+
+/// Add a transparent native drag region overlay to the top of the window.
+///
+/// The view covers the full width × DRAG_REGION_HEIGHT area at the top, sitting
+/// above the WKWebView but below the NSTitlebarContainerView (traffic light buttons).
+/// Autoresizing keeps it pinned to the top edge on window resize.
+fn setup_native_drag_region<R: Runtime>(window: Window<R>) {
+    use cocoa::appkit::NSView;
+    use cocoa::base::id;
+    use cocoa::foundation::{NSPoint, NSRect, NSSize};
+
+    unsafe {
+        let ns_win = window
+            .ns_window()
+            .expect("NS Window should exist for drag region setup")
+            as id;
+        let drag_class = get_drag_view_class();
+        let content_view: id = msg_send![ns_win, contentView];
+        let content_frame: NSRect = NSView::frame(content_view);
+
+        let frame = NSRect::new(
+            NSPoint::new(0.0, content_frame.size.height - DRAG_REGION_HEIGHT),
+            NSSize::new(content_frame.size.width, DRAG_REGION_HEIGHT),
+        );
+
+        let drag_view: id = msg_send![drag_class, alloc];
+        let drag_view: id = msg_send![drag_view, initWithFrame: frame];
+
+        // NSViewWidthSizable (2) | NSViewMinYMargin (8):
+        // stretch width with superview, keep pinned to top (bottom margin is flexible)
+        let mask: u64 = 2 | 8;
+        let _: () = msg_send![drag_view, setAutoresizingMask: mask];
+
+        // Place on top of all existing subviews (above WKWebView).
+        // NSWindowAbove = 1, relativeTo nil = topmost
+        let _: () = msg_send![
+            content_view,
+            addSubview: drag_view
+            positioned: 1i64
+            relativeTo: cocoa::base::nil
+        ];
+        // Balance alloc/init — addSubview: retains, so release our ownership
+        let _: () = msg_send![drag_view, release];
+
+        log::info!("Native drag region installed ({DRAG_REGION_HEIGHT}px)");
+    }
+}
+
+/// Cap window size to 85% of the current monitor after window-state restoration.
+/// This runs in on_window_ready (after tauri_plugin_window_state has restored
+/// any saved dimensions), so it catches windows that are too large for the
+/// current screen (e.g. after switching from an external monitor to laptop).
+fn cap_window_to_screen<R: Runtime>(window: &Window<R>) {
+    if let Ok(Some(monitor)) = window.current_monitor() {
+        let size = monitor.size();
+        let scale = monitor.scale_factor();
+        let max_w = size.width as f64 / scale * 0.85;
+        let max_h = size.height as f64 / scale * 0.85;
+
+        if let Ok(current) = window.inner_size() {
+            let cur_w = current.width as f64 / scale;
+            let cur_h = current.height as f64 / scale;
+
+            if cur_w > max_w || cur_h > max_h {
+                let new_w = cur_w.min(max_w);
+                let new_h = cur_h.min(max_h);
+                let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize::new(
+                    new_w, new_h,
+                )));
+                log::info!("Capped window size to {new_w:.0}x{new_h:.0} (screen {max_w:.0}x{max_h:.0})");
+            }
+        }
+    }
+}
 
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("traffic_light")
         .on_window_ready(|window| {
             #[cfg(target_os = "macos")]
-            setup_traffic_light_positioner(window.clone());
+            {
+                setup_traffic_light_positioner(window.clone());
+                setup_native_drag_region(window.clone());
+                cap_window_to_screen(&window);
+            }
             let window_clone = window.clone();
             window.on_window_event(move |event| {
                 let window = window_clone.clone();
                 if let tauri::WindowEvent::ThemeChanged(_theme) = event {
+                    #[cfg(target_os = "macos")]
                     setup_traffic_light_positioner(window);
                 }
             });

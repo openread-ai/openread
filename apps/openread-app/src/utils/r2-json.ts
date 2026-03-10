@@ -5,10 +5,16 @@
  * Designed for intelligence cache but generic enough for any JSON storage.
  */
 import { r2Storage } from './r2';
+import { createLogger } from './logger';
+
+const log = createLogger('r2-json');
 
 function getBucket(): string {
   const bucket = process.env['R2_BUCKET'];
-  if (!bucket) throw new Error('R2_BUCKET environment variable is not configured');
+  if (!bucket) {
+    log.error('R2_BUCKET environment variable is not configured');
+    throw new Error('R2_BUCKET environment variable is not configured');
+  }
   return bucket;
 }
 
@@ -22,25 +28,42 @@ export async function getJsonFromR2<T>(key: string): Promise<T | null> {
     const client = r2Storage.getR2Client();
     const resp = await client.fetch(objectUrl(key), { method: 'GET' });
 
-    if (!resp.ok) return null;
+    if (!resp.ok) {
+      log.debug(`R2 GET ${key} → ${resp.status} (not found or error)`);
+      return null;
+    }
 
+    log.debug(`R2 GET ${key} → 200 OK`);
     return (await resp.json()) as T;
   } catch (err) {
-    console.warn('[R2] Failed to read:', key, err instanceof Error ? err.message : err);
+    log.error(`R2 GET FAILED: ${key}`, {
+      error: err instanceof Error ? err.message : String(err),
+    });
     return null;
   }
 }
 
-/** Write a JSON object to R2. Logs warning on error. */
+/** Write a JSON object to R2. Logs errors but does not throw — callers should not depend on write success. */
 export async function putJsonToR2<T>(key: string, data: T): Promise<void> {
   try {
     const client = r2Storage.getR2Client();
-    await client.fetch(objectUrl(key), {
+    const body = JSON.stringify(data);
+    log.debug(`R2 PUT ${key} (${body.length} bytes)`);
+    const resp = await client.fetch(objectUrl(key), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
+      body,
     });
+    if (!resp.ok) {
+      log.error(`R2 PUT ${key} → ${resp.status}`, {
+        statusText: resp.statusText,
+      });
+    } else {
+      log.debug(`R2 PUT ${key} → ${resp.status} OK`);
+    }
   } catch (err) {
-    console.warn('[R2] Failed to write:', key, err instanceof Error ? err.message : err);
+    log.error(`R2 PUT FAILED: ${key}`, {
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 }

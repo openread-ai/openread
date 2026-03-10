@@ -68,6 +68,7 @@ const AIAssistantChat = ({
   authorName,
   currentPage,
   chapterTitle,
+  bookFormat,
   bookDoc,
 }: {
   aiSettings: AISettings;
@@ -76,6 +77,7 @@ const AIAssistantChat = ({
   authorName: string;
   currentPage: number;
   chapterTitle?: string;
+  bookFormat?: string;
   bookDoc: import('@/libs/document').BookDoc | null;
 }) => {
   const { getChapters } = useBookChapters(bookDoc);
@@ -87,6 +89,15 @@ const AIAssistantChat = ({
     isLoadingHistory,
   } = useAIChatStore();
 
+  // Extract book metadata for intelligence classification
+  const bookSubjects = useMemo(() => {
+    const raw = bookDoc?.metadata?.subject;
+    if (!raw) return undefined;
+    if (Array.isArray(raw)) return raw.filter((s): s is string => typeof s === 'string');
+    if (typeof raw === 'string') return [raw];
+    return undefined;
+  }, [bookDoc?.metadata?.subject]);
+
   // use a ref to keep up-to-date options without triggering re-renders of the runtime
   const optionsRef = useRef({
     settings: aiSettings,
@@ -95,6 +106,8 @@ const AIAssistantChat = ({
     authorName,
     currentPage,
     chapterTitle,
+    bookFormat,
+    bookSubjects,
     getChapters,
   });
 
@@ -107,6 +120,8 @@ const AIAssistantChat = ({
       authorName,
       currentPage,
       chapterTitle,
+      bookFormat,
+      bookSubjects,
       getChapters,
     };
   });
@@ -307,6 +322,7 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
   const bookHash = bookData?.book?.platformHash || bookKey.split('-')[0] || '';
   const bookTitle = bookData?.book?.title || 'Unknown';
   const authorName = bookData?.book?.author || '';
+  const bookFormat = bookData?.book?.format;
   const currentPage = progress?.pageinfo?.current ?? 0;
   const chapterTitle = progress?.sectionLabel || undefined;
   const aiSettings = settings?.aiSettings;
@@ -337,6 +353,7 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
       authorName={authorName}
       currentPage={currentPage}
       chapterTitle={chapterTitle}
+      bookFormat={bookFormat}
       bookDoc={bookData?.bookDoc ?? null}
     />
   );

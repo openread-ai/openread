@@ -40,6 +40,27 @@ vi.mock('@/utils/nav', () => ({
   navigateToLogin: vi.fn(),
 }));
 
+// Mock EnvContext — Sidebar calls useEnv() for appService
+vi.mock('@/context/EnvContext', () => ({
+  useEnv: () => ({
+    appService: null,
+    envConfig: {},
+  }),
+}));
+
+// Mock useCollections — Sidebar uses it for collection CRUD.
+// Reads from mockStore.collections so tests can modify it.
+vi.mock('@/hooks/useCollections', () => ({
+  useCollections: () => ({
+    get collections() {
+      return mockStore.collections;
+    },
+    createCollection: vi.fn(),
+    deleteCollection: vi.fn(),
+    renameCollection: vi.fn(),
+  }),
+}));
+
 // Mock CreateCollectionDialog to avoid rendering the full dialog
 vi.mock('@/components/platform/create-collection-dialog', () => ({
   CreateCollectionDialog: () => null,

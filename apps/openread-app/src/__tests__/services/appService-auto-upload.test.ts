@@ -239,7 +239,7 @@ describe('appService importBook auto-upload', () => {
     const mockFile = new File(['test content'], 'test.epub');
     const books: Book[] = [];
 
-    await appService.importBook(mockFile, books, true, true, false, false);
+    await appService.importBook(mockFile, books, true, true, false);
 
     // Auto-upload is called immediately (no delay)
     expect(mockQueueUpload).toHaveBeenCalledTimes(1);
@@ -260,7 +260,7 @@ describe('appService importBook auto-upload', () => {
     });
     const books: Book[] = [existingBook];
 
-    await appService.importBook(mockFile, books, true, true, false, false);
+    await appService.importBook(mockFile, books, true, true, false);
 
     // Advance timers
     vi.advanceTimersByTime(5000);
@@ -276,7 +276,7 @@ describe('appService importBook auto-upload', () => {
     const mockFile = new File(['test content'], 'test.epub');
     const books: Book[] = [];
 
-    await appService.importBook(mockFile, books, true, true, false, false);
+    await appService.importBook(mockFile, books, true, true, false);
 
     // Advance timers
     vi.advanceTimersByTime(5000);
@@ -290,7 +290,7 @@ describe('appService importBook auto-upload', () => {
     const mockFile = new File(['test content'], 'test.epub');
     const books: Book[] = [];
 
-    await appService.importBook(mockFile, books, true, true, false, false);
+    await appService.importBook(mockFile, books, true, true, false);
 
     // Advance timers
     vi.advanceTimersByTime(5000);
@@ -307,7 +307,7 @@ describe('appService importBook auto-upload', () => {
     const books: Book[] = [];
 
     // Should not throw
-    const result = await appService.importBook(mockFile, books, true, true, false, false);
+    const result = await appService.importBook(mockFile, books, true, true, false);
     expect(result).not.toBeNull();
 
     // Advance timers - the error should be caught silently

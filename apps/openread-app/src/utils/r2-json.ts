@@ -43,6 +43,33 @@ export async function getJsonFromR2<T>(key: string): Promise<T | null> {
   }
 }
 
+/** List R2 keys by prefix. Returns an array of key strings. */
+export async function listR2Keys(prefix: string, maxKeys = 50): Promise<string[]> {
+  try {
+    const client = r2Storage.getR2Client();
+    const bucket = getBucket();
+    const url = `${r2Storage.getR2Url()}/${bucket}?list-type=2&prefix=${encodeURIComponent(prefix)}&max-keys=${maxKeys}`;
+    const resp = await client.fetch(url, { method: 'GET' });
+    if (!resp.ok) {
+      log.error(`R2 LIST ${prefix} → ${resp.status}`);
+      return [];
+    }
+    const xml = await resp.text();
+    const keys: string[] = [];
+    const regex = /<Key>([^<]+)<\/Key>/g;
+    let match;
+    while ((match = regex.exec(xml)) !== null) {
+      keys.push(match[1]!);
+    }
+    return keys;
+  } catch (err) {
+    log.error(`R2 LIST FAILED: ${prefix}`, {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return [];
+  }
+}
+
 /** Write a JSON object to R2. Logs errors but does not throw — callers should not depend on write success. */
 export async function putJsonToR2<T>(key: string, data: T): Promise<void> {
   try {

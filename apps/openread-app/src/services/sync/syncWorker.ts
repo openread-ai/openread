@@ -364,10 +364,6 @@ export class SyncWorker {
       return this.cachedSupabase.client;
     }
     const client = createSupabaseClient(token);
-    // Disable GoTrue session management — these clients use a static Bearer
-    // token header and don't need auto-refresh timers or session persistence.
-    // Without this, replaced clients leak timers until GC.
-    client.auth.stopAutoRefresh();
     this.cachedSupabase = { client, token };
     return client;
   }

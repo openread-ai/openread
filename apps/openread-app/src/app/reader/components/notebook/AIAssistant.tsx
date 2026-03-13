@@ -17,6 +17,8 @@ import { useAIChatStore } from '@/store/aiChatStore';
 import { useAIQuotaStore } from '@/store/aiQuotaStore';
 import { useAuth } from '@/context/AuthContext';
 import { getUserProfilePlan } from '@/utils/access';
+import { eventDispatcher } from '@/utils/event';
+import { CHARS_PER_PAGE } from '@/services/ai/constants';
 import { createAgenticAdapter } from '@/services/ai';
 import type { AISettings, AIMessage } from '@/services/ai/types';
 import { useBookChapters } from '@/app/reader/hooks/useBookChapters';
@@ -312,7 +314,7 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
   const _ = useTranslation();
   const { settings } = useSettingsStore();
   const { getBookData } = useBookDataStore();
-  const { getProgress } = useReaderStore();
+  const { getView, getProgress } = useReaderStore();
   const { token, user } = useAuth();
   const fetchInitialQuota = useAIQuotaStore((s) => s.fetchInitial);
   const userId = user?.id;
@@ -334,6 +336,33 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
       fetchInitialQuota(plan, userId);
     }
   }, [token, userId, aiSettings?.enabled, fetchInitialQuota]);
+
+  // Listen for citation link clicks — navigate the reader to the cited page.
+  // Page numbers are character-based (CHARS_PER_PAGE), converted to a fraction
+  // of total book content for goToFraction().
+  const { getChapters: getChaptersForNav } = useBookChapters(bookData?.bookDoc ?? null);
+  useEffect(() => {
+    const handleNavigateToPage = async (event: CustomEvent) => {
+      const page = event.detail?.page;
+      if (typeof page !== 'number' || page < 1) return;
+
+      const view = getView(bookKey);
+      if (!view) return;
+
+      // Compute fraction from character-based page number
+      const chapters = await getChaptersForNav();
+      const totalChars = chapters.reduce((sum, ch) => sum + ch.text.length, 0);
+      if (totalChars === 0) return;
+
+      const fraction = Math.min(1, Math.max(0, ((page - 1) * CHARS_PER_PAGE) / totalChars));
+      view.goToFraction(fraction);
+    };
+
+    eventDispatcher.on('navigate-to-page', handleNavigateToPage);
+    return () => {
+      eventDispatcher.off('navigate-to-page', handleNavigateToPage);
+    };
+  }, [bookKey, getView, getChaptersForNav]);
 
   if (!aiSettings?.enabled) {
     return (

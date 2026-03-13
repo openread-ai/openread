@@ -68,7 +68,7 @@ const AIAssistantChat = ({
   bookHash,
   bookTitle,
   authorName,
-  currentPage,
+  readingFraction,
   chapterTitle,
   bookFormat,
   bookDoc,
@@ -77,7 +77,7 @@ const AIAssistantChat = ({
   bookHash: string;
   bookTitle: string;
   authorName: string;
-  currentPage: number;
+  readingFraction: number;
   chapterTitle?: string;
   bookFormat?: string;
   bookDoc: import('@/libs/document').BookDoc | null;
@@ -106,7 +106,7 @@ const AIAssistantChat = ({
     bookHash,
     bookTitle,
     authorName,
-    currentPage,
+    readingFraction,
     chapterTitle,
     bookFormat,
     bookSubjects,
@@ -120,7 +120,7 @@ const AIAssistantChat = ({
       bookHash,
       bookTitle,
       authorName,
-      currentPage,
+      readingFraction,
       chapterTitle,
       bookFormat,
       bookSubjects,
@@ -325,7 +325,11 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
   const bookTitle = bookData?.book?.title || 'Unknown';
   const authorName = bookData?.book?.author || '';
   const bookFormat = bookData?.book?.format;
-  const currentPage = progress?.pageinfo?.current ?? 0;
+  // pageinfo.current is 0-indexed and depends on screen/font size.
+  // Compute reading fraction (0–1) so the AI pipeline can map to character offsets.
+  const rendererPage = progress?.pageinfo?.current ?? 0;
+  const rendererTotal = progress?.pageinfo?.total ?? 0;
+  const readingFraction = rendererTotal > 0 ? (rendererPage + 1) / rendererTotal : 0;
   const chapterTitle = progress?.sectionLabel || undefined;
   const aiSettings = settings?.aiSettings;
 
@@ -384,7 +388,7 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
       bookHash={bookHash}
       bookTitle={bookTitle}
       authorName={authorName}
-      currentPage={currentPage}
+      readingFraction={readingFraction}
       chapterTitle={chapterTitle}
       bookFormat={bookFormat}
       bookDoc={bookData?.bookDoc ?? null}

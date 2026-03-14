@@ -331,9 +331,11 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
   const authorName = bookData?.book?.author || '';
   const bookFormat = bookData?.book?.format;
   const sectionHref = progress?.sectionHref || undefined;
-  const sectionPage = progress?.section;
-  const sectionFraction =
-    sectionPage && sectionPage.total > 0 ? (sectionPage.current + 1) / sectionPage.total : 0;
+  // For PDFs, each "section" is a single page, so section.current/total is always 0/1.
+  // Use the whole-book pageinfo instead to get the actual reading position.
+  const isPdf = bookFormat === 'pdf';
+  const posPage = isPdf ? progress?.pageinfo : progress?.section;
+  const sectionFraction = posPage && posPage.total > 0 ? (posPage.current + 1) / posPage.total : 0;
   const chapterTitle = progress?.sectionLabel || undefined;
   const aiSettings = settings?.aiSettings;
 
@@ -345,8 +347,9 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
     }
   }, [token, userId, aiSettings?.enabled, fetchInitialQuota]);
 
-  // Listen for citation link clicks — navigate the reader to the cited offset.
-  // Character offset is converted to a fraction of total book content for goToFraction().
+  // Listen for citation link clicks — navigate the reader to the cited passage.
+  // Character offset is resolved to the correct spine section via chapter mapping,
+  // then interpolated within the section's byte-weighted fraction range.
   const { getChapters: getChaptersForNav } = useBookChapters(bookData?.bookDoc ?? null);
   useEffect(() => {
     const handleNavigateToOffset = async (event: CustomEvent) => {
@@ -357,15 +360,35 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
       if (!view) return;
 
       const chapters = await getChaptersForNav();
-      const totalChars = chapters.reduce((sum, ch) => sum + ch.text.length, 0);
-      if (totalChars === 0) return;
+      if (chapters.length === 0) return;
 
-      const fraction = Math.min(1, Math.max(0, offset / totalChars));
+      // Find which chapter contains this character offset
+      let cum = 0;
+      let chapterIdx = chapters.length - 1;
+      for (let i = 0; i < chapters.length; i++) {
+        if (cum + chapters[i]!.text.length > offset) {
+          chapterIdx = i;
+          break;
+        }
+        cum += chapters[i]!.text.length;
+      }
+
+      const chapter = chapters[chapterIdx]!;
+      const charInChapter = Math.max(0, offset - cum);
+      const charFrac = chapter.text.length > 0 ? charInChapter / chapter.text.length : 0;
+
+      // Map to the viewer's byte-weighted section fractions for precise navigation
+      const sectionFracs = view.getSectionFractions();
+      const spineIdx = chapter.index;
+      const secStart = sectionFracs[spineIdx] ?? 0;
+      const secEnd = sectionFracs[spineIdx + 1] ?? 1;
+      const globalFraction = secStart + charFrac * (secEnd - secStart);
+
       console.log(
-        `[citation-nav] offset ${offset} → fraction ${fraction.toFixed(4)} | ` +
-          `totalChars: ${totalChars}, chapters: ${chapters.length}`,
+        `[citation-nav] offset ${offset} → chapter "${chapter.title}" (spine ${spineIdx}) ` +
+          `→ fraction ${globalFraction.toFixed(4)} | charInChapter: ${charInChapter}/${chapter.text.length}`,
       );
-      view.goToFraction(fraction);
+      view.goToFraction(globalFraction);
     };
 
     eventDispatcher.on('navigate-to-offset', handleNavigateToOffset);

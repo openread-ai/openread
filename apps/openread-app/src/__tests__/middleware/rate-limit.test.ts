@@ -15,7 +15,7 @@ const mockLimitFn = vi.fn();
 
 vi.mock('@/lib/rate-limit', () => ({
   getRateLimiter: vi.fn(),
-  getIdentifier: vi.fn().mockReturnValue('test-user'),
+  getIdentifier: vi.fn().mockResolvedValue('test-user'),
 }));
 
 import type { Ratelimit } from '@upstash/ratelimit';
@@ -75,10 +75,10 @@ describe('Middleware - Rate Limiting', () => {
     it('should still set CORS headers when rate limiting is unavailable', async () => {
       mockedGetRateLimiter.mockReturnValue(null);
 
-      const request = makeRequest('/api/test', { origin: 'https://web.openread.com' });
+      const request = makeRequest('/api/test', { origin: 'https://app.openread.ai' });
       const response = await middleware(request);
 
-      expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://web.openread.com');
+      expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://app.openread.ai');
     });
   });
 
@@ -207,10 +207,10 @@ describe('Middleware - Rate Limiting', () => {
     });
 
     it('should still include CORS headers on successful rate-limited responses', async () => {
-      const request = makeRequest('/api/ai/chat', { origin: 'https://web.openread.com' });
+      const request = makeRequest('/api/ai/chat', { origin: 'https://app.openread.ai' });
       const response = await middleware(request);
 
-      expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://web.openread.com');
+      expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://app.openread.ai');
       expect(response.headers.get('Access-Control-Allow-Methods')).toBe(
         'GET, POST, PUT, DELETE, OPTIONS',
       );

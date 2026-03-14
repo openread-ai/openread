@@ -6,7 +6,7 @@ import { middleware } from '../../middleware';
 
 describe('Security Headers - CORS', () => {
   const allowedOrigins = [
-    'https://web.openread.com',
+    'https://app.openread.ai',
     'https://tauri.localhost',
     'http://tauri.localhost',
     'http://localhost:3000',

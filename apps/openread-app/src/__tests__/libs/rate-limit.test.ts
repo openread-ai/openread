@@ -182,7 +182,7 @@ describe('rate-limit (Upstash)', () => {
   // getIdentifier
   // -------------------------------------------------------------------
   describe('getIdentifier', () => {
-    it('should hash the bearer token when Authorization header is present', () => {
+    it('should hash the bearer token when Authorization header is present', async () => {
       const request = {
         headers: {
           get(name: string) {
@@ -192,13 +192,13 @@ describe('rate-limit (Upstash)', () => {
         },
       };
 
-      const result = getIdentifier(request);
+      const result = await getIdentifier(request);
       // Should be a 16-char hex hash, not the raw token
       expect(result).not.toBe('my-jwt-token');
       expect(result).toMatch(/^[0-9a-f]{16}$/);
     });
 
-    it('should fall back to X-Forwarded-For when no auth header', () => {
+    it('should fall back to X-Forwarded-For when no auth header', async () => {
       const request = {
         headers: {
           get(name: string) {
@@ -208,10 +208,10 @@ describe('rate-limit (Upstash)', () => {
         },
       };
 
-      expect(getIdentifier(request)).toBe('1.2.3.4');
+      expect(await getIdentifier(request)).toBe('1.2.3.4');
     });
 
-    it('should trim whitespace from the forwarded IP', () => {
+    it('should trim whitespace from the forwarded IP', async () => {
       const request = {
         headers: {
           get(name: string) {
@@ -221,10 +221,10 @@ describe('rate-limit (Upstash)', () => {
         },
       };
 
-      expect(getIdentifier(request)).toBe('10.0.0.1');
+      expect(await getIdentifier(request)).toBe('10.0.0.1');
     });
 
-    it('should return "anonymous" when neither header is present', () => {
+    it('should return "anonymous" when neither header is present', async () => {
       const request = {
         headers: {
           get() {
@@ -233,10 +233,10 @@ describe('rate-limit (Upstash)', () => {
         },
       };
 
-      expect(getIdentifier(request)).toBe('anonymous');
+      expect(await getIdentifier(request)).toBe('anonymous');
     });
 
-    it('should prefer auth token over forwarded IP', () => {
+    it('should prefer auth token over forwarded IP', async () => {
       const request = {
         headers: {
           get(name: string) {
@@ -247,13 +247,13 @@ describe('rate-limit (Upstash)', () => {
         },
       };
 
-      const result = getIdentifier(request);
+      const result = await getIdentifier(request);
       // Should use hashed token, not the IP
       expect(result).not.toBe('1.2.3.4');
       expect(result).toMatch(/^[0-9a-f]{16}$/);
     });
 
-    it('should hash Authorization header without Bearer prefix gracefully', () => {
+    it('should hash Authorization header without Bearer prefix gracefully', async () => {
       // "Basic abc".split(" ")[1] => "abc" -- still hashed
       const request = {
         headers: {
@@ -264,11 +264,11 @@ describe('rate-limit (Upstash)', () => {
         },
       };
 
-      const result = getIdentifier(request);
+      const result = await getIdentifier(request);
       expect(result).toMatch(/^[0-9a-f]{16}$/);
     });
 
-    it('should produce deterministic hashes for the same token', () => {
+    it('should produce deterministic hashes for the same token', async () => {
       const request = {
         headers: {
           get(name: string) {
@@ -278,8 +278,8 @@ describe('rate-limit (Upstash)', () => {
         },
       };
 
-      const result1 = getIdentifier(request);
-      const result2 = getIdentifier(request);
+      const result1 = await getIdentifier(request);
+      const result2 = await getIdentifier(request);
       expect(result1).toBe(result2);
     });
   });

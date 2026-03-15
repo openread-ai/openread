@@ -1,5 +1,5 @@
 import { useCallback, useRef } from 'react';
-import type { BookDoc, SectionItem, TOCItem } from '@/libs/document';
+import type { BookDoc, TOCItem } from '@/libs/document';
 import type { ReaderChapter } from '@/services/ai/tools/bookTools';
 import { createLogger } from '@/utils/logger';
 
@@ -231,194 +231,8 @@ function mergeSmall(
   return result;
 }
 
-/**
- * Resolve PDF TOC items to page index ranges by calling the async splitTOCHref.
- * Returns a flat list of { label, startPage } sorted by page number.
- */
-async function resolvePdfTocRanges(
-  bookDoc: BookDoc,
-  totalPages: number,
-): Promise<{ label: string; startPage: number }[]> {
-  const toc = bookDoc.toc;
-  if (!toc?.length) return [];
-
-  const entries: { label: string; startPage: number }[] = [];
-
-  async function traverse(items: TOCItem[], parentLabel?: string) {
-    for (const item of items) {
-      if (item.href) {
-        try {
-          const parts = await bookDoc.splitTOCHref(item.href);
-          const pageIdx = typeof parts[0] === 'number' ? parts[0] : parseInt(String(parts[0]), 10);
-          if (!isNaN(pageIdx) && pageIdx >= 0 && pageIdx < totalPages) {
-            const label =
-              parentLabel && parentLabel !== item.label
-                ? `${parentLabel} > ${item.label}`
-                : item.label;
-            entries.push({ label, startPage: pageIdx });
-          }
-        } catch {
-          // Skip unresolvable TOC entries
-        }
-      }
-      if (item.subitems?.length) {
-        await traverse(item.subitems, item.label);
-      }
-    }
-  }
-
-  await traverse(toc);
-
-  // Sort by page number and deduplicate (same page = keep first)
-  entries.sort((a, b) => a.startPage - b.startPage);
-  const deduped: typeof entries = [];
-  for (const entry of entries) {
-    if (deduped.length === 0 || deduped[deduped.length - 1]!.startPage !== entry.startPage) {
-      deduped.push(entry);
-    }
-  }
-  return deduped;
-}
-
-/** Format a page marker for embedding between PDF page texts. 1-based page number. */
-function pageMarker(pageIdx: number): string {
-  return `--- Page ${pageIdx + 1} ---`;
-}
-
-/** Join page texts with `--- Page N ---` markers so the LLM can cite pages. */
-function joinPagesWithMarkers(
-  pageTexts: Map<number, string>,
-  startPage: number,
-  endPage: number,
-): string {
-  const parts: string[] = [];
-  for (let p = startPage; p < endPage; p++) {
-    const text = pageTexts.get(p);
-    if (text) parts.push(`${pageMarker(p)}\n\n${text}`);
-  }
-  return parts.join('\n\n');
-}
-
-/**
- * Group pages into ~8K chapters that never split mid-page.
- * Each chunk is titled by its page range (e.g. "Pages 1–15").
- */
-function groupPagesBySize(pageTexts: Map<number, string>, docTitle: string): ReaderChapter[] {
-  const sorted = Array.from(pageTexts.entries()).sort(([a], [b]) => a - b);
-  const chapters: ReaderChapter[] = [];
-  let buf: { idx: number; text: string }[] = [];
-  let bufSize = 0;
-
-  const flush = () => {
-    if (buf.length === 0) return;
-    const first = buf[0]!.idx + 1;
-    const last = buf[buf.length - 1]!.idx + 1;
-    const title =
-      first === last ? `${docTitle} — Page ${first}` : `${docTitle} — Pages ${first}–${last}`;
-    chapters.push({
-      id: `pdf-${buf[0]!.idx}`,
-      index: chapters.length,
-      title,
-      text: buf.map((p) => `${pageMarker(p.idx)}\n\n${p.text}`).join('\n\n'),
-    });
-    buf = [];
-    bufSize = 0;
-  };
-
-  for (const [idx, text] of sorted) {
-    if (bufSize + text.length > CHUNK_TARGET_SIZE && buf.length > 0) flush();
-    buf.push({ idx, text });
-    bufSize += text.length;
-  }
-  flush();
-
-  return chapters;
-}
-
-/**
- * Extract chapters from a PDF by grouping pages based on the TOC outline.
- * Falls back to page-boundary-respecting size chunks when no TOC is available.
- *
- * All page joins embed `--- Page N ---` markers so the LLM can cite page numbers.
- */
-async function extractPdfChapters(
-  bookDoc: BookDoc,
-  sections: SectionItem[],
-): Promise<ReaderChapter[]> {
-  // 1. Extract text from each page
-  const pageTexts = new Map<number, string>();
-  for (let i = 0; i < sections.length; i++) {
-    try {
-      const doc = await sections[i]!.createDocument();
-      const text = extractText(doc);
-      if (text.length >= 20) {
-        pageTexts.set(i, text);
-      }
-    } catch {
-      // Skip pages that fail to extract
-    }
-  }
-
-  if (pageTexts.size === 0) {
-    logger.info('PDF: no text extracted from any page');
-    return [];
-  }
-
-  // 2. Resolve TOC to page ranges
-  const tocRanges = await resolvePdfTocRanges(bookDoc, sections.length);
-
-  // 3. Group pages by TOC ranges (with page markers)
-  if (tocRanges.length > 1) {
-    const chapters: ReaderChapter[] = [];
-
-    // Handle pages before the first TOC entry (front matter)
-    if (tocRanges[0]!.startPage > 0) {
-      const text = joinPagesWithMarkers(pageTexts, 0, tocRanges[0]!.startPage);
-      if (text) {
-        chapters.push({ id: 'pdf-0', index: 0, title: 'Front Matter', text });
-      }
-    }
-
-    for (let r = 0; r < tocRanges.length; r++) {
-      const range = tocRanges[r]!;
-      const endPage = r + 1 < tocRanges.length ? tocRanges[r + 1]!.startPage : sections.length;
-      const text = joinPagesWithMarkers(pageTexts, range.startPage, endPage);
-      if (!text) continue;
-      chapters.push({
-        id: `pdf-${range.startPage}`,
-        index: chapters.length,
-        title: range.label,
-        text,
-      });
-    }
-
-    if (chapters.length > 0) {
-      logger.info(
-        `PDF: grouped ${pageTexts.size} pages into ${chapters.length} TOC-based chapters`,
-      );
-      return chapters;
-    }
-  }
-
-  // 4. Fallback: group pages into ~8K size chunks (never splits mid-page)
-  const docTitle =
-    typeof bookDoc.metadata?.title === 'string' ? bookDoc.metadata.title : 'Document';
-  const result = groupPagesBySize(pageTexts, docTitle);
-  logger.info(
-    `PDF: no usable TOC, grouped ${pageTexts.size} pages into ${result.length} page-range chapters`,
-  );
-  return result;
-}
-
 async function extractAllChapters(bookDoc: BookDoc): Promise<ReaderChapter[]> {
   const sections = bookDoc.sections || [];
-
-  // PDF detection: sections lack the 'linear' property that EPUB/MOBI/FB2 provide
-  const isPdf = sections.length > 0 && !('linear' in sections[0]!);
-  if (isPdf) {
-    return extractPdfChapters(bookDoc, sections);
-  }
-
   const { titleMap, parentMap } = buildSectionTitleMaps(bookDoc);
   const result: ReaderChapter[] = [];
 
@@ -453,9 +267,9 @@ async function extractAllChapters(bookDoc: BookDoc): Promise<ReaderChapter[]> {
   // chapter, split it into navigable segments so the AI can reference parts.
   if (result.length === 0) {
     logger.info('No chapters extracted, skipping synthetic chunking');
-  } else if (result.length === 1 && result[0]!.text.length > OVERSIZED_CHAPTER_THRESHOLD) {
-    logger.info(`Single chapter is ${result[0]!.text.length} chars — applying synthetic chunking`);
-    const chunks = syntheticChunkInline(result[0]!.text, result[0]!.title);
+  } else if (result.length === 1 && result[0].text.length > OVERSIZED_CHAPTER_THRESHOLD) {
+    logger.info(`Single chapter is ${result[0].text.length} chars — applying synthetic chunking`);
+    const chunks = syntheticChunkInline(result[0].text, result[0].title);
     const chunked: ReaderChapter[] = chunks.map((chunk, ci) => ({
       id: chunk.id,
       index: ci,

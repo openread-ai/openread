@@ -331,11 +331,9 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
   const authorName = bookData?.book?.author || '';
   const bookFormat = bookData?.book?.format;
   const sectionHref = progress?.sectionHref || undefined;
-  // For PDFs, each "section" is a single page, so section.current/total is always 0/1.
-  // Use the whole-book pageinfo instead to get the actual reading position.
-  const isPdf = bookFormat === 'pdf';
-  const posPage = isPdf ? progress?.pageinfo : progress?.section;
-  const sectionFraction = posPage && posPage.total > 0 ? (posPage.current + 1) / posPage.total : 0;
+  const sectionPage = progress?.section;
+  const sectionFraction =
+    sectionPage && sectionPage.total > 0 ? (sectionPage.current + 1) / sectionPage.total : 0;
   const chapterTitle = progress?.sectionLabel || undefined;
   const aiSettings = settings?.aiSettings;
 
@@ -347,31 +345,10 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
     }
   }, [token, userId, aiSettings?.enabled, fetchInitialQuota]);
 
-  // Listen for citation link clicks — navigate the reader to the cited chapter/passage.
+  // Listen for citation link clicks — navigate the reader to the cited offset.
+  // Character offset is converted to a fraction of total book content for goToFraction().
   const { getChapters: getChaptersForNav } = useBookChapters(bookData?.bookDoc ?? null);
   useEffect(() => {
-    // Chapter-index citations (full-text tier): openread://ch/INDEX
-    const handleNavigateToChapter = async (event: CustomEvent) => {
-      const chapterIndex = event.detail?.chapterIndex;
-      if (typeof chapterIndex !== 'number' || chapterIndex < 0) return;
-
-      const view = getView(bookKey);
-      if (!view) return;
-
-      const chapters = await getChaptersForNav();
-      if (chapterIndex >= chapters.length) return;
-
-      const chapter = chapters[chapterIndex]!;
-      const sectionFracs = view.getSectionFractions();
-      const fraction = sectionFracs[chapter.index] ?? 0;
-
-      console.log(
-        `[citation-nav] ch:${chapterIndex} → "${chapter.title}" (spine ${chapter.index}) → fraction ${fraction.toFixed(4)}`,
-      );
-      view.goToFraction(fraction);
-    };
-
-    // Char-offset citations (tool-based tier): openread://loc/OFFSET
     const handleNavigateToOffset = async (event: CustomEvent) => {
       const offset = event.detail?.offset;
       if (typeof offset !== 'number' || offset < 0) return;
@@ -380,38 +357,19 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
       if (!view) return;
 
       const chapters = await getChaptersForNav();
-      if (chapters.length === 0) return;
+      const totalChars = chapters.reduce((sum, ch) => sum + ch.text.length, 0);
+      if (totalChars === 0) return;
 
-      let cum = 0;
-      let chapterIdx = chapters.length - 1;
-      for (let i = 0; i < chapters.length; i++) {
-        if (cum + chapters[i]!.text.length > offset) {
-          chapterIdx = i;
-          break;
-        }
-        cum += chapters[i]!.text.length;
-      }
-
-      const chapter = chapters[chapterIdx]!;
-      const charInChapter = Math.max(0, offset - cum);
-      const charFrac = chapter.text.length > 0 ? charInChapter / chapter.text.length : 0;
-
-      const sectionFracs = view.getSectionFractions();
-      const spineIdx = chapter.index;
-      const secStart = sectionFracs[spineIdx] ?? 0;
-      const secEnd = sectionFracs[spineIdx + 1] ?? 1;
-      const globalFraction = secStart + charFrac * (secEnd - secStart);
-
+      const fraction = Math.min(1, Math.max(0, offset / totalChars));
       console.log(
-        `[citation-nav] offset ${offset} → "${chapter.title}" (spine ${spineIdx}) → fraction ${globalFraction.toFixed(4)}`,
+        `[citation-nav] offset ${offset} → fraction ${fraction.toFixed(4)} | ` +
+          `totalChars: ${totalChars}, chapters: ${chapters.length}`,
       );
-      view.goToFraction(globalFraction);
+      view.goToFraction(fraction);
     };
 
-    eventDispatcher.on('navigate-to-chapter', handleNavigateToChapter);
     eventDispatcher.on('navigate-to-offset', handleNavigateToOffset);
     return () => {
-      eventDispatcher.off('navigate-to-chapter', handleNavigateToChapter);
       eventDispatcher.off('navigate-to-offset', handleNavigateToOffset);
     };
   }, [bookKey, getView, getChaptersForNav]);

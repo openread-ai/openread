@@ -41,6 +41,7 @@ interface SupabaseAIConversation {
   deleted_at: string | null;
   created_at: string;
   updated_at: string;
+  // TODO: parallel_book_hashes?: string[] | null; — add once Supabase column exists
 }
 
 /** Supabase row shape for ai_messages table */
@@ -386,6 +387,7 @@ export class SyncWorker {
         deleted_at: conversation.deletedAt ? new Date(conversation.deletedAt).toISOString() : null,
         created_at: new Date(conversation.createdAt).toISOString(),
         updated_at: new Date(conversation.updatedAt).toISOString(),
+        // TODO: add parallel_book_hashes column to Supabase ai_conversations table, then sync here
       });
       if (error) {
         console.error('[SyncWorker] Push AI conversation failed:', error.message);
@@ -833,6 +835,7 @@ export class SyncWorker {
           createdAt: new Date(remote.created_at).getTime(),
           updatedAt: new Date(remote.updated_at).getTime(),
           deletedAt: remote.deleted_at ? new Date(remote.deleted_at).getTime() : undefined,
+          // TODO: pull parallel_book_hashes once Supabase column is added
         };
 
         if (!local || remoteConv.updatedAt > local.updatedAt) {

@@ -15,6 +15,7 @@ import { useBookDataStore } from '@/store/bookDataStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useAIChatStore } from '@/store/aiChatStore';
 import { useAIQuotaStore } from '@/store/aiQuotaStore';
+import { usePrimaryBookHash } from '@/app/reader/hooks/usePrimaryBookHash';
 import { useAuth } from '@/context/AuthContext';
 import { getUserProfilePlan } from '@/utils/access';
 import { eventDispatcher } from '@/utils/event';
@@ -91,6 +92,7 @@ interface AIAssistantProps {
 const AIAssistantChat = ({
   aiSettings,
   bookHash,
+  bookKey,
   bookTitle,
   authorName,
   sectionHref,
@@ -101,6 +103,7 @@ const AIAssistantChat = ({
 }: {
   aiSettings: AISettings;
   bookHash: string;
+  bookKey: string;
   bookTitle: string;
   authorName: string;
   /** Current EPUB section href — used to find the exact chapter. */
@@ -234,7 +237,7 @@ const AIAssistantChat = ({
     <AIAssistantWithRuntime
       adapter={adapter}
       historyAdapter={historyAdapter}
-      bookHash={bookHash}
+      bookKey={bookKey}
       isLoadingHistory={isLoadingHistory}
       hasActiveConversation={!!activeConversationId}
       provider={aiSettings.provider}
@@ -248,7 +251,7 @@ const AIAssistantChat = ({
 const AIAssistantWithRuntime = ({
   adapter,
   historyAdapter,
-  bookHash,
+  bookKey,
   isLoadingHistory,
   hasActiveConversation,
   provider,
@@ -258,7 +261,7 @@ const AIAssistantWithRuntime = ({
 }: {
   adapter: NonNullable<ReturnType<typeof createAgenticAdapter>>;
   historyAdapter?: ThreadHistoryAdapter;
-  bookHash: string;
+  bookKey: string;
   isLoadingHistory: boolean;
   hasActiveConversation: boolean;
   provider: string;
@@ -275,7 +278,7 @@ const AIAssistantWithRuntime = ({
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <ThreadWrapper
-        bookHash={bookHash}
+        bookKey={bookKey}
         isLoadingHistory={isLoadingHistory}
         hasActiveConversation={hasActiveConversation}
         provider={provider}
@@ -288,7 +291,7 @@ const AIAssistantWithRuntime = ({
 };
 
 const ThreadWrapper = ({
-  bookHash,
+  bookKey,
   isLoadingHistory,
   hasActiveConversation,
   provider,
@@ -296,7 +299,7 @@ const ThreadWrapper = ({
   byokModel,
   onSelectModel,
 }: {
-  bookHash: string;
+  bookKey: string;
   isLoadingHistory: boolean;
   hasActiveConversation: boolean;
   provider: string;
@@ -307,6 +310,7 @@ const ThreadWrapper = ({
   const _ = useTranslation();
   const assistantRuntime = useAssistantRuntime();
   const { createConversation, pendingQuestion, setPendingQuestion } = useAIChatStore();
+  const { primaryBookHash, getParallelHashes } = usePrimaryBookHash(bookKey);
 
   // Auto-submit pending question from inline bar.
   // Read directly from store to avoid strict-mode double-fire with stale closure values.
@@ -326,11 +330,8 @@ const ThreadWrapper = ({
   }, [pendingQuestion, setPendingQuestion, assistantRuntime]);
 
   const handleNewChat = useCallback(async () => {
-    // createConversation sets activeConversationId, which changes the key on
-    // AIAssistant causing a full remount with a fresh runtime — no need to
-    // call switchToNewThread() on this (soon-stale) runtime.
-    await createConversation(bookHash, _('New conversation'));
-  }, [createConversation, bookHash, _]);
+    await createConversation(primaryBookHash, _('New conversation'), getParallelHashes());
+  }, [createConversation, primaryBookHash, _, getParallelHashes]);
 
   return (
     <Thread
@@ -427,6 +428,7 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
     <AIAssistantChat
       aiSettings={aiSettings}
       bookHash={bookHash}
+      bookKey={bookKey}
       bookTitle={bookTitle}
       authorName={authorName}
       sectionHref={sectionHref}

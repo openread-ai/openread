@@ -4,61 +4,93 @@ import clsx from 'clsx';
 import React, { useEffect, useCallback, useMemo } from 'react';
 import Image from 'next/image';
 import { LuMessageSquare, LuPlus } from 'react-icons/lu';
-import { MoreVerticalIcon, Trash2Icon } from 'lucide-react';
+import { MoreVerticalIcon, Trash2Icon, Columns2Icon, BookOpenIcon } from 'lucide-react';
 
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAIChatStore } from '@/store/aiChatStore';
 import { useNotebookStore } from '@/store/notebookStore';
 import { useLibraryStore } from '@/store/libraryStore';
+import { useReaderStore } from '@/store/readerStore';
+import { useSidebarStore } from '@/store/sidebarStore';
+import { useParallelViewStore } from '@/store/parallelViewStore';
 import type { AIConversation } from '@/services/ai/types';
 import { useEnv } from '@/context/EnvContext';
+import { uniqueId } from '@/utils/misc';
+import { usePrimaryBookHash } from '@/app/reader/hooks/usePrimaryBookHash';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card';
 
 interface BookInfo {
   cover?: string;
   title: string;
 }
 
-/** Shows up to 3 book cover thumbnails with a "+N" overflow indicator. Hover shows book titles. */
-const BookThumbnails: React.FC<{
+/** Badge showing book count with hover card listing all books with thumbnails. */
+const BookBadge: React.FC<{
   bookHashes: string[];
   bookInfoByHash: Map<string, BookInfo>;
 }> = ({ bookHashes, bookInfoByHash }) => {
-  const maxVisible = 3;
-  const visible = bookHashes.slice(0, maxVisible);
-  const overflow = bookHashes.length - maxVisible;
-  const tooltip = bookHashes
-    .map((h) => bookInfoByHash.get(h)?.title)
-    .filter(Boolean)
-    .join(', ');
+  if (bookHashes.length <= 1) return null;
 
   return (
-    <div className='group/thumbs relative flex flex-shrink-0 items-center gap-0.5' title={tooltip}>
-      {visible.map((hash) => {
-        const info = bookInfoByHash.get(hash);
-        return info?.cover ? (
-          <Image
-            key={hash}
-            src={info.cover}
-            alt={info.title}
-            width={14}
-            height={20}
-            className='h-[14px] w-[10px] rounded-[1px] object-cover opacity-60 transition-opacity group-hover/thumbs:opacity-100'
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = 'none';
-            }}
-          />
-        ) : null;
-      })}
-      {overflow > 0 && (
-        <span className='text-base-content/40 text-[9px] font-medium'>+{overflow}</span>
-      )}
-    </div>
+    <HoverCard openDelay={200} closeDelay={100}>
+      <HoverCardTrigger asChild>
+        <button
+          type='button'
+          className={clsx(
+            'ml-auto flex items-center gap-1 rounded px-1.5 py-0.5',
+            'bg-base-content/8 text-base-content/50',
+            'text-xs font-medium',
+            'hover:bg-base-content/15 hover:text-base-content/70 transition-colors',
+          )}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {bookHashes.length}
+          <Columns2Icon className='size-3.5' />
+        </button>
+      </HoverCardTrigger>
+      <HoverCardContent
+        align='end'
+        side='right'
+        sideOffset={8}
+        className='bg-base-100 border-base-content/15 z-50 w-48 rounded-lg border p-2 shadow-lg'
+        onClick={(e) => e.stopPropagation()}
+      >
+        <ul className='space-y-1'>
+          {bookHashes.map((hash) => {
+            const info = bookInfoByHash.get(hash);
+            return (
+              <li key={hash} className='flex items-center gap-2 py-0.5'>
+                {info?.cover ? (
+                  <Image
+                    src={info.cover}
+                    alt={info.title}
+                    width={20}
+                    height={28}
+                    className='h-[20px] w-[14px] flex-shrink-0 rounded-sm object-cover shadow-sm'
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = 'none';
+                    }}
+                  />
+                ) : (
+                  <div className='bg-base-300 flex h-[20px] w-[14px] flex-shrink-0 items-center justify-center rounded-sm'>
+                    <BookOpenIcon className='text-base-content/30 size-2' />
+                  </div>
+                )}
+                <span className='text-base-content truncate text-xs'>
+                  {info?.title || 'Unknown'}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      </HoverCardContent>
+    </HoverCard>
   );
 };
 
@@ -68,7 +100,7 @@ interface ChatHistoryViewProps {
 
 const ChatHistoryView: React.FC<ChatHistoryViewProps> = ({ bookKey }) => {
   const _ = useTranslation();
-  const { appService } = useEnv();
+  const { appService, envConfig } = useEnv();
   const {
     conversations,
     isLoadingHistory,
@@ -78,40 +110,81 @@ const ChatHistoryView: React.FC<ChatHistoryViewProps> = ({ bookKey }) => {
     createConversation,
   } = useAIChatStore();
   const { setNotebookVisible, setNotebookActiveTab } = useNotebookStore();
+  const bookKeys = useReaderStore((s) => s.bookKeys);
+  const sideBarBookKey = useSidebarStore((s) => s.sideBarBookKey);
+  const setParallel = useParallelViewStore((s) => s.setParallel);
+  const { primaryBookHash, getParallelHashes } = usePrimaryBookHash(bookKey);
 
-  const { getVisibleLibrary } = useLibraryStore();
-  const bookHash = bookKey.split('-')[0] || '';
+  const library = useLibraryStore((s) => s.library);
 
   // Map bookHash → { cover, title } for thumbnail display and tooltips
   const bookInfoByHash = useMemo(() => {
     const map = new Map<string, BookInfo>();
-    for (const book of getVisibleLibrary()) {
+    for (const book of library) {
       map.set(book.hash, { cover: book.coverImageUrl || undefined, title: book.title });
     }
     return map;
-  }, [getVisibleLibrary]);
+  }, [library]);
 
-  // Load conversations for this book
+  // Load conversations for the primary book
   useEffect(() => {
-    if (bookHash) {
-      loadConversations(bookHash);
+    if (primaryBookHash) {
+      loadConversations(primaryBookHash);
     }
-  }, [bookHash, loadConversations]);
+  }, [primaryBookHash, loadConversations]);
 
   const handleSelectConversation = useCallback(
     async (conversation: AIConversation) => {
       await setActiveConversation(conversation.id);
       setNotebookVisible(true);
       setNotebookActiveTab('ai');
+
+      // Restore parallel read session if this conversation had parallel books
+      if (conversation.parallelBookHashes?.length) {
+        const openHashes = new Set(bookKeys.map((key) => key.split('-')[0]));
+        const ownedHashes = new Set(library.map((b) => b.hash));
+        const missingHashes = conversation.parallelBookHashes
+          .filter((h) => !openHashes.has(h) && ownedHashes.has(h))
+          .slice(0, 8);
+
+        if (missingHashes.length > 0) {
+          const { initViewState, setBookKeys } = useReaderStore.getState();
+          const newKeys: string[] = [];
+          for (const hash of missingHashes) {
+            const newKey = `${hash}-${uniqueId()}`;
+            initViewState(envConfig, hash, newKey, false);
+            newKeys.push(newKey);
+          }
+          setBookKeys([...bookKeys, ...newKeys]);
+          // Set all new books as parallel with the current book in one call
+          if (sideBarBookKey) setParallel([sideBarBookKey, ...newKeys]);
+        }
+      }
     },
-    [setActiveConversation, setNotebookVisible, setNotebookActiveTab],
+    [
+      setActiveConversation,
+      setNotebookVisible,
+      setNotebookActiveTab,
+      bookKeys,
+      envConfig,
+      sideBarBookKey,
+      setParallel,
+      library,
+    ],
   );
 
   const handleNewConversation = useCallback(async () => {
-    await createConversation(bookHash, _('New conversation'));
+    await createConversation(primaryBookHash, _('New conversation'), getParallelHashes());
     setNotebookVisible(true);
     setNotebookActiveTab('ai');
-  }, [bookHash, _, createConversation, setNotebookVisible, setNotebookActiveTab]);
+  }, [
+    primaryBookHash,
+    _,
+    createConversation,
+    getParallelHashes,
+    setNotebookVisible,
+    setNotebookActiveTab,
+  ]);
 
   const handleDeleteConversation = useCallback(
     async (id: string) => {
@@ -175,7 +248,7 @@ const ChatHistoryView: React.FC<ChatHistoryViewProps> = ({ bookKey }) => {
               <li
                 key={conversation.id}
                 className={clsx(
-                  'group flex cursor-pointer items-center gap-1 px-3 py-2',
+                  'group flex cursor-pointer items-center px-3 py-2',
                   'hover:bg-base-300/50 transition-colors duration-150',
                 )}
               >
@@ -194,9 +267,9 @@ const ChatHistoryView: React.FC<ChatHistoryViewProps> = ({ bookKey }) => {
                   <p className='text-base-content truncate text-sm'>{conversation.title}</p>
                 </div>
 
-                {/* Book cover thumbnail — shows which book(s) this conversation is about */}
-                <BookThumbnails
-                  bookHashes={[conversation.bookHash]}
+                {/* Book count badge — hover to see list of books in this conversation */}
+                <BookBadge
+                  bookHashes={[conversation.bookHash, ...(conversation.parallelBookHashes ?? [])]}
                   bookInfoByHash={bookInfoByHash}
                 />
 
@@ -205,8 +278,9 @@ const ChatHistoryView: React.FC<ChatHistoryViewProps> = ({ bookKey }) => {
                     <button
                       type='button'
                       className={clsx(
-                        'text-base-content/40 hover:text-base-content flex size-6 flex-shrink-0 items-center justify-center rounded-full transition-colors',
+                        'text-base-content/50 flex h-6 w-5 flex-shrink-0 items-center justify-center rounded outline-none transition-all',
                         'opacity-0 group-hover:opacity-100',
+                        'hover:bg-base-content/15 hover:text-base-content/70',
                       )}
                       aria-label={_('More options')}
                       onClick={(e) => e.stopPropagation()}
@@ -214,7 +288,7 @@ const ChatHistoryView: React.FC<ChatHistoryViewProps> = ({ bookKey }) => {
                       <MoreVerticalIcon className='size-3.5' />
                     </button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align='end' className='w-36'>
+                  <DropdownMenuContent align='end' className='bg-base-100 w-36 shadow-lg'>
                     <DropdownMenuItem
                       className='text-error focus:text-error cursor-pointer text-xs'
                       onClick={() => handleDeleteConversation(conversation.id)}

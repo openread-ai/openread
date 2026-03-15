@@ -8,6 +8,7 @@ import { useNotebookStore } from '@/store/notebookStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useTranslation } from '@/hooks/useTranslation';
+import { usePrimaryBookHash } from '@/app/reader/hooks/usePrimaryBookHash';
 import { cn } from '@/utils/tailwind';
 
 interface InlineQuestionBarProps {
@@ -29,7 +30,7 @@ const InlineQuestionBar: React.FC<InlineQuestionBarProps> = ({ bookKey }) => {
   const sideBarVisible = useSidebarStore((s) => s.isSideBarVisible);
   const sideBarWidth = useSidebarStore((s) => s.sideBarWidth);
 
-  const bookHash = bookKey.split('-')[0] || '';
+  const { primaryBookHash, getParallelHashes } = usePrimaryBookHash(bookKey);
   const aiEnabled = settings?.aiSettings?.enabled;
   const notebookOnAI = useNotebookStore((s) => s.notebookActiveTab === 'ai');
 
@@ -46,8 +47,8 @@ const InlineQuestionBar: React.FC<InlineQuestionBarProps> = ({ bookKey }) => {
       // Store the question so AIAssistant auto-sends it when it mounts
       setPendingQuestion(trimmed);
 
-      // Create conversation and open AI chat
-      await createConversation(bookHash, trimmed.slice(0, 50));
+      // Create conversation under the primary book
+      await createConversation(primaryBookHash, trimmed.slice(0, 50), getParallelHashes());
       setNotebookVisible(true);
       setNotebookActiveTab('ai');
 
@@ -55,8 +56,9 @@ const InlineQuestionBar: React.FC<InlineQuestionBarProps> = ({ bookKey }) => {
     },
     [
       question,
-      bookHash,
+      primaryBookHash,
       createConversation,
+      getParallelHashes,
       setPendingQuestion,
       setNotebookVisible,
       setNotebookActiveTab,

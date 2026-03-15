@@ -13,6 +13,7 @@ export function useOpenAIInNotebook() {
       conversationId?: string;
       bookHash?: string;
       newConversationTitle?: string;
+      parallelBookHashes?: string[];
     }) => {
       // Open notebook and switch to AI tab
       setNotebookVisible(true);
@@ -23,7 +24,11 @@ export function useOpenAIInNotebook() {
         await setActiveConversation(options.conversationId);
       } else if (options?.bookHash && options?.newConversationTitle) {
         // Create new conversation
-        await createConversation(options.bookHash, options.newConversationTitle);
+        await createConversation(
+          options.bookHash,
+          options.newConversationTitle,
+          options.parallelBookHashes,
+        );
       }
     },
     [setNotebookVisible, setNotebookActiveTab, setActiveConversation, createConversation],

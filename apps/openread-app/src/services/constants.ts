@@ -678,7 +678,10 @@ export const OPENREAD_CHANGELOG_FILE = `${LATEST_DOWNLOAD_BASE_URL}/release-note
 export const OPENREAD_PUBLIC_STORAGE_BASE_URL = 'https://storage.openread.com';
 
 export const CATALOG_API_BASE_URL =
-  process.env['NEXT_PUBLIC_CATALOG_API_URL'] || 'https://api.openread.ai';
+  process.env['NEXT_PUBLIC_CATALOG_API_URL'] ||
+  (process.env['NODE_ENV'] === 'development' && process.env['NEXT_PUBLIC_APP_PLATFORM'] === 'web'
+    ? ''
+    : 'https://api.openread.ai');
 
 export const OPENREAD_OPDS_USER_AGENT = 'Openread/1.0 (OPDS Browser)';
 

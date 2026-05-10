@@ -28,6 +28,10 @@ const DBSyncTypeMap = {
   book_configs: 'configs',
 };
 
+const BOOK_HASH_REGEX =
+  /^(?:[0-9a-f]{32}|catalog:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+const META_HASH_REGEX = /^[0-9a-f]{32}$/i;
+
 type TableName = keyof typeof transformsToDB;
 
 type DBError = { table: TableName; error: PostgrestError };
@@ -73,11 +77,10 @@ export async function GET(req: NextRequest) {
   }
 
   // P9.4: Validate hash parameters against regex (defense in depth against injection)
-  const HASH_REGEX = /^[0-9a-f]{32}$/i;
-  if (bookParam && !HASH_REGEX.test(bookParam)) {
+  if (bookParam && !BOOK_HASH_REGEX.test(bookParam)) {
     return NextResponse.json({ error: 'Invalid book_hash format' }, { status: 400 });
   }
-  if (metaHashParam && !HASH_REGEX.test(metaHashParam)) {
+  if (metaHashParam && !META_HASH_REGEX.test(metaHashParam)) {
     return NextResponse.json({ error: 'Invalid meta_hash format' }, { status: 400 });
   }
 
@@ -562,8 +565,7 @@ export async function DELETE(req: NextRequest) {
   if (!bookHash) {
     return NextResponse.json({ error: 'Missing book_hash parameter' }, { status: 400 });
   }
-  const HASH_REGEX = /^[0-9a-f]{32}$/i;
-  if (!HASH_REGEX.test(bookHash)) {
+  if (!BOOK_HASH_REGEX.test(bookHash)) {
     return NextResponse.json({ error: 'Invalid book_hash format' }, { status: 400 });
   }
 

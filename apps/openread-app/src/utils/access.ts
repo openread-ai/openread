@@ -8,7 +8,6 @@ import { getDailyUsage } from '@/services/translators/utils';
 interface Token {
   plan: UserPlan;
   storage_usage_bytes: number;
-  storage_purchased_bytes: number;
   exp?: number;
   [key: string]: string | number | undefined;
 }
@@ -53,12 +52,10 @@ export const STORAGE_QUOTA_GRACE_BYTES = 10 * 1024 * 1024; // 10 MB grace
 
 export const getStoragePlanData = (token: string) => {
   const data = jwtDecode<Token>(token) || {};
-  const plan = data['plan'] || 'free';
+  const plan = normalizePlan((data['plan'] as string) || 'free');
   const usage = data['storage_usage_bytes'] || 0;
-  const purchasedQuota = data['storage_purchased_bytes'] || 0;
   const fixedQuota = parseInt(process.env['NEXT_PUBLIC_STORAGE_FIXED_QUOTA'] || '0');
-  const planQuota = fixedQuota || DEFAULT_STORAGE_QUOTA[plan] || DEFAULT_STORAGE_QUOTA['free'];
-  const quota = planQuota + purchasedQuota;
+  const quota = fixedQuota || DEFAULT_STORAGE_QUOTA[plan] || DEFAULT_STORAGE_QUOTA.free;
 
   return {
     plan,
@@ -69,7 +66,7 @@ export const getStoragePlanData = (token: string) => {
 
 export const getTranslationPlanData = (token: string) => {
   const data = jwtDecode<Token>(token) || {};
-  const plan: UserPlan = data['plan'] || 'free';
+  const plan = normalizePlan((data['plan'] as string) || 'free');
   const usage = getDailyUsage() || 0;
   const quota = DEFAULT_DAILY_TRANSLATION_QUOTA[plan];
 
@@ -82,10 +79,10 @@ export const getTranslationPlanData = (token: string) => {
 
 export const getDailyTranslationPlanData = (token: string) => {
   const data = jwtDecode<Token>(token) || {};
-  const plan = data['plan'] || 'free';
+  const plan = normalizePlan((data['plan'] as string) || 'free');
   const fixedQuota = parseInt(process.env['NEXT_PUBLIC_TRANSLATION_FIXED_QUOTA'] || '0');
   const quota =
-    fixedQuota || DEFAULT_DAILY_TRANSLATION_QUOTA[plan] || DEFAULT_DAILY_TRANSLATION_QUOTA['free'];
+    fixedQuota || DEFAULT_DAILY_TRANSLATION_QUOTA[plan] || DEFAULT_DAILY_TRANSLATION_QUOTA.free;
 
   return {
     plan,

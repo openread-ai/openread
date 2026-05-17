@@ -7,6 +7,7 @@ import { useBookDataStore } from '@/store/bookDataStore';
 import { useReaderStore } from '@/store/readerStore';
 import { uniqueId } from '@/utils/misc';
 import { createLogger } from '@/utils/logger';
+import { getBookIdFromKey } from '@/utils/readerBookKey';
 
 const logger = createLogger('instant-annotation');
 
@@ -38,7 +39,7 @@ export const useInstantAnnotation = ({ bookKey, getAnnotationText }: UseInstantA
 
   const clearPreviewAnnotation = useCallback(() => {
     if (previewAnnotationRef.current) {
-      const views = getViewsById(bookKey.split('-')[0]!);
+      const views = getViewsById(getBookIdFromKey(bookKey));
       views.forEach((v) => v?.addAnnotation(previewAnnotationRef.current!, true));
       previewAnnotationRef.current = null;
     }
@@ -197,7 +198,7 @@ export const useInstantAnnotation = ({ bookKey, getAnnotationText }: UseInstantA
 
       clearPreviewAnnotation();
       const annotation = createAnnotation(cfi);
-      const views = getViewsById(bookKey.split('-')[0]!);
+      const views = getViewsById(getBookIdFromKey(bookKey));
       views.forEach((v) => v?.addAnnotation(annotation));
       previewAnnotationRef.current = annotation;
 
@@ -258,7 +259,7 @@ export const useInstantAnnotation = ({ bookKey, getAnnotationText }: UseInstantA
 
       clearPreviewAnnotation();
       const annotation = createAnnotation(cfi, text);
-      const views = getViewsById(bookKey.split('-')[0]!);
+      const views = getViewsById(getBookIdFromKey(bookKey));
       views.forEach((v) => v?.addAnnotation(annotation));
 
       const config = getConfig(bookKey)!;

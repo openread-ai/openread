@@ -33,20 +33,15 @@ const GB = 1024 * 1024 * 1024;
 
 const MOCK_QUOTA_RESPONSE = {
   plan: 'reader',
-  base_gb: 2,
-  addon_gb: 5,
-  total_bytes: 7 * GB,
+  base_gb: 10,
+  addon_gb: 0,
+  total_bytes: 10 * GB,
   used_bytes: 3 * GB,
-  available_bytes: 4 * GB,
-  percent_used: 42.86,
+  available_bytes: 7 * GB,
+  percent_used: 30,
   is_over_limit: false,
-  active_addons: [
-    { id: 'a1', gb_amount: 5, price_cents: 199, source: 'stripe', created_at: '2026-01-01' },
-  ],
-  available_addons: [
-    { gb: 5, price_cents: 199, mobile_price_cents: 299 },
-    { gb: 10, price_cents: 299, mobile_price_cents: 399 },
-  ],
+  active_addons: [],
+  available_addons: [],
 };
 
 // ─── Tests ───────────────────────────────────────────────────────────

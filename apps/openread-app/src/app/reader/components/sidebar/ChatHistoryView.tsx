@@ -15,7 +15,7 @@ import { useSidebarStore } from '@/store/sidebarStore';
 import { useParallelViewStore } from '@/store/parallelViewStore';
 import type { AIConversation } from '@/services/ai/types';
 import { useEnv } from '@/context/EnvContext';
-import { uniqueId } from '@/utils/misc';
+import { createBookKey, getBookIdFromKey } from '@/utils/readerBookKey';
 import { usePrimaryBookHash } from '@/app/reader/hooks/usePrimaryBookHash';
 import {
   DropdownMenu,
@@ -143,7 +143,7 @@ const ChatHistoryView: React.FC<ChatHistoryViewProps> = ({ bookKey, onConversati
 
       // Restore parallel read session if this conversation had parallel books
       if (conversation.parallelBookHashes?.length) {
-        const openHashes = new Set(bookKeys.map((key) => key.split('-')[0]));
+        const openHashes = new Set(bookKeys.map((key) => getBookIdFromKey(key)));
         const ownedHashes = new Set(library.map((b) => b.hash));
         const missingHashes = conversation.parallelBookHashes
           .filter((h) => !openHashes.has(h) && ownedHashes.has(h))
@@ -153,7 +153,7 @@ const ChatHistoryView: React.FC<ChatHistoryViewProps> = ({ bookKey, onConversati
           const { initViewState, setBookKeys } = useReaderStore.getState();
           const newKeys: string[] = [];
           for (const hash of missingHashes) {
-            const newKey = `${hash}-${uniqueId()}`;
+            const newKey = createBookKey(hash);
             initViewState(envConfig, hash, newKey, false);
             newKeys.push(newKey);
           }

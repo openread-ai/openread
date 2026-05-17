@@ -19,7 +19,9 @@ const packageRunner = process.env.OPENREAD_PACKAGE_RUNNER ?? 'corepack';
 const packageRunnerPrefix = packageRunner === 'corepack' ? ['pnpm'] : [];
 const artifactDir = resolve(config.attemptDir, 'platform-health');
 const projects = resolveProjects(config.platforms).filter(({ project }) =>
-  ['chromium', 'webkit', 'mobile-webkit', 'mobile-chromium', 'msedge'].includes(project),
+  ['chromium', 'webkit', 'mobile-webkit', 'mobile-webkit-ipad', 'mobile-chromium', 'msedge'].includes(
+    project,
+  ),
 );
 const nativeTargets = resolveNativeTargets(args.nativeTargets, config.platforms);
 const requireNativeAuth =

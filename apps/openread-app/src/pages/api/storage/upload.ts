@@ -56,23 +56,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const plan = getSubscriptionPlan(token) as UserPlan;
     const quota = await getStorageQuota(user.id, plan);
 
-    // Free tier: no cloud storage at all
+    // Defensive guard for configurations with 0 GB storage.
     if (quota.totalBytes === 0) {
       return res.status(403).json({
         error: 'STORAGE_NOT_AVAILABLE',
-        message: 'Cloud storage is not available on the Free plan',
+        message: 'Cloud storage is not available on your current plan',
         upgradeUrl: '/user#plans',
       });
     }
 
-    // Over limit: block upload with add-on/upgrade suggestion
+    // Over limit: block upload with upgrade/remove-files suggestion
     if (quota.usedBytes + fileSize > quota.totalBytes + STORAGE_QUOTA_GRACE_BYTES) {
       return res.status(403).json({
         error: 'STORAGE_LIMIT_REACHED',
-        message: 'Insufficient storage quota',
+        message: 'Storage limit reached. Upgrade your plan or remove files.',
         used: quota.usedBytes,
         limit: quota.totalBytes,
-        addStorageUrl: '/user#storage',
         upgradeUrl: '/user#plans',
       });
     }

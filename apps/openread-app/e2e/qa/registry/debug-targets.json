@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "description": "Historical/debug QA targets only. Do not add stable workflows here.",
+  "aliases": {},
+  "lanes": {},
+  "targets": {}
+}

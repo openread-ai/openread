@@ -32,11 +32,16 @@ const selectFileWeb = (options: FileSelectorOptions): Promise<File[]> => {
     fileInput.type = 'file';
     fileInput.accept = options.accept || '*/*';
     fileInput.multiple = options.multiple || false;
-    fileInput.click();
-
     fileInput.onchange = () => {
       resolve(Array.from(fileInput.files || []));
+      fileInput.remove();
     };
+    fileInput.oncancel = () => {
+      resolve([]);
+      fileInput.remove();
+    };
+    document.body.appendChild(fileInput);
+    fileInput.click();
   });
 };
 

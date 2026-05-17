@@ -1,37 +1,41 @@
-# Playwright e2e tests — openread-app
+# Playwright E2E tests — openread-app
 
-App-level e2e tests — auth, opening a book, user flows. Runs against a
-real Supabase test account and a local Next.js dev server.
+App-level Playwright coverage for Openread web-mode flows. The current QA focus is **Chromium-first**: stabilize web Chromium lanes, collect evidence in Notion, then expand browser/native coverage.
 
 ---
 
 ## Architecture
 
-```
+```txt
 e2e/
-├── fixtures/        real-Supabase auth fixture (authenticatedPage)
-│   ├── auth.ts      injects session into BOTH custom keys + sb-<ref>-auth-token
-│   ├── test-users.ts loads TEST_USER_* from .env.test.local
-│   └── index.ts     barrel re-exporting { test, expect }
-├── pages/           Page Object Model — actions + queries only, no assertions
-│   ├── BasePage.ts
-│   ├── LibraryPage.ts
-│   └── ReaderPage.ts
-├── utils/
-│   └── navigate-to-reader.ts   solves the /library → /reader sync race
-├── data/            factories (future — empty at Phase 1)
-└── tests/
-    ├── api/         HTTP-only specs (future)
-    ├── ui/          browser specs (auth.spec.ts, open-book.spec.ts)
-    └── e2e/         mixed API-setup + UI-assert specs (future)
+├── activity/          Activity/readiness helper specs
+├── fixtures/          Auth fixtures, test users, disposable upload books
+│   ├── auth.ts        Injects Supabase session into custom + sb-<ref> keys
+│   └── books/         Small disposable fixtures for import/upload tests
+├── helpers/           Cross-spec helpers such as reader navigation/selection
+├── pages/             Page Object Model classes; actions + queries only
+├── reporters/         E2E-local QA Run Tracker Notion reporter
+├── smoke/             Small smoke specs outside the lane matrix
+├── tests/
+│   ├── activity/      Activity/readiness checks
+│   ├── api/           HTTP-only specs (reserved)
+│   ├── catalog/       Explore/catalog Chromium coverage
+│   ├── library/       Library route/import/chrome coverage
+│   ├── reader/        Reader chrome + annotation coverage
+│   ├── settings/      Settings/account/storage/billing/API key coverage
+│   ├── sync/          Mocked sync/offline coverage
+│   └── ui/            Legacy/general UI specs
+├── probes/            AI assistant probe specs + manifest
+└── utils/             Legacy/shared utilities
 ```
 
-Specs read like a story:
+Specs should still read like a user story:
 
 ```ts
 test('user opens a book and reader renders', async ({ authenticatedPage }) => {
   const library = new LibraryPage(authenticatedPage);
   const reader = new ReaderPage(authenticatedPage);
+
   await library.goto();
   await library.expectLoaded();
   await library.clickFirstBook();
@@ -42,111 +46,185 @@ test('user opens a book and reader renders', async ({ authenticatedPage }) => {
 
 ---
 
-## Platform matrix
+## Chromium-first lanes
 
-Playwright covers all 5 supported platforms (web · macOS · Windows ·
-iOS · Android) at the **web layer** via viewport + UA emulation. Same
-specs run across every project.
+Use the lane runner when collecting Activity/Notion evidence. It runs in web mode with `.env.web` / `NEXT_PUBLIC_APP_PLATFORM=web`, writes artifacts under `~/.openread-dev/activity-artifacts/<activity>/<attempt>/testing/<lane>/`, uploads final evidence when configured, and wires the E2E-local QA Run Tracker reporter.
 
-| Project name      | Covers platform             | Notes                                                                         |
-| ----------------- | --------------------------- | ----------------------------------------------------------------------------- |
-| `chromium`        | web · mac-web · windows-web | Desktop Chrome baseline                                                       |
-| `webkit`          | mac (Tauri WKWebView proxy) | Desktop Safari — the engine Tauri macOS uses                                  |
-| `msedge`          | windows-web                 | Uses installed Edge channel                                                   |
-| `mobile-chromium` | android (web layer)         | Playwright Pixel 7 viewport+UA — **not** a real Android device                |
-| `mobile-webkit`   | ios · ipad (web layer)      | iPhone 15 Pro viewport+UA — **not** a real iPhone                             |
-| `ui-regression`   | visual baselines            | Pinned 1440×900 viewport, baselines in `~/.openread-dev/artifacts/baselines/` |
+From `apps/openread-app/`:
 
-**What is NOT covered here** (by design):
+```sh
+corepack pnpm exec node scripts/testing/run-chromium-lane.mjs \
+  --activity ACT-011 \
+  --attempt chromium-reader-feature-1 \
+  --lane chromium-reader \
+  --run-level feature
+```
 
-- Real iOS device UI — Playwright can't drive a real iPhone; needs `ios-deploy` + Appium/XCUITest
-- Real Android emulator/device — Playwright doesn't cover this lane; use the V3 Android native scripts with `Openread_Pixel_8_API_35` + ADB. Readiness can warm the emulator with `pnpm activity:android-smoke -- --warm-only --lock-wait-ms 300000` from `apps/openread-app/`.
-- Native fixture expansion — Playwright fixtures do not auto-translate to native devices; use `pnpm activity:native-fixtures -- --native-targets ios-simulator,android-device` to generate the native fixture manifest/commands from the shared capture plan. Implemented native fixture adapters cover route/deep-link, onboarding skip, anonymous auth, and guarded book/auth readiness; future theme/locale/permissions/network/subscription adapters are reserved and block until implemented. iOS simulator readiness can warm with `pnpm activity:stage4-native -- --native-targets ios-simulator --warm-only --lock-wait-ms 300000`.
-- macOS / Windows Tauri native shell — Playwright drives browsers, not Tauri windows; needs `tauri-driver`
-- Linux — not a supported product platform
+From `apps/openread-app/e2e/`, keep package commands rooted at the app directory with `--dir ..`:
+
+```sh
+corepack pnpm --dir .. exec node scripts/testing/run-chromium-lane.mjs \
+  --activity ACT-011 \
+  --attempt chromium-reader-feature-1 \
+  --lane chromium-reader \
+  --run-level feature
+```
+
+Common lanes:
+
+```sh
+corepack pnpm test:lane:chromium-smoke
+corepack pnpm test:lane:chromium-library
+corepack pnpm test:lane:chromium-reader
+corepack pnpm test:lane:chromium-settings
+corepack pnpm test:lane:chromium-catalog
+corepack pnpm test:lane:chromium-sync
+```
+
+Focused scenario example:
+
+```sh
+corepack pnpm exec node scripts/testing/run-chromium-lane.mjs \
+  --activity ACT-011 \
+  --attempt reader-settings-scenario-1 \
+  --lane chromium-reader \
+  --run-level scenario \
+  --manual-case 5a \
+  --scenario reader-settings \
+  --grep "reader settings"
+```
+
+Resume behavior: when the same Activity ID + attempt/run ID is reused, the runner reads Notion QA rows and skips scenarios already logged as final `scenario-status=passed` or `scenario-status=flaky`. Add `--resume-from-notion false` to force a full rerun with the same ID.
 
 ---
 
-## Running locally
+## Notion QA structure
 
-### 1. Create `.env.test.local`
-
-Copy the example and fill in credentials:
+For a dedicated QA suite Activity, create/sync the Activity page with the lean QA-run template before starting the lane:
 
 ```sh
-cp .env.test.local.example .env.test.local
-# edit .env.test.local with TEST_USER_* + NEXT_PUBLIC_SUPABASE_ANON_KEY
+corepack pnpm --dir .. exec node scripts/activity/init.mjs \
+  --title "Chromium all UI suite" \
+  --slug chromium-all-ui-suite \
+  --template qa-run
+
+corepack pnpm --dir .. exec node scripts/activity/notion-sync.mjs \
+  --activity ACT-014 \
+  --attempt activity-page \
+  --write
 ```
 
-### 2. Install browsers (one-time)
+This avoids the generic Activity scaffold and keeps the page simple: `Run Summary`, `Chromium`, and `Raw Artifacts`.
+
+The Playwright reporter lives with E2E under `e2e/reporters/`:
+
+- `qa-run-tracker-reporter.mjs` — Playwright reporter hook.
+- `qa-run-tracker.mjs` — Notion read/append helpers.
+
+When enabled by the lane runner, it writes:
+
+```txt
+Run Summary
+└── Platforms
+    └── Chromium
+Chromium
+└── <Feature>
+    └── <Test name>
+        └── Evidence
+Raw Artifacts
+```
+
+It records:
+
+- `run-start` / previous progress summary.
+- One terminal `scenario-status` card per Playwright `test(...)` as soon as that test is done.
+- Screenshots attach immediately under that test's `Evidence` toggle.
+- Videos attach only for failed/timed-out/interrupted tests.
+- Traces stay local; cards show the trace count as retained locally.
+- `run-complete` / `run-failed` at the end of the Playwright run, counted by unique final scenarios.
+- A final `evidence-set-complete` row after raw lane evidence upload.
+
+The tracker is Notion-first. Do not use a local `checkpoint.json` as progress state.
+
+---
+
+## Direct Playwright runs
+
+Use direct Playwright commands for fast local debugging when Activity/Notion evidence is not needed.
+
+From `apps/openread-app/`:
 
 ```sh
-pnpm exec playwright install chromium    # minimum for quick iteration
+# Install Chromium once
+corepack pnpm exec playwright install chromium
 
-# For full matrix (chromium + webkit + mobile variants):
-pnpm exec playwright install
+# Fast feedback — one spec on Chromium
+corepack pnpm exec playwright test e2e/tests/ui/auth.spec.ts --project=chromium
 
-# msedge uses the system Microsoft Edge install and requires sudo to fetch:
-sudo pnpm exec playwright install msedge
+# Reader-only Chromium coverage
+corepack pnpm exec playwright test e2e/tests/reader --project=chromium
+
+# All app-level Chromium specs
+corepack pnpm exec playwright test e2e/tests --project=chromium
+
+# Show the last HTML report
+corepack pnpm exec playwright show-report
 ```
 
-If msedge isn't installed, that one project fails with
-`Chromium distribution 'msedge' is not found`. The other 4 projects
-(chromium, webkit, mobile-chromium, mobile-webkit) run unaffected.
-
-### 3. Run specs
-
-Readiness health smoke:
+From `apps/openread-app/e2e/`, use `--dir ..` and keep paths rooted at `apps/openread-app/`:
 
 ```sh
-pnpm activity:platform-health --activity sandbox-health --attempt health-1 --platforms web,ios,android
+corepack pnpm --dir .. exec playwright test e2e/tests/ui/auth.spec.ts --project=chromium
+corepack pnpm --dir .. exec playwright test e2e/tests/reader --project=chromium
+corepack pnpm --dir .. exec playwright show-report
 ```
 
-This runs Openread load + login/logout health on selected Playwright web-layer lanes and launches Openread on selected native targets. Add `--require-native-auth true` when native login/logout must be a hard readiness gate; true native login/logout requires a secure native auth fixture/session and is not faked through deep-link secrets.
+The Playwright config auto-starts `dev-web` on port 3000 and loads web/test env files for the runner process.
 
-```sh
-# Fast feedback — one spec on chromium:
-pnpm exec playwright test e2e/tests/ui/auth.spec.ts --project=chromium
+---
 
-# All app-level specs on one browser:
-pnpm exec playwright test e2e/tests/ --project=chromium
+## Platform matrix
 
-# Full platform matrix (all 5 projects):
-pnpm exec playwright test e2e/tests/
+Playwright covers product surfaces at the **web layer** via browser engine, viewport, and UA emulation. Chromium is the current stabilization baseline.
 
-# Show the last HTML report:
-pnpm exec playwright show-report
-```
+| Project name      | Covers platform             | Notes                                                         |
+| ----------------- | --------------------------- | ------------------------------------------------------------- |
+| `chromium`        | web · mac-web · windows-web | Primary Chromium-first baseline                               |
+| `webkit`          | mac/iOS web-layer signal    | Safari/WKWebView-family browser signal                        |
+| `msedge`          | windows-web                 | Uses installed Edge channel                                   |
+| `mobile-chromium` | android web layer           | Pixel viewport+UA; not a real Android device                  |
+| `mobile-webkit`   | ios/ipad web layer          | iPhone/iPad viewport+UA; not a real iOS device                |
+| `ui-regression`   | visual baselines            | Pinned viewport; baselines under `~/.openread-dev/artifacts/` |
 
-The config auto-starts `pnpm dev-web` on :3000 and auto-loads
-`.env.test.local` into the test runner process — no wrapper script
-needed.
+**Not covered by Playwright browser E2E:**
+
+- Real iOS device UI — use native/XCUITest/Appium-oriented lanes.
+- Real Android emulator/device UI — use V3 Android native scripts and ADB.
+- macOS/Windows Tauri shell — Playwright drives browsers, not Tauri windows; use `tauri-driver`-style coverage separately.
+- Linux — not a supported product platform.
 
 ---
 
 ## Auth behavior
 
-The `authenticatedPage` fixture makes a real Supabase
-`signInWithPassword` call, caches the session for the test run, and
-injects it into the browser context via `localStorage` **before** the
-first navigation. Two writes are required (both present in `auth.ts`):
+The `authenticatedPage` fixture makes a Supabase `signInWithPassword` call, caches the session for the test run, and injects it into browser storage before first navigation.
 
-1. Custom keys — `token`, `refresh_token`, `user` — read by
-   `AuthContext` on mount (`src/context/AuthContext.tsx:26-38`).
-2. `sb-<projectRef>-auth-token` — read by `@supabase/supabase-js` when
-   `refreshSession()` fires. Without it, refresh fails and the custom
-   keys get wiped before first render.
+Two writes are required:
 
-R2 downloads are proxied through `fetch` to sidestep CORS blocking the
-headless browser.
+1. Custom keys — `token`, `refresh_token`, `user` — read by `AuthContext`.
+2. `sb-<projectRef>-auth-token` — read by `@supabase/supabase-js` during refresh.
+
+Without both, the first render can clear the custom keys after Supabase refresh fails.
 
 ---
 
-## Phase 2 — deferred
+## Native and future coverage
 
-| Item                                                   | Blocker                                                   |
+| Item                                                   | Status / blocker                                          |
 | ------------------------------------------------------ | --------------------------------------------------------- |
-| macOS Tauri smoke via `tauri-driver`                   | `tauri-driver` uses WebDriver, not the Playwright browser |
-| Windows Tauri smoke via `tauri-driver`                 | Same — plus no Windows CI runner today                    |
-| iOS physical device via `ios-deploy` + Appium/XCUITest | Playwright can't drive a real device                      |
-| Android device automation via Appium + ADB             | Playwright can't drive a real device                      |
+| macOS Tauri smoke via `tauri-driver`                   | Separate native-shell lane, not Playwright browser E2E    |
+| Windows Tauri smoke via `tauri-driver`                 | Separate native-shell lane; Windows runner needed         |
+| iOS physical device via `ios-deploy` + Appium/XCUITest | Playwright cannot drive a real device                     |
+| Android device automation via Appium + ADB             | Playwright cannot drive a real device                     |
+| Exact Free/Reader/Pro numeric tier limits              | Deferred until product limits are finalized               |
+| Delete/remove book flow                                | Intentionally excluded from disposable-upload QA strategy |

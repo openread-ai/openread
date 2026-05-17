@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "matrices": {
+    "chromium-first": {
+      "description": "Default cheapest validation path.",
+      "platforms": ["web-chromium"]
+    },
+    "all-web": {
+      "description": "Desktop browser web coverage.",
+      "platforms": ["web-chromium", "web-webkit", "web-edge"]
+    },
+    "mobile-web": {
+      "description": "Mobile browser emulation coverage.",
+      "platforms": ["mobile-web-android", "mobile-web-ios", "mobile-web-ipados"]
+    },
+    "playwright-all": {
+      "description": "All Playwright-backed browser/mobile-web projects.",
+      "platforms": [
+        "web-chromium",
+        "web-webkit",
+        "web-edge",
+        "mobile-web-android",
+        "mobile-web-ios",
+        "mobile-web-ipados"
+      ]
+    },
+    "native-mobile": {
+      "description": "Appium-backed native mobile and tablet coverage.",
+      "platforms": ["native-ios", "native-ipados", "native-android"]
+    },
+    "tauri-desktop": {
+      "description": "Local desktop Tauri controller coverage for macOS and Windows hosts.",
+      "platforms": ["tauri-macos", "tauri-windows"]
+    }
+  }
+}

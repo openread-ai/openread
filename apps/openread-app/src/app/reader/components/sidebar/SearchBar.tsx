@@ -19,6 +19,7 @@ import { createRejectFilter } from '@/utils/node';
 import Dropdown from '@/components/Dropdown';
 import SearchOptions from './SearchOptions';
 import { createLogger } from '@/utils/logger';
+import { getBookIdFromKey } from '@/utils/readerBookKey';
 
 const logger = createLogger('search');
 
@@ -52,7 +53,7 @@ const SearchBar: React.FC<SearchBarProps> = ({ isVisible, bookKey, onBack, onHid
   const inputRef = useRef<HTMLInputElement>(null);
   const inputFocusedRef = useRef(false);
 
-  const bookHash = useMemo(() => bookKey.split('-')[0]!, [bookKey]);
+  const bookHash = useMemo(() => getBookIdFromKey(bookKey), [bookKey]);
   const historyStorageKey = useMemo(() => `${SEARCH_HISTORY_KEY}-${bookHash}`, [bookHash]);
 
   const [searchHistory, setSearchHistory] = useState<string[]>(() => {

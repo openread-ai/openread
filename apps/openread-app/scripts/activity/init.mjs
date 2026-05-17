@@ -39,6 +39,7 @@ const metadata = {
   activityUuid: args.activityUuid ?? randomUUID(),
   title,
   slug,
+  template: args.template ?? args.activityTemplate ?? null,
   status: 'planned',
   currentStage: 'intake',
   approvalStatus: 'not-needed',

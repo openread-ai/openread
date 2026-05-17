@@ -15,14 +15,6 @@ vi.mock('@/utils/misc', () => ({
   getLocale: () => 'en-US',
 }));
 
-let mockAppService: Record<string, unknown> = { isIOSApp: false };
-vi.mock('@/context/EnvContext', () => ({
-  useEnv: () => ({
-    envConfig: {},
-    appService: mockAppService,
-  }),
-}));
-
 vi.mock('@/utils/logger', () => ({
   createLogger: vi.fn(() => ({
     debug: vi.fn(),
@@ -68,7 +60,6 @@ describe('PlansComparison', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockAppService = { isIOSApp: false };
   });
 
   afterEach(() => {
@@ -278,9 +269,9 @@ describe('PlansComparison', () => {
     });
   });
 
-  // AC: Storage add-on row appears below cards
-  describe('Storage Add-on Row', () => {
-    it('should render storage add-on row with 4 options', () => {
+  // AC: Storage is bundled into tiers; no add-on row appears below cards
+  describe('Storage Add-ons', () => {
+    it('should not render storage add-on upsells', () => {
       render(
         <PlansComparison
           availablePlans={mockAvailablePlans}
@@ -290,30 +281,10 @@ describe('PlansComparison', () => {
         />,
       );
 
-      expect(screen.getByText('Need more storage? Add to any paid plan.')).toBeTruthy();
-
-      // 4 addon options
-      expect(screen.getByText('+5 GB')).toBeTruthy();
-      expect(screen.getByText('+10 GB')).toBeTruthy();
-      expect(screen.getByText('+25 GB')).toBeTruthy();
-      expect(screen.getByText('+50 GB')).toBeTruthy();
-    });
-
-    it('should show correct add-on prices', () => {
-      render(
-        <PlansComparison
-          availablePlans={mockAvailablePlans}
-          userPlan='free'
-          onSubscribe={mockOnSubscribe}
-          tierConfig={tierConfig}
-        />,
-      );
-
-      // Web prices: $1.99, $2.99, $4.99, $7.99
-      expect(screen.getByText('$1.99/mo')).toBeTruthy();
-      expect(screen.getByText('$2.99/mo')).toBeTruthy();
-      expect(screen.getByText('$4.99/mo')).toBeTruthy();
-      expect(screen.getByText('$7.99/mo')).toBeTruthy();
+      expect(screen.queryByText('Need more storage? Add to any paid plan.')).toBeNull();
+      expect(screen.queryByText('+25 GB')).toBeNull();
+      expect(screen.queryByText('$4.99/mo')).toBeNull();
+      expect(screen.queryByText('$7.99/mo')).toBeNull();
     });
   });
 
@@ -401,28 +372,6 @@ describe('PlansComparison', () => {
     });
   });
 
-  // AC: iOS shows IAP prices
-  describe('iOS Anti-Steering', () => {
-    it('should show mobile prices for storage addons on iOS', () => {
-      mockAppService = { isIOSApp: true };
-
-      render(
-        <PlansComparison
-          availablePlans={mockAvailablePlans}
-          userPlan='free'
-          onSubscribe={mockOnSubscribe}
-          tierConfig={tierConfig}
-        />,
-      );
-
-      // iOS prices: $2.99, $3.99, $6.99, $10.99 (mobile_price_cents)
-      expect(screen.getByText('$2.99/mo')).toBeTruthy();
-      expect(screen.getByText('$3.99/mo')).toBeTruthy();
-      expect(screen.getByText('$6.99/mo')).toBeTruthy();
-      expect(screen.getByText('$10.99/mo')).toBeTruthy();
-    });
-  });
-
   // Loading state
   describe('Loading State', () => {
     it('should show skeleton loaders when isLoading', () => {
@@ -436,8 +385,8 @@ describe('PlansComparison', () => {
       );
 
       const skeletons = container.querySelectorAll('.animate-pulse');
-      // 1 toggle skeleton + 3 card skeletons + 1 addon row skeleton = 5
-      expect(skeletons.length).toBe(5);
+      // 1 toggle skeleton + 3 card skeletons = 4
+      expect(skeletons.length).toBe(4);
     });
   });
 

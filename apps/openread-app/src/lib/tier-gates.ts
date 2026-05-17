@@ -1,16 +1,13 @@
 /**
  * Client-safe feature gate definitions per tier.
  *
- * These mirror the `can_*` flags from the `tier_config` Supabase table
- * (see `lib/tier-config.ts` for the server-side source of truth).
- *
- * When the DB config changes, update these values to match.
- * Eventually this could be fetched from an API route, but for now
- * the fallback values are kept in sync manually.
+ * These mirror the `can_*` flags from the Gen 3 v3 tier defaults.
+ * Runtime source of truth is the `tier_config` Supabase table; this client-safe
+ * fallback derives price copy from `lib/tier-defaults.ts`.
  */
 
 import type { UserPlan } from '@/types/quota';
-import { getFallbackConfig } from '@/lib/tier-config';
+import { getFallbackConfig } from '@/lib/tier-defaults';
 
 export interface TierGates {
   can_tts: boolean;
@@ -20,28 +17,21 @@ export interface TierGates {
   can_boost: boolean;
 }
 
+function gatesFromTier(plan: UserPlan): TierGates {
+  const tier = getFallbackConfig().tiers[plan];
+  return {
+    can_tts: tier.can_tts,
+    can_sync: tier.can_sync,
+    can_translate: tier.can_translate,
+    can_byok: tier.can_byok,
+    can_boost: tier.can_boost,
+  };
+}
+
 const TIER_GATES: Record<UserPlan, TierGates> = {
-  free: {
-    can_tts: false,
-    can_sync: false,
-    can_translate: false,
-    can_byok: false,
-    can_boost: false,
-  },
-  reader: {
-    can_tts: true,
-    can_sync: true,
-    can_translate: false,
-    can_byok: true,
-    can_boost: true,
-  },
-  pro: {
-    can_tts: true,
-    can_sync: true,
-    can_translate: true,
-    can_byok: true,
-    can_boost: true,
-  },
+  free: gatesFromTier('free'),
+  reader: gatesFromTier('reader'),
+  pro: gatesFromTier('pro'),
 };
 
 /**
@@ -119,13 +109,21 @@ export function checkFeatureGate(feature: GatedFeature, plan: UserPlan): Feature
     boost: 'AI Boosts',
   };
 
-  const message = allowed ? '' : `${featureLabels[feature]} is available on ${requiredTierName}.`;
+  const featureAvailableOnAnyTier = Object.values(TIER_GATES).some((tier) => tier[gateKey]);
+  const message = allowed
+    ? ''
+    : featureAvailableOnAnyTier
+      ? `${featureLabels[feature]} is available on ${requiredTierName}.`
+      : `${featureLabels[feature]} is not currently available.`;
 
   // Pull price from the client-safe fallback config
   const config = getFallbackConfig();
   const tierDef = config.tiers[requiredTier] ?? config.tiers.free;
-  const priceDisplay = formatPriceDisplay(tierDef.display_price_cents);
-  const ctaText = allowed ? '' : `Start ${requiredTierName} \u2014 ${priceDisplay}`;
+  const priceDisplay = featureAvailableOnAnyTier
+    ? formatPriceDisplay(tierDef.display_price_cents)
+    : '';
+  const ctaText =
+    allowed || !featureAvailableOnAnyTier ? '' : `Start ${requiredTierName} \u2014 ${priceDisplay}`;
 
   return { allowed, requiredTier, requiredTierName, message, priceDisplay, ctaText };
 }

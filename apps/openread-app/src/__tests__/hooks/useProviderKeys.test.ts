@@ -128,7 +128,7 @@ describe('useProviderKeys', () => {
     // Mock add key failure
     mockFetch.mockResolvedValueOnce({
       ok: false,
-      json: () => Promise.resolve({ error: 'BYOK keys require a Plus or Pro subscription' }),
+      json: () => Promise.resolve({ error: 'BYOK keys require a Reader or Pro subscription' }),
     });
 
     let success: boolean = true;
@@ -139,7 +139,7 @@ describe('useProviderKeys', () => {
     expect(success).toBe(false);
     expect(eventDispatcher.dispatch).toHaveBeenCalledWith('toast', {
       type: 'error',
-      message: 'BYOK keys require a Plus or Pro subscription',
+      message: 'BYOK keys require a Reader or Pro subscription',
     });
   });
 

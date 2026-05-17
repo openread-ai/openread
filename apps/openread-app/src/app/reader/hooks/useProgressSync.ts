@@ -14,6 +14,7 @@ import { DEFAULT_BOOK_SEARCH_CONFIG, SYNC_PROGRESS_INTERVAL_SEC } from '@/servic
 import { getCFIFromXPointer, getXPointerFromCFI, normalizeProgressXPointer } from '@/utils/xcfi';
 import { createLogger } from '@/utils/logger';
 import { enqueueAndSync } from '@/services/sync/helpers';
+import { getBookIdFromKey } from '@/utils/readerBookKey';
 
 const logger = createLogger('progress-sync');
 
@@ -32,7 +33,7 @@ export const useProgressSync = (bookKey: string) => {
   const pushConfig = async (bookKey: string, config: BookConfig | null) => {
     const book = getBookData(bookKey)?.book;
     if (!config || !book || !user) return;
-    const bookHash = bookKey.split('-')[0]!;
+    const bookHash = getBookIdFromKey(bookKey);
     const metaHash = book.metaHash;
     const newConfig = { ...config, bookHash, metaHash };
     const compressedConfig = JSON.parse(
@@ -45,7 +46,7 @@ export const useProgressSync = (bookKey: string) => {
   const pullConfig = async (bookKey: string) => {
     const book = getBookData(bookKey)?.book;
     if (!user || !book) return;
-    const bookHash = bookKey.split('-')[0]!;
+    const bookHash = getBookIdFromKey(bookKey);
     const metaHash = book.metaHash;
     await syncConfigs([], bookHash, metaHash, 'pull');
   };
@@ -98,7 +99,7 @@ export const useProgressSync = (bookKey: string) => {
       const book = getBookData(bookKey)?.book;
       if (!config || !book || !user) return;
 
-      const bookHash = bookKey.split('-')[0]!;
+      const bookHash = getBookIdFromKey(bookKey);
       const lastSynced = config.lastSyncedAtConfig ?? 0;
       if (config.updatedAt && config.updatedAt > lastSynced) {
         enqueueAndSync({
@@ -142,7 +143,7 @@ export const useProgressSync = (bookKey: string) => {
     const book = getBookData(bookKey)?.book;
     if (!syncedConfigs || syncedConfigs.length === 0 || !config || !book) return;
 
-    const bookHash = bookKey.split('-')[0]!;
+    const bookHash = getBookIdFromKey(bookKey);
     const metaHash = book.metaHash;
     const syncedConfig = syncedConfigs.filter(
       (c) => c.bookHash === bookHash || c.metaHash === metaHash,

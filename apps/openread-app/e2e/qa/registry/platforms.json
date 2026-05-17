@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "defaultPlatform": "web-chromium",
+  "platforms": {
+    "web-chromium": {
+      "id": "web-chromium",
+      "label": "Web - Chromium",
+      "adapter": "playwright",
+      "project": "chromium",
+      "appPlatform": "web",
+      "enabled": true
+    },
+    "web-webkit": {
+      "id": "web-webkit",
+      "label": "Web - WebKit",
+      "adapter": "playwright",
+      "project": "webkit",
+      "appPlatform": "web",
+      "enabled": true
+    },
+    "web-edge": {
+      "id": "web-edge",
+      "label": "Web - Edge",
+      "adapter": "playwright",
+      "project": "msedge",
+      "appPlatform": "web",
+      "enabled": true
+    },
+    "mobile-web-android": {
+      "id": "mobile-web-android",
+      "label": "Mobile Web - Android Chrome",
+      "adapter": "playwright",
+      "project": "mobile-chromium",
+      "appPlatform": "web",
+      "enabled": true
+    },
+    "mobile-web-ios": {
+      "id": "mobile-web-ios",
+      "label": "Mobile Web - iOS Safari",
+      "adapter": "playwright",
+      "project": "mobile-webkit",
+      "appPlatform": "web",
+      "enabled": true
+    },
+    "mobile-web-ipados": {
+      "id": "mobile-web-ipados",
+      "label": "Mobile Web - iPadOS Safari",
+      "adapter": "playwright",
+      "project": "mobile-webkit-ipad",
+      "appPlatform": "web",
+      "enabled": true
+    },
+    "tauri-macos": {
+      "id": "tauri-macos",
+      "label": "Tauri - macOS",
+      "adapter": "native-ctl",
+      "appPlatform": "tauri",
+      "enabled": true,
+      "contractCoverageEnabled": false,
+      "status": "macOS AX/screencapture health and capture adapter wired; WKWebView DOM SET runner still unavailable"
+    },
+    "tauri-windows": {
+      "id": "tauri-windows",
+      "label": "Tauri - Windows",
+      "adapter": "native-ctl",
+      "appPlatform": "tauri",
+      "enabled": true,
+      "contractCoverageEnabled": false,
+      "status": "tauri-driver health/capture adapter wired for local Windows hosts; Settings SET runner pending"
+    },
+    "native-ios": {
+      "id": "native-ios",
+      "label": "Native - iOS",
+      "adapter": "native-ctl",
+      "appPlatform": "tauri",
+      "enabled": true,
+      "status": "Appium XCUITest native-ctl adapter wired into QA CLI"
+    },
+    "native-ipados": {
+      "id": "native-ipados",
+      "label": "Native - iPadOS",
+      "adapter": "native-ctl",
+      "appPlatform": "tauri",
+      "enabled": true,
+      "status": "Appium XCUITest native-ctl adapter wired into QA CLI"
+    },
+    "native-android": {
+      "id": "native-android",
+      "label": "Native - Android",
+      "adapter": "native-ctl",
+      "appPlatform": "tauri",
+      "enabled": true,
+      "status": "Appium UiAutomator2 native-ctl adapter wired into QA CLI"
+    }
+  }
+}

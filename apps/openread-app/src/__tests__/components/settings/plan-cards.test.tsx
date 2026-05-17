@@ -61,7 +61,7 @@ const mockPlans: PlanDetails[] = [
     interval: 'month',
     features: [{ label: 'Local reading' }, { label: 'Basic AI' }],
     limits: {
-      'Cloud Sync Storage': '500 MB',
+      'Cloud Storage': '1 GB',
     },
   },
   {
@@ -74,13 +74,9 @@ const mockPlans: PlanDetails[] = [
     currency: 'USD',
     productId: 'price_reader_monthly',
     interval: 'month',
-    features: [
-      { label: 'Everything in Free' },
-      { label: 'Cloud sync' },
-      { label: 'Extended translations' },
-    ],
+    features: [{ label: 'Everything in Free' }, { label: 'Cloud sync' }, { label: 'TTS' }],
     limits: {
-      'Cloud Sync Storage': '5 GB',
+      'Cloud Sync Storage': '10 GB',
     },
   },
   {
@@ -94,12 +90,12 @@ const mockPlans: PlanDetails[] = [
     productId: 'price_pro_monthly',
     interval: 'month',
     features: [
-      { label: 'Everything in Plus' },
+      { label: 'Everything in Reader' },
       { label: 'AI analysis' },
       { label: 'Priority support' },
     ],
     limits: {
-      'Cloud Sync Storage': '20 GB',
+      'Cloud Sync Storage': '50 GB',
     },
   },
 ];

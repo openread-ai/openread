@@ -4,7 +4,7 @@
  * One-time boost packs add extra AI messages beyond a user's monthly limit.
  * Boosts expire 30 days after purchase and are consumed FIFO (oldest first).
  *
- * Available to Reader and Pro tiers only (can_boost = true).
+ * Available only to tiers with can_boost = true. Gen 3 v3 disables boosts by default.
  */
 
 import { createSupabaseAdminClient } from '@/utils/supabase';

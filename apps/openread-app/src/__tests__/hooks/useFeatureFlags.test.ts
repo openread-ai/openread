@@ -47,8 +47,8 @@ describe('useFeatureFlags', () => {
       });
 
       expect(result.current.plan).toBe('free');
-      expect(result.current.flags.maxBooks).toBe(50);
-      expect(result.current.flags.aiAnalysis).toBe(false);
+      expect(result.current.flags.maxBooks).toBe(10);
+      expect(result.current.flags.aiAnalysis).toBe(true);
       expect(result.current.flags.knowledgeGraph).toBe(false);
     });
   });
@@ -74,11 +74,11 @@ describe('useFeatureFlags', () => {
       expect(result.current.flags.canBYOK).toBe(false);
       expect(result.current.flags.canBoost).toBe(false);
       // Limit-based flags
-      expect(result.current.flags.aiAnalysis).toBe(false);
+      expect(result.current.flags.aiAnalysis).toBe(true);
       expect(result.current.flags.knowledgeGraph).toBe(false);
-      expect(result.current.flags.marketplace).toBe(false);
-      expect(result.current.flags.maxBooks).toBe(50);
-      expect(result.current.flags.maxCloudStorage).toBe(500 * 1024 * 1024); // 500MB
+      expect(result.current.flags.marketplace).toBe(true);
+      expect(result.current.flags.maxBooks).toBe(10);
+      expect(result.current.flags.maxCloudStorage).toBe(1 * 1024 * 1024 * 1024); // 1GB
     });
 
     it('should return false for canTTS', async () => {
@@ -122,14 +122,14 @@ describe('useFeatureFlags', () => {
       expect(result.current.canSync()).toBe(false);
     });
 
-    it('should return false for canAnalyze', async () => {
+    it('should return true for canAnalyze', async () => {
       const { result } = renderHook(() => useFeatureFlags());
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
       });
 
-      expect(result.current.canAnalyze()).toBe(false);
+      expect(result.current.canAnalyze()).toBe(true);
     });
 
     it('should correctly check book limit', async () => {
@@ -139,9 +139,9 @@ describe('useFeatureFlags', () => {
         expect(result.current.isLoading).toBe(false);
       });
 
-      expect(result.current.canAddBook(49)).toBe(true);
-      expect(result.current.canAddBook(50)).toBe(false);
-      expect(result.current.canAddBook(51)).toBe(false);
+      expect(result.current.canAddBook(9)).toBe(true);
+      expect(result.current.canAddBook(10)).toBe(false);
+      expect(result.current.canAddBook(11)).toBe(false);
     });
   });
 
@@ -164,13 +164,13 @@ describe('useFeatureFlags', () => {
       expect(result.current.flags.cloudSync).toBe(true);
       expect(result.current.flags.canTranslate).toBe(false);
       expect(result.current.flags.canBYOK).toBe(true);
-      expect(result.current.flags.canBoost).toBe(true);
+      expect(result.current.flags.canBoost).toBe(false);
       // Limit-based flags
       expect(result.current.flags.aiAnalysis).toBe(true);
       expect(result.current.flags.knowledgeGraph).toBe(false);
       expect(result.current.flags.marketplace).toBe(true);
-      expect(result.current.flags.maxBooks).toBe(500);
-      expect(result.current.flags.maxCloudStorage).toBe(5 * 1024 * 1024 * 1024); // 5GB
+      expect(result.current.flags.maxBooks).toBe(Infinity);
+      expect(result.current.flags.maxCloudStorage).toBe(10 * 1024 * 1024 * 1024); // 10GB
     });
 
     it('should return true for canTTS', async () => {
@@ -243,13 +243,13 @@ describe('useFeatureFlags', () => {
       expect(result.current.flags.cloudSync).toBe(true);
       expect(result.current.flags.canTranslate).toBe(true);
       expect(result.current.flags.canBYOK).toBe(true);
-      expect(result.current.flags.canBoost).toBe(true);
+      expect(result.current.flags.canBoost).toBe(false);
       // Limit-based flags
       expect(result.current.flags.aiAnalysis).toBe(true);
       expect(result.current.flags.knowledgeGraph).toBe(true);
       expect(result.current.flags.marketplace).toBe(true);
       expect(result.current.flags.maxBooks).toBe(Infinity);
-      expect(result.current.flags.maxCloudStorage).toBe(20 * 1024 * 1024 * 1024); // 20GB
+      expect(result.current.flags.maxCloudStorage).toBe(50 * 1024 * 1024 * 1024); // 50GB
       expect(result.current.flags.prioritySupport).toBe(true);
     });
 
@@ -299,7 +299,7 @@ describe('useFeatureFlags', () => {
         expect(result.current.isLoading).toBe(false);
       });
 
-      expect(result.current.flags.aiAnalysis).toBe(false);
+      expect(result.current.flags.aiAnalysis).toBe(true);
       expect(result.current.flags.knowledgeGraph).toBe(false);
       expect(result.current.flags.canTTS).toBe(false);
       expect(result.current.flags.cloudSync).toBe(false);
@@ -309,7 +309,7 @@ describe('useFeatureFlags', () => {
   describe('hasStorageQuota', () => {
     it('should return true when within quota', async () => {
       mockUser = { id: 'user-1' };
-      mockUserProfilePlan = 'free';
+      mockUserProfilePlan = 'reader';
 
       const { result } = renderHook(() => useFeatureFlags());
 
@@ -317,8 +317,8 @@ describe('useFeatureFlags', () => {
         expect(result.current.isLoading).toBe(false);
       });
 
-      const currentUsage = 100 * 1024 * 1024; // 100MB
-      const additional = 100 * 1024 * 1024; // 100MB
+      const currentUsage = 1 * 1024 * 1024 * 1024; // 1GB
+      const additional = 1 * 1024 * 1024 * 1024; // 1GB
 
       expect(result.current.hasStorageQuota(currentUsage, additional)).toBe(true);
     });
@@ -333,8 +333,8 @@ describe('useFeatureFlags', () => {
         expect(result.current.isLoading).toBe(false);
       });
 
-      const currentUsage = 400 * 1024 * 1024; // 400MB
-      const additional = 200 * 1024 * 1024; // 200MB (total 600MB > 500MB limit)
+      const currentUsage = 0;
+      const additional = 2 * 1024 * 1024 * 1024; // Free has 1GB cloud storage
 
       expect(result.current.hasStorageQuota(currentUsage, additional)).toBe(false);
     });
@@ -343,7 +343,7 @@ describe('useFeatureFlags', () => {
   describe('hasTranslationQuota', () => {
     it('should return true when within quota', async () => {
       mockUser = { id: 'user-1' };
-      mockUserProfilePlan = 'free';
+      mockUserProfilePlan = 'pro';
 
       const { result } = renderHook(() => useFeatureFlags());
 
@@ -367,8 +367,8 @@ describe('useFeatureFlags', () => {
         expect(result.current.isLoading).toBe(false);
       });
 
-      const currentUsage = 9 * 1024; // 9K chars
-      const additional = 2 * 1024; // 2K chars (total 11K > 10K limit)
+      const currentUsage = 0;
+      const additional = 1; // Free has no translation access
 
       expect(result.current.hasTranslationQuota(currentUsage, additional)).toBe(false);
     });
@@ -429,7 +429,7 @@ describe('useCanAnalyze', () => {
     mockUserProfilePlan = undefined;
   });
 
-  it('should return false for free users', async () => {
+  it('should return true for free users', async () => {
     mockUser = { id: 'user-1' };
     mockUserProfilePlan = 'free';
 
@@ -439,7 +439,7 @@ describe('useCanAnalyze', () => {
       expect(result.current.isLoading).toBe(false);
     });
 
-    expect(result.current.canAnalyze).toBe(false);
+    expect(result.current.canAnalyze).toBe(true);
   });
 
   it('should return true for pro users', async () => {

@@ -110,6 +110,8 @@ const HighlightOptions: React.FC<HighlightOptionsProps> = ({
           <button
             key={style}
             onClick={() => handleSelectStyle(style)}
+            aria-label={`Highlight style: ${style}`}
+            title={`Highlight style: ${style}`}
             className='not-eink:bg-gray-700 eink-bordered flex items-center justify-center rounded-full p-0'
             style={{ width: size28, height: size28, minHeight: size28 }}
           >
@@ -170,6 +172,8 @@ const HighlightOptions: React.FC<HighlightOptionsProps> = ({
               <button
                 key={color}
                 onClick={() => handleSelectColor(color)}
+                aria-label={`Highlight color: ${color}`}
+                title={`Highlight color: ${color}`}
                 style={{
                   width: size16,
                   height: size16,

@@ -1,8 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, cleanup } from '@testing-library/react';
 import { StorageMeter } from '@/components/settings/billing/StorageMeter';
-
-// ─── Mocks ───────────────────────────────────────────────────────────
 
 vi.mock('@/hooks/useTranslation', () => ({
   useTranslation: () => (key: string, vars?: Record<string, unknown>) => {
@@ -24,15 +22,13 @@ vi.mock('@/hooks/useStorageQuota', () => ({
   useStorageQuota: () => mockUseStorageQuota(),
 }));
 
-// ─── Helpers ─────────────────────────────────────────────────────────
-
 const GB = 1024 * 1024 * 1024;
 
 function makeQuota(overrides: Record<string, unknown> = {}) {
   return {
     plan: 'reader',
-    base_gb: 2,
-    addon_gb: 8,
+    base_gb: 10,
+    addon_gb: 0,
     total_bytes: 10 * GB,
     used_bytes: 6.2 * GB,
     available_bytes: 3.8 * GB,
@@ -44,8 +40,6 @@ function makeQuota(overrides: Record<string, unknown> = {}) {
   };
 }
 
-// ─── Tests ───────────────────────────────────────────────────────────
-
 describe('StorageMeter', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -55,7 +49,7 @@ describe('StorageMeter', () => {
     cleanup();
   });
 
-  it('should show loading skeleton when loading', () => {
+  it('shows loading skeleton when loading', () => {
     mockUseStorageQuota.mockReturnValue({ quota: null, isLoading: true, error: null });
 
     render(<StorageMeter />);
@@ -63,7 +57,7 @@ describe('StorageMeter', () => {
     expect(skeletons.length).toBeGreaterThan(0);
   });
 
-  it('should show error state when fetch fails', () => {
+  it('shows error state when fetch fails', () => {
     mockUseStorageQuota.mockReturnValue({
       quota: null,
       isLoading: false,
@@ -74,7 +68,7 @@ describe('StorageMeter', () => {
     expect(screen.getByText('Failed to load storage data')).toBeTruthy();
   });
 
-  it('should display Storage title', () => {
+  it('displays tier-only storage usage', () => {
     mockUseStorageQuota.mockReturnValue({
       quota: makeQuota(),
       isLoading: false,
@@ -83,45 +77,28 @@ describe('StorageMeter', () => {
 
     render(<StorageMeter />);
     expect(screen.getByText('Storage')).toBeTruthy();
-  });
-
-  it('should display usage with total GB', () => {
-    mockUseStorageQuota.mockReturnValue({
-      quota: makeQuota(),
-      isLoading: false,
-      error: null,
-    });
-
-    render(<StorageMeter />);
-    // 6.2 GB displayed as "6.2 GB"
     expect(screen.getByText(/6\.2 GB/)).toBeTruthy();
     expect(screen.getByText(/of/)).toBeTruthy();
-    expect(screen.getByText(/10 GB/)).toBeTruthy();
+    expect(screen.getAllByText(/10 GB/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Up to 10 GB included/)).toBeTruthy();
+    expect(screen.queryByText('Add Storage')).toBeNull();
   });
 
-  it('should show breakdown with base + add-ons', () => {
+  it('uses base tier storage even if stale add-on fields are present', () => {
     mockUseStorageQuota.mockReturnValue({
-      quota: makeQuota({ base_gb: 2, addon_gb: 8 }),
+      quota: makeQuota({ base_gb: 10, addon_gb: 25, total_bytes: 35 * GB }),
       isLoading: false,
       error: null,
     });
 
     render(<StorageMeter />);
-    expect(screen.getByText(/2 GB base \+ 8 GB add-ons/)).toBeTruthy();
+    expect(screen.getByText(/of/)).toBeTruthy();
+    expect(screen.getAllByText(/10 GB/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Up to 10 GB included/)).toBeTruthy();
+    expect(screen.queryByText(/add-ons/)).toBeNull();
   });
 
-  it('should show base-only breakdown when no add-ons', () => {
-    mockUseStorageQuota.mockReturnValue({
-      quota: makeQuota({ base_gb: 2, addon_gb: 0 }),
-      isLoading: false,
-      error: null,
-    });
-
-    render(<StorageMeter />);
-    expect(screen.getByText(/2 GB base/)).toBeTruthy();
-  });
-
-  it('should show progress bar', () => {
+  it('shows progress bar', () => {
     mockUseStorageQuota.mockReturnValue({
       quota: makeQuota(),
       isLoading: false,
@@ -132,34 +109,7 @@ describe('StorageMeter', () => {
     expect(screen.getByRole('progressbar')).toBeTruthy();
   });
 
-  it('should render Add Storage button when onAddStorage is provided', () => {
-    mockUseStorageQuota.mockReturnValue({
-      quota: makeQuota(),
-      isLoading: false,
-      error: null,
-    });
-
-    const onAdd = vi.fn();
-    render(<StorageMeter onAddStorage={onAdd} />);
-    const addButton = screen.getByText('Add Storage');
-    expect(addButton).toBeTruthy();
-
-    fireEvent.click(addButton);
-    expect(onAdd).toHaveBeenCalled();
-  });
-
-  it('should not render Add Storage button when onAddStorage is not provided', () => {
-    mockUseStorageQuota.mockReturnValue({
-      quota: makeQuota(),
-      isLoading: false,
-      error: null,
-    });
-
-    render(<StorageMeter />);
-    expect(screen.queryByText('Add Storage')).toBeNull();
-  });
-
-  it('should apply warning color when usage is high', () => {
+  it('applies warning color when usage is high', () => {
     mockUseStorageQuota.mockReturnValue({
       quota: makeQuota({ percent_used: 85 }),
       isLoading: false,

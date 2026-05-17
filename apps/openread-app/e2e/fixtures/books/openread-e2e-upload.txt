@@ -1,0 +1,5 @@
+Openread E2E Upload Fixture
+
+This disposable Chromium fixture verifies real browser file upload, local import, and reader open without touching shared server state.
+
+The fixture has multiple paragraphs so reader rendering, paragraph extraction, and annotation selection have stable text to parse.

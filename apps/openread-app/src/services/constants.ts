@@ -17,6 +17,7 @@ import {
 } from '@/types/book';
 import { KOSyncSettings, ReadSettings, SystemSettings } from '@/types/settings';
 import { UserStorageQuota, UserDailyTranslationQuota } from '@/types/quota';
+import { BYTES_PER_GB, getFallbackConfig } from '@/lib/tier-defaults';
 import { getDefaultMaxBlockSize, getDefaultMaxInlineSize } from '@/utils/config';
 import { stubTranslation as _ } from '@/utils/misc';
 import { DEFAULT_AI_SETTINGS } from './ai/constants';
@@ -683,8 +684,6 @@ export const CATALOG_API_BASE_URL =
     ? ''
     : 'https://api.openread.ai');
 
-export const OPENREAD_OPDS_USER_AGENT = 'Openread/1.0 (OPDS Browser)';
-
 export const SYNC_PROGRESS_INTERVAL_SEC = 3;
 export const SYNC_NOTES_INTERVAL_SEC = 5;
 export const SYNC_BOOKS_INTERVAL_SEC = 5;
@@ -701,16 +700,18 @@ export const SHOW_UNREAD_STATUS_BADGE = false;
  * Use getTierDefinition(plan) from '@/lib/tier-config' for runtime values.
  * These constants are used when the database is unreachable.
  */
+const DEFAULT_TIERS = getFallbackConfig().tiers;
+
 export const DEFAULT_STORAGE_QUOTA: UserStorageQuota = {
-  free: 0,
-  reader: 2 * 1024 * 1024 * 1024,
-  pro: 5 * 1024 * 1024 * 1024,
+  free: DEFAULT_TIERS.free.storage_gb * BYTES_PER_GB,
+  reader: DEFAULT_TIERS.reader.storage_gb * BYTES_PER_GB,
+  pro: DEFAULT_TIERS.pro.storage_gb * BYTES_PER_GB,
 };
 
 export const DEFAULT_DAILY_TRANSLATION_QUOTA: UserDailyTranslationQuota = {
-  free: 10 * 1024,
-  reader: 100 * 1024,
-  pro: 500 * 1024,
+  free: DEFAULT_TIERS.free.can_translate ? Number.POSITIVE_INFINITY : 0,
+  reader: DEFAULT_TIERS.reader.can_translate ? Number.POSITIVE_INFINITY : 0,
+  pro: DEFAULT_TIERS.pro.can_translate ? Number.POSITIVE_INFINITY : 0,
 };
 
 export const DOUBLE_CLICK_INTERVAL_THRESHOLD_MS = 250;

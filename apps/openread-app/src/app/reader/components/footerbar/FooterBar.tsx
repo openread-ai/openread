@@ -42,8 +42,9 @@ const FooterBar: React.FC<FooterBarProps> = ({
   const viewSettings = getViewSettings(bookKey);
 
   const [userSelectedTab, setUserSelectedTab] = useState('');
-  const actionTab = hoveredBookKey === bookKey ? userSelectedTab : '';
-  const isVisible = hoveredBookKey === bookKey;
+  const isMobile = appService?.isMobile || window.innerWidth < 640;
+  const actionTab = hoveredBookKey === bookKey || isMobile ? userSelectedTab : '';
+  const isVisible = isMobile || hoveredBookKey === bookKey;
 
   // Sync native iOS footer bar visibility with web footer visibility
   useEffect(() => {
@@ -219,7 +220,7 @@ const FooterBar: React.FC<FooterBarProps> = ({
       : 'pointer-events-none translate-y-full opacity-0 sm:translate-y-0',
   );
 
-  const isMobile = appService?.isMobile || window.innerWidth < 640;
+  const useMobileSettingsSheet = isMobile || appService?.isIOSApp;
 
   return (
     <>
@@ -244,7 +245,7 @@ const FooterBar: React.FC<FooterBarProps> = ({
         onFocus={() => !appService?.isMobile && setHoveredBookKey(bookKey)}
         onMouseLeave={() => window.innerWidth >= 640 && setHoveredBookKey('')}
       >
-        {appService?.isIOSApp ? (
+        {useMobileSettingsSheet ? (
           <MobileFooterBarV2 bookKey={bookKey} />
         ) : (
           <MobileFooterBar {...commonProps} />

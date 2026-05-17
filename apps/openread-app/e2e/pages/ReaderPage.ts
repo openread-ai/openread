@@ -14,7 +14,9 @@ export class ReaderPage extends BasePage {
 
   async waitForReaderUrl(): Promise<void> {
     await this.page.waitForURL(
-      (url) => url.pathname.startsWith('/reader') && url.search.includes('ids='),
+      (url) =>
+        (url.pathname === '/reader' && url.searchParams.has('ids')) ||
+        /^\/reader\/[^/]+$/.test(url.pathname),
       { timeout: 30_000 },
     );
   }

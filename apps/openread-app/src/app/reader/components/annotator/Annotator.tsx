@@ -33,6 +33,7 @@ import { transformContent } from '@/services/transformService';
 import { getHighlightColorHex } from '../../utils/annotatorUtil';
 import { registerNativeMenuBridge } from '@/services/annotation/nativeMenuBridge';
 import { ANNOTATION_ACTION_EVENT } from '@/services/annotation/menuConfig';
+import { getBookIdFromKey } from '@/utils/readerBookKey';
 import type { AnnotationActionEvent } from '@/services/annotation/menuConfig';
 import { annotationToolButtons } from './AnnotationTools';
 import AnnotationRangeEditor from './AnnotationRangeEditor';
@@ -127,7 +128,7 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   // Reposition popups on scroll without dismissing them
   const repositionPopups = useCallback(() => {
     if (!selection || !selection.text) return;
-    const gridFrame = document.querySelector(`#gridcell-${bookKey}`);
+    const gridFrame = document.getElementById(`gridcell-${bookKey}`);
     if (!gridFrame) return;
     const rect = gridFrame.getBoundingClientRect();
     const triangPos = getPosition(selection, rect, trianglePadding, viewSettings.vertical);
@@ -471,7 +472,7 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   useEffect(() => {
     setHighlightOptionsVisible(!!(selection && selection.annotated));
     if (selection && selection.text.trim().length > 0) {
-      const gridFrame = document.querySelector(`#gridcell-${bookKey}`);
+      const gridFrame = document.getElementById(`gridcell-${bookKey}`);
       if (!gridFrame) return;
       const rect = gridFrame.getBoundingClientRect();
       const triangPos = getPosition(selection, rect, trianglePadding, viewSettings.vertical);
@@ -673,7 +674,7 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
         annotation.style &&
         !annotation.deletedAt,
     );
-    const views = getViewsById(bookKey.split('-')[0]!);
+    const views = getViewsById(getBookIdFromKey(bookKey));
     if (existingIndex !== -1) {
       views.forEach((view) => view?.addAnnotation(annotation, true));
       if (update) {

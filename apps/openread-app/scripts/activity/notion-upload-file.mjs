@@ -54,6 +54,7 @@ if (args.textOnly === true) {
     files,
     heading: args.heading,
     section: args.section,
+    sectionPath: args.sectionPath,
   });
   const report = baseReport({
     result: 'passed',
@@ -84,6 +85,7 @@ const attached =
         caption: args.caption,
         heading: args.heading,
         section: args.section,
+        sectionPath: args.sectionPath,
       })
     : null;
 
@@ -211,14 +213,17 @@ async function notionRequest({ notionToken, path, method, body }) {
   return parseNotionResponse(res, method, path);
 }
 
-async function appendTextPreviews({ notionToken, pageId, files, heading, section }) {
+async function appendTextPreviews({ notionToken, pageId, files, heading, section, sectionPath }) {
   const children = [];
   if (heading) children.push(headingBlock(String(heading)));
   children.push(...files.flatMap((file) => textPreviewBlocks(file)));
 
-  const targetBlockId = section
-    ? await findOrCreateSectionBlockId({ notionToken, pageId, section })
-    : null;
+  const targetBlockId = await resolveTargetSectionBlockId({
+    notionToken,
+    pageId,
+    section,
+    sectionPath,
+  });
   const res = await notionRequest({
     notionToken,
     path: `/v1/blocks/${targetBlockId ?? pageId}/children`,
@@ -229,7 +234,16 @@ async function appendTextPreviews({ notionToken, pageId, files, heading, section
   return { id: res.results?.[0]?.id ?? null, sectionBlockId: targetBlockId ?? pageId };
 }
 
-async function appendUploads({ notionToken, pageId, uploads, layout, caption, heading, section }) {
+async function appendUploads({
+  notionToken,
+  pageId,
+  uploads,
+  layout,
+  caption,
+  heading,
+  section,
+  sectionPath,
+}) {
   const children = [];
   if (heading) children.push(headingBlock(String(heading)));
 
@@ -259,9 +273,12 @@ async function appendUploads({ notionToken, pageId, uploads, layout, caption, he
     children.push(...uploads.flatMap((upload) => textPreviewBlocks(upload)));
   }
 
-  const targetBlockId = section
-    ? await findOrCreateSectionBlockId({ notionToken, pageId, section })
-    : null;
+  const targetBlockId = await resolveTargetSectionBlockId({
+    notionToken,
+    pageId,
+    section,
+    sectionPath,
+  });
   const res = await notionRequest({
     notionToken,
     path: `/v1/blocks/${targetBlockId ?? pageId}/children`,
@@ -270,6 +287,34 @@ async function appendUploads({ notionToken, pageId, uploads, layout, caption, he
   });
 
   return { id: res.results?.[0]?.id ?? null, layout, sectionBlockId: targetBlockId ?? pageId };
+}
+
+async function resolveTargetSectionBlockId({ notionToken, pageId, section, sectionPath }) {
+  if (sectionPath) {
+    return findOrCreateSectionPathBlockId({ notionToken, pageId, sectionPath });
+  }
+  if (section) {
+    return findOrCreateSectionBlockId({ notionToken, pageId, section });
+  }
+  return null;
+}
+
+async function findOrCreateSectionPathBlockId({ notionToken, pageId, sectionPath }) {
+  const path = String(sectionPath)
+    .split('/')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  let parentBlockId = pageId;
+
+  for (const pathPart of path) {
+    parentBlockId = await findOrCreateSectionBlockId({
+      notionToken,
+      pageId: parentBlockId,
+      section: pathPart,
+    });
+  }
+
+  return parentBlockId;
 }
 
 async function findOrCreateSectionBlockId({ notionToken, pageId, section }) {
@@ -316,7 +361,8 @@ function blockSupportsChildren(block) {
 
 function uploadBlock(upload, caption) {
   const isImage = upload.contentType.startsWith('image/');
-  const type = isImage ? 'image' : 'file';
+  const isVideo = upload.contentType.startsWith('video/');
+  const type = isImage ? 'image' : isVideo ? 'video' : 'file';
   return {
     object: 'block',
     type,
@@ -402,6 +448,10 @@ function inferContentType(path) {
   if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
   if (ext === '.gif') return 'image/gif';
   if (ext === '.webp') return 'image/webp';
+  if (ext === '.webm') return 'video/webm';
+  if (ext === '.mp4') return 'video/mp4';
+  if (ext === '.mov') return 'video/quicktime';
+  if (ext === '.zip') return 'application/zip';
   if (ext === '.pdf') return 'application/pdf';
   if (ext === '.json') return 'application/json';
   if (ext === '.html') return 'text/html';
@@ -430,6 +480,7 @@ Options:
   --layout single|columns Attach multiple files vertically or side-by-side columns
   --heading <text>        Optional heading before attached evidence
   --section <title>       Attach evidence inside a childable section toggle; creates it if missing
+  --section-path <path>   Attach evidence inside slash-delimited childable toggle path
   --caption <text>        Caption; use | separators for multiple files
   --render-text           Also render small text/json files as readable Notion code blocks
   --text-only             Render text/json as Notion code blocks without uploading a file link

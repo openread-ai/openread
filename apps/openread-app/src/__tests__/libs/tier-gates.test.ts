@@ -40,7 +40,7 @@ describe('tier-gates', () => {
       expect(gates.can_sync).toBe(true);
       expect(gates.can_translate).toBe(false);
       expect(gates.can_byok).toBe(true);
-      expect(gates.can_boost).toBe(true);
+      expect(gates.can_boost).toBe(false);
     });
 
     it('should return correct pro tier gates', () => {
@@ -49,7 +49,7 @@ describe('tier-gates', () => {
       expect(gates.can_sync).toBe(true);
       expect(gates.can_translate).toBe(true);
       expect(gates.can_byok).toBe(true);
-      expect(gates.can_boost).toBe(true);
+      expect(gates.can_boost).toBe(false);
     });
 
     it('should fall back to free for unknown plan', () => {
@@ -146,20 +146,26 @@ describe('tier-gates', () => {
     });
 
     describe('boost gate', () => {
-      it('free: not allowed, requires reader', () => {
+      it('free: not allowed because boosts are disabled', () => {
         const result = checkFeatureGate('boost', 'free');
         expect(result.allowed).toBe(false);
-        expect(result.requiredTier).toBe('reader');
+        expect(result.message).toContain('not currently available');
+        expect(result.priceDisplay).toBe('');
+        expect(result.ctaText).toBe('');
       });
 
-      it('reader: allowed', () => {
+      it('reader: not allowed because boosts are disabled', () => {
         const result = checkFeatureGate('boost', 'reader');
-        expect(result.allowed).toBe(true);
+        expect(result.allowed).toBe(false);
+        expect(result.message).toContain('not currently available');
+        expect(result.ctaText).toBe('');
       });
 
-      it('pro: allowed', () => {
+      it('pro: not allowed because boosts are disabled', () => {
         const result = checkFeatureGate('boost', 'pro');
-        expect(result.allowed).toBe(true);
+        expect(result.allowed).toBe(false);
+        expect(result.message).toContain('not currently available');
+        expect(result.ctaText).toBe('');
       });
     });
 
@@ -173,7 +179,7 @@ describe('tier-gates', () => {
         sync: [false, true, true],
         translate: [false, false, true],
         byok: [false, true, true],
-        boost: [false, true, true],
+        boost: [false, false, false],
       };
 
       for (const feature of features) {
@@ -233,7 +239,7 @@ describe('tier-gates', () => {
         expect(result.ctaText).toBe('');
       });
 
-      it('pro user sees empty ctaText for all features', () => {
+      it('pro user sees empty ctaText for all features, including disabled boosts', () => {
         const features: GatedFeature[] = ['tts', 'sync', 'translate', 'byok', 'boost'];
         for (const feature of features) {
           const result = checkFeatureGate(feature, 'pro');

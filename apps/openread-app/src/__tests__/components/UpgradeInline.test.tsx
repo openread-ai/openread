@@ -19,9 +19,9 @@ describe('UpgradeInline', () => {
   });
 
   it('should show price in CTA when price prop is provided', () => {
-    render(<UpgradeInline message='Text-to-Speech is available on Reader.' price='$7.99/mo' />);
+    render(<UpgradeInline message='Text-to-Speech is available on Reader.' price='$9.99/mo' />);
     const link = screen.getByRole('link');
-    expect(link.textContent).toContain('$7.99/mo');
+    expect(link.textContent).toContain('$9.99/mo');
     expect(link.textContent).toContain('Start Reading');
   });
 
@@ -29,8 +29,8 @@ describe('UpgradeInline', () => {
     render(
       <UpgradeInline
         message='Text-to-Speech is available on Reader.'
-        ctaText='Start Reader — $7.99/mo'
-        price='$7.99/mo'
+        ctaText='Start Reader — $9.99/mo'
+        price='$9.99/mo'
       />,
     );
     const link = screen.getByRole('link');
@@ -47,7 +47,7 @@ describe('UpgradeInline', () => {
 
   it('should dismiss when close button is clicked', () => {
     const onDismiss = vi.fn();
-    render(<UpgradeInline message='TTS is gated.' price='$7.99/mo' onDismiss={onDismiss} />);
+    render(<UpgradeInline message='TTS is gated.' price='$9.99/mo' onDismiss={onDismiss} />);
     const dismissButton = screen.getByLabelText('Dismiss');
     fireEvent.click(dismissButton);
     expect(onDismiss).toHaveBeenCalledTimes(1);
@@ -55,14 +55,14 @@ describe('UpgradeInline', () => {
     expect(screen.queryByText('TTS is gated.')).toBeNull();
   });
 
-  it('should link to /user/plans by default', () => {
-    render(<UpgradeInline message='Test message' price='$7.99/mo' />);
+  it('should link to /user#plans by default', () => {
+    render(<UpgradeInline message='Test message' price='$9.99/mo' />);
     const link = screen.getByRole('link');
-    expect(link.getAttribute('href')).toBe('/user/plans');
+    expect(link.getAttribute('href')).toBe('/user#plans');
   });
 
   it('should use custom ctaHref when provided', () => {
-    render(<UpgradeInline message='Test message' price='$7.99/mo' ctaHref='/pricing' />);
+    render(<UpgradeInline message='Test message' price='$9.99/mo' ctaHref='/pricing' />);
     const link = screen.getByRole('link');
     expect(link.getAttribute('href')).toBe('/pricing');
   });

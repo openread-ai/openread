@@ -1,5 +1,5 @@
-// App-level Playwright config — covers the 5 supported platforms at
-// the web layer (web · mac · windows · ios · android) via 5 projects
+// App-level Playwright config — covers the 6 supported web-layer targets
+// (web · mac · windows · ios · ipados · android) via 6 projects
 // plus a ui-regression lane. Snapshots land in the local artifact bucket
 // so baselines stay out of the repo.
 //
@@ -35,6 +35,12 @@ const BUCKET = process.env.OPENREAD_BUCKET_DIR ?? resolve(homedir(), '.openread-
 const screenshotMode =
   process.env.OPENREAD_PLAYWRIGHT_SCREENSHOT === 'on' ? 'on' : 'only-on-failure';
 
+const videoModes = ['off', 'on', 'retain-on-failure', 'on-first-retry'] as const;
+type VideoMode = (typeof videoModes)[number];
+const videoMode: VideoMode = videoModes.includes(process.env.OPENREAD_PLAYWRIGHT_VIDEO as VideoMode)
+  ? (process.env.OPENREAD_PLAYWRIGHT_VIDEO as VideoMode)
+  : 'retain-on-failure';
+
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
@@ -56,7 +62,7 @@ export default defineConfig({
   use: {
     baseURL: 'http://localhost:3000',
     trace: 'retain-on-failure',
-    video: 'retain-on-failure',
+    video: videoMode,
     // Diff output path is controlled by snapshotPathTemplate above, not by
     // the screenshot option (which in recent @playwright/test no longer
     // accepts a `path` field on the object form). Per-project snapshot
@@ -80,7 +86,8 @@ export default defineConfig({
       use: { ...devices['Desktop Edge'], channel: 'msedge' },
     },
     { name: 'mobile-chromium', use: { ...devices['Pixel 7'] } }, // Android web layer
-    { name: 'mobile-webkit', use: { ...devices['iPhone 15 Pro'] } }, // iOS / iPadOS
+    { name: 'mobile-webkit', use: { ...devices['iPhone 15 Pro'] } }, // iOS phone web layer
+    { name: 'mobile-webkit-ipad', use: { ...devices['iPad Pro 11'] } }, // iPadOS web layer
     // Visual regression lane (separate project, run from its own command)
     {
       name: 'ui-regression',

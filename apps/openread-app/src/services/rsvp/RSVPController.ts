@@ -4,6 +4,7 @@ import { containsCJK, splitTextIntoWords } from './utils';
 import { compare as compareCFI } from 'foliate-js/epubcfi.js';
 import { XCFI } from '@/utils/xcfi';
 import { createLogger } from '@/utils/logger';
+import { getBookIdFromKey } from '@/utils/readerBookKey';
 
 const logger = createLogger('rsvp');
 
@@ -43,9 +44,8 @@ export class RSVPController extends EventTarget {
     super();
     this.view = view;
     this.bookKey = bookKey;
-    // Extract book ID (hash) from bookKey format: "{hash}-{sessionId}"
-    // Use only the hash for persistent position storage across sessions
-    this.bookId = bookKey.split('-')[0] || bookKey;
+    // Use only the stable book hash for persistent position storage across sessions.
+    this.bookId = getBookIdFromKey(bookKey);
     this.loadSettings();
   }
 

@@ -1,0 +1,196 @@
+{
+  "schemaVersion": 2,
+  "defaultPlatform": "web-chromium",
+  "aliases": {
+    "chromium-smoke": "smoke",
+    "chromium-library": "library",
+    "chromium-reader": "reader",
+    "chromium-settings": "settings",
+    "chromium-catalog": "catalog",
+    "chromium-sync": "sync",
+    "chromium-all-ui": "all-ui"
+  },
+  "lanes": {
+    "smoke": {
+      "lane": "smoke",
+      "runLevel": "feature",
+      "specs": ["e2e/tests/ui/auth.spec.ts", "e2e/tests/ui/open-book.spec.ts"],
+      "description": "Small auth/open-book smoke path.",
+      "promoteTo": "reader"
+    },
+    "library": {
+      "lane": "library",
+      "runLevel": "feature",
+      "specs": ["e2e/tests/library"],
+      "description": "Library lane.",
+      "promoteTo": "all-ui"
+    },
+    "reader": {
+      "lane": "reader",
+      "runLevel": "feature",
+      "specs": ["e2e/tests/reader"],
+      "description": "Reader lane.",
+      "promoteTo": "all-ui"
+    },
+    "settings": {
+      "lane": "settings",
+      "runLevel": "feature",
+      "specs": ["e2e/tests/settings"],
+      "description": "Settings lane.",
+      "promoteTo": "all-ui",
+      "expectedOutcomes": {
+        "billing page renders generic plan and upgrade surfaces": {
+          "scenarioId": "SET-054",
+          "expected": "Billing Settings renders plan, storage, and upgrade surfaces without exposing AI Boost purchase copy."
+        },
+        "settings tab navigation reaches billing and API key surfaces": {
+          "scenarioId": "SET-004",
+          "expected": "Settings tab navigation reaches API Keys and Billing on web, with active tab and URL matching the selected surface."
+        },
+        "API keys page masks existing keys and exposes create flow without creating one": {
+          "scenarioId": "SET-045/SET-046",
+          "expected": "Web API Keys masks raw existing keys, exposes Create API Key, validates description before enabling submit, and cancels without creating a key."
+        }
+      }
+    },
+    "catalog": {
+      "lane": "catalog",
+      "runLevel": "feature",
+      "specs": ["e2e/tests/catalog"],
+      "description": "Explore/catalog lane.",
+      "promoteTo": "all-ui"
+    },
+    "sync": {
+      "lane": "sync",
+      "runLevel": "feature",
+      "specs": ["e2e/tests/sync"],
+      "description": "Sync lane.",
+      "promoteTo": "all-ui"
+    },
+    "all-ui": {
+      "lane": "all-ui",
+      "runLevel": "suite",
+      "specs": ["e2e/tests"],
+      "description": "Broad UI suite. Run only after focused lanes are stable."
+    }
+  },
+  "targets": {
+    "native-health": {
+      "lane": "native-health",
+      "runLevel": "feature",
+      "specs": ["e2e/native/ctl.mjs"],
+      "description": "Native controller health smoke through the native-ctl QA adapter."
+    },
+    "act-026-reader-failures": {
+      "lane": "reader",
+      "runLevel": "feature",
+      "specs": [
+        "e2e/tests/reader/reader-annotations-chrome.spec.ts",
+        "e2e/tests/reader/reader-chrome.spec.ts"
+      ],
+      "description": "Grouped ACT-026 reader failures 3-7 targeted validation.",
+      "promoteTo": "reader-route-matrix"
+    },
+    "reader-route-matrix": {
+      "lane": "reader",
+      "runLevel": "feature",
+      "specs": ["e2e/tests/reader/reader-route-matrix-chrome.spec.ts"],
+      "description": "Reader route and deep-link matrix from baseline section 4.2.",
+      "promoteTo": "reader-sidebar-search-book-menu",
+      "defaultExpectedOutcome": "Reader route behavior should match baseline section 4.2 route/deep-link matrix on web Chromium.",
+      "expectedOutcomes": {
+        "opens query-style reader URL with one book": {
+          "expected": "`/reader?ids=<bookHash>` opens one readable book, renders ReaderContent, one reader grid cell, and the inline question bar."
+        },
+        "opens path-style reader URL with one book": {
+          "expected": "`/reader/<bookHash>` opens one readable book, renders ReaderContent, one reader grid cell, and the inline question bar."
+        },
+        "preserves optional query params on path-style reader URL": {
+          "expected": "`/reader/<bookHash>?<queryParams>` preserves supported query params while still loading the target book."
+        },
+        "opens encoded query multi-book URL and path multi-book URL": {
+          "expected": "Encoded query `%2B` and path `+` multi-book URLs both load two separate reader grid cells without corrupting state."
+        },
+        "opens duplicate encoded query IDs as separate reader cells": {
+          "expected": "Duplicate encoded query IDs load as two separate reader cells while preserving the primary-book model."
+        },
+        "documents current no-id reader route watch item": {
+          "expected": "Baseline watch item: `/reader` with no ids should eventually show a recoverable empty state or Library fallback.",
+          "current": "Current web Chromium behavior still renders no ready reader content for `/reader` with no ids; watch item remains open.",
+          "consistency": "documented-watch-item"
+        }
+      }
+    },
+    "reader-annotations-selection": {
+      "lane": "reader",
+      "runLevel": "feature",
+      "specs": ["e2e/tests/reader/reader-annotations-chrome.spec.ts"],
+      "description": "Initial Reader annotations/selection target; expand into deeper dictionary/Wikipedia/translate/proofread coverage next.",
+      "promoteTo": "reader"
+    },
+    "reader-annotation-actions": {
+      "lane": "reader",
+      "runLevel": "scenario",
+      "specs": ["e2e/tests/reader/reader-annotations-chrome.spec.ts"],
+      "grep": "selects reader iframe text and exposes annotation actions",
+      "description": "ACT-026 failure 3 annotation action strict-locator validation.",
+      "promoteTo": "act-026-reader-failures"
+    },
+    "reader-annotation-note-lifecycle": {
+      "lane": "reader",
+      "runLevel": "scenario",
+      "specs": ["e2e/tests/reader/reader-annotations-chrome.spec.ts"],
+      "grep": "creates, edits, and deletes a note from selected reader text",
+      "description": "Reader note lifecycle from selected text.",
+      "promoteTo": "act-026-reader-failures"
+    },
+    "reader-selection-search": {
+      "lane": "reader",
+      "runLevel": "scenario",
+      "specs": ["e2e/tests/reader/reader-annotations-chrome.spec.ts"],
+      "grep": "selection search action opens sidebar search with selected text",
+      "description": "Selection popup Search action validation.",
+      "promoteTo": "act-026-reader-failures"
+    },
+    "reader-deep-links": {
+      "lane": "reader",
+      "runLevel": "scenario",
+      "specs": ["e2e/tests/reader/reader-chrome.spec.ts"],
+      "grep": "supports captured reader deep links and reload",
+      "description": "ACT-026 failure 4 reader deep-link/reload validation.",
+      "promoteTo": "act-026-reader-failures"
+    },
+    "reader-settings-panels": {
+      "lane": "reader",
+      "runLevel": "scenario",
+      "specs": ["e2e/tests/reader/reader-chrome.spec.ts"],
+      "grep": "reader settings dialog exposes nested panels and menu actions",
+      "description": "ACT-026 failure 5 reader settings panel validation.",
+      "promoteTo": "act-026-reader-failures"
+    },
+    "reader-rsvp": {
+      "lane": "reader",
+      "runLevel": "scenario",
+      "specs": ["e2e/tests/reader/reader-chrome.spec.ts"],
+      "grep": "speed reading start flow opens or is explicitly unavailable",
+      "description": "ACT-026 failure 6 RSVP/start-flow validation.",
+      "promoteTo": "act-026-reader-failures"
+    },
+    "reader-sidebar-search-book-menu": {
+      "lane": "reader",
+      "runLevel": "scenario",
+      "specs": ["e2e/tests/reader/reader-chrome.spec.ts"],
+      "grep": "opens sidebar search and tab controls from reader chrome",
+      "description": "Initial Reader sidebar/search/book-menu target; expand into a dedicated deep spec next.",
+      "promoteTo": "reader-annotations-selection"
+    },
+    "reader-sidebar-controls": {
+      "lane": "reader",
+      "runLevel": "scenario",
+      "specs": ["e2e/tests/reader/reader-chrome.spec.ts"],
+      "grep": "opens sidebar search and tab controls from reader chrome",
+      "description": "ACT-026 failure 7 sidebar search/tab validation.",
+      "promoteTo": "act-026-reader-failures"
+    }
+  }
+}

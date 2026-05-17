@@ -24,6 +24,7 @@ import { useSettingsStore } from './settingsStore';
 import { useBookDataStore } from './bookDataStore';
 import { useLibraryStore } from './libraryStore';
 import { uniqueId } from '@/utils/misc';
+import { getBookIdFromKey } from '@/utils/readerBookKey';
 
 interface ViewState {
   /* Unique key for each book view */
@@ -277,7 +278,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
   getViewSettings: (key: string) => get().viewStates[key]?.viewSettings || null,
   setViewSettings: (key: string, viewSettings: ViewSettings) => {
     if (!key) return;
-    const id = key.split('-')[0]!;
+    const id = getBookIdFromKey(key);
     const bookData = useBookDataStore.getState().booksData[id];
     const viewState = get().viewStates[key];
     if (!viewState || !bookData) return;
@@ -317,7 +318,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
     range: Range,
   ) =>
     set((state) => {
-      const id = key.split('-')[0]!;
+      const id = getBookIdFromKey(key);
       const bookData = useBookDataStore.getState().booksData[id];
       const viewState = state.viewStates[key];
       if (!viewState || !bookData) return state;
@@ -474,7 +475,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
     })),
 
   recreateViewer: (envConfig: EnvConfigType, key: string) => {
-    const id = key.split('-')[0]!;
+    const id = getBookIdFromKey(key);
     get()
       .initViewState(envConfig, id, key, true, true)
       .then(() => {

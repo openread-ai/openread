@@ -13,6 +13,9 @@ export interface DBBook {
   reading_status?: string;
 
   metadata?: Record<string, unknown> | null;
+  storage_path?: string | null;
+  size_bytes?: number | null;
+  catalog_book_id?: string | null;
   sync_version?: number;
   created_at?: string;
   updated_at?: string;

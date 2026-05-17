@@ -65,7 +65,6 @@
           <li>Bookshelf: Added the ability to export original book files directly from the book details dialog</li>
           <li>Bookshelf: Added a new sorting option to organize books by publish date</li>
           <li>Bookshelf: Improved performance for large library with faster and more stable imports</li>
-          <li>OPDS: Improved download reliability by correctly detecting filenames for PDF and CBZ files</li>
           <li>Proofreading: Added support for whole-word replacement to make text corrections more precise</li>
           <li>Notes: Added the ability to export notes using a customizable template</li>
           <li>PDF: Added support for panning within PDF documents for easier navigation</li>
@@ -86,9 +85,6 @@
           <li>Annotations: Enabled quick highlighting when selecting text</li>
           <li>Annotations: Added the ability to edit the text range of existing highlights</li>
           <li>Annotations: Added an annotation navigation bar for easier browsing</li>
-          <li>OPDS: Fixed an issue where CBZ files could not be downloaded from OPDS catalogs</li>
-          <li>OPDS: Improved compatibility with Komga OPDS servers</li>
-          <li>OPDS: Added support for OPDS servers using self-signed SSL certificates</li>
           <li>PDF: Fixed an issue where some PDF files failed to open</li>
           <li>E-ink: Optimized colors and layout for improved e-ink device readability</li>
           <li>Search: Added search term history for quicker repeated searches</li>
@@ -102,9 +98,6 @@
       <description>
         <ul>
           <li>TTS: Resolved an issue where Edge TTS was blocked in certain regions</li>
-          <li>OPDS: Improved compatibility with older versions of Calibre Web</li>
-          <li>OPDS: Added an instant search bar for faster browsing in OPDS catalogs</li>
-          <li>OPDS: Added a curated book catalog from Standard Ebooks</li>
           <li>Bookshelf: Added a “Group Books” action to the context menu</li>
           <li>Comics: Fixed layout issues to improve comic book reading</li>
           <li>Layout: Footnote popups now adapt correctly to different screen sizes</li>
@@ -120,9 +113,6 @@
     <release version="0.9.95" date="2025-12-08">
       <description>
         <ul>
-          <li>OPDS: You can now search, browse, and download ebooks directly from OPDS catalogs</li>
-          <li>OPDS: Improved compatibility with Calibre Web for reliable downloads</li>
-          <li>OPDS: Fixed an issue where book covers from self-hosted Calibre OPDS servers did not display correctly</li>
           <li>Cloud Storage: You can view and delete files stored in your cloud storage directly from the app</li>
           <li>Bookshelf: Added support for importing books from a folder recursively</li>
           <li>Bookshelf: You can now rename your bookshelf groups</li>
@@ -141,7 +131,6 @@
     <release version="0.9.94" date="2025-12-02">
       <description>
         <ul>
-          <li>OPDS: You can now browse and download ebooks directly from OPDS catalogs</li>
           <li>PDF: Added a hand-tool mode that makes navigating PDF pages easier</li>
           <li>Covers: You can now choose a folder to save the latest book cover image</li>
           <li>CJK: Added one-tap conversion between Simplified and Traditional Chinese</li>

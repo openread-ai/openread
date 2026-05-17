@@ -16,9 +16,10 @@ const LIBRARY_TITLE_MATCH = /1-Page Marketing/i;
  * the book link is present (proves IndexedDB is populated), then click it
  * and wait for the inline question bar.
  *
- * IMPORTANT: The dev server MUST be started with NEXT_PUBLIC_APP_PLATFORM=web
- * (via .env.web). Without it, the app uses Tauri download APIs which fail in
- * headless Chromium. Use: `dotenv -e .env.web -e .env.test.local -- next dev`
+ * IMPORTANT: Run through `corepack pnpm test:e2e:*` or the Chromium lane
+ * runner so the dev server starts with NEXT_PUBLIC_APP_PLATFORM=web and
+ * `.env.web`. Otherwise the app uses Tauri download APIs that fail in
+ * headless Chromium.
  */
 export async function navigateToBookReader(
   page: Page,

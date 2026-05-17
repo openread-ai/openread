@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "description": "Settings contract workflow target used by ACT-093 and future platform-by-platform evidence runs.",
+  "aliases": {
+    "settings-contract": "settings"
+  },
+  "lanes": {
+    "settings": {
+      "lane": "settings",
+      "runLevel": "feature",
+      "specs": ["e2e/tests/settings"],
+      "description": "Settings lane.",
+      "promoteTo": "all-ui",
+      "expectedOutcomes": {
+        "billing page renders generic plan and upgrade surfaces": {
+          "scenarioId": "SET-054",
+          "expected": "Billing Settings renders plan, storage, and upgrade surfaces without exposing AI Boost purchase copy."
+        },
+        "settings tab navigation reaches billing and API key surfaces": {
+          "scenarioId": "SET-004",
+          "expected": "Settings tab navigation reaches API Keys and Billing on web, with active tab and URL matching the selected surface."
+        },
+        "API keys page masks existing keys and exposes create flow without creating one": {
+          "scenarioId": "SET-045/SET-046",
+          "expected": "Web API Keys masks raw existing keys, exposes Create API Key, validates description before enabling submit, and cancels without creating a key."
+        }
+      }
+    }
+  },
+  "targets": {}
+}

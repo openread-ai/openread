@@ -16,7 +16,6 @@ export const COMPLETED_PAYMENT_STATUSES: PaymentStatus[] = ['completed', 'succee
 export interface StripeProductMetadata {
   plan: UserPlan;
   feature?: QuotaFeature;
-  storageGB?: string;
   translationChars?: string;
   tokensM?: string;
   customization?: string;

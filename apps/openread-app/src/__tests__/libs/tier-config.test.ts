@@ -113,12 +113,12 @@ describe('tier-config', () => {
     it('should return correct free tier definition', async () => {
       const tier = await getTierDefinition('free');
       expect(tier.display_name).toBe('Free');
-      expect(tier.ai_messages_per_window).toBe(10);
+      expect(tier.ai_messages_per_window).toBe(25);
       expect(tier.ai_window_hours).toBe(24);
-      expect(tier.ai_rate_limit).toBe(2);
-      expect(tier.ai_rate_window_hours).toBe(2);
+      expect(tier.ai_rate_limit).toBe(5);
+      expect(tier.ai_rate_window_hours).toBe(1);
       expect(tier.ai_fallback_model).toBeNull();
-      expect(tier.storage_gb).toBe(0);
+      expect(tier.storage_gb).toBe(1);
       expect(tier.can_tts).toBe(false);
       expect(tier.can_byok).toBe(false);
       expect(tier.library_limit).toBe(10);
@@ -131,7 +131,7 @@ describe('tier-config', () => {
       expect(tier.ai_messages_per_window).toBe(50);
       expect(tier.ai_window_hours).toBe(3);
       expect(tier.ai_fallback_model).toBe('openai/gpt-oss-20b');
-      expect(tier.storage_gb).toBe(5);
+      expect(tier.storage_gb).toBe(10);
       expect(tier.can_tts).toBe(true);
       expect(tier.can_sync).toBe(true);
       expect(tier.can_byok).toBe(true);
@@ -144,7 +144,7 @@ describe('tier-config', () => {
       expect(tier.ai_messages_per_window).toBe(100);
       expect(tier.ai_window_hours).toBe(3);
       expect(tier.ai_fallback_model).toBe('openai/gpt-oss-120b');
-      expect(tier.storage_gb).toBe(10);
+      expect(tier.storage_gb).toBe(50);
       expect(tier.can_translate).toBe(true);
       expect(tier.early_access).toBe(true);
       expect(tier.ai_model_tier).toBe('premium');
@@ -155,7 +155,7 @@ describe('tier-config', () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const tier = await getTierDefinition('unknown' as any);
       expect(tier.display_name).toBe('Free');
-      expect(tier.ai_messages_per_window).toBe(10);
+      expect(tier.ai_messages_per_window).toBe(25);
     });
   });
 
@@ -224,8 +224,8 @@ describe('tier-config', () => {
       expect(config.tiers).toHaveProperty('pro');
       expect(config.ai_budget_ceiling).toBe(12000);
       expect(config.max_agent_steps).toBe(12);
-      expect(config.storage_addons).toHaveLength(4);
-      expect(config.boosts).toHaveLength(3);
+      expect(config.storage_addons).toHaveLength(0);
+      expect(config.boosts).toHaveLength(0);
       expect(config.regional_pricing).toHaveProperty('IN');
       expect(config.regional_pricing).toHaveProperty('BR');
     });
@@ -235,7 +235,7 @@ describe('tier-config', () => {
       expect(config.cost_rates.ai_per_message.free).toBe(0.001);
       expect(config.cost_rates.ai_per_message.reader).toBe(0.002);
       expect(config.cost_rates.ai_per_message.pro).toBe(0.004);
-      expect(config.cost_rates.storage_per_gb_month).toBe(0.000015);
+      expect(config.cost_rates.storage_per_gb_month).toBe(0.015);
       expect(config.cost_rates.infra_fixed_month).toBe(30);
       expect(config.cost_rates.payment_processing_rate).toBe(0.1);
     });

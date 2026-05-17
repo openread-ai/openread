@@ -296,7 +296,7 @@ export function BookDetailSheet({
         tabIndex={-1}
         data-testid='book-detail-sheet'
         className={cn(
-          'fixed z-50 outline-none transition-all duration-300 ease-out',
+          'fixed z-50 flex flex-col overflow-hidden outline-none transition-all duration-300 ease-out',
           // Mobile: bottom sheet
           'bg-base-100 inset-x-0 bottom-0 max-h-[85vh] rounded-t-2xl shadow-xl',
           // Desktop: centered dialog
@@ -324,7 +324,7 @@ export function BookDetailSheet({
         </button>
 
         {/* Scrollable content */}
-        <div className='overflow-y-auto px-6 pb-6 pt-4'>
+        <div className='min-h-0 flex-1 overflow-y-auto px-6 pb-6 pt-4'>
           {/* Cover */}
           <DetailCover book={book} />
 

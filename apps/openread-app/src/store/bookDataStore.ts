@@ -4,6 +4,7 @@ import { Book, BookConfig, BookNote } from '@/types/book';
 import { EnvConfigType } from '@/services/environment';
 import { BookDoc } from '@/libs/document';
 import { useLibraryStore } from './libraryStore';
+import { getBookIdFromKey } from '@/utils/readerBookKey';
 
 interface BookData {
   /* Persistent data shared with different views of the same book */
@@ -63,11 +64,11 @@ export const useBookDataStore = create<BookDataState>((set, get) => ({
     return consumed;
   },
   getBookData: (keyOrId: string) => {
-    const id = keyOrId.split('-')[0]!;
+    const id = getBookIdFromKey(keyOrId);
     return get().booksData[id] || null;
   },
   clearBookData: (keyOrId: string) => {
-    const id = keyOrId.split('-')[0]!;
+    const id = getBookIdFromKey(keyOrId);
     set((state) => {
       const newBooksData = { ...state.booksData };
       delete newBooksData[id];
@@ -78,12 +79,12 @@ export const useBookDataStore = create<BookDataState>((set, get) => ({
   },
   getConfig: (key: string | null) => {
     if (!key) return null;
-    const id = key.split('-')[0]!;
+    const id = getBookIdFromKey(key);
     return get().booksData[id]?.config || null;
   },
   setConfig: (key: string, partialConfig: Partial<BookConfig>) => {
     set((state: BookDataState) => {
-      const id = key.split('-')[0]!;
+      const id = getBookIdFromKey(key);
       const existing = state.booksData[id];
       if (!existing) return state;
       const config = { ...(existing.config || {}), ...partialConfig } as BookConfig;
@@ -106,7 +107,8 @@ export const useBookDataStore = create<BookDataState>((set, get) => ({
   ) => {
     const appService = await envConfig.getAppService();
     const { library, setLibrary } = useLibraryStore.getState();
-    const bookIndex = library.findIndex((b) => b.hash === bookKey.split('-')[0]);
+    const bookId = getBookIdFromKey(bookKey);
+    const bookIndex = library.findIndex((b) => b.hash === bookId);
     if (bookIndex === -1) return;
     const book = {
       ...library[bookIndex]!,
@@ -127,7 +129,7 @@ export const useBookDataStore = create<BookDataState>((set, get) => ({
   updateBooknotes: (key: string, booknotes: BookNote[]) => {
     let updatedConfig: BookConfig | undefined;
     set((state) => {
-      const id = key.split('-')[0]!;
+      const id = getBookIdFromKey(key);
       const book = state.booksData[id];
       if (!book) return state;
       const dedupedBooknotes = Array.from(

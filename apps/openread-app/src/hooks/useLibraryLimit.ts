@@ -15,7 +15,7 @@ import { useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useQuotaStats } from '@/hooks/useQuotaStats';
 import { useLibraryStore } from '@/store/libraryStore';
-import { getFallbackConfig } from '@/lib/tier-config';
+import { getFallbackConfig } from '@/lib/tier-defaults';
 import type { UserPlan } from '@/types/quota';
 
 export interface LibraryLimitInfo {

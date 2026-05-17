@@ -14,11 +14,11 @@ import { useTranslation } from '@/hooks/useTranslation';
 interface UpgradeInlineProps {
   /** The gate message, e.g. "Text-to-Speech is available on Reader." */
   message: string;
-  /** Optional custom CTA text (e.g. "Start Reader — $7.99/mo"). Defaults to "Start Reading" with arrow. */
+  /** Optional custom CTA text (e.g. "Start Reader — $9.99/mo"). Defaults to "Start Reading" with arrow. */
   ctaText?: string;
-  /** Monthly price string (e.g. "$7.99/mo"). Appended to ctaText if ctaText is not provided. */
+  /** Monthly price string (e.g. "$9.99/mo"). Appended to ctaText if ctaText is not provided. */
   price?: string;
-  /** Optional custom link. Defaults to /user/plans. */
+  /** Optional custom link. Defaults to /user#plans. */
   ctaHref?: string;
   /** Optional className for the container. */
   className?: string;
@@ -30,7 +30,7 @@ const UpgradeInline: React.FC<UpgradeInlineProps> = ({
   message,
   ctaText,
   price,
-  ctaHref = '/user/plans',
+  ctaHref = '/user#plans',
   className,
   onDismiss,
 }) => {

@@ -159,7 +159,7 @@ const FootnotePopup: React.FC<FootnotePopupProps> = ({ bookKey, bookDoc }) => {
   const docLinkHandler = async (event: Event) => {
     const detail = (event as CustomEvent).detail;
     // console.log('doc link click', detail);
-    const gridFrame = document.querySelector(`#gridcell-${bookKey}`);
+    const gridFrame = document.getElementById(`gridcell-${bookKey}`);
     if (!gridFrame) return;
     const rect = gridFrame.getBoundingClientRect();
     const viewSettings = getViewSettings(bookKey)!;
@@ -196,7 +196,7 @@ const FootnotePopup: React.FC<FootnotePopupProps> = ({ bookKey, bookDoc }) => {
   // Handle custom footnote popup event from iframe event
   const handleFootnotePopupEvent = (event: CustomEvent) => {
     const { element, footnote } = event.detail;
-    const gridFrame = document.querySelector(`#gridcell-${bookKey}`);
+    const gridFrame = document.getElementById(`gridcell-${bookKey}`);
     if (!gridFrame) return;
     const rect = gridFrame.getBoundingClientRect();
     const viewSettings = getViewSettings(bookKey)!;

@@ -17,7 +17,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { UnlistenFn } from '@tauri-apps/api/event';
 import { tauriHandleClose, tauriHandleOnCloseWindow } from '@/utils/window';
 import { isTauriAppPlatform } from '@/services/environment';
-import { uniqueId } from '@/utils/misc';
+import { createBookKey, getBookIdFromKey } from '@/utils/readerBookKey';
 import { throttle } from '@/utils/throttle';
 import { eventDispatcher } from '@/utils/event';
 import { navigateToLibrary } from '@/utils/nav';
@@ -64,12 +64,12 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
     const pathname = window.location.pathname;
     const bookIds = ids || searchParams?.get('ids') || pathname.split('/reader/')[1] || '';
     const initialIds = bookIds.split(BOOK_IDS_SEPARATOR).filter(Boolean);
-    const initialBookKeys = initialIds.map((id) => `${id}-${uniqueId()}`);
+    const initialBookKeys = initialIds.map((id) => createBookKey(id));
     setBookKeys(initialBookKeys);
     const uniqueIds = new Set<string>();
     logger.info('Initialize books', initialBookKeys);
     initialBookKeys.forEach((key, index) => {
-      const id = key.split('-')[0]!;
+      const id = getBookIdFromKey(key);
       const isPrimary = !uniqueIds.has(id);
       uniqueIds.add(id);
       if (!getViewState(key)) {
@@ -104,7 +104,7 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
   useEffect(() => {
     if (bookKeys && bookKeys.length > 0) {
       const settings = useSettingsStore.getState().settings;
-      const lastOpenBooks = bookKeys.map((key) => key.split('-')[0]!);
+      const lastOpenBooks = bookKeys.map((key) => getBookIdFromKey(key));
       if (settings.lastOpenBooks?.toString() !== lastOpenBooks.toString()) {
         settings.lastOpenBooks = lastOpenBooks;
         saveSettings(envConfig, settings);

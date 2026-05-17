@@ -25,6 +25,13 @@ describe('activityCapture helpers', () => {
       account: 'shared-test-account',
       library: 'seeded-library',
       onboarding: 'skip',
+      qa: null,
+      qaScenarioId: null,
+      qaTitle: null,
+      qaText: null,
+      qaPlan: null,
+      qaCallbackUrl: null,
+      qaSessionUrl: null,
     });
   });
 
@@ -44,6 +51,36 @@ describe('activityCapture helpers', () => {
       account: null,
       library: null,
       onboarding: null,
+      qa: null,
+      qaScenarioId: null,
+      qaTitle: null,
+      qaText: null,
+      qaPlan: null,
+      qaCallbackUrl: null,
+      qaSessionUrl: null,
     });
+  });
+
+  it('accepts only local QA callback and session URLs', () => {
+    expect(
+      parseActivityCaptureTarget(
+        'openread://activity-capture?route=/settings/account&qaCallbackUrl=http%3A%2F%2Flocalhost%3A4321%2Fqa%2FSET-001&qaSessionUrl=http%3A%2F%2F127.0.0.1%3A4321%2Fqa-session%2FSET-001',
+      )?.qaCallbackUrl,
+    ).toBe('http://localhost:4321/qa/SET-001');
+    expect(
+      parseActivityCaptureTarget(
+        'openread://activity-capture?route=/settings/account&qaCallbackUrl=http%3A%2F%2Flocalhost%3A4321%2Fqa%2FSET-001&qaSessionUrl=http%3A%2F%2F127.0.0.1%3A4321%2Fqa-session%2FSET-001',
+      )?.qaSessionUrl,
+    ).toBe('http://127.0.0.1:4321/qa-session/SET-001');
+    expect(
+      parseActivityCaptureTarget(
+        'openread://activity-capture?route=/settings/account&qaCallbackUrl=https%3A%2F%2Fevil.example%2Fqa&qaSessionUrl=https%3A%2F%2Fevil.example%2Fsession',
+      )?.qaCallbackUrl,
+    ).toBeNull();
+    expect(
+      parseActivityCaptureTarget(
+        'openread://activity-capture?route=/settings/account&qaCallbackUrl=https%3A%2F%2Fevil.example%2Fqa&qaSessionUrl=https%3A%2F%2Fevil.example%2Fsession',
+      )?.qaSessionUrl,
+    ).toBeNull();
   });
 });

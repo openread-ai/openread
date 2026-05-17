@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 
-// --- Mock token value that tests can mutate ---
+// --- Mock values that tests can mutate ---
 let mockAuthToken: string | null = null;
+let mockOfflineAiSupported = true;
 
 // Mock dependencies
 vi.mock('@/hooks/useTranslation', () => ({
@@ -90,6 +91,7 @@ vi.mock('@/hooks/useProviderKeys', () => ({
 
 vi.mock('@/services/environment', () => ({
   isMobilePlatform: () => false,
+  isOfflineAiSupportedPlatform: () => mockOfflineAiSupported,
   getAPIBaseUrl: () => 'http://localhost:3000/api',
 }));
 
@@ -143,6 +145,7 @@ describe('AiSection - BYOK UI (free user)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockAuthToken = null;
+    mockOfflineAiSupported = true;
   });
 
   afterEach(() => {
@@ -154,16 +157,16 @@ describe('AiSection - BYOK UI (free user)', () => {
     expect(screen.getByText('Bring Your Own Key')).toBeTruthy();
   });
 
-  it('should show Plus+ badge', () => {
+  it('should show Reader+ badge', () => {
     render(<AiSection />);
-    expect(screen.getByText('Plus+')).toBeTruthy();
+    expect(screen.getByText('Reader+')).toBeTruthy();
   });
 
   it('should show upgrade link for free users (no token)', () => {
     render(<AiSection />);
     // Gate message from tier-gates: "Bring Your Own Key is available on Reader."
     expect(screen.getByText(/Bring Your Own Key is available on Reader/)).toBeTruthy();
-    // CTA shows tier name and price from S4.2 (ctaText: "Start Reader -- $7.99/mo")
+    // CTA shows tier name and price from Gen 3 v3 (ctaText: "Start Reader -- $9.99/mo")
     expect(screen.getByText(/Start Reader/)).toBeTruthy();
   });
 
@@ -172,14 +175,23 @@ describe('AiSection - BYOK UI (free user)', () => {
     expect(screen.getByText('Enable AI Features')).toBeTruthy();
   });
 
-  it('should render the mode selector', () => {
+  it('should render the mode selector when offline AI is supported', () => {
     render(<AiSection />);
     expect(screen.getByText('Online (Cloud)')).toBeTruthy();
     expect(screen.getByText('Offline (Local)')).toBeTruthy();
   });
+
+  it('should hide offline mode when offline AI is unsupported', () => {
+    mockOfflineAiSupported = false;
+
+    render(<AiSection />);
+
+    expect(screen.getByText('Online (Cloud)')).toBeTruthy();
+    expect(screen.queryByText('Offline (Local)')).toBeNull();
+  });
 });
 
-describe('AiSection - BYOK for Plus users', () => {
+describe('AiSection - BYOK for Reader users', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockAuthToken = 'plus-token';
@@ -189,7 +201,7 @@ describe('AiSection - BYOK for Plus users', () => {
     cleanup();
   });
 
-  it('should show provider dropdown for Plus users', () => {
+  it('should show provider dropdown for Reader users', () => {
     render(<AiSection />);
     const selectButton = screen.getByLabelText('Select provider');
     expect(selectButton).toBeTruthy();
@@ -259,10 +271,10 @@ describe('AiSection - BYOK for Plus users', () => {
     });
   });
 
-  it('should not show upgrade link for Plus users', () => {
+  it('should not show upgrade link for Reader users', () => {
     render(<AiSection />);
     expect(screen.queryByText(/Bring Your Own Key is available on Reader/)).toBeNull();
-    // Plus users see the provider dropdown, not upgrade CTA
+    // Reader users see the provider dropdown, not upgrade CTA
     expect(screen.queryByText(/Start Reader/)).toBeNull();
   });
 });

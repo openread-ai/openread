@@ -133,6 +133,7 @@ const TextEditor = forwardRef<TextEditorRef, TextEditorProps>(
         onBlur={onBlur}
         onKeyDown={handleKeyDown}
         placeholder={placeholder || ''}
+        aria-label={placeholder || undefined}
       />
     );
   },

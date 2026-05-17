@@ -19,6 +19,7 @@ import { expect, type Locator } from '@playwright/test';
 import { BasePage } from './BasePage';
 
 const BOOK_LINK_SELECTOR = 'a[href*="/reader?ids="]';
+const DISPOSABLE_IMPORT_TITLE = 'openread-e2e-upload';
 
 export class LibraryPage extends BasePage {
   async goto(): Promise<void> {
@@ -44,7 +45,20 @@ export class LibraryPage extends BasePage {
     await expect(this.firstBookLink()).toBeVisible({ timeout });
   }
 
+  async firstReadableBookLink(): Promise<Locator> {
+    const links = this.page.locator(BOOK_LINK_SELECTOR);
+    const count = await links.count();
+
+    for (let index = 0; index < count; index += 1) {
+      const link = links.nth(index);
+      const label = (await link.getAttribute('aria-label')) ?? '';
+      if (!label.includes(DISPOSABLE_IMPORT_TITLE)) return link;
+    }
+
+    throw new Error('No readable library book link found');
+  }
+
   async clickFirstBook(): Promise<void> {
-    await this.firstBookLink().click();
+    await (await this.firstReadableBookLink()).click();
   }
 }

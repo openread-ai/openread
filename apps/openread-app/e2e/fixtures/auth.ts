@@ -16,12 +16,42 @@ import { TEST_USER, SUPABASE_CONFIG, getSupabaseProjectRef } from './test-users'
  */
 
 const SUPABASE_STORAGE_KEY = `sb-${getSupabaseProjectRef()}-auth-token`;
+const SESSION_REFRESH_MARGIN_MS = 5 * 60 * 1000;
 
-// Sign in for each Playwright context. The app calls Supabase refreshSession()
-// on mount, which can rotate the refresh token stored under the sb-* key. If a
-// later test reused the original cached refresh token, AuthContext could treat
-// it as invalid and redirect that fresh context back to /auth.
+let cachedSession: Session | null = null;
+let inFlightSession: Promise<Session> | null = null;
+
+function sessionExpiresAtMs(session: Session): number {
+  return Number(session.expires_at ?? 0) * 1000;
+}
+
+function isSessionFresh(session: Session): boolean {
+  const expiresAt = sessionExpiresAtMs(session);
+  return Boolean(
+    session.access_token &&
+    session.refresh_token &&
+    expiresAt > Date.now() + SESSION_REFRESH_MARGIN_MS,
+  );
+}
+
+// Cache the current Supabase session between serial Playwright tests. The app
+// refreshes and rotates the token on mount, so the fixture captures the updated
+// sb-* value after each test and injects that latest token into the next fresh
+// browser context instead of calling signInWithPassword dozens of times.
 export async function getTestSession(): Promise<Session> {
+  if (cachedSession && isSessionFresh(cachedSession)) return cachedSession;
+  if (inFlightSession) return inFlightSession;
+
+  inFlightSession = signInTestUser();
+  try {
+    cachedSession = await inFlightSession;
+    return cachedSession;
+  } finally {
+    inFlightSession = null;
+  }
+}
+
+async function signInTestUser(): Promise<Session> {
   const supabase = createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey, {
     auth: {
       persistSession: false,
@@ -47,6 +77,20 @@ export async function getTestSession(): Promise<Session> {
   return data.session;
 }
 
+export async function captureSession(page: Page): Promise<void> {
+  try {
+    const session = await page.evaluate((supabaseStorageKey) => {
+      const rawSession = localStorage.getItem(supabaseStorageKey);
+      if (!rawSession) return null;
+      return JSON.parse(rawSession) as Session;
+    }, SUPABASE_STORAGE_KEY);
+
+    if (session && isSessionFresh(session)) cachedSession = session;
+  } catch {
+    // Ignore teardown races after failed tests; the next test can sign in again.
+  }
+}
+
 export async function injectSession(page: Page, session: Session): Promise<void> {
   await page.addInitScript(
     ({ session, supabaseStorageKey }) => {
@@ -67,9 +111,11 @@ export async function injectSession(page: Page, session: Session): Promise<void>
         localStorage.setItem(supabaseStorageKey, JSON.stringify(session));
       }
 
-      // Skip welcome + onboarding dialogs — they block clicks in tests.
+      // Skip welcome/onboarding/sample import flows — they block clicks or add
+      // background mutations/noise that are covered by unit tests separately.
       localStorage.setItem('has_seen_welcome', 'true');
       localStorage.setItem('openread_onboarding_completed', new Date().toISOString());
+      localStorage.setItem('sample_book_attempted', new Date().toISOString());
     },
     { session, supabaseStorageKey: SUPABASE_STORAGE_KEY },
   );
@@ -109,7 +155,11 @@ export const test = base.extend<{ authenticatedPage: Page }>({
     const session = await getTestSession();
     await injectSession(page, session);
     await proxyR2Downloads(page);
-    await use(page);
+    try {
+      await use(page);
+    } finally {
+      await captureSession(page);
+    }
   },
 });
 

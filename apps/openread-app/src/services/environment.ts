@@ -11,6 +11,14 @@ export const isTauriAppPlatform = () => process.env['NEXT_PUBLIC_APP_PLATFORM'] 
 export const isWebAppPlatform = () => process.env['NEXT_PUBLIC_APP_PLATFORM'] === 'web';
 export const hasCli = () => window.__OPENREAD_CLI_ACCESS === true;
 export const isPWA = () => window.matchMedia('(display-mode: standalone)').matches;
+export const isMobileWebPlatform = () => {
+  if (!isWebAppPlatform() || typeof navigator === 'undefined') return false;
+
+  const userAgent = navigator.userAgent.toLowerCase();
+  const isiPadDesktopMode = userAgent.includes('macintosh') && navigator.maxTouchPoints > 1;
+  return /android|iphone|ipad|ipod|mobile/.test(userAgent) || isiPadDesktopMode;
+};
+export const isOfflineAiSupportedPlatform = () => !isMobilePlatform() && !isMobileWebPlatform();
 export const getBaseUrl = () =>
   process.env['NEXT_PUBLIC_API_BASE_URL'] ||
   (process.env['NEXT_PUBLIC_VERCEL_URL']

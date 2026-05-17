@@ -69,7 +69,7 @@ import {
   makeSafeFilename,
 } from '@/utils/misc';
 import { deserializeConfig, serializeConfig } from '@/utils/serializer';
-import { deleteFile } from '@/libs/storage';
+import { deleteFile, downloadFile } from '@/libs/storage';
 import { ClosableFile } from '@/utils/file';
 import { ProgressHandler } from '@/utils/transfer';
 import { TxtToEpubConverter } from '@/utils/txt';
@@ -83,6 +83,8 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { createLogger } from '@/utils/logger';
 import { CloudSyncService } from './cloudSync';
 import { LibraryPersistence } from './libraryPersistence';
+import { fetchWithAuth } from '@/utils/fetch';
+import { getAPIBaseUrl } from '@/services/environment';
 
 const logger = createLogger('appService');
 
@@ -593,6 +595,31 @@ export abstract class BaseAppService implements AppService {
     return this.cloudSync.downloadBook(book, this, onlyCover, redownload, onProgress);
   }
 
+  private async downloadStorageBackedBook(book: Book): Promise<void> {
+    if (!book.storagePath) throw new Error(BOOK_FILE_NOT_FOUND_ERROR);
+
+    const response = await fetchWithAuth(`${getAPIBaseUrl()}/catalog-books/download-url`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bookHash: book.hash }),
+    });
+    const data = (await response.json()) as { downloadUrl?: string };
+    if (!data.downloadUrl) throw new Error('No download URL available');
+
+    const localPath = getLocalBookFilename(book);
+    if (!(await this.fs.exists(getDir(book), 'Books'))) {
+      await this.fs.createDir(getDir(book), 'Books');
+    }
+
+    await downloadFile({
+      appService: this,
+      dst: `${this.localBooksDir}/${localPath}`,
+      cfp: book.storagePath,
+      url: data.downloadUrl,
+    });
+    book.downloadedAt = Date.now();
+  }
+
   async exportBook(book: Book): Promise<boolean> {
     const { file } = await this.loadBookContent(book);
     const content = await file.arrayBuffer();
@@ -631,6 +658,9 @@ export abstract class BaseAppService implements AppService {
     let file: File;
     const fp = getLocalBookFilename(book);
     if (await this.fs.exists(fp, 'Books')) {
+      file = await this.fs.openFile(fp, 'Books');
+    } else if (book.storagePath) {
+      await this.downloadStorageBackedBook(book);
       file = await this.fs.openFile(fp, 'Books');
     } else if (book.url) {
       file = await this.fs.openFile(book.url, 'None');

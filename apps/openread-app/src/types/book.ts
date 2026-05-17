@@ -47,6 +47,8 @@ export interface Book extends BookCore {
 
   /** Catalog book ID if imported from the free catalog. Null/undefined for user uploads. */
   catalogBookId?: string | null;
+  /** R2 object key for storage-backed catalog imports. */
+  storagePath?: string | null;
 
   metadata?: BookMetadata;
 }

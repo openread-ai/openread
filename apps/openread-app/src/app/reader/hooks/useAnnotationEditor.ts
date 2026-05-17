@@ -6,6 +6,7 @@ import { useReaderStore } from '@/store/readerStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { createLogger } from '@/utils/logger';
+import { getBookIdFromKey } from '@/utils/readerBookKey';
 
 const logger = createLogger('annotation-editor');
 
@@ -38,7 +39,7 @@ export const useAnnotationEditor = ({
 
   const getHandlePositionsFromRange = useCallback(
     (range: Range, isVertical: boolean): HandlePositions | null => {
-      const gridFrame = document.querySelector(`#gridcell-${bookKey}`);
+      const gridFrame = document.getElementById(`gridcell-${bookKey}`);
       if (!gridFrame) return null;
 
       const rects = Array.from(range.getClientRects());
@@ -158,7 +159,7 @@ export const useAnnotationEditor = ({
             updatedAt: Date.now(),
           };
 
-          const views = getViewsById(bookKey.split('-')[0]!);
+          const views = getViewsById(getBookIdFromKey(bookKey));
           views.forEach((v) => v?.addAnnotation(editingAnnotationRef.current, true));
           views.forEach((v) => v?.addAnnotation(updatedAnnotation));
           editingAnnotationRef.current = updatedAnnotation;

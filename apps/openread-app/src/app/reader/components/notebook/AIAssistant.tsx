@@ -24,6 +24,7 @@ import { createAgenticAdapter } from '@/services/ai';
 import type { AISettings, AIMessage } from '@/services/ai/types';
 import { useBookChapters } from '@/app/reader/hooks/useBookChapters';
 import { Thread } from '@/components/assistant/Thread';
+import { getBookIdFromKey } from '@/utils/readerBookKey';
 
 // Helper function to convert AIMessage array to ExportedMessageRepository format
 // Each message needs to be wrapped with { message, parentId } structure
@@ -388,7 +389,7 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
   const bookData = getBookData(bookKey);
   const progress = getProgress(bookKey);
 
-  const bookHash = bookData?.book?.platformHash || bookKey.split('-')[0] || '';
+  const bookHash = bookData?.book?.platformHash || getBookIdFromKey(bookKey);
   const bookTitle = bookData?.book?.title || 'Unknown';
   const authorName = bookData?.book?.author || '';
   const bookFormat = bookData?.book?.format;

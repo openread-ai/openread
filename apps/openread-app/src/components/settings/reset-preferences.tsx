@@ -81,7 +81,11 @@ export function ResetPreferences() {
           <p className='text-base-content/60 mb-4 text-sm'>
             {_('Reset all preferences to their default values. This cannot be undone.')}
           </p>
-          <Button variant='outline' onClick={() => setShowDialog(true)}>
+          <Button
+            variant='outline'
+            data-testid='reset-preferences-button'
+            onClick={() => setShowDialog(true)}
+          >
             <RotateCcw className='mr-2 h-4 w-4' aria-hidden='true' />
             {_('Reset to Defaults')}
           </Button>

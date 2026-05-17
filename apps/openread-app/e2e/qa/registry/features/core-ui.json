@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "description": "Stable reusable UI feature lanes shared by QA platform-run and matrix-run workflows.",
+  "aliases": {
+    "chromium-smoke": "smoke",
+    "chromium-library": "library",
+    "chromium-reader": "reader",
+    "chromium-catalog": "catalog",
+    "chromium-sync": "sync",
+    "chromium-all-ui": "all-ui"
+  },
+  "lanes": {
+    "smoke": {
+      "lane": "smoke",
+      "runLevel": "feature",
+      "specs": ["e2e/tests/ui/auth.spec.ts", "e2e/tests/ui/open-book.spec.ts"],
+      "description": "Small auth/open-book smoke path.",
+      "promoteTo": "reader"
+    },
+    "library": {
+      "lane": "library",
+      "runLevel": "feature",
+      "specs": ["e2e/tests/library"],
+      "description": "Library lane.",
+      "promoteTo": "all-ui"
+    },
+    "reader": {
+      "lane": "reader",
+      "runLevel": "feature",
+      "specs": ["e2e/tests/reader"],
+      "description": "Reader lane.",
+      "promoteTo": "all-ui"
+    },
+    "catalog": {
+      "lane": "catalog",
+      "runLevel": "feature",
+      "specs": ["e2e/tests/catalog"],
+      "description": "Explore/catalog lane.",
+      "promoteTo": "all-ui"
+    },
+    "sync": {
+      "lane": "sync",
+      "runLevel": "feature",
+      "specs": ["e2e/tests/sync"],
+      "description": "Sync lane.",
+      "promoteTo": "all-ui"
+    },
+    "all-ui": {
+      "lane": "all-ui",
+      "runLevel": "suite",
+      "specs": ["e2e/tests"],
+      "description": "Broad UI suite. Run only after focused lanes are stable."
+    }
+  },
+  "targets": {}
+}

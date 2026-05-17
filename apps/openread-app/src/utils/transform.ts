@@ -103,6 +103,8 @@ export const transformBookToDB = (book: unknown, userId: string): DBBook => {
     updatedAt,
     deletedAt,
     uploadedAt,
+    storagePath,
+    catalogBookId,
   } = book as Book;
 
   return {
@@ -119,6 +121,8 @@ export const transformBookToDB = (book: unknown, userId: string): DBBook => {
     reading_status: readingStatus,
     source_title: sanitizeString(sourceTitle),
     metadata: metadata ? (metadata as unknown as Record<string, unknown>) : null,
+    storage_path: storagePath ?? null,
+    catalog_book_id: catalogBookId ?? null,
     created_at: new Date(createdAt ?? Date.now()).toISOString(),
     updated_at: new Date(updatedAt ?? Date.now()).toISOString(),
     deleted_at: deletedAt ? new Date(deletedAt).toISOString() : null,
@@ -140,6 +144,8 @@ export const transformBookFromDB = (dbBook: DBBook): Book => {
     reading_status,
     source_title,
     metadata,
+    storage_path,
+    catalog_book_id,
     created_at,
     updated_at,
     deleted_at,
@@ -163,6 +169,8 @@ export const transformBookFromDB = (dbBook: DBBook): Book => {
       typeof metadata === 'string'
         ? safeJsonParse<BookMetadata>(metadata, 'metadata')
         : ((metadata as BookMetadata | undefined) ?? undefined),
+    storagePath: storage_path ?? null,
+    catalogBookId: catalog_book_id ?? null,
     createdAt: created_at ? new Date(created_at).getTime() : fallbackMs,
     updatedAt: updated_at ? new Date(updated_at).getTime() : fallbackMs,
     deletedAt: deleted_at ? new Date(deleted_at).getTime() : null,

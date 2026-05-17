@@ -66,6 +66,9 @@ const activityLogDatabaseId =
   process.env.OPENREAD_NOTION_ACTIVITY_LOG_DATABASE ??
   notionConfig?.activityLogDatabaseId;
 const dryRun = args.write !== true;
+const activityTemplate = String(
+  args.template ?? args.activityTemplate ?? activityMetadata?.template ?? 'activity',
+).toLowerCase();
 
 if (!existsSync(activityDir)) {
   fail(`Activity artifact directory does not exist: ${activityDir}`);
@@ -142,6 +145,7 @@ const activityPage = await upsertActivityPage({
   git,
   syncedAt,
   activityMetadata,
+  template: activityTemplate,
 });
 
 const shouldWriteEvent = args.noEvent !== true;
@@ -170,6 +174,7 @@ const response = shouldWriteEvent
       syncedAt,
       syncSequence,
       agentSummary,
+      template: activityTemplate,
     })
   : { id: null };
 
@@ -461,6 +466,7 @@ async function upsertActivityPage({
   git,
   syncedAt,
   activityMetadata,
+  template,
 }) {
   const existing = await findActivityPage({ notionToken, databaseId, activityId });
   const latest = latestAttemptSummary(attempts);
@@ -485,6 +491,7 @@ async function upsertActivityPage({
       method: 'PATCH',
       body: { properties },
     });
+    await ensureActivityEvidenceTemplateSections({ notionToken, pageId: page.id, template });
     return { ...page, ...titleState };
   }
 
@@ -502,9 +509,11 @@ async function upsertActivityPage({
         attempts,
         git,
         syncedAt,
+        template,
       }),
     },
   });
+  await ensureActivityEvidenceTemplateSections({ notionToken, pageId: page.id, template });
   return { ...page, ...titleState };
 }
 
@@ -515,7 +524,18 @@ function activityPageTemplateBlocks({
   attempts,
   git,
   syncedAt,
+  template,
 }) {
+  if (isQaRunTemplate(template)) {
+    return qaRunActivityPageTemplateBlocks({
+      activityId,
+      activityUuid,
+      activityMetadata,
+      git,
+      syncedAt,
+    });
+  }
+
   return [
     timelineToggleBlock('Activity created by Openread activity workflow sync.'),
     sectionToggleBlock('Intake', [
@@ -525,6 +545,7 @@ function activityPageTemplateBlocks({
       paragraph('Approved design, product, or current-state source references are recorded here.'),
     ]),
     sectionToggleBlock('Test Case Planning', [
+      ...manualQaCoverageTemplateBlocks(),
       ...testSectionBlocks({ attempts, git, syncSequence: 'initial' }),
     ]),
     sectionToggleBlock(
@@ -552,7 +573,13 @@ function activityPageTemplateBlocks({
       paragraph(
         'Validation evidence, screenshots, test results, and verdict inputs are attached here.',
       ),
+      sectionToggleBlock('QA Run Tracker', qaRunTrackerTemplateBlocks()),
+      sectionToggleBlock('QA Coverage Tree', qaCoverageTreeTemplateBlocks()),
+      ...chromiumEvidenceTemplateBlocks(),
     ]),
+    sectionToggleBlock('Screenshot Evidence', screenshotEvidenceTemplateBlocks()),
+    sectionToggleBlock('Video Evidence', videoEvidenceTemplateBlocks()),
+    sectionToggleBlock('Trace Evidence', traceEvidenceTemplateBlocks()),
     sectionToggleBlock('Validation Verdict', [
       paragraph('Final validation verdict and reviewer decision are recorded here.'),
     ]),
@@ -572,6 +599,7 @@ function activityPageTemplateBlocks({
       paragraph(
         'Canonical per-attempt artifact index: local paths, uploaded files, and Notion block IDs.',
       ),
+      ...artifactLedgerTemplateBlocks(),
     ]),
     sectionToggleBlock('Stage History', [
       paragraph('Stage transitions are tracked in Activity Timeline and Activity Events.'),
@@ -584,6 +612,366 @@ function activityPageTemplateBlocks({
     sectionToggleBlock('Decisions', [
       paragraph('Decisions and blockers are summarized in Activity Timeline entries.'),
     ]),
+  ];
+}
+
+function qaRunActivityPageTemplateBlocks({
+  activityId,
+  activityUuid,
+  activityMetadata,
+  git,
+  syncedAt,
+}) {
+  return [
+    sectionToggleBlock(
+      'Run Summary',
+      [
+        paragraph('Suite status and platform totals live here.'),
+        bulleted(`Activity ID: ${activityId}`),
+        activityUuid ? bulleted(`Activity UUID: ${activityUuid}`) : null,
+        activityMetadata?.title ? bulleted(`Scope: ${oneLine(activityMetadata.title)}`) : null,
+        git?.branch ? bulleted(`Branch: ${git.branch}`) : null,
+        git?.head ? bulleted(`Commit: ${git.head}`) : null,
+        syncedAt ? bulleted(`Created: ${formatActivityTimestamp(syncedAt)}`) : null,
+        bulleted('Platform totals are appended under Platforms → Chromium.'),
+      ].filter(Boolean),
+    ),
+    sectionToggleBlock('Chromium', [
+      paragraph('Feature → test → Evidence. Each test keeps its own status and artifacts.'),
+    ]),
+    sectionToggleBlock('Raw Artifacts', [
+      paragraph('lane-result.json, stdout.log, and stderr.log for the run.'),
+    ]),
+  ];
+}
+
+function isQaRunTemplate(template) {
+  return ['qa-run', 'qa', 'testing', 'e2e'].includes(String(template ?? '').toLowerCase());
+}
+
+async function ensureActivityEvidenceTemplateSections({ notionToken, pageId, template }) {
+  if (isQaRunTemplate(template)) return;
+
+  await ensureActivityQaCoverageTree({ notionToken, pageId });
+
+  const sections = [
+    ['Screenshot Evidence', screenshotEvidenceTemplateBlocks()],
+    ['Video Evidence', videoEvidenceTemplateBlocks()],
+    ['Trace Evidence', traceEvidenceTemplateBlocks()],
+  ];
+
+  for (const [title, children] of sections) {
+    const existing = await findSectionBlockId({ notionToken, pageId, section: title });
+    if (existing) continue;
+    await notionRequest({
+      notionToken,
+      path: `/v1/blocks/${pageId}/children`,
+      method: 'PATCH',
+      body: { children: [sectionToggleBlock(title, children)] },
+    });
+  }
+}
+
+async function ensureActivityQaCoverageTree({ notionToken, pageId }) {
+  const validationResultsId = await findOrCreateSectionBlockId({
+    notionToken,
+    pageId,
+    section: 'Validation Results',
+  });
+  await findOrCreateSectionBlock({
+    notionToken,
+    pageId: validationResultsId,
+    section: 'QA Run Tracker',
+    children: qaRunTrackerTemplateBlocks(),
+  });
+  const root = await findOrCreateSectionBlock({
+    notionToken,
+    pageId: validationResultsId,
+    section: 'QA Coverage Tree',
+    children: qaCoverageTreeTemplateBlocks(),
+  });
+
+  for (const node of qaCoverageTreeNodes()) {
+    await ensureQaCoverageNode({ notionToken, parentId: root.id, node });
+  }
+}
+
+async function ensureQaCoverageNode({ notionToken, parentId, node }) {
+  const section = await findOrCreateSectionBlock({
+    notionToken,
+    pageId: parentId,
+    section: node.title,
+    children: node.description,
+  });
+
+  for (const child of node.children ?? []) {
+    await ensureQaCoverageNode({ notionToken, parentId: section.id, node: child });
+  }
+}
+
+function manualQaCoverageTemplateBlocks() {
+  return [
+    paragraph(
+      'Manual QA baseline: docs/testing/manual-qa-checklist.md. Map every scoped scenario to Chromium automated, manual-only, native-lane later, deferred tier/config, or not-applicable before validation starts.',
+    ),
+    bulleted(
+      'Chromium-first lanes: library, reader, settings, and Explore/catalog should stabilize selectors and non-destructive flows before expanding to WebKit, Edge, mobile web, Tauri, or native.',
+    ),
+    bulleted(
+      'Deferred assertions: do not encode exact Free/Reader/Pro numeric limits, pricing, fallback models, or storage quotas in Playwright until the product source of truth is confirmed.',
+    ),
+  ];
+}
+
+function qaRunTrackerTemplateBlocks() {
+  return [
+    paragraph(
+      'Lightweight scenario-level tracker. Each Playwright scenario appends one compact status row after it finishes. Reusing the same run ID lets the runner identify already completed scenarios from Notion.',
+    ),
+    bulleted(
+      'Rows are intentionally short: event, runId, lane, feature, case, scenario, status, duration, and artifact counts.',
+    ),
+  ];
+}
+
+function qaCoverageTreeTemplateBlocks() {
+  return [
+    paragraph(
+      'Canonical QA evidence index for this Activity. Keep lifecycle status in Activity Log properties, append-only progress in Activity Timeline / Activity Events, and detailed Playwright evidence under the platform → feature → manual case tree below.',
+    ),
+    bulleted(
+      'Preferred nesting: Platform → Feature → manual checklist case/subfeature → scenario or option path → evidence attachments.',
+    ),
+    bulleted(
+      'Lane uploads append logs, screenshots, videos, and traces under each feature’s Evidence attachments section; manual-only/native-only gaps stay visible at the scenario level.',
+    ),
+  ];
+}
+
+function qaCoverageTreeNodes() {
+  return [
+    {
+      title: 'Platform: Web - Chromium',
+      description: [
+        paragraph(
+          'Primary Chromium-first browser lane. Stabilize selectors and non-destructive flows here before promotion to WebKit, Edge, mobile web, Tauri, or native lanes.',
+        ),
+      ],
+      children: [
+        qaFeatureNode(
+          'Feature: Smoke - auth and open book',
+          [
+            'Checklist coverage: auth/session shell, library load, open-book reader smoke.',
+            'Automation: chromium-smoke lane with auth/open-book specs.',
+          ],
+          [
+            qaManualCaseNode('Manual case 2: Auth and library', [
+              'Option paths: authenticated shell, library load, first book opens reader.',
+              'Automation status: Chromium smoke covers the smallest cross-feature confidence path.',
+            ]),
+          ],
+        ),
+        qaFeatureNode(
+          'Feature: Library',
+          [
+            'Checklist coverage: library shell, book cards, search, sort/group/filter routes, import/open reader.',
+            'Automation: chromium-library lane; delete/remove flow intentionally excluded.',
+          ],
+          [
+            qaManualCaseNode('Manual case 2: Auth and library', [
+              'Option paths: library controls, search, sort/group, filter routes, file import, disposable TXT upload/open reader.',
+              'Automation status: Chromium covers non-destructive library and import/open-reader flows; delete/remove remains intentionally excluded.',
+            ]),
+          ],
+        ),
+        qaFeatureNode(
+          'Feature: Reader',
+          [
+            'Checklist coverage: reader routes, header, view options, settings panels, footer, sidebar, notebook, annotation popup, and context-menu-adjacent web behavior.',
+            'Automation: chromium-reader lane with reader chrome and annotation specs.',
+          ],
+          [
+            qaManualCaseNode('Manual case 3: Reader routes, deep links, and render', [
+              'Option paths: library → reader, reload, /reader?ids=<bookId>, /reader/<bookId>, multi-book deep links, invalid deep links.',
+              'Automation status: Chromium covers captured link, reload, and path deep-link smoke; multi-book/invalid variants remain manual or next slice.',
+            ]),
+            qaManualCaseNode('Manual case 4: Header and top-menu controls', [
+              'Option paths: bookmark toggle/restore, translation control, font/settings entry, notebook, View Options, close/back behavior.',
+              'Automation status: Chromium covers bookmark restore and visible header control inventory.',
+            ]),
+            qaManualCaseNode('Manual case 5: View Options and reader modes', [
+              'Option paths: scrolled mode, paragraph mode, theme mode, invert images, speed reading dialog, sync status menu item.',
+              'Automation status: Chromium covers safe toggles/start dialogs without destructive state changes.',
+            ]),
+            qaManualCaseNode('Manual case 5a: Settings dialog nested panels', [
+              'Option paths: Font, Layout, Color, Behavior, Language, Custom, settings menu, reset/global actions.',
+              'Automation status: Chromium covers panel reachability; exhaustive value sweeps remain manual/next slice.',
+            ]),
+            qaManualCaseNode('Manual case 6: Footer and reading controls', [
+              'Option paths: previous/next page, previous/next section, jump to location, progress slider, TTS controls.',
+              'Automation status: Chromium covers visible navigation/progress controls; real TTS start/stop remains mocked/manual.',
+            ]),
+            qaManualCaseNode('Manual case 9: Sidebar, book menu, search, and notebook', [
+              'Option paths: TOC, annotations tab, bookmarks tab, Book Menu actions, search options, notebook Notes/AI tabs.',
+              'Automation status: Chromium covers menu/search/tab inventory and safe navigation activation.',
+            ]),
+            qaManualCaseNode('Manual case 10: Selection popup and annotations', [
+              'Option paths: Copy, Highlight, Annotate, Search, Dictionary, Wikipedia, Translate, Speak, Proofread, note create/edit/delete.',
+              'Automation status: Chromium covers web selection popup inventory, selection-to-search, and note lifecycle; native/right-click/PDF menus remain manual/deferred.',
+            ]),
+          ],
+        ),
+        qaFeatureNode(
+          'Feature: Settings - billing and API keys',
+          [
+            'Checklist coverage: billing page load, generic upgrade surfaces, settings tab navigation, API-key dialog state.',
+            'Automation: chromium-settings lane; exact tier/quota/pricing assertions remain deferred.',
+          ],
+          [
+            qaManualCaseNode('Manual case 12: Quota and billing', [
+              'Option paths: billing page, generic upgrade surfaces, API-key create dialog state, masked key list behavior.',
+              'Automation status: Chromium covers generic UI and dialog state; exact Free/Reader/Pro numeric assertions remain deferred.',
+            ]),
+            qaManualCaseNode('Manual case 18: Paid-tier behavior addendum', [
+              'Option paths: tier-specific copy, quotas, pricing, fallback model limits, storage limits.',
+              'Automation status: exact tier/config Playwright assertions remain out of scope until product source of truth is confirmed.',
+            ]),
+          ],
+        ),
+        qaFeatureNode(
+          'Feature: Explore catalog',
+          [
+            'Checklist coverage: Explore as primary catalog route, category/search controls, detail sheet, import failure handling.',
+            'Automation: chromium-catalog lane; first-party OPDS surface removed from current QA scope.',
+          ],
+          [
+            qaManualCaseNode('Manual case 14: Catalog and imports', [
+              'Option paths: Explore sidebar/nav entry, direct load, category controls, search, detail sheet, mocked import failure.',
+              'Automation status: Chromium covers Explore catalog discovery and non-destructive mocked import surfaces; real import/open-reader remains fixture-dependent.',
+            ]),
+          ],
+        ),
+        qaFeatureNode(
+          'Feature: Sync - mocked offline resilience',
+          [
+            'Checklist coverage: mocked sync endpoint behavior, non-blocking sync failure surfaces, reader sync action wiring.',
+            'Automation: chromium-sync lane; live cross-device/offline conflicts remain dedicated future coverage.',
+          ],
+          [
+            qaManualCaseNode('Manual case 13: Sync and offline', [
+              'Option paths: mocked sync failure, non-blocking library shell, reader sync action against mocked endpoint.',
+              'Automation status: Chromium mock lane covers resilience smoke; live cross-device/offline/conflict coverage remains future work.',
+            ]),
+          ],
+        ),
+        qaFeatureNode(
+          'Feature: All Chromium UI regression',
+          [
+            'Checklist coverage: aggregate Chromium UI regression run when needed.',
+            'Automation: chromium-all-ui lane; use after focused lanes are stable.',
+          ],
+          [
+            qaManualCaseNode('Manual case 16: Accessibility and UX', [
+              'Option paths: broad focusability, visible labels, modal escape behavior, reduced-width smoke.',
+              'Automation status: covered opportunistically by focused Chromium specs; broader accessibility sweep remains incremental.',
+            ]),
+          ],
+        ),
+      ],
+    },
+    {
+      title: 'Platform: Future browser and native lanes',
+      description: [
+        paragraph(
+          'Promotion targets after Chromium stabilization. Keep these as placeholders until each platform has explicit evidence.',
+        ),
+        bulleted(
+          'Future platforms: WebKit, Edge, mobile Chromium, mobile WebKit, Tauri desktop, iOS native, Android native.',
+        ),
+      ],
+    },
+  ];
+}
+
+function qaFeatureNode(title, bullets, children = []) {
+  return {
+    title,
+    description: bullets.map((text) => bulleted(text)),
+    children: [...children, evidenceAttachmentsNode()],
+  };
+}
+
+function qaManualCaseNode(title, bullets) {
+  return {
+    title,
+    description: bullets.map((text) => bulleted(text)),
+    children: [evidenceAttachmentsNode()],
+  };
+}
+
+function evidenceAttachmentsNode() {
+  return {
+    title: 'Evidence attachments',
+    description: [
+      paragraph(
+        'Lane runner uploads append here by lane and artifact type: logs/result, screenshots, videos, and traces.',
+      ),
+    ],
+  };
+}
+
+function chromiumEvidenceTemplateBlocks() {
+  return [
+    bulleted(
+      'Attach Chromium lane evidence to the QA Coverage Tree by platform, feature, manual case/subfeature, scenario/option path, and artifact type.',
+    ),
+    bulleted(
+      'Lane logs/results, screenshots, videos, and traces should live under each feature’s Evidence attachments section; legacy top-level evidence toggles remain for rollups/backward compatibility.',
+    ),
+    bulleted(
+      'Record the lane command, specs, pass/fail verdict, skipped coverage, and any manual-only/native-only checklist items that remain.',
+    ),
+  ];
+}
+
+function screenshotEvidenceTemplateBlocks() {
+  return [
+    paragraph(
+      'All Playwright screenshot evidence for this Activity is attached here by lane. The Chromium lane runner records screenshots for every test when OPENREAD_PLAYWRIGHT_SCREENSHOT=on, which is the lane-runner default.',
+    ),
+    bulleted('Expected headings: <lane> screenshots, e.g. chromium-reader screenshots.'),
+  ];
+}
+
+function videoEvidenceTemplateBlocks() {
+  return [
+    paragraph(
+      'Playwright video evidence for test cases is attached here by lane when video recording is enabled.',
+    ),
+    bulleted(
+      'Use --video on or OPENREAD_PLAYWRIGHT_VIDEO=on to record every test case; retain-on-failure remains the default to limit artifact size.',
+    ),
+    bulleted('Expected headings: <lane> videos, e.g. chromium-reader videos.'),
+  ];
+}
+
+function traceEvidenceTemplateBlocks() {
+  return [
+    paragraph(
+      'Playwright trace zip files attach here when generated, usually for failing or retried test cases.',
+    ),
+    bulleted('Expected headings: <lane> traces, e.g. chromium-reader traces.'),
+  ];
+}
+
+function artifactLedgerTemplateBlocks() {
+  return [
+    bulleted(
+      'Expected lane artifact path: ~/.openread-dev/activity-artifacts/<activity>/<attempt>/testing/<lane>/.',
+    ),
+    bulleted(
+      'Expected Playwright output path: testing/<lane>/playwright-output/ with screenshots, traces, videos, and JSON result metadata.',
+    ),
   ];
 }
 
@@ -695,7 +1083,12 @@ async function appendActivitySummary({
   syncedAt,
   syncSequence,
   agentSummary,
+  template,
 }) {
+  if (isQaRunTemplate(template)) {
+    return { id: null, skipped: true, reason: 'qa-run template keeps evidence page lean' };
+  }
+
   const timelineLine = agentSummary;
   const timelineToggle = await findActivityTimelineToggle({ notionToken, notionPageId });
   if (timelineToggle) {
@@ -800,16 +1193,25 @@ async function appendBlocksToSection({ notionToken, pageId, section, children })
 }
 
 async function findOrCreateSectionBlockId({ notionToken, pageId, section }) {
+  const sectionBlock = await findOrCreateSectionBlock({ notionToken, pageId, section });
+  return sectionBlock.id;
+}
+
+async function findOrCreateSectionBlock({ notionToken, pageId, section, children = null }) {
   const existing = await findSectionBlockId({ notionToken, pageId, section });
-  if (existing) return existing;
+  if (existing) return { id: existing, created: false };
 
   const created = await notionRequest({
     notionToken,
     path: `/v1/blocks/${pageId}/children`,
     method: 'PATCH',
-    body: { children: [emptySectionToggleBlock(section)] },
+    body: {
+      children: [
+        children?.length ? sectionToggleBlock(section, children) : emptySectionToggleBlock(section),
+      ],
+    },
   });
-  return created.results?.[0]?.id ?? pageId;
+  return { id: created.results?.[0]?.id ?? pageId, created: true };
 }
 
 async function findSectionBlockId({ notionToken, pageId, section }) {
@@ -1512,6 +1914,7 @@ Options:
   --database <id>          Activity Log database ID
   --notion-page <id>       Parent/root Notion page ID fallback
   --artifact-root <path>   Activity artifact root
+  --template <name>        activity | qa-run (qa-run creates a lean QA evidence page)
   --summary <text>         One-line append-only activity history summary
   --no-event               Update Activity properties/pickup context without appending timeline/event rows
   --timeline               Also append compact timeline bullets

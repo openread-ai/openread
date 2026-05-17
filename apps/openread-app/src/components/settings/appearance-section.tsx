@@ -46,6 +46,7 @@ export function AppearanceSection() {
               return (
                 <button
                   key={mode.value}
+                  data-testid={`theme-mode-${mode.value}`}
                   onClick={() => setThemeMode(mode.value)}
                   className={`hover:bg-base-200 flex cursor-pointer flex-col items-center gap-2 rounded-lg border p-4 transition-colors ${
                     isActive ? 'border-primary bg-primary/5' : 'border-base-300'
@@ -75,6 +76,7 @@ export function AppearanceSection() {
               return (
                 <button
                   key={theme.name}
+                  data-testid={`theme-color-${theme.name}`}
                   onClick={() => setThemeColor(theme.name)}
                   className={`relative flex h-12 cursor-pointer items-center justify-center rounded-lg border transition-all ${
                     isActive ? 'ring-primary ring-2 ring-offset-2' : 'hover:opacity-80'

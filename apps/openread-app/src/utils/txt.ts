@@ -280,7 +280,8 @@ export class TxtToEpubConverter {
   }
 
   private async createEpub(chapters: Chapter[], metadata: Metadata): Promise<Blob> {
-    const { BlobWriter, TextReader, ZipWriter } = await import('@zip.js/zip.js');
+    const { BlobWriter, TextReader, ZipWriter, configure } = await import('@zip.js/zip.js');
+    configure({ useWebWorkers: false, useCompressionStream: false });
     const { bookTitle, author, language, identifier } = metadata;
 
     const zipWriter = new ZipWriter(new BlobWriter('application/epub+zip'), {

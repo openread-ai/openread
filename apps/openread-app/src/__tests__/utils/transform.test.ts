@@ -261,6 +261,8 @@ describe('transformBookToDB / transformBookFromDB round-trip', () => {
       updatedAt: now,
       deletedAt: null,
       uploadedAt: now,
+      storagePath: 'catalog/books/source/book.epub',
+      catalogBookId: '7231ff9a-24b9-4074-9369-bc7f88ffb179',
     };
 
     const dbBook = transformBookToDB(book, userId);
@@ -273,6 +275,8 @@ describe('transformBookToDB / transformBookFromDB round-trip', () => {
     expect(dbBook.tags).toEqual(['sci-fi', 'classic']);
     expect(dbBook.progress).toEqual([42, 300]);
     expect(dbBook.metadata).toEqual({ publisher: 'RT Press', isbn: '123-456' });
+    expect(dbBook.storage_path).toBe(book.storagePath);
+    expect(dbBook.catalog_book_id).toBe(book.catalogBookId);
 
     const result = transformBookFromDB(dbBook);
 
@@ -288,6 +292,8 @@ describe('transformBookToDB / transformBookFromDB round-trip', () => {
     expect(result.readingStatus).toBe(book.readingStatus);
     expect(result.sourceTitle).toBe(book.sourceTitle);
     expect(result.metadata).toEqual(book.metadata);
+    expect(result.storagePath).toBe(book.storagePath);
+    expect(result.catalogBookId).toBe(book.catalogBookId);
     expect(result.deletedAt).toBeNull();
     expect(result.uploadedAt).toBeCloseTo(now, -2);
   });

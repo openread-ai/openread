@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback } from 'react';
 import { useSettingsStore } from '@/store/settingsStore';
+import type { ViewSettings } from '@/types/book';
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
 import {
@@ -32,45 +33,20 @@ export function ReadingSection() {
   const { settings, setSettings, saveSettings } = useSettingsStore();
 
   const viewSettings = settings?.globalViewSettings;
-
-  const [defaultFont, setDefaultFont] = useState(viewSettings?.defaultFont ?? 'Serif');
-  const [fontSize, setFontSize] = useState(viewSettings?.defaultFontSize ?? 16);
-  const [lineHeight, setLineHeight] = useState(viewSettings?.lineHeight ?? 1.5);
+  const defaultFont = viewSettings?.defaultFont ?? 'Serif';
+  const fontSize = viewSettings?.defaultFontSize ?? 16;
+  const lineHeight = viewSettings?.lineHeight ?? 1.5;
 
   const saveViewSetting = useCallback(
-    <K extends keyof NonNullable<typeof viewSettings>>(
-      key: K,
-      value: NonNullable<typeof viewSettings>[K],
-    ) => {
-      if (!settings || !viewSettings) return;
-      const newViewSettings = { ...viewSettings, [key]: value };
+    <K extends keyof ViewSettings>(key: K, value: ViewSettings[K]) => {
+      if (!settings?.globalViewSettings) return;
+      const newViewSettings = { ...settings.globalViewSettings, [key]: value };
       const newSettings = { ...settings, globalViewSettings: newViewSettings };
       setSettings(newSettings);
       saveSettings(envConfig, newSettings);
     },
-    [settings, viewSettings, envConfig, setSettings, saveSettings],
+    [settings, envConfig, setSettings, saveSettings],
   );
-
-  useEffect(() => {
-    if (viewSettings && defaultFont !== viewSettings.defaultFont) {
-      saveViewSetting('defaultFont', defaultFont);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [defaultFont]);
-
-  useEffect(() => {
-    if (viewSettings && fontSize !== viewSettings.defaultFontSize) {
-      saveViewSetting('defaultFontSize', fontSize);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fontSize]);
-
-  useEffect(() => {
-    if (viewSettings && lineHeight !== viewSettings.lineHeight) {
-      saveViewSetting('lineHeight', lineHeight);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lineHeight]);
 
   // Get computed font family for preview
   const getPreviewFontFamily = () => {
@@ -90,7 +66,10 @@ export function ReadingSection() {
         {/* Font Family */}
         <div className='space-y-2'>
           <Label>{_('Default Font')}</Label>
-          <Select value={defaultFont} onValueChange={setDefaultFont}>
+          <Select
+            value={defaultFont}
+            onValueChange={(value) => saveViewSetting('defaultFont', value)}
+          >
             <SelectTrigger className='bg-base-100 w-64'>
               <SelectValue />
             </SelectTrigger>
@@ -111,7 +90,7 @@ export function ReadingSection() {
               <NumberInput
                 label={_('Font Size')}
                 value={fontSize}
-                onChange={setFontSize}
+                onChange={(value) => saveViewSetting('defaultFontSize', value)}
                 min={12}
                 max={32}
                 step={1}
@@ -127,7 +106,7 @@ export function ReadingSection() {
               <NumberInput
                 label={_('Line Height')}
                 value={lineHeight}
-                onChange={setLineHeight}
+                onChange={(value) => saveViewSetting('lineHeight', value)}
                 min={1.0}
                 max={2.5}
                 step={0.1}

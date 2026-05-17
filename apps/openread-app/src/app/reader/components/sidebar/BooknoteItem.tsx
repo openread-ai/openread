@@ -17,6 +17,7 @@ import { NOTE_PREFIX } from '@/types/view';
 import useScrollToItem from '../../hooks/useScrollToItem';
 import TextButton from '@/components/TextButton';
 import TextEditor, { TextEditorRef } from '@/components/TextEditor';
+import { getBookIdFromKey } from '@/utils/readerBookKey';
 
 interface BooknoteItemProps {
   bookKey: string;
@@ -62,7 +63,7 @@ const BooknoteItem: React.FC<BooknoteItemProps> = ({ bookKey, item, onClick }) =
         const now = Date.now();
         item.deletedAt = now;
         item.updatedAt = now;
-        const views = getViewsById(bookKey.split('-')[0]!);
+        const views = getViewsById(getBookIdFromKey(bookKey));
         views.forEach((view) =>
           view?.addAnnotation({ ...item, value: `${NOTE_PREFIX}${item.cfi}` }, true),
         );

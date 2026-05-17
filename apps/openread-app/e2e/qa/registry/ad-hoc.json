@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "description": "Temporary/manual QA targets. Keep stable feature workflows in registry/features/*.json.",
+  "aliases": {},
+  "lanes": {},
+  "targets": {}
+}

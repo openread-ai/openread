@@ -135,6 +135,7 @@ export interface SyncWorkerStatus {
   pending: number;
   syncing: boolean;
   lastDrainResult: { synced: number; failed: number; remaining: number } | null;
+  lastSyncAt: number;
   error: string | null;
 }
 
@@ -193,6 +194,7 @@ export class SyncWorker {
     pending: 0,
     syncing: false,
     lastDrainResult: null,
+    lastSyncAt: 0,
     error: null,
   };
   private listeners = new Set<(status: SyncWorkerStatus) => void>();
@@ -470,6 +472,7 @@ export class SyncWorker {
         syncing: false,
         pending: result.remaining,
         lastDrainResult: result,
+        lastSyncAt: result.failed === 0 ? Date.now() : this._status.lastSyncAt,
         error: result.failed > 0 ? `${result.failed} items failed to sync` : null,
       });
       // After pushing changes, reconcile to pick up cross-device updates
@@ -518,6 +521,7 @@ export class SyncWorker {
     // and then useLibrary()'s setLibrary() overwrites synced books with stale disk data.
     if (!useLibraryStore.getState().libraryLoaded) return;
     if (!this.reconcileGuard.tryEnter()) return;
+    this.updateStatus({ syncing: true, error: null });
 
     try {
       const library = useLibraryStore.getState().library;
@@ -549,7 +553,10 @@ export class SyncWorker {
       // Download covers AFTER all store mutations are complete.
       // Must be sequential — see docs/epics/sync-fixes/005_cover_sync_race_condition.md
       await this.downloadMissingCovers();
+      this.updateStatus({ syncing: false, error: null, lastSyncAt: Date.now() });
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Sync failed';
+      this.updateStatus({ syncing: false, error: message });
       console.error('[SyncWorker] Reconciliation failed:', error);
     } finally {
       if (this.reconcileGuard.exit()) {

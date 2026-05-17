@@ -25,6 +25,7 @@ export const platformProjects = {
   macos: 'webkit',
   windows: 'msedge',
   ios: 'mobile-webkit',
+  ipados: 'mobile-webkit-ipad',
   android: 'mobile-chromium',
 };
 

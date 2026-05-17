@@ -22,7 +22,7 @@ import ActivityCaptureBridge from '@/components/activity/ActivityCaptureBridge';
 
 const Providers = ({ children }: { children: React.ReactNode }) => {
   const { envConfig, appService } = useEnv();
-  const { applyUILanguage } = useSettingsStore();
+  const { applyUILanguage, setSettings } = useSettingsStore();
   const { applyBackgroundTexture } = useBackgroundTexture();
   const { applyEinkMode } = useEinkMode();
   const iconSize = useDefaultIconSize();
@@ -53,6 +53,7 @@ const Providers = ({ children }: { children: React.ReactNode }) => {
     if (appService) {
       initSystemThemeListener(appService);
       appService.loadSettings().then((settings) => {
+        setSettings(settings);
         const globalViewSettings = settings.globalViewSettings;
         applyUILanguage(globalViewSettings.uiLanguage);
         applyBackgroundTexture(envConfig, globalViewSettings);
@@ -61,7 +62,7 @@ const Providers = ({ children }: { children: React.ReactNode }) => {
         }
       });
     }
-  }, [envConfig, appService, applyUILanguage, applyBackgroundTexture, applyEinkMode]);
+  }, [envConfig, appService, setSettings, applyUILanguage, applyBackgroundTexture, applyEinkMode]);
 
   // Make sure appService is available in all children components
   if (!appService) return;

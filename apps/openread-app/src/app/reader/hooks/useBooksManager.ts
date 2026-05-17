@@ -3,7 +3,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useEnv } from '@/context/EnvContext';
 import { useReaderStore } from '@/store/readerStore';
 import { useSidebarStore } from '@/store/sidebarStore';
-import { uniqueId } from '@/utils/misc';
+import { createBookKey, getBookIdFromKey } from '@/utils/readerBookKey';
 import { useParallelViewStore } from '@/store/parallelViewStore';
 import { navigateToReader } from '@/utils/nav';
 
@@ -19,7 +19,7 @@ const useBooksManager = () => {
 
   useEffect(() => {
     if (shouldUpdateSearchParams) {
-      const ids = bookKeys.map((key) => key.split('-')[0]!);
+      const ids = bookKeys.map((key) => getBookIdFromKey(key));
       if (ids) {
         navigateToReader(router, ids, searchParams?.toString() || '', { scroll: false });
       }
@@ -30,7 +30,7 @@ const useBooksManager = () => {
 
   // Append a new book and sync with bookKeys and URL
   const appendBook = (id: string, isPrimary: boolean, isParallel: boolean) => {
-    const newKey = `${id}-${uniqueId()}`;
+    const newKey = createBookKey(id);
     initViewState(envConfig, id, newKey, isPrimary);
     if (!bookKeys.includes(newKey)) {
       const updatedKeys = [...bookKeys, newKey];
@@ -55,7 +55,7 @@ const useBooksManager = () => {
   };
 
   const openParallelView = (id: string) => {
-    const sideBarBookId = sideBarBookKey?.split('-')[0];
+    const sideBarBookId = sideBarBookKey ? getBookIdFromKey(sideBarBookKey) : undefined;
     appendBook(id, sideBarBookId != id, true);
   };
 

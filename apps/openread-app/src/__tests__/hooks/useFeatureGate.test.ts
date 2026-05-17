@@ -169,14 +169,16 @@ describe('useFeatureGate', () => {
       expect(result.current.allowed).toBe(true);
     });
 
-    it('should allow boost for reader users', async () => {
+    it('should not allow boost for reader users because boosts are disabled', async () => {
       const { result } = renderHook(() => useFeatureGate('boost'));
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
       });
 
-      expect(result.current.allowed).toBe(true);
+      expect(result.current.allowed).toBe(false);
+      expect(result.current.message).toContain('not currently available');
+      expect(result.current.ctaText).toBe('');
     });
   });
 
@@ -188,8 +190,8 @@ describe('useFeatureGate', () => {
       mockUserProfilePlan = 'pro';
     });
 
-    it('should allow all features for pro users', async () => {
-      const features = ['tts', 'sync', 'translate', 'byok', 'boost'] as const;
+    it('should allow all tier-enabled features for pro users', async () => {
+      const features = ['tts', 'sync', 'translate', 'byok'] as const;
 
       for (const feature of features) {
         const { result } = renderHook(() => useFeatureGate(feature));
@@ -202,6 +204,19 @@ describe('useFeatureGate', () => {
         expect(result.current.message).toBe('');
         expect(result.current.plan).toBe('pro');
       }
+    });
+
+    it('should not allow boost for pro users because boosts are disabled', async () => {
+      const { result } = renderHook(() => useFeatureGate('boost'));
+
+      await waitFor(() => {
+        expect(result.current.isLoading).toBe(false);
+      });
+
+      expect(result.current.allowed).toBe(false);
+      expect(result.current.message).toContain('not currently available');
+      expect(result.current.ctaText).toBe('');
+      expect(result.current.plan).toBe('pro');
     });
   });
 

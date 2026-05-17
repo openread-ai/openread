@@ -1,11 +1,10 @@
 /**
  * Storage Quota Manager — cloud storage tracking for user accounts.
  *
- * Each tier has a base storage allocation (from tier_config).
- * Paid users can purchase recurring storage add-ons for additional capacity.
+ * Each tier has a standard storage allocation (from tier_config).
  * Storage usage is tracked atomically via DB RPCs to prevent race conditions.
  *
- * Available to Reader and Pro tiers (free tier has 0 GB base).
+ * Available to all tiers; Free has 1 GB, Reader has 10 GB, and Pro has 50 GB by default.
  */
 
 import { createSupabaseAdminClient } from '@/utils/supabase';
@@ -20,9 +19,9 @@ const log = createLogger('storage-quota');
 export interface StorageQuota {
   /** Base storage in GB from the user's tier */
   baseGb: number;
-  /** Additional storage in GB from active add-ons */
+  /** Additional storage in GB from active add-ons. Kept for API compatibility; always 0. */
   addonGb: number;
-  /** Total available storage in bytes (base + addons) */
+  /** Total available storage in bytes from the user's plan tier */
   totalBytes: number;
   /** Storage currently used in bytes */
   usedBytes: number;
@@ -53,30 +52,15 @@ const BYTES_PER_GB = 1024 * 1024 * 1024;
 // ─── Public API ──────────────────────────────────────────────────────
 
 /**
- * Calculate the full storage quota for a user, combining tier base storage
- * with any active storage add-ons, and current usage.
+ * Calculate the full storage quota for a user from their plan tier and current usage.
  */
 export async function getStorageQuota(userId: string, plan: UserPlan): Promise<StorageQuota> {
   const supabase = createSupabaseAdminClient();
   const tierDef = await getTierDefinition(plan);
 
-  // Get active add-ons
-  const { data: addons, error: addonsError } = await supabase
-    .from('storage_addons')
-    .select('gb_amount')
-    .eq('user_id', userId)
-    .eq('status', 'active');
-
-  if (addonsError) {
-    log.warn('Failed to fetch storage addons:', addonsError.message);
-  }
-
-  const addonGb = (addons || []).reduce(
-    (sum: number, a: { gb_amount: number }) => sum + a.gb_amount,
-    0,
-  );
   const baseGb = tierDef.storage_gb;
-  const totalBytes = (baseGb + addonGb) * BYTES_PER_GB;
+  const addonGb = 0;
+  const totalBytes = baseGb * BYTES_PER_GB;
 
   // Get used bytes from plans table
   const { data: planData, error: planError } = await supabase
@@ -103,32 +87,19 @@ export async function getStorageQuota(userId: string, plan: UserPlan): Promise<S
 }
 
 /**
- * Get all active storage add-ons for a user.
+ * Storage add-ons are disabled. Kept for API compatibility.
  */
 export async function getActiveAddons(userId: string): Promise<StorageAddonRecord[]> {
-  const supabase = createSupabaseAdminClient();
-
-  const { data, error } = await supabase
-    .from('storage_addons')
-    .select('*')
-    .eq('user_id', userId)
-    .eq('status', 'active')
-    .order('created_at', { ascending: true });
-
-  if (error) {
-    log.error('Failed to fetch active storage addons:', error.message);
-    return [];
-  }
-
-  return (data as StorageAddonRecord[]) || [];
+  void userId;
+  return [];
 }
 
 /**
- * Get the total add-on storage in GB for a user.
+ * Storage add-ons are disabled. Kept for API compatibility.
  */
 export async function getAddonStorageGb(userId: string): Promise<number> {
-  const addons = await getActiveAddons(userId);
-  return addons.reduce((sum, a) => sum + a.gb_amount, 0);
+  void userId;
+  return 0;
 }
 
 /**
@@ -177,8 +148,7 @@ export async function decrementStorageUsed(userId: string, bytes: number): Promi
 }
 
 /**
- * Create a storage add-on record. Called from the Stripe webhook
- * when a storage add-on subscription is created.
+ * Storage add-ons are disabled. Kept for legacy webhook compatibility.
  */
 export async function createStorageAddon(
   userId: string,
@@ -187,49 +157,20 @@ export async function createStorageAddon(
   sourceSubscriptionId: string,
   source = 'stripe',
 ): Promise<StorageAddonRecord | null> {
-  const supabase = createSupabaseAdminClient();
-
-  const { data, error } = await supabase
-    .from('storage_addons')
-    .insert({
-      user_id: userId,
-      gb_amount: gbAmount,
-      price_cents: priceCents,
-      source,
-      source_subscription_id: sourceSubscriptionId,
-    })
-    .select('*')
-    .single();
-
-  if (error) {
-    log.error('Failed to create storage addon:', error.message);
-    return null;
-  }
-
-  log.info(`Storage addon created: ${gbAmount}GB for user ${userId}`);
-  return data as StorageAddonRecord;
+  void userId;
+  void gbAmount;
+  void priceCents;
+  void sourceSubscriptionId;
+  void source;
+  log.warn('Storage add-ons are disabled; createStorageAddon was ignored.');
+  return null;
 }
 
 /**
- * Cancel a storage add-on by ID. Sets status to 'canceled' and records timestamp.
- * Called when a Stripe subscription is canceled.
+ * Storage add-ons are disabled. Kept for legacy webhook compatibility.
  */
 export async function cancelStorageAddon(addonId: string): Promise<boolean> {
-  const supabase = createSupabaseAdminClient();
-
-  const { error } = await supabase
-    .from('storage_addons')
-    .update({
-      status: 'canceled',
-      canceled_at: new Date().toISOString(),
-    })
-    .eq('id', addonId);
-
-  if (error) {
-    log.error('Failed to cancel storage addon:', error.message);
-    return false;
-  }
-
-  log.info(`Storage addon ${addonId} canceled`);
-  return true;
+  void addonId;
+  log.warn('Storage add-ons are disabled; cancelStorageAddon was ignored.');
+  return false;
 }

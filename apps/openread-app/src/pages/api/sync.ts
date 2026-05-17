@@ -36,6 +36,70 @@ type TableName = keyof typeof transformsToDB;
 
 type DBError = { table: TableName; error: PostgrestError };
 
+type CatalogCoverRecord = {
+  catalog_book_id?: string | null;
+  metadata?: unknown;
+};
+
+function catalogCoverImageUrl(coverImageKey: string): string {
+  const normalizedKey = coverImageKey.endsWith('/') ? coverImageKey : `${coverImageKey}/`;
+  return `/api/catalog-covers/${normalizedKey}thumb.jpg`;
+}
+
+function normalizeMetadata(metadata: unknown): Record<string, unknown> {
+  if (!metadata) return {};
+  if (typeof metadata === 'string') {
+    try {
+      const parsed = JSON.parse(metadata) as unknown;
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : {};
+    } catch {
+      return {};
+    }
+  }
+  return metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+    ? (metadata as Record<string, unknown>)
+    : {};
+}
+
+async function enrichCatalogBookCovers<T extends CatalogCoverRecord>(records: T[]): Promise<T[]> {
+  const catalogIds = [
+    ...new Set(records.map((record) => record.catalog_book_id).filter(Boolean) as string[]),
+  ];
+  if (catalogIds.length === 0) return records;
+
+  const adminSupabase = createSupabaseAdminClient();
+  const { data, error } = await adminSupabase
+    .from('catalog_book')
+    .select('id, cover_image_key')
+    .in('id', catalogIds);
+
+  if (error || !data?.length) return records;
+
+  const coverByCatalogId = new Map(
+    data
+      .filter((row) => row.cover_image_key)
+      .map((row) => [row.id as string, row.cover_image_key as string]),
+  );
+
+  return records.map((record) => {
+    const coverImageKey = record.catalog_book_id
+      ? coverByCatalogId.get(record.catalog_book_id)
+      : null;
+    if (!coverImageKey) return record;
+
+    const metadata = normalizeMetadata(record.metadata);
+    return {
+      ...record,
+      metadata: {
+        ...metadata,
+        coverImageUrl: catalogCoverImageUrl(coverImageKey),
+      },
+    } as T;
+  });
+}
+
 /** Return a 426 response if the client's sync protocol version is unsupported, or null if OK. */
 function protocolVersionResponse(req: NextRequest): NextResponse | null {
   const protocolError = validateProtocolVersion(req.headers.get('x-sync-protocol'));
@@ -155,6 +219,9 @@ export async function GET(req: NextRequest) {
     if (!typeParam || typeParam === 'books') {
       // P9.4: Removed dummy book hotfix — atomic RPC eliminates the root cause
       await queryTables('books').catch((err) => (errors['books'] = err));
+      if (!errors['books']) {
+        results.books = await enrichCatalogBookCovers(results.books as CatalogCoverRecord[]);
+      }
     }
     if (!typeParam || typeParam === 'configs') {
       await queryTables('book_configs').catch((err) => (errors['book_configs'] = err));
@@ -491,8 +558,7 @@ export async function POST(req: NextRequest) {
           { status: 400 },
         );
       }
-      const HASH_RE = /^[0-9a-f]{32}$/i;
-      const hasInvalidHash = hashKeys.some((k) => !HASH_RE.test(k));
+      const hasInvalidHash = hashKeys.some((k) => !BOOK_HASH_REGEX.test(k));
       if (hasInvalidHash) {
         return NextResponse.json({ error: 'Invalid hash in reconcile.books' }, { status: 400 });
       }
@@ -525,6 +591,17 @@ export async function POST(req: NextRequest) {
 
         reconcileResult = { upsert: reconcileUpsert, remove: reconcileRemove };
       }
+    }
+
+    if (resultBooks.length > 0) {
+      resultBooks = await enrichCatalogBookCovers(resultBooks as CatalogCoverRecord[]);
+    }
+
+    if (reconcileResult?.upsert.length) {
+      reconcileResult = {
+        ...reconcileResult,
+        upsert: await enrichCatalogBookCovers(reconcileResult.upsert as CatalogCoverRecord[]),
+      };
     }
 
     return NextResponse.json(

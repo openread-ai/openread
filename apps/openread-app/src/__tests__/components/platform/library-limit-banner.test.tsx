@@ -18,31 +18,31 @@ describe('LibraryLimitBanner', () => {
   });
 
   it('should render the limit message', () => {
-    render(<LibraryLimitBanner limit={10} priceCents={799} />);
+    render(<LibraryLimitBanner limit={10} priceCents={999} />);
     expect(screen.getByText(/Library full \(10 books\)/)).toBeTruthy();
   });
 
   it('should show price in the CTA', () => {
-    render(<LibraryLimitBanner limit={10} priceCents={799} />);
+    render(<LibraryLimitBanner limit={10} priceCents={999} />);
     const link = screen.getByRole('link');
-    expect(link.textContent).toContain('$7.99/mo');
+    expect(link.textContent).toContain('$9.99/mo');
   });
 
   it('should show tier name when provided', () => {
-    render(<LibraryLimitBanner limit={10} priceCents={799} tierName='Reader' />);
+    render(<LibraryLimitBanner limit={10} priceCents={999} tierName='Reader' />);
     const link = screen.getByRole('link');
     expect(link.textContent).toContain('Reader');
-    expect(link.textContent).toContain('$7.99/mo');
+    expect(link.textContent).toContain('$9.99/mo');
   });
 
   it('should show generic CTA when tierName is not provided', () => {
-    render(<LibraryLimitBanner limit={10} priceCents={799} />);
+    render(<LibraryLimitBanner limit={10} priceCents={999} />);
     const link = screen.getByRole('link');
     expect(link.textContent).toContain('Start Reading');
   });
 
   it('should link to /user#plans', () => {
-    render(<LibraryLimitBanner limit={10} priceCents={799} />);
+    render(<LibraryLimitBanner limit={10} priceCents={999} />);
     const link = screen.getByRole('link');
     expect(link.getAttribute('href')).toBe('/user#plans');
   });

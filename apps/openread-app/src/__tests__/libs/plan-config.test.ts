@@ -1,12 +1,7 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import {
-  buildPlanCardConfigs,
-  formatCentsToPrice,
-  formatStorageAddon,
-} from '@/libs/payment/plan-config';
+import { buildPlanCardConfigs, formatCentsToPrice } from '@/libs/payment/plan-config';
 import type { PlanCardConfig } from '@/libs/payment/plan-config';
 import { getFallbackConfig } from '@/lib/tier-config';
-import type { StorageAddon } from '@/lib/tier-config';
 
 // Suppress logger noise
 vi.mock('@/utils/logger', () => ({
@@ -156,17 +151,17 @@ describe('buildPlanCardConfigs', () => {
     });
 
     // Storage details
-    it('should show no storage for free tier', () => {
+    it('should show base storage for free tier', () => {
       const freeStorage = configs[0]!.featureGroups.find((g) => g.name === 'Storage')!;
-      expect(freeStorage.features[0]!.label).toBe('No cloud storage');
-      expect(freeStorage.features[0]!.included).toBe(false);
+      expect(freeStorage.features[0]!.label).toBe('Up to 1 GB storage');
+      expect(freeStorage.features[0]!.included).toBe(true);
     });
 
     it('should show base storage for paid tiers', () => {
       const readerStorage = configs[1]!.featureGroups.find((g) => g.name === 'Storage')!;
       const proStorage = configs[2]!.featureGroups.find((g) => g.name === 'Storage')!;
-      expect(readerStorage.features[0]!.label).toBe('5 GB base storage');
-      expect(proStorage.features[0]!.label).toBe('10 GB base storage');
+      expect(readerStorage.features[0]!.label).toBe('Up to 10 GB storage');
+      expect(proStorage.features[0]!.label).toBe('Up to 50 GB storage');
     });
 
     // MCP details
@@ -203,28 +198,5 @@ describe('formatCentsToPrice', () => {
     // EUR formatting depends on locale
     const result = formatCentsToPrice(799, 'EUR', 'de-DE');
     expect(result).toContain('7,99');
-  });
-});
-
-describe('formatStorageAddon', () => {
-  const addon: StorageAddon = { gb: 5, price_cents: 199, mobile_price_cents: 299 };
-
-  it('should format web price for non-iOS', () => {
-    const result = formatStorageAddon(addon, false);
-    expect(result.label).toBe('+5 GB');
-    expect(result.price).toBe('$1.99/mo');
-  });
-
-  it('should format mobile price for iOS', () => {
-    const result = formatStorageAddon(addon, true);
-    expect(result.label).toBe('+5 GB');
-    expect(result.price).toBe('$2.99/mo');
-  });
-
-  it('should handle larger addon', () => {
-    const largeAddon: StorageAddon = { gb: 50, price_cents: 799, mobile_price_cents: 1099 };
-    const result = formatStorageAddon(largeAddon, false);
-    expect(result.label).toBe('+50 GB');
-    expect(result.price).toBe('$7.99/mo');
   });
 });

@@ -59,11 +59,6 @@ class TransferManager {
   }
 
   queueUpload(book: Book, priority: number = 10): string | null {
-    if (!this.isReady()) {
-      logger.warn('TransferManager not initialized');
-      return null;
-    }
-
     const store = useTransferStore.getState();
 
     // Check if already queued or in progress
@@ -79,11 +74,6 @@ class TransferManager {
   }
 
   queueDownload(book: Book, priority: number = 10): string | null {
-    if (!this.isReady()) {
-      logger.warn('TransferManager not initialized');
-      return null;
-    }
-
     const store = useTransferStore.getState();
 
     const existing = store.getTransferByBookHash(book.hash, 'download');
@@ -98,11 +88,6 @@ class TransferManager {
   }
 
   queueDelete(book: Book, priority: number = 10, isBackground: boolean = false): string | null {
-    if (!this.isReady()) {
-      logger.warn('TransferManager not initialized');
-      return null;
-    }
-
     const store = useTransferStore.getState();
 
     const existing = store.getTransferByBookHash(book.hash, 'delete');
@@ -176,7 +161,7 @@ class TransferManager {
   private async _processQueueInternal(): Promise<void> {
     const store = useTransferStore.getState();
 
-    if (store.isQueuePaused) return;
+    if (store.isQueuePaused || !this.isReady()) return;
 
     const pending = store.getPendingTransfers();
     const activeCount = store.getActiveTransfers().length;

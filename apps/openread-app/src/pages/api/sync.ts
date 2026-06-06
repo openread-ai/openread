@@ -220,7 +220,31 @@ export async function GET(req: NextRequest) {
       // P9.4: Removed dummy book hotfix — atomic RPC eliminates the root cause
       await queryTables('books').catch((err) => (errors['books'] = err));
       if (!errors['books']) {
-        results.books = await enrichCatalogBookCovers(results.books as CatalogCoverRecord[]);
+        const books = results.books as Array<Record<string, unknown>>;
+        const nowIso = new Date().toISOString();
+        const staleUploadedRows = books.filter(
+          (book) => book['storage_path'] && !book['uploaded_at'] && !book['deleted_at'],
+        );
+        if (staleUploadedRows.length > 0) {
+          await Promise.all(
+            staleUploadedRows.map(async (book) => {
+              const uploadedAt =
+                typeof book['updated_at'] === 'string' ? book['updated_at'] : nowIso;
+              const { error } = await supabase
+                .from('books')
+                .update({ uploaded_at: uploadedAt, updated_at: nowIso })
+                .eq('user_id', user.id)
+                .eq('book_hash', String(book['book_hash']));
+              if (error) {
+                console.error('[sync] uploaded_at backfill failed:', error.message);
+                return;
+              }
+              book['uploaded_at'] = uploadedAt;
+              book['updated_at'] = nowIso;
+            }),
+          );
+        }
+        results.books = await enrichCatalogBookCovers(books as CatalogCoverRecord[]);
       }
     }
     if (!typeParam || typeParam === 'configs') {
@@ -450,6 +474,9 @@ export async function POST(req: NextRequest) {
             sizeBytes: fileRecord.file_size,
             storagePath: fileRecord.file_key,
             userId: user.id,
+            uploadedAt:
+              book.uploaded_at ??
+              (typeof fileRecord.created_at === 'string' ? fileRecord.created_at : null),
           });
           if (!result.success) {
             console.error(
@@ -628,8 +655,9 @@ export async function POST(req: NextRequest) {
 
 /**
  * DELETE /api/sync?book_hash=X
- * Hard-delete ALL server-side data including the books row: configs, notes, AI conversations, files metadata.
- * No tombstone needed — hash-based reconciliation handles cross-device propagation.
+ * Hard-delete server-side data after clients have already persisted/enqueued
+ * local tombstones. Hash-based reconciliation removes local tombstones once the
+ * server has no active row for the hash.
  */
 export async function DELETE(req: NextRequest) {
   const { user, token } = await validateUserAndToken(req.headers.get('authorization'));

@@ -7,8 +7,10 @@ import { SidebarSection } from '@/components/platform/sidebar-section';
 
 // Mock next/navigation
 const mockPathname = vi.fn(() => '/home');
+const mockSearchParams = vi.fn(() => new URLSearchParams());
 vi.mock('next/navigation', () => ({
   usePathname: () => mockPathname(),
+  useSearchParams: () => mockSearchParams(),
   useRouter: () => ({
     push: vi.fn(),
     refresh: vi.fn(),
@@ -30,7 +32,6 @@ vi.mock('@/context/AuthContext', () => ({
     },
     token: 'mock-token',
     logout: vi.fn(),
-    login: vi.fn(),
     refresh: vi.fn(),
   }),
 }));
@@ -90,6 +91,7 @@ describe('Sidebar', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockPathname.mockReturnValue('/home');
+    mockSearchParams.mockReturnValue(new URLSearchParams());
     mockStore.librarySectionOpen = true;
     mockStore.collectionsSectionOpen = true;
     mockStore.collections = [
@@ -186,7 +188,8 @@ describe('Sidebar', () => {
           createdAt: '2024-01-01',
         },
       ];
-      mockPathname.mockReturnValue('/collections/1');
+      mockPathname.mockReturnValue('/collections');
+      mockSearchParams.mockReturnValue(new URLSearchParams({ id: '1' }));
       render(<Sidebar />);
       const fictionLink = screen.getByRole('link', { name: /fiction/i });
       expect(fictionLink.className).toContain('bg-base-300');

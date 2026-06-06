@@ -8,7 +8,6 @@ const { mockAuthState, mockDispatch } = vi.hoisted(() => {
   const mockAuthState = {
     token: 'test-token-123' as string | null,
     user: { id: 'user-1' } as { id: string } | null,
-    login: vi.fn(),
     logout: vi.fn(),
     refresh: vi.fn(),
   };

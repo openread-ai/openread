@@ -7,7 +7,6 @@ const { mockAuthState, mockQuotaState, mockLibraryStoreState } = vi.hoisted(() =
   const mockAuthState = {
     token: 'test-token',
     user: { id: 'user-1' },
-    login: vi.fn(),
     logout: vi.fn(),
     refresh: vi.fn(),
   };

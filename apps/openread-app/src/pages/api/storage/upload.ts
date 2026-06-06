@@ -8,7 +8,6 @@ import {
 } from '@/utils/access';
 import { getDownloadSignedUrl, getUploadSignedUrl } from '@/utils/object';
 import { OPENREAD_PUBLIC_STORAGE_BASE_URL } from '@/services/constants';
-import { upsertPlatformBook } from '@/utils/platformBooks';
 import { getStorageQuota, incrementStorageUsed } from '@/lib/storage-quota';
 import type { UserPlan } from '@/types/quota';
 
@@ -122,34 +121,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           return res.status(400).json({ error: 'Invalid user reference' });
         }
         return res.status(500).json({ error: insertError.message });
-      }
-    }
-
-    // P8.2: Populate books if we have a bookHash and this is a book file
-    const isBookFile = bookHash && fileType === 'book';
-    if (isBookFile) {
-      const { data: bookRecord } = await supabase
-        .from('books')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('book_hash', bookHash)
-        .limit(1)
-        .single();
-
-      if (bookRecord) {
-        const result = await upsertPlatformBook({
-          hash: bookRecord.book_hash,
-          metaHash: bookRecord.meta_hash || bookRecord.book_hash,
-          title: bookRecord.title || 'Untitled',
-          author: bookRecord.author || '',
-          format: bookRecord.format || 'epub',
-          sizeBytes: fileSize,
-          storagePath: fileKey,
-          userId: user.id,
-        });
-        if (!result.success) {
-          console.warn('[upload] books upsert failed:', result.error);
-        }
       }
     }
 

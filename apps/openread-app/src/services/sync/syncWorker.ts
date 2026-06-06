@@ -55,6 +55,11 @@ interface SupabaseAIMessage {
   created_at: string;
 }
 
+const LIBRARY_OWNER_STORAGE_KEY = 'openread_library_owner_user_id';
+const SYNCABLE_BOOK_HASH_REGEX =
+  /^(?:[0-9a-f]{32}|catalog:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+const RECONCILE_RETRY_DELAYS_MS = [500, 1_500] as const;
+
 /** Realtime broadcast event names for cross-device sync */
 export const SYNC_EVENTS = {
   BOOKS: 'books-changed',
@@ -90,6 +95,16 @@ function computeMaxTimestamp(records: BookDataRecord[]): number {
  * Persist watermark updates to the settings store.
  * Creates a new object (immutable) and saves locally without triggering a push.
  */
+function resetAccountScopedWatermarks(settings: SystemSettings): SystemSettings {
+  return {
+    ...settings,
+    lastSyncedAtBooks: 0,
+    lastSyncedAtConfigs: 0,
+    lastSyncedAtNotes: 0,
+    lastSyncedAtSettings: 0,
+  };
+}
+
 async function saveWatermarks(updates: Partial<SystemSettings>): Promise<void> {
   const settings = { ...useSettingsStore.getState().settings, ...updates };
   useSettingsStore.getState().setSettings(settings);
@@ -97,6 +112,32 @@ async function saveWatermarks(updates: Partial<SystemSettings>): Promise<void> {
   // Watermarks are per-device and excluded from roaming settings.
   const appService = await envConfig.getAppService();
   await appService.saveSettings(settings);
+}
+
+function isTransientSyncError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /Failed to fetch|AbortError|timeout|network/i.test(message);
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function waitForLibraryLoaded(timeoutMs = 5_000): Promise<boolean> {
+  if (useLibraryStore.getState().libraryLoaded) return Promise.resolve(true);
+
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => {
+      unsubscribe();
+      resolve(false);
+    }, timeoutMs);
+    const unsubscribe = useLibraryStore.subscribe((state) => {
+      if (!state.libraryLoaded) return;
+      clearTimeout(timeout);
+      unsubscribe();
+      resolve(true);
+    });
+  });
 }
 
 interface SyncableCollection {
@@ -205,9 +246,43 @@ export class SyncWorker {
    * Subscribes to Supabase Realtime for instant cross-device sync.
    */
   start(userId?: string): void {
-    if (this.intervalId) return; // Already started
+    const nextUserId = userId ?? null;
+    const previousUserId = this.userId;
+    if (!this.stopped && previousUserId === nextUserId) return; // Already started for this account
+    if (!this.stopped) this.stop();
+    const persistedOwnerUserId =
+      typeof window !== 'undefined' ? localStorage.getItem(LIBRARY_OWNER_STORAGE_KEY) : null;
+    const accountChanged =
+      Boolean(previousUserId && previousUserId !== nextUserId) ||
+      Boolean(nextUserId && persistedOwnerUserId && persistedOwnerUserId !== nextUserId);
+    if (accountChanged) {
+      useLibraryStore.getState().setLibrary([]);
+      void import('@/store/platformSidebarStore').then(({ usePlatformSidebarStore }) => {
+        usePlatformSidebarStore.getState().resetAccountScopedCollections();
+      });
+      const currentSettings = useSettingsStore.getState().settings;
+      const resetSettings = Object.keys(currentSettings).length
+        ? resetAccountScopedWatermarks(currentSettings)
+        : null;
+      if (resetSettings) {
+        useSettingsStore.getState().setSettings(resetSettings);
+      }
+      if (typeof window !== 'undefined' && nextUserId) {
+        localStorage.setItem(LIBRARY_OWNER_STORAGE_KEY, nextUserId);
+      }
+      void envConfig
+        .getAppService()
+        .then(async (appService) => {
+          await Promise.all([
+            appService.saveLibraryBooks([]),
+            resetSettings ? appService.saveSettings(resetSettings) : Promise.resolve(),
+          ]);
+        })
+        .catch((error) => console.warn('[SyncWorker] Failed to clear account-scoped state', error));
+    }
+
     this.stopped = false;
-    this.userId = userId ?? null;
+    this.userId = nextUserId;
 
     // Listen to online/offline events
     if (typeof window !== 'undefined') {
@@ -251,7 +326,9 @@ export class SyncWorker {
       }
     }
 
-    // Run full sync once on startup
+    // Hydrate books immediately on startup. Do not let stale offline queue pushes
+    // block the remote Library pull for a fresh browser/webview session.
+    this.reconcileBooks();
     this.runSyncCycle();
   }
 
@@ -510,29 +587,89 @@ export class SyncWorker {
   }
 
   /**
+   * Pull the complete remote book set when the visible local Library is empty.
+   *
+   * This gives a fresh browser or webview a fast hydration path before the slower
+   * hash-reconcile POST path has to push local inventory or drain stale queue items.
+   */
+  private async pullAllRemoteBooksIfVisibleLibraryEmpty(reconcileUserId: string | null) {
+    if (useLibraryStore.getState().getVisibleLibrary().length > 0) return;
+
+    let result = null;
+    for (let attempt = 0; attempt <= RECONCILE_RETRY_DELAYS_MS.length; attempt += 1) {
+      try {
+        result = await this.syncClient.pullChanges(0, 'books');
+        break;
+      } catch (error) {
+        const retryDelay = RECONCILE_RETRY_DELAYS_MS[attempt];
+        if (this.stopped || !retryDelay || !isTransientSyncError(error)) throw error;
+        await wait(retryDelay);
+      }
+    }
+
+    if (!result || this.stopped || this.userId !== reconcileUserId) return;
+    if (result.books?.length) {
+      const books = result.books.map((b) => transformBookFromDB(b as unknown as DBBook));
+      await useLibraryStore.getState().updateBooks(envConfig, books);
+      await this.downloadMissingCovers();
+    }
+  }
+
+  /**
    * Full hash-based reconciliation for books.
    * Sends full local inventory; server returns diff (upserts + removals).
    * Used on startup, after pushes, and on Realtime events — not every 10s.
    */
   private async reconcileBooks(): Promise<void> {
+    if (this.stopped) return;
+    const reconcileUserId = this.userId;
     if (isOffline()) return;
-    // Wait for useLibrary() to load books from disk before reconciling.
-    // Without this guard, reconcileBooks() can run before local books are loaded,
-    // and then useLibrary()'s setLibrary() overwrites synced books with stale disk data.
-    if (!useLibraryStore.getState().libraryLoaded) return;
     if (!this.reconcileGuard.tryEnter()) return;
     this.updateStatus({ syncing: true, error: null });
 
     try {
+      await this.pullAllRemoteBooksIfVisibleLibraryEmpty(reconcileUserId);
+
+      // Wait for useLibrary() to load books from disk before comparing local
+      // inventory. The empty-remote hydration above is safe before this point:
+      // useLibrary() preserves a non-empty in-memory Library instead of
+      // overwriting it with stale disk.
+      if (!(await waitForLibraryLoaded())) return;
+
       const library = useLibraryStore.getState().library;
       const localHashes: Record<string, number> = {};
       for (const book of library) {
-        localHashes[book.hash] = book.updatedAt || 0;
+        if (!SYNCABLE_BOOK_HASH_REGEX.test(book.hash)) continue;
+        localHashes[book.hash] = Math.max(book.updatedAt || 0, book.deletedAt || 0);
       }
 
-      const result = await this.syncClient.pushChanges({
-        reconcile: { books: localHashes },
-      });
+      if (Object.keys(localHashes).length === 0) {
+        const result = await this.syncClient.pullChanges(0, 'books');
+        if (this.stopped || this.userId !== reconcileUserId) return;
+        if (result.books?.length) {
+          const books = result.books.map((b) => transformBookFromDB(b as unknown as DBBook));
+          await useLibraryStore.getState().updateBooks(envConfig, books);
+        }
+        await this.downloadMissingCovers();
+        this.updateStatus({ syncing: false, error: null, lastSyncAt: Date.now() });
+        return;
+      }
+
+      let result = null;
+      for (let attempt = 0; attempt <= RECONCILE_RETRY_DELAYS_MS.length; attempt += 1) {
+        try {
+          result = await this.syncClient.pushChanges({
+            reconcile: { books: localHashes },
+          });
+          break;
+        } catch (error) {
+          const retryDelay = RECONCILE_RETRY_DELAYS_MS[attempt];
+          if (this.stopped || !retryDelay || !isTransientSyncError(error)) throw error;
+          await wait(retryDelay);
+        }
+      }
+      if (!result) return;
+      if (this.stopped || this.userId !== reconcileUserId) return;
       const reconcile = result.reconcile;
       if (!reconcile) return;
 
@@ -576,7 +713,7 @@ export class SyncWorker {
       const { getCoverFilename } = await import('@/utils/book');
 
       const library = useLibraryStore.getState().library;
-      const candidates = library.filter((b) => b.uploadedAt && !b.coverImageUrl);
+      const candidates = library.filter((b) => !b.deletedAt && b.uploadedAt && !b.coverImageUrl);
       const existResults = await Promise.all(
         candidates.map((book) => appService.exists(getCoverFilename(book), 'Books')),
       );

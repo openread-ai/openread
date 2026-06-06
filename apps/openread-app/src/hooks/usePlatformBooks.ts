@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useAuth } from '@/context/AuthContext';
 import { useEnv } from '@/context/EnvContext';
 import { useLibraryStore } from '@/store/libraryStore';
 import { PLATFORM_BOOKS_MANIFEST, PLATFORM_BOOKS_SEEDED_KEY } from '@/services/platformBooks';
@@ -7,12 +8,14 @@ import { createLogger } from '@/utils/logger';
 const logger = createLogger('platform-books');
 
 export function usePlatformBooks() {
+  const { user } = useAuth();
   const { appService } = useEnv();
   const libraryLoaded = useLibraryStore((s) => s.libraryLoaded);
   const seedingRef = useRef(false);
 
   useEffect(() => {
     if (!libraryLoaded || !appService || seedingRef.current) return;
+    if (user) return;
 
     const visibleBooks = useLibraryStore.getState().library.filter((b) => !b.deletedAt);
     if (visibleBooks.length > 0) {
@@ -56,5 +59,5 @@ export function usePlatformBooks() {
     };
 
     seed();
-  }, [libraryLoaded, appService]);
+  }, [libraryLoaded, appService, user]);
 }

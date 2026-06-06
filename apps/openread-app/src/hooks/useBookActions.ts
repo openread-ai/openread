@@ -58,24 +58,23 @@ async function cleanupDeletedBook(book: Book, remainingLibrary: Book[]): Promise
       })
       .catch(() => {});
 
-    // Hard-delete server-side data, then broadcast to other devices
-    getAccessToken()
-      .then((token) => {
-        if (!token) return;
-        const url = `${getAPIBaseUrl()}/sync?book_hash=${encodeURIComponent(book.hash)}`;
-        return fetchWithTimeout(url, {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${token}` },
-        }).then(async (res) => {
-          if (res.ok) {
-            syncWorker.broadcast(SYNC_EVENTS.BOOKS);
-          } else {
-            const body = await res.text().catch(() => '');
-            logger.warn(`Server delete returned ${res.status}`, body.slice(0, 500));
-          }
-        });
-      })
-      .catch((err) => logger.warn('Server delete failed:', err));
+    // Best-effort hard cleanup. Correctness does not depend on this request:
+    // the caller first persists a local tombstone and enqueues a soft-delete
+    // sync record so reload/offline/reconcile cannot resurrect the book.
+    const token = await getAccessToken();
+    if (token) {
+      const url = `${getAPIBaseUrl()}/sync?book_hash=${encodeURIComponent(book.hash)}`;
+      const res = await fetchWithTimeout(url, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        syncWorker.broadcast(SYNC_EVENTS.BOOKS);
+      } else {
+        const body = await res.text().catch(() => '');
+        logger.warn(`Server delete returned ${res.status}`, body.slice(0, 500));
+      }
+    }
   } catch (error) {
     logger.error('Background cleanup failed:', error);
   }
@@ -228,16 +227,30 @@ export function useBookActions() {
    * This is irreversible — re-importing the same file starts fresh.
    */
   const permanentlyDeleteBook = useCallback(async (book: Book) => {
-    // Instant: remove from UI + collections + in-memory store
+    const now = Date.now();
+    const deletedBook: Book = {
+      ...book,
+      deletedAt: now,
+      updatedAt: now,
+      downloadedAt: null,
+      coverDownloadedAt: null,
+    };
+
     const { library, setLibrary } = useLibraryStore.getState();
-    const remaining = library.filter((b) => b.hash !== book.hash);
-    setLibrary(remaining);
+    const nextLibrary = library.map((existing) =>
+      existing.hash === book.hash ? deletedBook : existing,
+    );
+    setLibrary(nextLibrary);
+
+    enqueueAndSync({ type: 'book', action: 'upsert', payload: bookPayload(deletedBook) });
+
+    const appService = await envConfig.getAppService();
+    await appService.saveLibraryBooks(nextLibrary);
 
     const bookKey = `${book.hash}-${book.format}`;
     useBookDataStore.getState().setConfig(bookKey, { booknotes: [], progress: undefined });
 
-    // Background: clean up all layers (best-effort, non-blocking)
-    cleanupDeletedBook(book, remaining);
+    void cleanupDeletedBook(deletedBook, nextLibrary);
   }, []);
 
   /**
@@ -245,28 +258,51 @@ export function useBookActions() {
    * Instant UI removal for all, then background cleanup.
    */
   const bulkRemove = useCallback(
-    (hashes: string[]) => {
+    async (hashes: string[]) => {
       const books = hashes.map((hash) => getBookByHash(hash)).filter(Boolean) as Book[];
       if (books.length === 0) return;
 
       clearSelection();
       setSelectMode(false);
 
-      // Instant: remove all from UI at once
-      const hashSet = new Set(hashes);
+      const now = Date.now();
+      const deletedByHash = new Map(
+        books.map((book) => [
+          book.hash,
+          {
+            ...book,
+            deletedAt: now,
+            updatedAt: now,
+            downloadedAt: null,
+            coverDownloadedAt: null,
+          } satisfies Book,
+        ]),
+      );
       const { library, setLibrary } = useLibraryStore.getState();
-      const remaining = library.filter((b) => !hashSet.has(b.hash));
-      setLibrary(remaining);
+      const nextLibrary = library.map((book) => deletedByHash.get(book.hash) ?? book);
+      setLibrary(nextLibrary);
+
+      enqueueBatchAndSync(
+        Array.from(deletedByHash.values()).map((deletedBook) => ({
+          type: 'book' as const,
+          action: 'upsert' as const,
+          payload: bookPayload(deletedBook),
+        })),
+      );
+
+      const appService = await envConfig.getAppService();
+      await appService.saveLibraryBooks(nextLibrary);
 
       for (const book of books) {
         const bookKey = `${book.hash}-${book.format}`;
         useBookDataStore.getState().setConfig(bookKey, { booknotes: [], progress: undefined });
       }
 
-      // Background: clean up all books in parallel
-      for (const book of books) {
-        cleanupDeletedBook(book, remaining);
-      }
+      void Promise.all(
+        Array.from(deletedByHash.values()).map((deletedBook) =>
+          cleanupDeletedBook(deletedBook, nextLibrary),
+        ),
+      );
     },
     [getBookByHash, clearSelection, setSelectMode],
   );

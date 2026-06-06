@@ -69,7 +69,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     set({ dirtyBooks });
   },
   clearDirtyBooks: () => set({ dirtyBooks: new Set() }),
-  getVisibleLibrary: () => get().library,
+  getVisibleLibrary: () => get().library.filter((book) => !book.deletedAt),
 
   setCurrentBookshelf: (bookshelf: (Book | BooksGroup)[]) => {
     set({ currentBookshelf: bookshelf });
@@ -103,12 +103,14 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     const merged = books.map((b) => {
       const existing = existingMap.get(b.hash);
       if (!existing) return b;
-      const localNewer = (existing.updatedAt || 0) > (b.updatedAt || 0);
+      const localTime = Math.max(existing.updatedAt || 0, existing.deletedAt || 0);
+      const remoteTime = Math.max(b.updatedAt || 0, b.deletedAt || 0);
+      const localNewer = localTime > remoteTime;
       const winner = localNewer ? existing : { ...b, coverImageUrl: existing.coverImageUrl };
       return winner;
     });
     const newLibrary = [...library.filter((b) => !incomingHashes.has(b.hash)), ...merged];
-    set({ library: newLibrary });
+    set({ library: newLibrary, libraryLoaded: true });
     refreshGroups();
     await appService.saveLibraryBooks(newLibrary);
   },

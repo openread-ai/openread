@@ -1,4 +1,3 @@
-import { User } from '@supabase/supabase-js';
 import { supabase } from '@/utils/supabase';
 import { createLogger } from '@/utils/logger';
 
@@ -7,7 +6,6 @@ const logger = createLogger('auth');
 interface UseAuthCallbackOptions {
   accessToken?: string | null;
   refreshToken?: string | null;
-  login: (accessToken: string, user: User) => void;
   navigate: (path: string) => void;
   type?: string | null;
   next?: string;
@@ -19,7 +17,6 @@ interface UseAuthCallbackOptions {
 export function handleAuthCallback({
   accessToken,
   refreshToken,
-  login,
   navigate,
   type,
   next = '/home',
@@ -50,17 +47,17 @@ export function handleAuthCallback({
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    if (user) {
-      login(accessToken, user);
-      if (type === 'recovery') {
-        navigate('/auth/recovery');
-        return;
-      }
-      navigate(next);
-    } else {
+    if (!user) {
       logger.error('Error fetching user data');
       navigate('/auth/error');
+      return;
     }
+
+    if (type === 'recovery') {
+      navigate('/auth/recovery');
+      return;
+    }
+    navigate(next);
   }
 
   finalizeSession();

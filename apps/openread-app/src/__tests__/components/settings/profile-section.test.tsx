@@ -48,7 +48,6 @@ vi.mock('@/context/AuthContext', () => ({
     user: mockAuthUser,
     token: mockAuthUser ? 'mock-token' : null,
     logout: vi.fn(),
-    login: vi.fn(),
     refresh: vi.fn(),
   }),
 }));

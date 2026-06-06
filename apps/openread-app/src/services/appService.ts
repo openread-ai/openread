@@ -511,7 +511,7 @@ export abstract class BaseAppService implements AppService {
       if (!resultBook.uploadedAt) {
         try {
           const settings = useSettingsStore.getState().settings;
-          if (settings.autoUpload && transferManager.isReady()) {
+          if (settings.autoUpload !== false && transferManager.isReady()) {
             logger.info('Queueing auto-upload for:', resultBook.title);
             transferManager.queueUpload(resultBook, 1); // high priority
           }

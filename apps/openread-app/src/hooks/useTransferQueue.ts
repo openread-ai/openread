@@ -2,6 +2,7 @@ import { useEffect, useCallback, useMemo } from 'react';
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from './useTranslation';
 import { useLibraryStore } from '@/store/libraryStore';
+import { useSettingsStore } from '@/store/settingsStore';
 import { useTransferStore, TransferType } from '@/store/transferStore';
 import { transferManager } from '@/services/transferManager';
 import { Book } from '@/types/book';
@@ -10,6 +11,8 @@ export function useTransferQueue(libraryLoaded = true, delayInit = 0) {
   const { envConfig, appService } = useEnv();
   const _ = useTranslation();
 
+  const library = useLibraryStore((state) => state.library);
+  const autoUpload = useSettingsStore((state) => state.settings.autoUpload);
   const transfers = useTransferStore((state) => state.transfers);
   const isQueuePaused = useTransferStore((state) => state.isQueuePaused);
   const setIsTransferQueueOpen = useTransferStore((state) => state.setIsTransferQueueOpen);
@@ -23,6 +26,17 @@ export function useTransferQueue(libraryLoaded = true, delayInit = 0) {
         };
         const translationFn = _;
         await transferManager.initialize(appService, getLibrary, updateBookFn, translationFn);
+
+        // Auto-upload is a durability promise, not a best-effort import-time side effect.
+        // If a book was imported before the transfer manager became ready, enqueue it
+        // once the manager initializes so fresh sessions can recover the book and cover from R2.
+        const settings = useSettingsStore.getState().settings;
+        if (settings.autoUpload !== false) {
+          const pendingUploadBooks = getLibrary().filter(
+            (book) => !book.deletedAt && !book.uploadedAt,
+          );
+          transferManager.queueBatchUploads(pendingUploadBooks, 1);
+        }
       }
     };
 
@@ -33,6 +47,12 @@ export function useTransferQueue(libraryLoaded = true, delayInit = 0) {
       }, delayInit);
     }
   }, [appService, envConfig, libraryLoaded, delayInit, _]);
+
+  useEffect(() => {
+    if (!libraryLoaded || autoUpload === false || !transferManager.isReady()) return;
+    const pendingUploadBooks = library.filter((book) => !book.deletedAt && !book.uploadedAt);
+    transferManager.queueBatchUploads(pendingUploadBooks, 1);
+  }, [autoUpload, library, libraryLoaded]);
 
   const queueUpload = useCallback((book: Book, priority?: number) => {
     return transferManager.queueUpload(book, priority);

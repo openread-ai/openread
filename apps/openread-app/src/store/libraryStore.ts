@@ -106,7 +106,18 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       const localTime = Math.max(existing.updatedAt || 0, existing.deletedAt || 0);
       const remoteTime = Math.max(b.updatedAt || 0, b.deletedAt || 0);
       const localNewer = localTime > remoteTime;
-      const winner = localNewer ? existing : { ...b, coverImageUrl: existing.coverImageUrl };
+      const winner = localNewer
+        ? { ...existing }
+        : { ...b, coverImageUrl: existing.coverImageUrl ?? b.coverImageUrl };
+      const coverImageUrl =
+        existing.metadata?.coverImageUrl ??
+        b.metadata?.coverImageUrl ??
+        winner.metadata?.coverImageUrl;
+      if (coverImageUrl && !winner.metadata?.coverImageUrl) {
+        winner.metadata = { ...(winner.metadata ?? {}), coverImageUrl } as NonNullable<
+          Book['metadata']
+        >;
+      }
       return winner;
     });
     const newLibrary = [...library.filter((b) => !incomingHashes.has(b.hash)), ...merged];

@@ -32,17 +32,16 @@ const BookCover: React.FC<BookCoverProps> = memo<BookCoverProps>(
     // Track which coverSrc failed so error resets when source changes
     const [failedSrc, setFailedSrc] = useState<string | null>(null);
 
-    const coverSrc = book.coverImageUrl || book.metadata?.coverImageUrl || null;
+    const rawCoverSrc = book.coverImageUrl || book.metadata?.coverImageUrl || null;
+    const coverSrc = rawCoverSrc === '_blank' ? null : rawCoverSrc;
     const imageError = coverSrc !== null && failedSrc === coverSrc;
     const shouldShowSpine = showSpine && imageLoaded && !imageError;
 
     // Determine fallback state:
-    // - Has cover source → show image (hide fallback)
-    // - No cover, no error → show skeleton (cover may be loading)
-    // - No cover, error → show title/author text
+    // - Has cover source → show image
+    // - Missing cover source or image load failure → show title/author fallback
     const showImage = !!coverSrc && !imageError;
-    const showSkeleton = !coverSrc && !imageError;
-    const showTextFallback = !coverSrc && imageError;
+    const showTextFallback = !coverSrc || imageError;
 
     return (
       <div
@@ -112,20 +111,7 @@ const BookCover: React.FC<BookCoverProps> = memo<BookCoverProps>(
           />
         )}
 
-        {/* Skeleton: shown while cover is loading/downloading */}
-        {showSkeleton && (
-          <div
-            className={clsx(
-              'absolute inset-0',
-              isPreview ? 'bg-base-200/50' : 'bg-base-100',
-              imageClassName,
-            )}
-          >
-            <div className='bg-base-300 h-full w-full animate-pulse rounded' />
-          </div>
-        )}
-
-        {/* Text fallback: shown only when image fails to load */}
+        {/* Text fallback: shown when no cover is available or the image fails to load */}
         {showTextFallback && (
           <div
             className={clsx(

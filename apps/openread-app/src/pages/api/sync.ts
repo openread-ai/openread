@@ -37,6 +37,9 @@ type TableName = keyof typeof transformsToDB;
 type DBError = { table: TableName; error: PostgrestError };
 
 type CatalogCoverRecord = {
+  book_hash?: string | null;
+  user_id?: string | null;
+  updated_at?: string | null;
   catalog_book_id?: string | null;
   metadata?: unknown;
 };
@@ -63,9 +66,19 @@ function normalizeMetadata(metadata: unknown): Record<string, unknown> {
     : {};
 }
 
+function hasCatalogCoverImageUrl(metadata: unknown): boolean {
+  const normalized = normalizeMetadata(metadata);
+  return typeof normalized['coverImageUrl'] === 'string' && normalized['coverImageUrl'].length > 0;
+}
+
 async function enrichCatalogBookCovers<T extends CatalogCoverRecord>(records: T[]): Promise<T[]> {
+  const recordsNeedingCover = records.filter(
+    (record) => record.catalog_book_id && !hasCatalogCoverImageUrl(record.metadata),
+  );
   const catalogIds = [
-    ...new Set(records.map((record) => record.catalog_book_id).filter(Boolean) as string[]),
+    ...new Set(
+      recordsNeedingCover.map((record) => record.catalog_book_id).filter(Boolean) as string[],
+    ),
   ];
   if (catalogIds.length === 0) return records;
 
@@ -82,22 +95,53 @@ async function enrichCatalogBookCovers<T extends CatalogCoverRecord>(records: T[
       .filter((row) => row.cover_image_key)
       .map((row) => [row.id as string, row.cover_image_key as string]),
   );
+  const nowIso = new Date().toISOString();
+  const persistenceUpdates: Array<{
+    bookHash: string;
+    userId: string;
+    metadata: Record<string, unknown>;
+  }> = [];
 
-  return records.map((record) => {
+  const enrichedRecords = records.map((record) => {
     const coverImageKey = record.catalog_book_id
       ? coverByCatalogId.get(record.catalog_book_id)
       : null;
-    if (!coverImageKey) return record;
+    if (!coverImageKey || hasCatalogCoverImageUrl(record.metadata)) return record;
 
-    const metadata = normalizeMetadata(record.metadata);
+    const metadata = {
+      ...normalizeMetadata(record.metadata),
+      coverImageUrl: catalogCoverImageUrl(coverImageKey),
+    };
+
+    if (record.book_hash && record.user_id) {
+      persistenceUpdates.push({
+        bookHash: record.book_hash,
+        userId: record.user_id,
+        metadata,
+      });
+    }
+
     return {
       ...record,
-      metadata: {
-        ...metadata,
-        coverImageUrl: catalogCoverImageUrl(coverImageKey),
-      },
+      metadata,
+      updated_at: nowIso,
     } as T;
   });
+
+  await Promise.all(
+    persistenceUpdates.map(async ({ bookHash, userId, metadata }) => {
+      const { error: updateError } = await adminSupabase
+        .from('books')
+        .update({ metadata, updated_at: nowIso })
+        .eq('user_id', userId)
+        .eq('book_hash', bookHash);
+      if (updateError) {
+        console.error('[sync] catalog cover metadata backfill failed:', updateError.message);
+      }
+    }),
+  );
+
+  return enrichedRecords;
 }
 
 /** Return a 426 response if the client's sync protocol version is unsupported, or null if OK. */
@@ -601,10 +645,17 @@ export async function POST(req: NextRequest) {
         const reconcileUpsert: typeof serverBooks = [];
         const reconcileRemove: string[] = [];
 
-        // Server has but client doesn't, or server is newer
+        // Server has but client doesn't, server is newer, or the row is a catalog import.
+        // Catalog imports may need cover metadata backfilled even when the book timestamp
+        // matches the client, because coverImageUrl is derived from catalog_book.cover_image_key
+        // at sync response time and is not part of the client reconciliation inventory.
         for (const [hash, book] of serverMap) {
           const clientTime = clientHashes[hash];
-          if (clientTime === undefined || new Date(book.updated_at).getTime() > clientTime) {
+          const serverTime = new Date(book.updated_at).getTime();
+          const needsCatalogCoverBackfill = Boolean(
+            book.catalog_book_id && !hasCatalogCoverImageUrl(book.metadata),
+          );
+          if (clientTime === undefined || serverTime > clientTime || needsCatalogCoverBackfill) {
             reconcileUpsert.push(book);
           }
         }

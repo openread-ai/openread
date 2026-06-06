@@ -159,8 +159,8 @@ describe('useFeatureFlags', () => {
       });
 
       expect(result.current.plan).toBe('reader');
-      // Tier-gate driven flags
-      expect(result.current.flags.canTTS).toBe(true);
+      // Tier-gate driven flags, with launch holdbacks applied
+      expect(result.current.flags.canTTS).toBe(false);
       expect(result.current.flags.cloudSync).toBe(true);
       expect(result.current.flags.canTranslate).toBe(false);
       expect(result.current.flags.canBYOK).toBe(true);
@@ -173,14 +173,14 @@ describe('useFeatureFlags', () => {
       expect(result.current.flags.maxCloudStorage).toBe(10 * 1024 * 1024 * 1024); // 10GB
     });
 
-    it('should return true for canTTS', async () => {
+    it('should return false for canTTS during launch holdback', async () => {
       const { result } = renderHook(() => useFeatureFlags());
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
       });
 
-      expect(result.current.canTTS()).toBe(true);
+      expect(result.current.canTTS()).toBe(false);
     });
 
     it('should return false for canTranslate (reader has no translation)', async () => {
@@ -238,10 +238,10 @@ describe('useFeatureFlags', () => {
       });
 
       expect(result.current.plan).toBe('pro');
-      // Tier-gate driven flags - all true for pro
-      expect(result.current.flags.canTTS).toBe(true);
+      // Tier-gate driven flags, with launch holdbacks applied
+      expect(result.current.flags.canTTS).toBe(false);
       expect(result.current.flags.cloudSync).toBe(true);
-      expect(result.current.flags.canTranslate).toBe(true);
+      expect(result.current.flags.canTranslate).toBe(false);
       expect(result.current.flags.canBYOK).toBe(true);
       expect(result.current.flags.canBoost).toBe(false);
       // Limit-based flags
@@ -253,14 +253,14 @@ describe('useFeatureFlags', () => {
       expect(result.current.flags.prioritySupport).toBe(true);
     });
 
-    it('should return true for canTranslate (pro only)', async () => {
+    it('should return false for canTranslate during launch holdback', async () => {
       const { result } = renderHook(() => useFeatureFlags());
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
       });
 
-      expect(result.current.canTranslate()).toBe(true);
+      expect(result.current.canTranslate()).toBe(false);
     });
 
     it('should return true for canUseKnowledgeGraph', async () => {
@@ -341,7 +341,7 @@ describe('useFeatureFlags', () => {
   });
 
   describe('hasTranslationQuota', () => {
-    it('should return true when within quota', async () => {
+    it('should return false while translation is held back for launch', async () => {
       mockUser = { id: 'user-1' };
       mockUserProfilePlan = 'pro';
 
@@ -354,7 +354,7 @@ describe('useFeatureFlags', () => {
       const currentUsage = 5 * 1024; // 5K chars
       const additional = 2 * 1024; // 2K chars
 
-      expect(result.current.hasTranslationQuota(currentUsage, additional)).toBe(true);
+      expect(result.current.hasTranslationQuota(currentUsage, additional)).toBe(false);
     });
 
     it('should return false when exceeding quota', async () => {

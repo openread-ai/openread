@@ -9,6 +9,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { FooterBarChildProps } from './types';
 import { formatProgress } from '@/utils/progress';
+import { LAUNCH_TTS_ENABLED } from '@/services/launchFeatures';
 import Button from '@/components/Button';
 
 const DesktopFooterBar: React.FC<FooterBarChildProps> = ({
@@ -123,11 +124,14 @@ const DesktopFooterBar: React.FC<FooterBarChildProps> = ({
         value={progressValue}
         onChange={(e) => handleProgressChange(parseInt(e.target.value, 10))}
       />
-      <Button
-        icon={<FaHeadphones className={viewState?.ttsEnabled ? 'text-blue-500' : ''} />}
-        onClick={onSpeakText!}
-        label={_('Speak')}
-      />
+      {/* Launch holdback: hide desktop TTS button until post-launch. */}
+      {LAUNCH_TTS_ENABLED && (
+        <Button
+          icon={<FaHeadphones className={viewState?.ttsEnabled ? 'text-blue-500' : ''} />}
+          onClick={onSpeakText!}
+          label={_('Speak')}
+        />
+      )}
       <Button
         icon={getNavigationIcon(viewSettings?.rtl, <RiArrowRightSLine />, <RiArrowLeftSLine />)}
         onClick={getNavigationHandler(

@@ -48,6 +48,7 @@ import TranslatorPopup from './TranslatorPopup';
 import useShortcuts from '@/hooks/useShortcuts';
 import ProofreadPopup from './ProofreadPopup';
 import ExportMarkdownDialog from './ExportMarkdownDialog';
+import { LAUNCH_TTS_ENABLED, LAUNCH_TRANSLATION_ENABLED } from '@/services/launchFeatures';
 import { createLogger } from '@/utils/logger';
 
 const logger = createLogger('annotator');
@@ -461,10 +462,10 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
         handleWikipedia();
         break;
       case 'translate':
-        handleTranslation();
+        if (LAUNCH_TRANSLATION_ENABLED) handleTranslation();
         break;
       case 'tts':
-        handleSpeakText(true);
+        if (LAUNCH_TTS_ENABLED) handleSpeakText(true);
         break;
     }
   };
@@ -788,13 +789,13 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   }, []);
 
   const handleTranslation = () => {
-    if (!selection || !selection.text) return;
+    if (!LAUNCH_TRANSLATION_ENABLED || !selection || !selection.text) return;
     setShowAnnotPopup(false);
     setShowDeepLPopup(true);
   };
 
   const handleSpeakText = async (oneTime = false) => {
-    if (!selection || !selection.text) return;
+    if (!LAUNCH_TTS_ENABLED || !selection || !selection.text) return;
     setShowAnnotPopup(false);
     eventDispatcher.dispatch('tts-speak', { bookKey, range: selection.range, oneTime });
   };
@@ -837,7 +838,7 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
         handleCopy(false);
       },
       onTranslateSelection: () => {
-        handleTranslation();
+        if (LAUNCH_TRANSLATION_ENABLED) handleTranslation();
       },
       onDictionarySelection: () => {
         handleDictionary();
@@ -846,7 +847,7 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
         handleWikipedia();
       },
       onReadAloudSelection: () => {
-        handleSpeakText();
+        if (LAUNCH_TTS_ENABLED) handleSpeakText();
       },
       onProofreadSelection: () => {
         handleProofread();
@@ -999,16 +1000,19 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
           onDismiss={handleDismissPopupAndSelection}
         />
       )}
-      {showDeepLPopup && trianglePosition && translatorPopupPosition && (
-        <TranslatorPopup
-          text={selection?.text as string}
-          position={translatorPopupPosition}
-          trianglePosition={trianglePosition}
-          popupWidth={transPopupWidth}
-          popupHeight={transPopupHeight}
-          onDismiss={handleDismissPopupAndSelection}
-        />
-      )}
+      {LAUNCH_TRANSLATION_ENABLED &&
+        showDeepLPopup &&
+        trianglePosition &&
+        translatorPopupPosition && (
+          <TranslatorPopup
+            text={selection?.text as string}
+            position={translatorPopupPosition}
+            trianglePosition={trianglePosition}
+            popupWidth={transPopupWidth}
+            popupHeight={transPopupHeight}
+            onDismiss={handleDismissPopupAndSelection}
+          />
+        )}
       {showAnnotPopup && trianglePosition && annotPopupPosition && (
         <AnnotationPopup
           bookKey={bookKey}

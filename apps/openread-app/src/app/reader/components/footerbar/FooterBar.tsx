@@ -17,6 +17,7 @@ import MobileFooterBarV2 from '../mobile/MobileFooterBarV2';
 import DesktopFooterBar from './DesktopFooterBar';
 import TTSControl from '../tts/TTSControl';
 import { RSVPControl } from '../rsvp';
+import { LAUNCH_TTS_ENABLED } from '@/services/launchFeatures';
 
 const FooterBar: React.FC<FooterBarProps> = ({
   bookKey,
@@ -94,7 +95,7 @@ const FooterBar: React.FC<FooterBarProps> = ({
   }, [view]);
 
   const handleSpeakText = useCallback(async () => {
-    if (!view || !progress || !viewState) return;
+    if (!LAUNCH_TTS_ENABLED || !view || !progress || !viewState) return;
 
     const eventType = viewState.ttsEnabled ? 'tts-stop' : 'tts-speak';
     eventDispatcher.dispatch(eventType, { bookKey });
@@ -105,6 +106,8 @@ const FooterBar: React.FC<FooterBarProps> = ({
       setUserSelectedTab((prevTab) => (prevTab === tab ? '' : tab));
 
       if (tab === 'tts') {
+        // Launch holdback: TTS is intentionally hidden/disabled until post-launch.
+        if (!LAUNCH_TTS_ENABLED) return;
         if (viewState?.ttsEnabled) {
           setHoveredBookKey('');
         }
@@ -256,7 +259,8 @@ const FooterBar: React.FC<FooterBarProps> = ({
         <div className='bg-base-100 pointer-events-none absolute bottom-0 left-0 hidden h-3 w-full sm:block' />
       )}
 
-      <TTSControl bookKey={bookKey} gridInsets={gridInsets} />
+      {/* Launch holdback: TTS control remains in code but is hidden for launch. */}
+      {LAUNCH_TTS_ENABLED && <TTSControl bookKey={bookKey} gridInsets={gridInsets} />}
       <RSVPControl bookKey={bookKey} />
     </>
   );

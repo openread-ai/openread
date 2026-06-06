@@ -3,6 +3,7 @@ import { FoliateView } from '@/types/view';
 import { UseTranslatorOptions } from '@/services/translators';
 import { useReaderStore } from '@/store/readerStore';
 import { useTranslator } from '@/hooks/useTranslator';
+import { LAUNCH_TRANSLATION_ENABLED } from '@/services/launchFeatures';
 import { walkTextNodes } from '@/utils/walk';
 import { debounce } from '@/utils/debounce';
 import { getLocale } from '@/utils/misc';
@@ -20,7 +21,7 @@ export function useTextTranslation(
   const viewSettings = getViewSettings(bookKey);
   const progress = getProgress(bookKey);
 
-  const enabled = useRef(viewSettings?.translationEnabled);
+  const enabled = useRef(LAUNCH_TRANSLATION_ENABLED && viewSettings?.translationEnabled);
   const [provider, setProvider] = useState(viewSettings?.translationProvider);
   const [targetLang, setTargetLang] = useState(viewSettings?.translateTargetLang);
   const showTranslateSourceRef = useRef(viewSettings?.showTranslateSource);
@@ -53,7 +54,7 @@ export function useTextTranslation(
   }, [translate]);
 
   const observeTextNodes = () => {
-    if (!view || !enabled.current) return;
+    if (!LAUNCH_TRANSLATION_ENABLED || !view || !enabled.current) return;
     const observer = createTranslationObserver();
     observerRef.current = observer;
     const nodes = walkTextNodes(view, ['pre', 'code', 'math']);
@@ -69,7 +70,7 @@ export function useTextTranslation(
     });
 
     translatedElements.current = [];
-    if (viewSettings?.translationEnabled && view) {
+    if (LAUNCH_TRANSLATION_ENABLED && viewSettings?.translationEnabled && view) {
       recreateTranslationObserver();
     }
   };
@@ -127,7 +128,7 @@ export function useTextTranslation(
   };
 
   const translateElement = async (el: HTMLElement) => {
-    if (!enabled.current) return;
+    if (!LAUNCH_TRANSLATION_ENABLED || !enabled.current) return;
     const text = el.textContent?.replaceAll('\n', '').trim();
     if (!text) return;
 
@@ -277,14 +278,15 @@ export function useTextTranslation(
   useEffect(() => {
     if (!viewSettings) return;
 
-    const enabledChanged = enabled.current !== viewSettings.translationEnabled;
+    const launchTranslationEnabled = LAUNCH_TRANSLATION_ENABLED && viewSettings.translationEnabled;
+    const enabledChanged = enabled.current !== launchTranslationEnabled;
     const providerChanged = provider !== viewSettings.translationProvider;
     const targetLangChanged = targetLang !== viewSettings.translateTargetLang;
     const showTranslateSourceChanged =
       showTranslateSourceRef.current !== viewSettings.showTranslateSource;
 
     if (enabledChanged) {
-      enabled.current = viewSettings.translationEnabled;
+      enabled.current = launchTranslationEnabled;
     }
 
     if (providerChanged) {
@@ -300,7 +302,7 @@ export function useTextTranslation(
     }
 
     if (enabledChanged) {
-      toggleTranslationVisibility(viewSettings.translationEnabled);
+      toggleTranslationVisibility(LAUNCH_TRANSLATION_ENABLED && viewSettings.translationEnabled);
       if (enabled.current) {
         observeTextNodes();
       }
@@ -311,7 +313,7 @@ export function useTextTranslation(
   }, [bookKey, viewSettings, provider, targetLang]);
 
   useEffect(() => {
-    if (!view || !enabled.current) return;
+    if (!LAUNCH_TRANSLATION_ENABLED || !view || !enabled.current) return;
 
     if ('renderer' in view) {
       view.addEventListener('load', observeTextNodes);

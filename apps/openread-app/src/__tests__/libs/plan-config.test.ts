@@ -143,11 +143,13 @@ describe('buildPlanCardConfigs', () => {
       expect(proReading.features.some((f) => f.label === 'Unlimited library')).toBe(true);
     });
 
-    it('should show TTS for paid tiers only', () => {
+    it('should hide TTS while it is held back from launch', () => {
       const freeReading = configs[0]!.featureGroups.find((g) => g.name === 'Reading')!;
       const readerReading = configs[1]!.featureGroups.find((g) => g.name === 'Reading')!;
+      const proReading = configs[2]!.featureGroups.find((g) => g.name === 'Reading')!;
       expect(freeReading.features.some((f) => f.label === 'AI Read Aloud (TTS)')).toBe(false);
-      expect(readerReading.features.some((f) => f.label === 'AI Read Aloud (TTS)')).toBe(true);
+      expect(readerReading.features.some((f) => f.label === 'AI Read Aloud (TTS)')).toBe(false);
+      expect(proReading.features.some((f) => f.label === 'AI Read Aloud (TTS)')).toBe(false);
     });
 
     // Storage details

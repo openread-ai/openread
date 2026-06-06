@@ -12,6 +12,7 @@ import { MAX_ZOOM_LEVEL, MIN_ZOOM_LEVEL, ZOOM_STEP } from '@/services/constants'
 import { viewPagination } from './usePagination';
 import { getStyles } from '@/utils/style';
 import useShortcuts from '@/hooks/useShortcuts';
+import { LAUNCH_TTS_ENABLED } from '@/services/launchFeatures';
 import useBooksManager from './useBooksManager';
 
 interface UseBookShortcutsProps {
@@ -223,7 +224,8 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
   };
 
   const toggleTTS = () => {
-    if (!sideBarBookKey) return;
+    // Launch holdback: keyboard TTS shortcut is disabled until post-launch.
+    if (!LAUNCH_TTS_ENABLED || !sideBarBookKey) return;
     const bookKey = sideBarBookKey;
     const viewState = getViewState(bookKey);
     eventDispatcher.dispatch(viewState?.ttsEnabled ? 'tts-stop' : 'tts-speak', { bookKey });

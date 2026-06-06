@@ -10,6 +10,7 @@ import { useBookDataStore } from '@/store/bookDataStore';
 import { useProofreadStore } from '@/store/proofreadStore';
 import { ProofreadRule, ProofreadScope } from '@/types/book';
 import { eventDispatcher } from '@/utils/event';
+import { LAUNCH_TTS_ENABLED } from '@/services/launchFeatures';
 import Dialog from '@/components/Dialog';
 
 const dialogId = 'proofread_rules_window';
@@ -116,13 +117,17 @@ const RuleItem: React.FC<{
               {rule.caseSensitive !== false ? _('Yes') : _('No')}
             </span>
           </span>
-          <span className='text-base-content/30'>•</span>
-          <span className='inline-flex items-center gap-1'>
-            <span className='text-base-content/50'>{_('Only for TTS:')}</span>
-            <span className='text-base-content/70 font-medium'>
-              {rule.onlyForTTS === true ? _('Yes') : _('No')}
-            </span>
-          </span>
+          {LAUNCH_TTS_ENABLED && (
+            <>
+              <span className='text-base-content/30'>•</span>
+              <span className='inline-flex items-center gap-1'>
+                <span className='text-base-content/50'>{_('Only for TTS:')}</span>
+                <span className='text-base-content/70 font-medium'>
+                  {rule.onlyForTTS === true ? _('Yes') : _('No')}
+                </span>
+              </span>
+            </>
+          )}
         </div>
       </div>
       <div className='absolute right-2 top-2 flex items-center gap-1'>

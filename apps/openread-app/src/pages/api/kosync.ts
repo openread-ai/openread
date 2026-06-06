@@ -1,5 +1,9 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { corsAllMethods, runMiddleware } from '@/utils/cors';
+import {
+  LAUNCH_DISABLED_FEATURE_MESSAGE,
+  LAUNCH_KOREADER_SYNC_ENABLED,
+} from '@/services/launchFeatures';
 import { KoSyncProxyPayload } from '@/types/kosync';
 import { createLogger } from '@/utils/logger';
 
@@ -10,6 +14,15 @@ const validEndpoints = [/\/users\/create/, /\/users\/auth/, /\/syncs\/progress/]
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   await runMiddleware(req, res, corsAllMethods);
 
+  // Launch holdback: keep KOReader sync proxy implementation in place, but block API access.
+  if (!LAUNCH_KOREADER_SYNC_ENABLED) {
+    return res.status(404).json({ error: LAUNCH_DISABLED_FEATURE_MESSAGE });
+  }
+
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method Not Allowed' });
+  }
+
   const {
     serverUrl,
     endpoint,
@@ -17,10 +30,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     headers: clientHeaders,
     body: clientBody,
   } = req.body as KoSyncProxyPayload;
-
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
-  }
 
   if (!serverUrl || !endpoint) {
     return res.status(400).json({ error: 'serverUrl and endpoint are required' });

@@ -16,6 +16,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { eventDispatcher } from '@/utils/event';
 import { getAPIBaseUrl } from '@/services/environment';
 import { getAccessToken } from '@/utils/access';
+import { LAUNCH_TTS_ENABLED, LAUNCH_TRANSLATION_ENABLED } from '@/services/launchFeatures';
 import { createLogger } from '@/utils/logger';
 import type { PaymentProvider } from '@/types/payment';
 
@@ -30,8 +31,9 @@ const FEATURES_LOST = [
   'Unlimited library books',
   'Cloud sync across devices',
   'AI-powered book analysis',
-  'Text-to-speech (TTS)',
-  'Extended translation limits',
+  // Launch holdback: keep copy available for post-launch, but do not show it now.
+  ...(LAUNCH_TTS_ENABLED ? ['Text-to-speech (TTS)'] : []),
+  ...(LAUNCH_TRANSLATION_ENABLED ? ['Extended translation limits'] : []),
   'Priority support',
 ];
 

@@ -3,6 +3,7 @@ import { deeplProvider } from './deepl';
 import { azureProvider } from './azure';
 import { googleProvider } from './google';
 import { yandexProvider } from './yandex';
+import { LAUNCH_TRANSLATION_ENABLED } from '@/services/launchFeatures';
 
 function createTranslator<T extends string>(
   name: T,
@@ -32,9 +33,13 @@ const availableTranslators = [
 export type TranslatorName = (typeof availableTranslators)[number]['name'];
 
 export const getTranslator = (name: TranslatorName): TranslationProvider | undefined => {
+  // Launch holdback: do not expose translation providers while translation is out of launch scope.
+  if (!LAUNCH_TRANSLATION_ENABLED) return undefined;
   return availableTranslators.find((translator) => translator.name === name);
 };
 
 export const getTranslators = (): TranslationProvider[] => {
+  // Launch holdback: keep providers wired but unavailable until translation returns.
+  if (!LAUNCH_TRANSLATION_ENABLED) return [];
   return availableTranslators;
 };

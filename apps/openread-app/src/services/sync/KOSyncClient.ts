@@ -2,6 +2,10 @@ import { md5 } from 'js-md5';
 import { Book } from '@/types/book';
 import { KOSyncSettings } from '@/types/settings';
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
+import {
+  LAUNCH_DISABLED_FEATURE_MESSAGE,
+  LAUNCH_KOREADER_SYNC_ENABLED,
+} from '@/services/launchFeatures';
 import { KoSyncProxyPayload } from '@/types/kosync';
 import { isLanAddress } from '@/utils/network';
 import { getAPIBaseUrl, isTauriAppPlatform } from '../environment';
@@ -40,6 +44,10 @@ export class KOSyncClient {
       useAuth?: boolean;
     } = {},
   ): Promise<Response> {
+    if (!LAUNCH_KOREADER_SYNC_ENABLED) {
+      throw new Error(LAUNCH_DISABLED_FEATURE_MESSAGE);
+    }
+
     const { method = 'GET', body, headers: additionalHeaders, useAuth = true } = options;
 
     const headers = new Headers(additionalHeaders || {});
@@ -96,6 +104,10 @@ export class KOSyncClient {
     username: string,
     password: string,
   ): Promise<{ success: boolean; message?: string }> {
+    if (!LAUNCH_KOREADER_SYNC_ENABLED) {
+      return { success: false, message: LAUNCH_DISABLED_FEATURE_MESSAGE };
+    }
+
     const userkey = md5(password);
 
     try {
@@ -146,7 +158,7 @@ export class KOSyncClient {
    * @returns Promise with the progress data or null if not found
    */
   async getProgress(book: Book): Promise<KoSyncProgress | null> {
-    if (!this.config.userkey) return null;
+    if (!LAUNCH_KOREADER_SYNC_ENABLED || !this.config.userkey) return null;
 
     const documentHash = this.getDocumentDigest(book);
     if (!documentHash) return null;
@@ -177,7 +189,7 @@ export class KOSyncClient {
    * @returns Promise with boolean indicating success
    */
   async updateProgress(book: Book, progress: string, percentage: number): Promise<boolean> {
-    if (!this.config.userkey) return false;
+    if (!LAUNCH_KOREADER_SYNC_ENABLED || !this.config.userkey) return false;
 
     const documentHash = this.getDocumentDigest(book);
     if (!documentHash) return false;

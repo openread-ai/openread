@@ -55,6 +55,7 @@ import { transformContent } from '@/services/transformService';
 import { lockScreenOrientation } from '@/utils/bridge';
 import { useTextTranslation } from '../hooks/useTextTranslation';
 import { useBookCoverAutoSave } from '../hooks/useAutoSaveBookCover';
+import { LAUNCH_TRANSLATION_ENABLED } from '@/services/launchFeatures';
 import { useDiscordPresence } from '@/hooks/useDiscordPresence';
 import { manageSyntaxHighlighting } from '@/utils/highlightjs';
 import { getViewInsets } from '@/utils/insets';
@@ -122,7 +123,8 @@ const FoliateViewer: React.FC<{
   useProgressAutoSave(bookKey);
   useBookCoverAutoSave(bookKey);
   const { syncState, conflictDetails, resolveWithLocal, resolveWithRemote } = useKOSync(bookKey);
-  useTextTranslation(bookKey, viewRef.current);
+  // Launch holdback: keep translation hook code present, but do not activate it for launch.
+  useTextTranslation(bookKey, LAUNCH_TRANSLATION_ENABLED ? viewRef.current : null);
 
   const progressRelocateHandler = (event: Event) => {
     const detail = (event as CustomEvent).detail;

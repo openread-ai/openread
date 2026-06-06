@@ -33,6 +33,7 @@ import NotebookToggler from './NotebookToggler';
 import SettingsToggler from './SettingsToggler';
 import TranslationToggler from './TranslationToggler';
 import ViewMenu from './ViewMenu';
+import { LAUNCH_TRANSLATION_ENABLED } from '@/services/launchFeatures';
 
 interface HeaderBarProps {
   bookKey: string;
@@ -247,7 +248,8 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
                 <SidebarToggler bookKey={bookKey} />
               </div>
               <BookmarkToggler bookKey={bookKey} />
-              <TranslationToggler bookKey={bookKey} />
+              {/* Launch holdback: translation toggle remains available in code but hidden. */}
+              {LAUNCH_TRANSLATION_ENABLED && <TranslationToggler bookKey={bookKey} />}
               {enableAnnotationQuickActions && (
                 <Dropdown
                   label={

@@ -7,6 +7,7 @@ import { PiSun as ColorIcon } from 'react-icons/pi';
 import { MdOutlineHeadphones as TTSIcon } from 'react-icons/md';
 import { useReaderStore } from '@/store/readerStore';
 import { useTranslation } from '@/hooks/useTranslation';
+import { LAUNCH_TTS_ENABLED } from '@/services/launchFeatures';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import Button from '@/components/Button';
 
@@ -56,11 +57,14 @@ export const NavigationBar: React.FC<NavigationBarProps> = ({
         }
         onClick={() => onSetActionTab('font')}
       />
-      <Button
-        label={_('Speak')}
-        icon={<TTSIcon className={viewState?.ttsEnabled ? 'text-blue-500' : ''} />}
-        onClick={() => onSetActionTab('tts')}
-      />
+      {/* Launch holdback: hide TTS entry point across mobile footer platforms. */}
+      {LAUNCH_TTS_ENABLED && (
+        <Button
+          label={_('Speak')}
+          icon={<TTSIcon className={viewState?.ttsEnabled ? 'text-blue-500' : ''} />}
+          onClick={() => onSetActionTab('tts')}
+        />
+      )}
     </div>
   );
 };

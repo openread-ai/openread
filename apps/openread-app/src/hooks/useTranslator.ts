@@ -6,6 +6,7 @@ import { polish, preprocess } from '@/services/translators';
 import { eventDispatcher } from '@/utils/event';
 import { getLocale } from '@/utils/misc';
 import { useTranslation } from './useTranslation';
+import { LAUNCH_TRANSLATION_ENABLED } from '@/services/launchFeatures';
 
 export function useTranslator({
   provider = 'deepl',
@@ -26,11 +27,21 @@ export function useTranslator({
   }, [provider, sourceLang, targetLang]);
 
   useEffect(() => {
+    if (!LAUNCH_TRANSLATION_ENABLED) {
+      setLoading(false);
+      setTransltor(undefined);
+      return;
+    }
+
     const availableTranslators = getTranslators().filter(
       (t) => (t.authRequired ? !!token : true) && !t.quotaExceeded,
     );
     const selectedTranslator =
-      availableTranslators.find((t) => t.name === provider) || availableTranslators[0]!;
+      availableTranslators.find((t) => t.name === provider) || availableTranslators[0];
+    if (!selectedTranslator) {
+      setTransltor(undefined);
+      return;
+    }
     const selectedProviderName = selectedTranslator.name as TranslatorName;
     setTransltor(getTranslator(selectedProviderName));
     setSelectedProvider(selectedProviderName);
@@ -42,6 +53,8 @@ export function useTranslator({
       input: string[],
       options?: { source?: string; target?: string; useCache?: boolean },
     ): Promise<string[]> => {
+      if (!LAUNCH_TRANSLATION_ENABLED) return input;
+
       const sourceLanguage = options?.source || sourceLang;
       const targetLanguage = options?.target || targetLang || getLocale();
       const useCache = options?.useCache ?? false;

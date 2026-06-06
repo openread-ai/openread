@@ -12,6 +12,7 @@ import { TRANSLATED_LANGS, TRANSLATOR_LANGS } from '@/services/constants';
 import { ConvertChineseVariant } from '@/types/book';
 import { SettingsPanelPanelProp } from './SettingsDialog';
 import { isCJKEnv } from '@/utils/misc';
+import { LAUNCH_TRANSLATION_ENABLED } from '@/services/launchFeatures';
 import Select from '@/components/Select';
 
 const LangPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset }) => {
@@ -258,60 +259,63 @@ const LangPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
         </div>
       </div>
 
-      <div className='w-full' data-setting-id='settings.language.translationEnabled'>
-        <h2 className='mb-2 font-medium'>{_('Translation')}</h2>
-        <div className='card border-base-200 bg-base-100 border shadow'>
-          <div className='divide-base-200'>
-            <div className='config-item'>
-              <span className=''>{_('Enable Translation')}</span>
-              <input
-                type='checkbox'
-                className='toggle'
-                checked={translationEnabled}
-                onChange={() => setTranslationEnabled(!translationEnabled)}
-                disabled={!bookKey}
-              />
-            </div>
+      {/* Launch holdback: translation settings remain in code but are hidden for launch. */}
+      {LAUNCH_TRANSLATION_ENABLED && (
+        <div className='w-full' data-setting-id='settings.language.translationEnabled'>
+          <h2 className='mb-2 font-medium'>{_('Translation')}</h2>
+          <div className='card border-base-200 bg-base-100 border shadow'>
+            <div className='divide-base-200'>
+              <div className='config-item'>
+                <span className=''>{_('Enable Translation')}</span>
+                <input
+                  type='checkbox'
+                  className='toggle'
+                  checked={translationEnabled}
+                  onChange={() => setTranslationEnabled(!translationEnabled)}
+                  disabled={!bookKey}
+                />
+              </div>
 
-            <div className='config-item'>
-              <span className=''>{_('Show Source Text')}</span>
-              <input
-                type='checkbox'
-                className='toggle'
-                checked={showTranslateSource}
-                onChange={() => setShowTranslateSource(!showTranslateSource)}
-              />
-            </div>
+              <div className='config-item'>
+                <span className=''>{_('Show Source Text')}</span>
+                <input
+                  type='checkbox'
+                  className='toggle'
+                  checked={showTranslateSource}
+                  onChange={() => setShowTranslateSource(!showTranslateSource)}
+                />
+              </div>
 
-            <div className='config-item' data-setting-id='settings.language.ttsTextTranslation'>
-              <span className=''>{_('TTS Text')}</span>
-              <Select
-                value={ttsReadAloudText}
-                onChange={handleSelectTTSText}
-                options={getTTSTextOptions()}
-              />
-            </div>
+              <div className='config-item' data-setting-id='settings.language.ttsTextTranslation'>
+                <span className=''>{_('TTS Text')}</span>
+                <Select
+                  value={ttsReadAloudText}
+                  onChange={handleSelectTTSText}
+                  options={getTTSTextOptions()}
+                />
+              </div>
 
-            <div className='config-item' data-setting-id='settings.language.translationProvider'>
-              <span className=''>{_('Translation Service')}</span>
-              <Select
-                value={getCurrentTranslationProviderOption().value}
-                onChange={handleSelectTranslationProvider}
-                options={getTranslationProviderOptions()}
-              />
-            </div>
+              <div className='config-item' data-setting-id='settings.language.translationProvider'>
+                <span className=''>{_('Translation Service')}</span>
+                <Select
+                  value={getCurrentTranslationProviderOption().value}
+                  onChange={handleSelectTranslationProvider}
+                  options={getTranslationProviderOptions()}
+                />
+              </div>
 
-            <div className='config-item' data-setting-id='settings.language.targetLanguage'>
-              <span className=''>{_('Translate To')}</span>
-              <Select
-                value={getCurrentTargetLangOption().value}
-                onChange={handleSelectTargetLang}
-                options={getLangOptions(TRANSLATOR_LANGS)}
-              />
+              <div className='config-item' data-setting-id='settings.language.targetLanguage'>
+                <span className=''>{_('Translate To')}</span>
+                <Select
+                  value={getCurrentTargetLangOption().value}
+                  onChange={handleSelectTargetLang}
+                  options={getLangOptions(TRANSLATOR_LANGS)}
+                />
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {(isCJKEnv() || view?.language.isCJK) && (
         <div className='w-full' data-setting-id='settings.language.quotationMarks'>

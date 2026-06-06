@@ -184,8 +184,9 @@ pub fn run() {
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_sharekit::init())
-        .plugin(tauri_plugin_native_bridge::init())
-        .plugin(tauri_plugin_native_tts::init());
+        .plugin(tauri_plugin_native_bridge::init());
+    // Launch holdback: native TTS plugin is intentionally not registered for launch.
+    // Re-enable post-launch with: .plugin(tauri_plugin_native_tts::init())
 
     #[cfg(desktop)]
     let builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {

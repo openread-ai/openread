@@ -31,6 +31,7 @@ import HighlightColorsEditor from './color/HighlightColorsEditor';
 import TTSHighlightStyleEditor, { TTSHighlightStyle } from './color/TTSHighlightStyleEditor';
 import CodeHighlightingSettings from './color/CodeHighlightingSettings';
 import ReadingRulerSettings from './color/ReadingRulerSettings';
+import { LAUNCH_TTS_ENABLED } from '@/services/launchFeatures';
 
 const ColorPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset }) => {
   const _ = useTranslation();
@@ -372,15 +373,18 @@ const ColorPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
             data-setting-id='settings.color.highlightColors'
           />
 
-          <TTSHighlightStyleEditor
-            style={ttsHighlightStyle}
-            color={ttsHighlightColor}
-            customColors={customTtsHighlightColors}
-            onStyleChange={handleTTSStyleChange}
-            onColorChange={handleTTSColorChange}
-            onCustomColorsChange={handleCustomTtsColorsChange}
-            data-setting-id='settings.color.ttsHighlightStyle'
-          />
+          {/* Launch holdback: TTS highlighting controls are hidden until TTS returns. */}
+          {LAUNCH_TTS_ENABLED && (
+            <TTSHighlightStyleEditor
+              style={ttsHighlightStyle}
+              color={ttsHighlightColor}
+              customColors={customTtsHighlightColors}
+              onStyleChange={handleTTSStyleChange}
+              onColorChange={handleTTSColorChange}
+              onCustomColorsChange={handleCustomTtsColorsChange}
+              data-setting-id='settings.color.ttsHighlightStyle'
+            />
+          )}
 
           <ReadingRulerSettings
             enabled={readingRulerEnabled}

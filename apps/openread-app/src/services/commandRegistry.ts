@@ -8,6 +8,7 @@ import { PiSun, PiMoon } from 'react-icons/pi';
 import { TbSunMoon } from 'react-icons/tb';
 import { MdRefresh } from 'react-icons/md';
 import { IconType } from 'react-icons';
+import { LAUNCH_TTS_ENABLED, LAUNCH_TRANSLATION_ENABLED } from '@/services/launchFeatures';
 import { stubTranslation as _ } from '@/utils/misc';
 
 export type CommandCategory = 'settings' | 'actions' | 'navigation';
@@ -363,12 +364,17 @@ const colorPanelItems = [
     keywords: ['highlight', 'color', 'annotation', 'marker'],
     section: 'Highlight',
   },
-  {
-    id: 'settings.color.ttsHighlightStyle',
-    labelKey: _('TTS Highlighting'),
-    keywords: ['tts', 'highlight', 'style', 'speech', 'read', 'aloud'],
-    section: 'Highlight',
-  },
+  // Launch holdback: remove TTS setting from command palette until post-launch.
+  ...(LAUNCH_TTS_ENABLED
+    ? [
+        {
+          id: 'settings.color.ttsHighlightStyle',
+          labelKey: _('TTS Highlighting'),
+          keywords: ['tts', 'highlight', 'style', 'speech', 'read', 'aloud'],
+          section: 'Highlight',
+        },
+      ]
+    : []),
   {
     id: 'settings.color.readingRuler',
     labelKey: _('Reading Ruler'),
@@ -479,30 +485,35 @@ const languagePanelItems = [
     keywords: ['interface', 'language', 'locale', 'ui', 'translation'],
     section: 'Language',
   },
-  {
-    id: 'settings.language.translationEnabled',
-    labelKey: _('Enable Translation'),
-    keywords: ['translation', 'translate', 'enable', 'language'],
-    section: 'Translation',
-  },
-  {
-    id: 'settings.language.translationProvider',
-    labelKey: _('Translation Service'),
-    keywords: ['translation', 'provider', 'google', 'deepl', 'service'],
-    section: 'Translation',
-  },
-  {
-    id: 'settings.language.targetLanguage',
-    labelKey: _('Translate To'),
-    keywords: ['target', 'language', 'translation', 'destination'],
-    section: 'Translation',
-  },
-  {
-    id: 'settings.language.ttsTextTranslation',
-    labelKey: _('TTS Text'),
-    keywords: ['tts', 'text', 'translation', 'speech', 'read'],
-    section: 'Translation',
-  },
+  // Launch holdback: remove translation settings from command palette until post-launch.
+  ...(LAUNCH_TRANSLATION_ENABLED
+    ? [
+        {
+          id: 'settings.language.translationEnabled',
+          labelKey: _('Enable Translation'),
+          keywords: ['translation', 'translate', 'enable', 'language'],
+          section: 'Translation',
+        },
+        {
+          id: 'settings.language.translationProvider',
+          labelKey: _('Translation Service'),
+          keywords: ['translation', 'provider', 'google', 'deepl', 'service'],
+          section: 'Translation',
+        },
+        {
+          id: 'settings.language.targetLanguage',
+          labelKey: _('Translate To'),
+          keywords: ['target', 'language', 'translation', 'destination'],
+          section: 'Translation',
+        },
+        {
+          id: 'settings.language.ttsTextTranslation',
+          labelKey: _('TTS Text'),
+          keywords: ['tts', 'text', 'translation', 'speech', 'read'],
+          section: 'Translation',
+        },
+      ]
+    : []),
   {
     id: 'settings.language.quotationMarks',
     labelKey: _('Replace Quotation Marks'),

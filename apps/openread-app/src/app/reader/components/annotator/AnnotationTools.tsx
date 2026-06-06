@@ -9,6 +9,7 @@ import { TbHexagonLetterD } from 'react-icons/tb';
 import { FaHeadphones } from 'react-icons/fa6';
 import { IoIosBuild } from 'react-icons/io';
 import { AnnotationToolType } from '@/types/annotator';
+import { LAUNCH_TTS_ENABLED, LAUNCH_TRANSLATION_ENABLED } from '@/services/launchFeatures';
 import { stubTranslation as _ } from '@/utils/misc';
 
 type AnnotationToolButton = {
@@ -71,20 +72,29 @@ export const annotationToolButtons = createAnnotationToolButtons([
     Icon: FaWikipediaW,
     quickAction: true,
   },
-  {
-    type: 'translate',
-    label: _('Translate'),
-    tooltip: _('Translate text after selection'),
-    Icon: BsTranslate,
-    quickAction: true,
-  },
-  {
-    type: 'tts',
-    label: _('Speak'),
-    tooltip: _('Read text aloud after selection'),
-    Icon: FaHeadphones,
-    quickAction: true,
-  },
+  // Launch holdback: keep translate/TTS tool definitions in code, but hide them for launch.
+  ...(LAUNCH_TRANSLATION_ENABLED
+    ? [
+        {
+          type: 'translate' as const,
+          label: _('Translate'),
+          tooltip: _('Translate text after selection'),
+          Icon: BsTranslate,
+          quickAction: true,
+        },
+      ]
+    : []),
+  ...(LAUNCH_TTS_ENABLED
+    ? [
+        {
+          type: 'tts' as const,
+          label: _('Speak'),
+          tooltip: _('Read text aloud after selection'),
+          Icon: FaHeadphones,
+          quickAction: true,
+        },
+      ]
+    : []),
   {
     type: 'proofread',
     label: _('Proofread'),

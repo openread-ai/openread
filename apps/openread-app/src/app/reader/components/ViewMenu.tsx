@@ -29,6 +29,7 @@ import { eventDispatcher } from '@/utils/event';
 import { getMaxInlineSize } from '@/utils/config';
 import { saveViewSettings } from '@/helpers/settings';
 import { tauriHandleToggleFullScreen } from '@/utils/window';
+import { LAUNCH_TTS_ENABLED, LAUNCH_TRANSLATION_ENABLED } from '@/services/launchFeatures';
 import MenuItem from '@/components/MenuItem';
 import Menu from '@/components/Menu';
 
@@ -296,27 +297,32 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
         disabled={bookData.isFixedLayout}
       />
 
-      {appService?.isIOSApp && (
+      {appService?.isIOSApp && (LAUNCH_TTS_ENABLED || LAUNCH_TRANSLATION_ENABLED) && (
         <>
-          <MenuItem
-            label={_('Read Aloud')}
-            Icon={MdOutlineHeadphones}
-            onClick={() => {
-              eventDispatcher.dispatch(viewState?.ttsEnabled ? 'tts-stop' : 'tts-speak', {
-                bookKey,
-              });
-              setIsDropdownOpen?.(false);
-            }}
-          />
-          <MenuItem
-            label={_('Translation')}
-            Icon={PiTranslateBold}
-            onClick={() => {
-              const newVal = !viewSettings.translationEnabled;
-              saveViewSettings(envConfig, bookKey, 'translationEnabled', newVal, false, true);
-              setIsDropdownOpen?.(false);
-            }}
-          />
+          {/* Launch holdback: iOS reader TTS/translation actions stay hidden until post-launch. */}
+          {LAUNCH_TTS_ENABLED && (
+            <MenuItem
+              label={_('Read Aloud')}
+              Icon={MdOutlineHeadphones}
+              onClick={() => {
+                eventDispatcher.dispatch(viewState?.ttsEnabled ? 'tts-stop' : 'tts-speak', {
+                  bookKey,
+                });
+                setIsDropdownOpen?.(false);
+              }}
+            />
+          )}
+          {LAUNCH_TRANSLATION_ENABLED && (
+            <MenuItem
+              label={_('Translation')}
+              Icon={PiTranslateBold}
+              onClick={() => {
+                const newVal = !viewSettings.translationEnabled;
+                saveViewSettings(envConfig, bookKey, 'translationEnabled', newVal, false, true);
+                setIsDropdownOpen?.(false);
+              }}
+            />
+          )}
         </>
       )}
 

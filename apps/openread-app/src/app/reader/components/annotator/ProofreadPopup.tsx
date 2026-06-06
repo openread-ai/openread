@@ -5,6 +5,7 @@ import { useReaderStore } from '@/store/readerStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAutoFocus } from '@/hooks/useAutoFocus';
 import { CreateProofreadRuleOptions, useProofreadStore } from '@/store/proofreadStore';
+import { LAUNCH_TTS_ENABLED } from '@/services/launchFeatures';
 import { ProofreadScope } from '@/types/book';
 import { eventDispatcher } from '@/utils/event';
 import { Position, TextSelection } from '@/utils/sel';
@@ -199,23 +200,26 @@ const ProofreadPopup: React.FC<ProofreadPopupProps> = ({
             />
           </label>
 
-          <label className='flex cursor-pointer items-center gap-2'>
-            <span className='line-clamp-1 text-xs' title={_('Only for TTS:')}>
-              {_('Only for TTS:')}
-            </span>
-            <input
-              type='checkbox'
-              disabled={scope === 'selection'}
-              className='toggle toggle-sm bg-gray-500 checked:bg-black hover:bg-gray-500 hover:checked:bg-black'
-              style={
-                {
-                  '--tglbg': '#4B5563',
-                } as React.CSSProperties
-              }
-              checked={onlyForTTS}
-              onChange={(e) => setOnlyForTTS(e.target.checked)}
-            />
-          </label>
+          {/* Launch holdback: hide TTS-only proofread option until TTS returns. */}
+          {LAUNCH_TTS_ENABLED && (
+            <label className='flex cursor-pointer items-center gap-2'>
+              <span className='line-clamp-1 text-xs' title={_('Only for TTS:')}>
+                {_('Only for TTS:')}
+              </span>
+              <input
+                type='checkbox'
+                disabled={scope === 'selection'}
+                className='toggle toggle-sm bg-gray-500 checked:bg-black hover:bg-gray-500 hover:checked:bg-black'
+                style={
+                  {
+                    '--tglbg': '#4B5563',
+                  } as React.CSSProperties
+                }
+                checked={onlyForTTS}
+                onChange={(e) => setOnlyForTTS(e.target.checked)}
+              />
+            </label>
+          )}
         </div>
         <div className='flex flex-1 items-center justify-between gap-2 p-4'>
           <label htmlFor='scope-select' className='line-clamp-1 text-xs' title={_('Scope:')}>

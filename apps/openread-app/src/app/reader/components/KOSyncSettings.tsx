@@ -6,6 +6,10 @@ import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useSettingsStore } from '@/store/settingsStore';
 import { eventDispatcher } from '@/utils/event';
+import {
+  LAUNCH_DISABLED_FEATURE_MESSAGE,
+  LAUNCH_KOREADER_SYNC_ENABLED,
+} from '@/services/launchFeatures';
 import { KOSyncClient } from '@/services/sync/KOSyncClient';
 import { KOSyncChecksumMethod, KOSyncStrategy } from '@/types/settings';
 import { debounce } from '@/utils/debounce';
@@ -141,6 +145,14 @@ export const KOSyncSettingsWindow: React.FC = () => {
   }, [settings.kosync.serverUrl, settings.kosync.username]);
 
   const handleConnect = async () => {
+    if (!LAUNCH_KOREADER_SYNC_ENABLED) {
+      eventDispatcher.dispatch('toast', {
+        message: _(LAUNCH_DISABLED_FEATURE_MESSAGE),
+        type: 'info',
+      });
+      return;
+    }
+
     setIsConnecting(true);
 
     const config = {
@@ -217,7 +229,11 @@ export const KOSyncSettingsWindow: React.FC = () => {
     >
       {isOpen && (
         <div className='mb-4 mt-0 flex flex-col gap-4 p-2 sm:p-4'>
-          {isConfigured ? (
+          {!LAUNCH_KOREADER_SYNC_ENABLED ? (
+            <p className='text-base-content/70 text-center text-sm'>
+              {_(LAUNCH_DISABLED_FEATURE_MESSAGE)}
+            </p>
+          ) : isConfigured ? (
             <>
               <div className='text-center'>
                 <p className='text-base-content/80 text-sm'>

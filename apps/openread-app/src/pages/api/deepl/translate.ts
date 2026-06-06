@@ -11,6 +11,10 @@ import {
   validateUserAndToken,
 } from '@/utils/access';
 import { ErrorCodes } from '@/services/translators';
+import {
+  LAUNCH_DISABLED_FEATURE_MESSAGE,
+  LAUNCH_TRANSLATION_ENABLED,
+} from '@/services/launchFeatures';
 import { UsageStatsManager } from '@/utils/usage';
 
 const DEFAULT_DEEPL_FREE_API = 'https://api-free.deepl.com/v2/translate';
@@ -84,6 +88,11 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  // Launch holdback: keep DeepL proxy implementation in place, but block API access for launch.
+  if (!LAUNCH_TRANSLATION_ENABLED) {
+    return res.status(404).json({ error: LAUNCH_DISABLED_FEATURE_MESSAGE });
   }
 
   const env = (getCloudflareContext().env || {}) as CloudflareEnv;

@@ -4,6 +4,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useTranslation } from '@/hooks/useTranslation';
+import { LAUNCH_KOREADER_SYNC_ENABLED } from '@/services/launchFeatures';
 import { KOSyncClient, KoSyncProgress } from '@/services/sync/KOSyncClient';
 import { Book, BookProgress, FIXED_LAYOUT_FORMATS } from '@/types/book';
 import { BookDoc } from '@/libs/document';
@@ -45,8 +46,16 @@ export const useKOSync = (bookKey: string) => {
   const progress = getProgress(bookKey);
 
   useEffect(() => {
-    if (!settings.kosync.username || !settings.kosync.userkey) {
+    if (
+      !LAUNCH_KOREADER_SYNC_ENABLED ||
+      !settings.kosync.enabled ||
+      !settings.kosync.username ||
+      !settings.kosync.userkey
+    ) {
+      hasPulledOnce.current = false;
       setKOSyncClient(null);
+      setSyncState('idle');
+      setConflictDetails(null);
       return;
     }
     const client = new KOSyncClient(settings.kosync);
@@ -182,7 +191,14 @@ export const useKOSync = (bookKey: string) => {
   const pushProgress = useMemo(
     () =>
       debounce(async () => {
-        if (!bookKey || !appService || !kosyncClient || !hasPulledOnce.current) return;
+        if (
+          !LAUNCH_KOREADER_SYNC_ENABLED ||
+          !bookKey ||
+          !appService ||
+          !kosyncClient ||
+          !hasPulledOnce.current
+        )
+          return;
         const { settings } = useSettingsStore.getState();
         if (['receive', 'disable'].includes(settings.kosync.strategy)) return;
 
@@ -198,7 +214,8 @@ export const useKOSync = (bookKey: string) => {
 
   const pullProgress = useCallback(
     async () => {
-      if (!progress?.location || !appService || !kosyncClient) return;
+      if (!LAUNCH_KOREADER_SYNC_ENABLED || !progress?.location || !appService || !kosyncClient)
+        return;
 
       const bookData = getBookData(bookKey);
       const book = bookData?.book;
@@ -241,6 +258,8 @@ export const useKOSync = (bookKey: string) => {
   );
 
   useEffect(() => {
+    if (!LAUNCH_KOREADER_SYNC_ENABLED) return;
+
     const handlePushProgress = (event: CustomEvent) => {
       if (event.detail.bookKey !== bookKey) return;
       pushProgress();
@@ -260,6 +279,8 @@ export const useKOSync = (bookKey: string) => {
   }, [bookKey, pushProgress]);
 
   useEffect(() => {
+    if (!LAUNCH_KOREADER_SYNC_ENABLED) return;
+
     const handlePullProgress = (event: CustomEvent) => {
       if (event.detail.bookKey !== bookKey) return;
       pullProgress();
@@ -272,7 +293,8 @@ export const useKOSync = (bookKey: string) => {
 
   // Pull: pull progress once when the book is opened
   useEffect(() => {
-    if (!appService || !kosyncClient || !progress?.location) return;
+    if (!LAUNCH_KOREADER_SYNC_ENABLED || !appService || !kosyncClient || !progress?.location)
+      return;
     if (hasPulledOnce.current) return;
 
     pullProgress();
@@ -280,7 +302,7 @@ export const useKOSync = (bookKey: string) => {
 
   // Push: auto-push progress when progress changes with a debounce
   useEffect(() => {
-    if (syncState === 'synced' && progress) {
+    if (LAUNCH_KOREADER_SYNC_ENABLED && syncState === 'synced' && progress) {
       const { strategy, enabled } = settings.kosync;
       if (strategy !== 'receive' && enabled) {
         pushProgress();
@@ -289,6 +311,7 @@ export const useKOSync = (bookKey: string) => {
   }, [progress, syncState, settings.kosync, pushProgress]);
 
   const resolveWithLocal = () => {
+    if (!LAUNCH_KOREADER_SYNC_ENABLED) return;
     pushProgress();
     pushProgress.flush();
     setSyncState('synced');
@@ -296,6 +319,8 @@ export const useKOSync = (bookKey: string) => {
   };
 
   const resolveWithRemote = async () => {
+    if (!LAUNCH_KOREADER_SYNC_ENABLED) return;
+
     const view = getView(bookKey);
     const remote = conflictDetails?.remote;
     const book = conflictDetails?.book;

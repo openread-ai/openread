@@ -42,6 +42,10 @@ interface ThemeState {
   updateSafeAreaInsets: (insets: Insets) => void;
 }
 
+const getDefaultThemeColor = (): string => {
+  return typeof window !== 'undefined' && window.__OPENREAD_IS_EINK ? 'contrast' : 'default';
+};
+
 const getInitialThemeMode = (): ThemeMode => {
   if (typeof window !== 'undefined' && localStorage) {
     return (localStorage.getItem('themeMode') as ThemeMode) || 'auto';
@@ -51,10 +55,18 @@ const getInitialThemeMode = (): ThemeMode => {
 
 const getInitialThemeColor = (): string => {
   if (typeof window !== 'undefined' && localStorage) {
-    const defaultColor = window.__OPENREAD_IS_EINK ? 'contrast' : 'default';
-    return localStorage.getItem('themeColor') || defaultColor;
+    return localStorage.getItem('themeColor') || getDefaultThemeColor();
   }
   return 'default';
+};
+
+const getResolvedThemeName = (
+  themeMode: ThemeMode,
+  themeColor: string,
+  systemIsDarkMode: boolean,
+): string => {
+  const isDarkMode = themeMode === 'dark' || (themeMode === 'auto' && systemIsDarkMode);
+  return `${themeColor}-${isDarkMode ? 'dark' : 'light'}`;
 };
 
 export const useThemeStore = create<ThemeState>((set, get) => {
@@ -129,8 +141,14 @@ export const useThemeStore = create<ThemeState>((set, get) => {
       await appService.saveSettings(settings);
     },
     handleSystemThemeChange: (systemIsDarkMode) => {
-      const mode = get().themeMode;
-      const isDarkMode = mode === 'dark' || (mode === 'auto' && systemIsDarkMode);
+      const { themeMode, themeColor } = get();
+      const isDarkMode = themeMode === 'dark' || (themeMode === 'auto' && systemIsDarkMode);
+      if (typeof document !== 'undefined') {
+        document.documentElement.setAttribute(
+          'data-theme',
+          getResolvedThemeName(themeMode, themeColor, systemIsDarkMode),
+        );
+      }
       set({ systemIsDarkMode, isDarkMode });
     },
     updateSafeAreaInsets: (insets) => {
@@ -142,16 +160,13 @@ export const useThemeStore = create<ThemeState>((set, get) => {
 export const loadDataTheme = () => {
   if (typeof localStorage === 'undefined' || typeof document === 'undefined') return;
 
-  const themeMode = localStorage.getItem('themeMode');
-  const themeColor = localStorage.getItem('themeColor');
-  if (themeMode && themeColor) {
-    const systemIsDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const isDarkMode = themeMode === 'dark' || (themeMode === 'auto' && systemIsDarkMode);
-    document.documentElement.setAttribute(
-      'data-theme',
-      `${themeColor}-${isDarkMode ? 'dark' : 'light'}`,
-    );
-  }
+  const themeMode = (localStorage.getItem('themeMode') as ThemeMode) || 'auto';
+  const themeColor = localStorage.getItem('themeColor') || getDefaultThemeColor();
+  const systemIsDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  document.documentElement.setAttribute(
+    'data-theme',
+    getResolvedThemeName(themeMode, themeColor, systemIsDarkMode),
+  );
 };
 
 export const initSystemThemeListener = (appService: AppService) => {

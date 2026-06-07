@@ -62,7 +62,7 @@ describe('Middleware - Rate Limiting', () => {
     it('should pass through when getRateLimiter returns null', async () => {
       mockedGetRateLimiter.mockReturnValue(null);
 
-      const request = makeRequest('/api/ai/chat', { origin: 'http://localhost:3000' });
+      const request = makeRequest('/api/ai/agentic-chat', { origin: 'http://localhost:3000' });
       const response = await middleware(request);
 
       expect(response.status).toBe(200);
@@ -97,14 +97,14 @@ describe('Middleware - Rate Limiting', () => {
     });
 
     it('should return 429 when rate limit is exceeded', async () => {
-      const request = makeRequest('/api/ai/chat');
+      const request = makeRequest('/api/ai/agentic-chat');
       const response = await middleware(request);
 
       expect(response.status).toBe(429);
     });
 
     it('should return JSON error body on 429', async () => {
-      const request = makeRequest('/api/ai/chat');
+      const request = makeRequest('/api/ai/agentic-chat');
       const response = await middleware(request);
       const body = await response.json();
 
@@ -112,28 +112,28 @@ describe('Middleware - Rate Limiting', () => {
     });
 
     it('should include X-RateLimit-Limit header on 429', async () => {
-      const request = makeRequest('/api/ai/chat');
+      const request = makeRequest('/api/ai/agentic-chat');
       const response = await middleware(request);
 
       expect(response.headers.get('X-RateLimit-Limit')).toBe('60');
     });
 
     it('should include X-RateLimit-Remaining header on 429', async () => {
-      const request = makeRequest('/api/ai/chat');
+      const request = makeRequest('/api/ai/agentic-chat');
       const response = await middleware(request);
 
       expect(response.headers.get('X-RateLimit-Remaining')).toBe('0');
     });
 
     it('should include X-RateLimit-Reset header on 429', async () => {
-      const request = makeRequest('/api/ai/chat');
+      const request = makeRequest('/api/ai/agentic-chat');
       const response = await middleware(request);
 
       expect(response.headers.get('X-RateLimit-Reset')).toBeTruthy();
     });
 
     it('should include Retry-After header on 429', async () => {
-      const request = makeRequest('/api/ai/chat');
+      const request = makeRequest('/api/ai/agentic-chat');
       const response = await middleware(request);
 
       const retryAfter = Number(response.headers.get('Retry-After'));
@@ -141,14 +141,14 @@ describe('Middleware - Rate Limiting', () => {
     });
 
     it('should include Content-Type application/json on 429', async () => {
-      const request = makeRequest('/api/ai/chat');
+      const request = makeRequest('/api/ai/agentic-chat');
       const response = await middleware(request);
 
       expect(response.headers.get('Content-Type')).toBe('application/json');
     });
 
     it('should include CORS origin on 429 for allowed origins', async () => {
-      const request = makeRequest('/api/ai/chat', { origin: 'http://localhost:3000' });
+      const request = makeRequest('/api/ai/agentic-chat', { origin: 'http://localhost:3000' });
       const response = await middleware(request);
 
       expect(response.status).toBe(429);
@@ -156,7 +156,7 @@ describe('Middleware - Rate Limiting', () => {
     });
 
     it('should not include CORS origin on 429 for disallowed origins', async () => {
-      const request = makeRequest('/api/ai/chat', { origin: 'https://evil.com' });
+      const request = makeRequest('/api/ai/agentic-chat', { origin: 'https://evil.com' });
       const response = await middleware(request);
 
       expect(response.status).toBe(429);
@@ -179,35 +179,35 @@ describe('Middleware - Rate Limiting', () => {
     });
 
     it('should return 200 when within rate limit', async () => {
-      const request = makeRequest('/api/ai/chat');
+      const request = makeRequest('/api/ai/agentic-chat');
       const response = await middleware(request);
 
       expect(response.status).toBe(200);
     });
 
     it('should include X-RateLimit-Limit on successful responses', async () => {
-      const request = makeRequest('/api/ai/chat');
+      const request = makeRequest('/api/ai/agentic-chat');
       const response = await middleware(request);
 
       expect(response.headers.get('X-RateLimit-Limit')).toBe('60');
     });
 
     it('should include X-RateLimit-Remaining on successful responses', async () => {
-      const request = makeRequest('/api/ai/chat');
+      const request = makeRequest('/api/ai/agentic-chat');
       const response = await middleware(request);
 
       expect(response.headers.get('X-RateLimit-Remaining')).toBe('42');
     });
 
     it('should include X-RateLimit-Reset on successful responses', async () => {
-      const request = makeRequest('/api/ai/chat');
+      const request = makeRequest('/api/ai/agentic-chat');
       const response = await middleware(request);
 
       expect(response.headers.get('X-RateLimit-Reset')).toBeTruthy();
     });
 
     it('should still include CORS headers on successful rate-limited responses', async () => {
-      const request = makeRequest('/api/ai/chat', { origin: 'https://app.openread.ai' });
+      const request = makeRequest('/api/ai/agentic-chat', { origin: 'https://app.openread.ai' });
       const response = await middleware(request);
 
       expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://app.openread.ai');
@@ -224,7 +224,7 @@ describe('Middleware - Rate Limiting', () => {
     it('should not invoke rate limiter for OPTIONS requests', async () => {
       mockedGetRateLimiter.mockReturnValue(mockLimiter());
 
-      const request = makeRequest('/api/ai/chat', {
+      const request = makeRequest('/api/ai/agentic-chat', {
         method: 'OPTIONS',
         origin: 'http://localhost:3000',
       });
@@ -250,7 +250,7 @@ describe('Middleware - Rate Limiting', () => {
     });
 
     it('should call getIdentifier with the request', async () => {
-      const request = makeRequest('/api/ai/chat', { authorization: 'Bearer tok_abc' });
+      const request = makeRequest('/api/ai/agentic-chat', { authorization: 'Bearer tok_abc' });
       await middleware(request);
 
       expect(mockedGetIdentifier).toHaveBeenCalledWith(request);
@@ -259,7 +259,7 @@ describe('Middleware - Rate Limiting', () => {
     it('should pass the identifier to limiter.limit()', async () => {
       mockedGetIdentifier.mockResolvedValue('user-xyz');
 
-      const request = makeRequest('/api/ai/chat');
+      const request = makeRequest('/api/ai/agentic-chat');
       await middleware(request);
 
       expect(mockLimitFn).toHaveBeenCalledWith('user-xyz');

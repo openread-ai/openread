@@ -58,7 +58,7 @@ describe('rate-limit (Upstash)', () => {
       delete process.env.UPSTASH_REDIS_REST_URL;
       delete process.env.UPSTASH_REDIS_REST_TOKEN;
 
-      const limiter = getRateLimiter('/api/ai/chat');
+      const limiter = getRateLimiter('/api/ai/agentic-chat');
       expect(limiter).toBeNull();
     });
 
@@ -66,7 +66,7 @@ describe('rate-limit (Upstash)', () => {
       process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.com';
       delete process.env.UPSTASH_REDIS_REST_TOKEN;
 
-      const limiter = getRateLimiter('/api/ai/chat');
+      const limiter = getRateLimiter('/api/ai/agentic-chat');
       expect(limiter).toBeNull();
     });
 
@@ -74,7 +74,7 @@ describe('rate-limit (Upstash)', () => {
       process.env.UPSTASH_REDIS_REST_URL = '';
       process.env.UPSTASH_REDIS_REST_TOKEN = '';
 
-      const limiter = getRateLimiter('/api/ai/chat');
+      const limiter = getRateLimiter('/api/ai/agentic-chat');
       expect(limiter).toBeNull();
     });
 
@@ -82,7 +82,7 @@ describe('rate-limit (Upstash)', () => {
       process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.com';
       process.env.UPSTASH_REDIS_REST_TOKEN = 'tok_secret';
 
-      const limiter = getRateLimiter('/api/ai/chat');
+      const limiter = getRateLimiter('/api/ai/agentic-chat');
       expect(limiter).not.toBeNull();
       expect(limiter).toHaveProperty('limit');
     });
@@ -91,7 +91,7 @@ describe('rate-limit (Upstash)', () => {
       process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.com';
       process.env.UPSTASH_REDIS_REST_TOKEN = 'tok_secret';
 
-      getRateLimiter('/api/ai/chat');
+      getRateLimiter('/api/ai/agentic-chat');
 
       expect(mockSlidingWindow).toHaveBeenCalledWith(
         RATE_LIMITS['/api/ai/']!.limit,
@@ -172,7 +172,7 @@ describe('rate-limit (Upstash)', () => {
       process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.com';
       process.env.UPSTASH_REDIS_REST_TOKEN = 'tok_secret';
 
-      getRateLimiter('/api/ai/chat');
+      getRateLimiter('/api/ai/agentic-chat');
 
       expect(mockRatelimitCtor).toHaveBeenCalledWith(expect.objectContaining({ prefix: 'rl' }));
     });

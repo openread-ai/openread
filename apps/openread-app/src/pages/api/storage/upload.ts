@@ -96,11 +96,33 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const fileType = isCoverFile ? 'cover' : 'book';
 
     let objSize = fileSize;
-    let isNewFile = false;
+    let storageIncrementBytes = 0;
     if (existingRecord) {
-      objSize = existingRecord.file_size;
+      objSize = existingRecord.file_size || fileSize;
+
+      // Reupload after a user delete must reactivate the canonical registry row.
+      // The object key is unique per user path, so inserting another row would be
+      // duplicate state; clearing deleted_at makes download/list APIs see it again.
+      if (existingRecord.deleted_at) {
+        const { error: updateError } = await supabase
+          .from('files')
+          .update({
+            book_hash: bookHash,
+            file_size: fileSize,
+            file_type: fileType,
+            deleted_at: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', existingRecord.id);
+
+        if (updateError) {
+          return res.status(500).json({ error: updateError.message });
+        }
+        objSize = fileSize;
+        storageIncrementBytes = fileSize;
+      }
     } else {
-      isNewFile = true;
+      storageIncrementBytes = fileSize;
       const { data: inserted, error: insertError } = await supabase
         .from('files')
         .insert([
@@ -127,15 +149,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     try {
       const uploadUrl = await getUploadSignedUrl(fileKey, objSize, 1800);
 
-      // Track storage usage atomically for new files
-      if (isNewFile) {
-        await incrementStorageUsed(user.id, fileSize);
+      // Track storage usage atomically when a file becomes quota-active.
+      // Existing active reuploads are already counted, but new rows and
+      // soft-deleted row reactivations must add their bytes to quota usage.
+      if (storageIncrementBytes > 0) {
+        await incrementStorageUsed(user.id, storageIncrementBytes);
       }
 
       res.status(200).json({
         uploadUrl,
         fileKey,
-        usage: quota.usedBytes + (isNewFile ? fileSize : 0),
+        usage: quota.usedBytes + storageIncrementBytes,
         quota: quota.totalBytes,
       });
     } catch (error) {

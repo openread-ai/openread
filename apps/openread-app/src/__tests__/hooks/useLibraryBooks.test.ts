@@ -64,6 +64,17 @@ describe('useLibraryBooks', () => {
       const { result } = renderHook(() => useLibraryBooks());
       expect(result.current.books).toHaveLength(3);
     });
+
+    it('should hide locally tombstoned deleted books from user-facing library queries', () => {
+      mockStoreState.library = [
+        createMockBook({ hash: 'active-book', createdAt: 2000 }),
+        createMockBook({ hash: 'deleted-book', deletedAt: 1000, createdAt: 3000 }),
+      ];
+
+      const { result } = renderHook(() => useLibraryBooks());
+
+      expect(result.current.books.map((book) => book.hash)).toEqual(['active-book']);
+    });
   });
 
   describe('Reading filter', () => {

@@ -38,6 +38,21 @@ export const getCoverFilename = (book: Book) => {
 export const getConfigFilename = (book: Book) => {
   return `${book.hash}/config.json`;
 };
+
+export const isCatalogBackedBook = (
+  book: Pick<Book, 'catalogBookId' | 'hash' | 'storagePath'>,
+): boolean => {
+  return Boolean(
+    book.catalogBookId || book.storagePath || book.hash.toLowerCase().startsWith('catalog:'),
+  );
+};
+
+export const isUserCloudUploadEligible = (
+  book: Pick<Book, 'catalogBookId' | 'deletedAt' | 'hash' | 'storagePath' | 'uploadedAt'>,
+): boolean => {
+  return !book.deletedAt && !book.uploadedAt && !isCatalogBackedBook(book);
+};
+
 export const isBookFile = (filename: string) => {
   return Object.values(EXTS).includes(filename.split('.').pop()!);
 };

@@ -90,15 +90,64 @@ export const getDailyTranslationPlanData = (token: string) => {
   };
 };
 
+function persistWebSession(session: {
+  access_token: string;
+  refresh_token?: string | null;
+  user?: unknown;
+}) {
+  localStorage.setItem('token', session.access_token);
+  if (session.refresh_token) localStorage.setItem('refresh_token', session.refresh_token);
+  if (session.user) localStorage.setItem('user', JSON.stringify(session.user));
+}
+
+function clearWebSession() {
+  localStorage.removeItem('token');
+  localStorage.removeItem('refresh_token');
+  localStorage.removeItem('user');
+}
+
+async function refreshStoredWebSession(): Promise<string | null> {
+  const refreshToken = localStorage.getItem('refresh_token');
+  if (!refreshToken) {
+    localStorage.removeItem('token');
+    return null;
+  }
+
+  try {
+    const { data, error } = await supabase.auth.refreshSession({ refresh_token: refreshToken });
+    const session = data?.session;
+    if (error || !session?.access_token || isTokenExpired(session.access_token)) {
+      clearWebSession();
+      return null;
+    }
+    persistWebSession(session);
+    return session.access_token;
+  } catch {
+    clearWebSession();
+    return null;
+  }
+}
+
 export const getAccessToken = async (): Promise<string | null> => {
   // In browser context there might be two instances of supabase one in the app route
   // and the other in the pages route, and they might have different sessions
   // making the access token invalid for API calls. In that case we should use localStorage.
   if (isWebAppPlatform()) {
-    return localStorage.getItem('token') ?? null;
+    if (typeof localStorage === 'undefined') return null;
+
+    const token = localStorage.getItem('token');
+    if (token && !isTokenExpired(token, 60)) return token;
+    return refreshStoredWebSession();
   }
+
   const { data } = await supabase.auth.getSession();
-  return data?.session?.access_token ?? null;
+  const token = data?.session?.access_token ?? null;
+  if (!token) return null;
+  if (!isTokenExpired(token, 60)) return token;
+
+  const refreshed = await supabase.auth.refreshSession();
+  const refreshedToken = refreshed.data?.session?.access_token ?? null;
+  return refreshedToken && !isTokenExpired(refreshedToken) ? refreshedToken : null;
 };
 
 export const getUserID = async (): Promise<string | null> => {

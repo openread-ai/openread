@@ -6,6 +6,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { useTransferStore, TransferType } from '@/store/transferStore';
 import { transferManager } from '@/services/transferManager';
 import { Book } from '@/types/book';
+import { isUserCloudUploadEligible } from '@/utils/book';
 
 export function useTransferQueue(libraryLoaded = true, delayInit = 0) {
   const { envConfig, appService } = useEnv();
@@ -32,9 +33,7 @@ export function useTransferQueue(libraryLoaded = true, delayInit = 0) {
         // once the manager initializes so fresh sessions can recover the book and cover from R2.
         const settings = useSettingsStore.getState().settings;
         if (settings.autoUpload !== false) {
-          const pendingUploadBooks = getLibrary().filter(
-            (book) => !book.deletedAt && !book.uploadedAt,
-          );
+          const pendingUploadBooks = getLibrary().filter(isUserCloudUploadEligible);
           transferManager.queueBatchUploads(pendingUploadBooks, 1);
         }
       }
@@ -50,7 +49,7 @@ export function useTransferQueue(libraryLoaded = true, delayInit = 0) {
 
   useEffect(() => {
     if (!libraryLoaded || autoUpload === false || !transferManager.isReady()) return;
-    const pendingUploadBooks = library.filter((book) => !book.deletedAt && !book.uploadedAt);
+    const pendingUploadBooks = library.filter(isUserCloudUploadEligible);
     transferManager.queueBatchUploads(pendingUploadBooks, 1);
   }, [autoUpload, library, libraryLoaded]);
 

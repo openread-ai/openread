@@ -5,6 +5,7 @@ import { TranslationFunc } from '@/hooks/useTranslation';
 import { ProgressPayload } from '@/utils/transfer';
 import { eventDispatcher } from '@/utils/event';
 import { createLogger } from '@/utils/logger';
+import { isUserCloudUploadEligible } from '@/utils/book';
 
 const logger = createLogger('transfer');
 
@@ -59,6 +60,8 @@ class TransferManager {
   }
 
   queueUpload(book: Book, priority: number = 10): string | null {
+    if (!isUserCloudUploadEligible(book)) return null;
+
     const store = useTransferStore.getState();
 
     // Check if already queued or in progress
@@ -103,6 +106,7 @@ class TransferManager {
 
   queueBatchUploads(books: Book[], priority: number = 10): string[] {
     return books
+      .filter(isUserCloudUploadEligible)
       .map((book) => this.queueUpload(book, priority))
       .filter((id): id is string => id !== null);
   }
@@ -226,6 +230,10 @@ class TransferManager {
       }
 
       if (transfer.type === 'upload') {
+        if (!isUserCloudUploadEligible(book)) {
+          store.setTransferStatus(transfer.id, 'completed');
+          return;
+        }
         await this.appService.uploadBook(book, progressHandler);
         await this.updateBook(book);
       } else if (transfer.type === 'download') {

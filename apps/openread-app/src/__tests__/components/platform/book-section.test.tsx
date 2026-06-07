@@ -148,6 +148,14 @@ describe('BookSection', () => {
       );
       expect(container.querySelector('.custom-section-class')).toBeTruthy();
     });
+
+    it('should preserve top padding in horizontal rails so selected card rings are not clipped', () => {
+      const books = [createMockBook({ hash: 'book-1' })];
+      const { container } = render(<BookSection title='Library' books={books} />);
+
+      const rail = container.querySelector('.overflow-x-auto');
+      expect(rail?.className).toContain('pt-1');
+    });
   });
 });
 

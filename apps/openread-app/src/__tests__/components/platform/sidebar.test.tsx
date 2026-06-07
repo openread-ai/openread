@@ -69,12 +69,14 @@ vi.mock('@/components/platform/create-collection-dialog', () => ({
 
 // Mock the platformSidebarStore
 const mockStore = {
+  isCollapsed: false,
   librarySectionOpen: true,
   collectionsSectionOpen: true,
   collections: [
     { id: '1', name: 'Fiction', bookHashes: ['a', 'b', 'c', 'd', 'e'], createdAt: '2024-01-01' },
     { id: '2', name: 'Technical', bookHashes: Array(10).fill('x'), createdAt: '2024-01-02' },
   ],
+  toggleCollapsed: vi.fn(),
   toggleLibrarySection: vi.fn(),
   toggleCollectionsSection: vi.fn(),
   addCollection: vi.fn(() => ({ id: 'new-1', name: 'New', bookHashes: [], createdAt: Date.now() })),
@@ -92,6 +94,7 @@ describe('Sidebar', () => {
     vi.clearAllMocks();
     mockPathname.mockReturnValue('/home');
     mockSearchParams.mockReturnValue(new URLSearchParams());
+    mockStore.isCollapsed = false;
     mockStore.librarySectionOpen = true;
     mockStore.collectionsSectionOpen = true;
     mockStore.collections = [
@@ -151,6 +154,22 @@ describe('Sidebar', () => {
       mockStore.collections = [];
       render(<Sidebar />);
       expect(screen.getByText('No collections yet')).toBeTruthy();
+    });
+
+    it('should render a desktop collapse trigger when collapsible', () => {
+      render(<Sidebar collapsible />);
+      const trigger = screen.getByRole('button', { name: /collapse sidebar/i });
+      fireEvent.click(trigger);
+      expect(mockStore.toggleCollapsed).toHaveBeenCalled();
+    });
+
+    it('should render as a narrow icon rail when collapsed', () => {
+      mockStore.isCollapsed = true;
+      const { container } = render(<Sidebar collapsible />);
+
+      expect(container.querySelector('aside')?.className).toContain('md:w-[4.5rem]');
+      expect(screen.getByRole('button', { name: /expand sidebar/i })).toBeTruthy();
+      expect(screen.getByRole('link', { name: /home/i }).className).toContain('justify-center');
     });
   });
 
@@ -280,6 +299,17 @@ describe('SidebarNav', () => {
     render(<SidebarNav href='/test' icon={MockIcon} label='Test Link' onClick={onClick} />);
     fireEvent.click(screen.getByRole('link'));
     expect(onClick).toHaveBeenCalled();
+  });
+
+  it('should keep collapsed labels accessible while visually hiding them', () => {
+    const { container } = render(
+      <SidebarNav href='/test' icon={MockIcon} label='Test Link' collapsed />,
+    );
+    const link = screen.getByRole('link', { name: /test link/i });
+
+    expect(link.getAttribute('title')).toBe('Test Link');
+    expect(link.className).toContain('justify-center');
+    expect(container.querySelector('span')?.className).toContain('sr-only');
   });
 });
 

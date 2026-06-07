@@ -200,6 +200,15 @@ describe('LibraryHeader', () => {
       expect(screen.getByText('All Books')).toBeTruthy();
     });
 
+    it('should align the desktop title row with the platform shell header', () => {
+      render(<LibraryHeader {...defaultProps} />);
+      const titleRow = screen.getByTestId('library-title-row');
+
+      expect(titleRow.className).toContain('md:h-14');
+      expect(titleRow.className).toContain('md:border-b');
+      expect(titleRow.className).toContain('md:-mt-6');
+    });
+
     it('should render the book count with "books" text', () => {
       render(<LibraryHeader {...defaultProps} bookCount={42} />);
       expect(screen.getByText('42 books')).toBeTruthy();

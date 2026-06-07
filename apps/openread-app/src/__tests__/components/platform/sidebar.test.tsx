@@ -171,6 +171,15 @@ describe('Sidebar', () => {
       expect(screen.getByRole('button', { name: /expand sidebar/i })).toBeTruthy();
       expect(screen.getByRole('link', { name: /home/i }).className).toContain('justify-center');
     });
+
+    it('should consolidate library and collections into one collapsed menu trigger', () => {
+      mockStore.isCollapsed = true;
+      render(<Sidebar collapsible />);
+
+      expect(screen.getByRole('button', { name: /library and collections/i })).toBeTruthy();
+      expect(screen.queryByRole('link', { name: /want to read/i })).toBeNull();
+      expect(screen.queryByRole('link', { name: /fiction/i })).toBeNull();
+    });
   });
 
   describe('Active Route Highlighting', () => {

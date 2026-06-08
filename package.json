@@ -3,6 +3,7 @@
   "private": true,
   "repository": "openread-ai/platform",
   "scripts": {
+    "db:migrations:validate": "node scripts/db/validate-supabase-migrations.mjs",
     "tauri": "pnpm --filter @openread/openread-app tauri",
     "dev-web": "pnpm --filter @openread/openread-app dev-web",
     "format": "prettier --write \"**/*.{js,jsx,ts,tsx,css,json,md,html,yml}\"",

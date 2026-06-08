@@ -52,7 +52,7 @@ describe('useFeatureGate', () => {
       mockUserProfilePlan = 'free';
     });
 
-    it('should gate TTS for free users', async () => {
+    it('should disable TTS for free users because TTS is retired for launch', async () => {
       const { result } = renderHook(() => useFeatureGate('tts'));
 
       await waitFor(() => {
@@ -63,7 +63,9 @@ describe('useFeatureGate', () => {
       expect(result.current.requiredTier).toBe('reader');
       expect(result.current.requiredTierName).toBe('Reader');
       expect(result.current.message).toContain('Text-to-Speech');
-      expect(result.current.message).toContain('Reader');
+      expect(result.current.message).toContain('not currently available');
+      expect(result.current.priceDisplay).toBe('');
+      expect(result.current.ctaText).toBe('');
       expect(result.current.plan).toBe('free');
     });
 
@@ -79,7 +81,7 @@ describe('useFeatureGate', () => {
       expect(result.current.message).toContain('Cloud Sync');
     });
 
-    it('should gate translate for free users', async () => {
+    it('should disable translate for free users because translation is retired for launch', async () => {
       const { result } = renderHook(() => useFeatureGate('translate'));
 
       await waitFor(() => {
@@ -90,7 +92,9 @@ describe('useFeatureGate', () => {
       expect(result.current.requiredTier).toBe('pro');
       expect(result.current.requiredTierName).toBe('Pro');
       expect(result.current.message).toContain('Translation');
-      expect(result.current.message).toContain('Pro');
+      expect(result.current.message).toContain('not currently available');
+      expect(result.current.priceDisplay).toBe('');
+      expect(result.current.ctaText).toBe('');
     });
 
     it('should gate BYOK for free users', async () => {
@@ -125,15 +129,15 @@ describe('useFeatureGate', () => {
       mockUserProfilePlan = 'reader';
     });
 
-    it('should allow TTS for reader users', async () => {
+    it('should not allow TTS for reader users because TTS is retired for launch', async () => {
       const { result } = renderHook(() => useFeatureGate('tts'));
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
       });
 
-      expect(result.current.allowed).toBe(true);
-      expect(result.current.message).toBe('');
+      expect(result.current.allowed).toBe(false);
+      expect(result.current.message).toContain('not currently available');
       expect(result.current.plan).toBe('reader');
     });
 
@@ -147,7 +151,7 @@ describe('useFeatureGate', () => {
       expect(result.current.allowed).toBe(true);
     });
 
-    it('should gate translate for reader users (pro only)', async () => {
+    it('should not allow translate for reader users because translation is retired for launch', async () => {
       const { result } = renderHook(() => useFeatureGate('translate'));
 
       await waitFor(() => {
@@ -156,7 +160,8 @@ describe('useFeatureGate', () => {
 
       expect(result.current.allowed).toBe(false);
       expect(result.current.requiredTier).toBe('pro');
-      expect(result.current.message).toContain('Pro');
+      expect(result.current.message).toContain('not currently available');
+      expect(result.current.ctaText).toBe('');
     });
 
     it('should allow BYOK for reader users', async () => {
@@ -190,8 +195,8 @@ describe('useFeatureGate', () => {
       mockUserProfilePlan = 'pro';
     });
 
-    it('should allow all tier-enabled features for pro users', async () => {
-      const features = ['tts', 'sync', 'translate', 'byok'] as const;
+    it('should allow sync and BYOK for pro users', async () => {
+      const features = ['sync', 'byok'] as const;
 
       for (const feature of features) {
         const { result } = renderHook(() => useFeatureGate(feature));
@@ -206,17 +211,21 @@ describe('useFeatureGate', () => {
       }
     });
 
-    it('should not allow boost for pro users because boosts are disabled', async () => {
-      const { result } = renderHook(() => useFeatureGate('boost'));
+    it('should not allow TTS, translation, or boost for pro users because they are disabled', async () => {
+      const features = ['tts', 'translate', 'boost'] as const;
 
-      await waitFor(() => {
-        expect(result.current.isLoading).toBe(false);
-      });
+      for (const feature of features) {
+        const { result } = renderHook(() => useFeatureGate(feature));
 
-      expect(result.current.allowed).toBe(false);
-      expect(result.current.message).toContain('not currently available');
-      expect(result.current.ctaText).toBe('');
-      expect(result.current.plan).toBe('pro');
+        await waitFor(() => {
+          expect(result.current.isLoading).toBe(false);
+        });
+
+        expect(result.current.allowed).toBe(false);
+        expect(result.current.message).toContain('not currently available');
+        expect(result.current.ctaText).toBe('');
+        expect(result.current.plan).toBe('pro');
+      }
     });
   });
 
@@ -255,7 +264,7 @@ describe('useFeatureGate', () => {
     });
   });
 
-  // ─── S4.2: Price and CTA text ─────────────��───────────────────────
+  // ─── S4.2: Price and CTA text ─────────────────────────────────────
 
   describe('price display in gate result (S4.2)', () => {
     beforeEach(() => {
@@ -263,28 +272,26 @@ describe('useFeatureGate', () => {
       mockUserProfilePlan = 'free';
     });
 
-    it('should include Reader price for TTS gate', async () => {
+    it('should not include price or CTA for retired TTS gate', async () => {
       const { result } = renderHook(() => useFeatureGate('tts'));
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
       });
 
-      expect(result.current.priceDisplay).toBe('$9.99/mo');
-      expect(result.current.ctaText).toContain('Reader');
-      expect(result.current.ctaText).toContain('$9.99/mo');
+      expect(result.current.priceDisplay).toBe('');
+      expect(result.current.ctaText).toBe('');
     });
 
-    it('should include Pro price for translate gate', async () => {
+    it('should not include price or CTA for retired translate gate', async () => {
       const { result } = renderHook(() => useFeatureGate('translate'));
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
       });
 
-      expect(result.current.priceDisplay).toBe('$19.99/mo');
-      expect(result.current.ctaText).toContain('Pro');
-      expect(result.current.ctaText).toContain('$19.99/mo');
+      expect(result.current.priceDisplay).toBe('');
+      expect(result.current.ctaText).toBe('');
     });
 
     it('should include Reader price for sync gate', async () => {
@@ -309,7 +316,7 @@ describe('useFeatureGate', () => {
       expect(result.current.ctaText).toContain('Reader');
     });
 
-    it('reader user should see Pro price for translate', async () => {
+    it('reader user should see no CTA for retired translate', async () => {
       mockUserProfilePlan = 'reader';
       const { result } = renderHook(() => useFeatureGate('translate'));
 
@@ -317,13 +324,13 @@ describe('useFeatureGate', () => {
         expect(result.current.isLoading).toBe(false);
       });
 
-      expect(result.current.priceDisplay).toBe('$19.99/mo');
-      expect(result.current.ctaText).toContain('Pro');
+      expect(result.current.priceDisplay).toBe('');
+      expect(result.current.ctaText).toBe('');
     });
 
     it('reader user should have empty ctaText for allowed features', async () => {
       mockUserProfilePlan = 'reader';
-      const { result } = renderHook(() => useFeatureGate('tts'));
+      const { result } = renderHook(() => useFeatureGate('sync'));
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);

@@ -50,3 +50,19 @@ export type { ApiError, ApiErrorCode } from './error.js';
 
 // Timestamp utilities
 export { toEpoch, toISO } from './timestamp.js';
+
+// Canonical launch tier config and feature contract defaults
+export {
+  BYTES_PER_GB,
+  GEN3_V3_FALLBACK_TIER_CONFIG,
+  getGen3V3FallbackTierConfig,
+} from './tier-config.js';
+export type {
+  BoostOption,
+  CostRates,
+  RegionalPricingEntry,
+  StorageAddon,
+  TierConfig,
+  TierDefinition,
+  UserPlan,
+} from './tier-config.js';

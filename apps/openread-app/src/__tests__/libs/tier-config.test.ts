@@ -132,7 +132,7 @@ describe('tier-config', () => {
       expect(tier.ai_window_hours).toBe(3);
       expect(tier.ai_fallback_model).toBe('openai/gpt-oss-20b');
       expect(tier.storage_gb).toBe(10);
-      expect(tier.can_tts).toBe(true);
+      expect(tier.can_tts).toBe(false);
       expect(tier.can_sync).toBe(true);
       expect(tier.can_byok).toBe(true);
       expect(tier.display_price_cents).toBe(999);
@@ -145,7 +145,8 @@ describe('tier-config', () => {
       expect(tier.ai_window_hours).toBe(3);
       expect(tier.ai_fallback_model).toBe('openai/gpt-oss-120b');
       expect(tier.storage_gb).toBe(50);
-      expect(tier.can_translate).toBe(true);
+      expect(tier.can_tts).toBe(false);
+      expect(tier.can_translate).toBe(false);
       expect(tier.early_access).toBe(true);
       expect(tier.ai_model_tier).toBe('premium');
       expect(tier.display_price_cents).toBe(1999);

@@ -1,0 +1,160 @@
+export type UserPlan = 'free' | 'reader' | 'pro';
+
+export interface TierDefinition {
+  /** Messages allowed per time window. null = unlimited. */
+  ai_messages_per_window: number | null;
+  /** Time window in hours for AI message limit reset. */
+  ai_window_hours: number;
+  /** Rate limit: max messages per rate window. null = no rate limit (use window only). */
+  ai_rate_limit: number | null;
+  /** Rate window in hours. Only applies when ai_rate_limit is set. */
+  ai_rate_window_hours: number | null;
+  /** Model to fall back to when window limit is hit. null = hard stop (free tier). */
+  ai_fallback_model: string | null;
+  storage_gb: number;
+  library_limit: number | null;
+  can_tts: boolean;
+  can_sync: boolean;
+  can_translate: boolean;
+  can_byok: boolean;
+  can_boost: boolean;
+  early_access: boolean;
+  ai_model_tier: 'basic' | 'standard' | 'premium';
+  ai_models: string[];
+  display_price_cents: number;
+  display_annual_price_cents: number;
+  display_name: string;
+}
+
+export interface RegionalPricingEntry {
+  currency: string;
+  symbol: string;
+  reader: number;
+  pro: number;
+}
+
+export interface StorageAddon {
+  gb: number;
+  price_cents: number;
+  mobile_price_cents: number;
+}
+
+export interface BoostOption {
+  messages: number;
+  price_cents: number;
+  mobile_price_cents: number;
+  label: string;
+}
+
+export interface CostRates {
+  ai_per_message: Record<string, number>;
+  storage_per_gb_month: number;
+  infra_fixed_month: number;
+  payment_processing_rate: number;
+}
+
+export interface TierConfig {
+  tiers: Record<UserPlan, TierDefinition>;
+  regional_pricing: Record<string, RegionalPricingEntry>;
+  storage_addons: StorageAddon[];
+  boosts: BoostOption[];
+  ai_budget_ceiling: number;
+  max_agent_steps: number;
+  cost_rates: CostRates;
+}
+
+export const BYTES_PER_GB = 1024 * 1024 * 1024;
+
+/**
+ * Gen 3 v3 FINAL pricing/tier defaults.
+ *
+ * Runtime source of truth: latest row in the `tier_config` Supabase table.
+ * Code fallback source of truth: this shared object, consumed by web/Tauri and
+ * API fallback paths so launch limits do not drift across platform surfaces.
+ *
+ * Launch scope excludes TTS, translation, storage add-ons, and boosts. The
+ * underlying implementations may remain in code, but tier/runtime surfaces must
+ * treat them as unavailable unless a later final config changes.
+ */
+export const GEN3_V3_FALLBACK_TIER_CONFIG: TierConfig = {
+  tiers: {
+    free: {
+      ai_messages_per_window: 25,
+      ai_window_hours: 24,
+      ai_rate_limit: 5,
+      ai_rate_window_hours: 1,
+      ai_fallback_model: null,
+      storage_gb: 1,
+      library_limit: 10,
+      can_tts: false,
+      can_sync: false,
+      can_translate: false,
+      can_byok: false,
+      can_boost: false,
+      early_access: false,
+      ai_model_tier: 'basic',
+      ai_models: ['openai/gpt-oss-20b'],
+      display_price_cents: 0,
+      display_annual_price_cents: 0,
+      display_name: 'Free',
+    },
+    reader: {
+      ai_messages_per_window: 50,
+      ai_window_hours: 3,
+      ai_rate_limit: null,
+      ai_rate_window_hours: null,
+      ai_fallback_model: 'openai/gpt-oss-20b',
+      storage_gb: 10,
+      library_limit: null,
+      can_tts: false,
+      can_sync: true,
+      can_translate: false,
+      can_byok: true,
+      can_boost: false,
+      early_access: false,
+      ai_model_tier: 'standard',
+      ai_models: ['openai/gpt-oss-120b', 'google/gemini-2.5-flash-lite'],
+      display_price_cents: 999,
+      display_annual_price_cents: 9999,
+      display_name: 'Reader',
+    },
+    pro: {
+      ai_messages_per_window: 100,
+      ai_window_hours: 3,
+      ai_rate_limit: null,
+      ai_rate_window_hours: null,
+      ai_fallback_model: 'openai/gpt-oss-120b',
+      storage_gb: 50,
+      library_limit: null,
+      can_tts: false,
+      can_sync: true,
+      can_translate: false,
+      can_byok: true,
+      can_boost: false,
+      early_access: true,
+      ai_model_tier: 'premium',
+      ai_models: ['anthropic/claude-haiku-4.5', 'openai/gpt-4.1-mini'],
+      display_price_cents: 1999,
+      display_annual_price_cents: 19999,
+      display_name: 'Pro',
+    },
+  },
+  regional_pricing: {
+    IN: { currency: 'INR', symbol: '₹', reader: 349, pro: 699 },
+    BR: { currency: 'BRL', symbol: 'R$', reader: 29.99, pro: 59.99 },
+  },
+  storage_addons: [],
+  boosts: [],
+  ai_budget_ceiling: 12000,
+  max_agent_steps: 12,
+  cost_rates: {
+    ai_per_message: { free: 0.001, reader: 0.002, pro: 0.004 },
+    storage_per_gb_month: 0.015,
+    infra_fixed_month: 30,
+    payment_processing_rate: 0.1,
+  },
+};
+
+export function getGen3V3FallbackTierConfig(): TierConfig {
+  return GEN3_V3_FALLBACK_TIER_CONFIG;
+}

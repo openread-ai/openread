@@ -166,7 +166,11 @@ describe('Sidebar', () => {
       mockStore.isCollapsed = true;
       const { container } = render(<Sidebar collapsible />);
 
-      expect(container.querySelector('aside')?.className).toContain('md:w-14');
+      const sidebar = container.querySelector('aside');
+      expect(sidebar?.className).toContain('md:w-14');
+      expect(sidebar?.className).toContain('transition-[width]');
+      expect(sidebar?.className).toContain('duration-200');
+      expect(sidebar?.className).toContain('ease-linear');
       expect(screen.getByRole('button', { name: /expand sidebar from home/i })).toBeTruthy();
       expect(screen.queryByRole('link', { name: /home/i })).toBeNull();
     });

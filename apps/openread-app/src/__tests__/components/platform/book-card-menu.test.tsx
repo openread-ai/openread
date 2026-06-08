@@ -122,9 +122,16 @@ describe('BookCardMenu', () => {
       expect(items.length).toBe(6);
     });
 
-    it('should render Select Multiple menu item', () => {
+    it('should render Select Multiple menu item by default', () => {
       render(<BookCardMenu {...defaultProps} />);
       expect(screen.getByText('Select Multiple')).toBeTruthy();
+    });
+
+    it('should hide Select Multiple when selection actions are disabled', () => {
+      render(<BookCardMenu {...defaultProps} showSelectMultiple={false} />);
+      expect(screen.queryByText('Select Multiple')).toBeNull();
+      expect(screen.getAllByTestId('dropdown-item').length).toBe(5);
+      expect(screen.getAllByTestId('dropdown-separator').length).toBe(1);
     });
 
     it('should render Add to Collection menu item', () => {

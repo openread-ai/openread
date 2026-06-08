@@ -29,8 +29,20 @@ vi.mock('next/link', () => ({
 
 // Mock BookCard component
 vi.mock('@/components/platform/book-card', () => ({
-  BookCard: ({ book, showProgress }: { book: Book; showProgress?: boolean }) => (
-    <div data-testid={`book-card-${book.hash}`} data-show-progress={showProgress}>
+  BookCard: ({
+    book,
+    showProgress,
+    enableSelectionActions,
+  }: {
+    book: Book;
+    showProgress?: boolean;
+    enableSelectionActions?: boolean;
+  }) => (
+    <div
+      data-testid={`book-card-${book.hash}`}
+      data-show-progress={showProgress}
+      data-enable-selection-actions={enableSelectionActions}
+    >
       {book.title}
     </div>
   ),
@@ -93,6 +105,24 @@ describe('BookGrid', () => {
       const card = screen.getByTestId('book-card-book-1');
       // BookGrid always passes showProgress={true}
       expect(card.getAttribute('data-show-progress')).toBe('true');
+    });
+
+    it('should not enable selection actions by default', () => {
+      const books = [createMockBook({ hash: 'book-1' })];
+      render(<BookGrid books={books} />);
+
+      expect(
+        screen.getByTestId('book-card-book-1').getAttribute('data-enable-selection-actions'),
+      ).toBe('false');
+    });
+
+    it('should pass selection actions only when the surface enables them', () => {
+      const books = [createMockBook({ hash: 'book-1' })];
+      render(<BookGrid books={books} enableSelectionActions />);
+
+      expect(
+        screen.getByTestId('book-card-book-1').getAttribute('data-enable-selection-actions'),
+      ).toBe('true');
     });
 
     it('should have responsive grid classes for medium size (default)', () => {

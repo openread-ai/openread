@@ -85,17 +85,21 @@ vi.mock('@/components/platform/book-card-menu', () => ({
     onAddToCollection,
     onRename,
     onRemove,
+    showSelectMultiple = true,
   }: {
     book: Book;
     onSelectMultiple: () => void;
     onAddToCollection: () => void;
     onRename: () => void;
     onRemove: () => void;
+    showSelectMultiple?: boolean;
   }) => (
     <div data-testid='book-card-menu'>
-      <button onClick={onSelectMultiple} aria-label='Select Multiple'>
-        Select Multiple
-      </button>
+      {showSelectMultiple && (
+        <button onClick={onSelectMultiple} aria-label='Select Multiple'>
+          Select Multiple
+        </button>
+      )}
       <button onClick={onAddToCollection} aria-label='Add to Collection'>
         Add to Collection
       </button>
@@ -326,7 +330,7 @@ describe('BookCard', () => {
       } as ReturnType<typeof useLibraryViewStore>);
 
       const book = createMockBook({ hash: 'test-hash-123' });
-      render(<BookCard book={book} />);
+      render(<BookCard book={book} enableSelectionActions />);
       const container = document.querySelector('.ring-primary');
       expect(container).toBeTruthy();
     });
@@ -348,13 +352,19 @@ describe('BookCard', () => {
       } as ReturnType<typeof useLibraryViewStore>);
 
       const book = createMockBook();
-      render(<BookCard book={book} />);
+      render(<BookCard book={book} enableSelectionActions />);
       expect(screen.queryByTestId('book-card-menu')).toBeNull();
     });
 
-    it('should trigger select mode when Select Multiple is clicked', () => {
+    it('should hide Select Multiple by default when the surface has no bulk toolbar', () => {
       const book = createMockBook({ hash: 'book-123' });
       render(<BookCard book={book} />);
+      expect(screen.queryByText('Select Multiple')).toBeNull();
+    });
+
+    it('should trigger select mode when Select Multiple is enabled and clicked', () => {
+      const book = createMockBook({ hash: 'book-123' });
+      render(<BookCard book={book} enableSelectionActions />);
       fireEvent.click(screen.getByText('Select Multiple'));
       expect(mockSetSelectMode).toHaveBeenCalledWith(true);
       expect(mockToggleBookSelection).toHaveBeenCalledWith('book-123');
@@ -371,10 +381,17 @@ describe('BookCard', () => {
       } as ReturnType<typeof useLibraryViewStore>);
     });
 
-    it('should show checkbox in select mode', () => {
+    it('should show checkbox in select mode when selection actions are enabled', () => {
+      const book = createMockBook();
+      render(<BookCard book={book} enableSelectionActions />);
+      expect(screen.getByTestId('checkbox')).toBeTruthy();
+    });
+
+    it('should ignore global select mode when selection actions are disabled', () => {
       const book = createMockBook();
       render(<BookCard book={book} />);
-      expect(screen.getByTestId('checkbox')).toBeTruthy();
+      expect(screen.queryByTestId('checkbox')).toBeNull();
+      expect(screen.getByRole('link')).toBeTruthy();
     });
 
     it('should not show checkbox in normal mode', () => {
@@ -392,13 +409,13 @@ describe('BookCard', () => {
 
     it('should not render link in select mode', () => {
       const book = createMockBook();
-      render(<BookCard book={book} />);
+      render(<BookCard book={book} enableSelectionActions />);
       expect(screen.queryByRole('link')).toBeNull();
     });
 
     it('should toggle selection on card click in select mode', () => {
       const book = createMockBook({ hash: 'book-456' });
-      render(<BookCard book={book} />);
+      render(<BookCard book={book} enableSelectionActions />);
       // Click on the title (part of the card content)
       fireEvent.click(screen.getByText('Test Book Title'));
       expect(mockToggleBookSelection).toHaveBeenCalledWith('book-456');
@@ -406,7 +423,7 @@ describe('BookCard', () => {
 
     it('should toggle selection on checkbox change', () => {
       const book = createMockBook({ hash: 'book-789' });
-      render(<BookCard book={book} />);
+      render(<BookCard book={book} enableSelectionActions />);
       fireEvent.click(screen.getByTestId('checkbox'));
       expect(mockToggleBookSelection).toHaveBeenCalledWith('book-789');
     });
@@ -420,7 +437,7 @@ describe('BookCard', () => {
       } as ReturnType<typeof useLibraryViewStore>);
 
       const book = createMockBook({ hash: 'selected-book' });
-      render(<BookCard book={book} />);
+      render(<BookCard book={book} enableSelectionActions />);
       const checkbox = screen.getByTestId('checkbox') as HTMLInputElement;
       expect(checkbox.checked).toBe(true);
     });

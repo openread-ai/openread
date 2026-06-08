@@ -122,6 +122,15 @@ describe('ProfileMenu', () => {
       const button = screen.getByRole('button', { name: /profile menu/i });
       expect(button.getAttribute('aria-expanded')).toBe('false');
     });
+
+    it('should render collapsed profile as an icon-only control', () => {
+      const { container } = render(<ProfileMenu collapsed />);
+      const button = screen.getByRole('button', { name: /profile menu/i });
+
+      expect(button.className).toContain('px-0');
+      expect(container.querySelector('.lucide-user')).toBeTruthy();
+      expect(screen.queryByText('JD')).toBeNull();
+    });
   });
 
   describe('Unauthenticated State', () => {

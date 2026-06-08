@@ -77,6 +77,7 @@ const mockStore = {
     { id: '2', name: 'Technical', bookHashes: Array(10).fill('x'), createdAt: '2024-01-02' },
   ],
   toggleCollapsed: vi.fn(),
+  setCollapsed: vi.fn(),
   toggleLibrarySection: vi.fn(),
   toggleCollectionsSection: vi.fn(),
   addCollection: vi.fn(() => ({ id: 'new-1', name: 'New', bookHashes: [], createdAt: Date.now() })),
@@ -156,29 +157,32 @@ describe('Sidebar', () => {
       expect(screen.getByText('No collections yet')).toBeTruthy();
     });
 
-    it('should render a desktop collapse trigger when collapsible', () => {
+    it('should not render the desktop collapse trigger inside the sidebar', () => {
       render(<Sidebar collapsible />);
-      const trigger = screen.getByRole('button', { name: /collapse sidebar/i });
-      fireEvent.click(trigger);
-      expect(mockStore.toggleCollapsed).toHaveBeenCalled();
+      expect(screen.queryByRole('button', { name: /collapse sidebar/i })).toBeNull();
     });
 
     it('should render as a narrow icon rail when collapsed', () => {
       mockStore.isCollapsed = true;
       const { container } = render(<Sidebar collapsible />);
 
-      expect(container.querySelector('aside')?.className).toContain('md:w-[4.5rem]');
-      expect(screen.getByRole('button', { name: /expand sidebar/i })).toBeTruthy();
-      expect(screen.getByRole('link', { name: /home/i }).className).toContain('justify-center');
+      expect(container.querySelector('aside')?.className).toContain('md:w-14');
+      expect(screen.getByRole('button', { name: /expand sidebar from home/i })).toBeTruthy();
+      expect(screen.queryByRole('link', { name: /home/i })).toBeNull();
     });
 
-    it('should consolidate library and collections into one collapsed menu trigger', () => {
+    it('should render separate collapsed icons that expand the sidebar instead of opening menus', () => {
       mockStore.isCollapsed = true;
       render(<Sidebar collapsible />);
 
-      expect(screen.getByRole('button', { name: /library and collections/i })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: /library and collections/i })).toBeNull();
+      expect(screen.getByRole('button', { name: /expand sidebar from library/i })).toBeTruthy();
+      expect(screen.getByRole('button', { name: /expand sidebar from collections/i })).toBeTruthy();
       expect(screen.queryByRole('link', { name: /want to read/i })).toBeNull();
       expect(screen.queryByRole('link', { name: /fiction/i })).toBeNull();
+
+      fireEvent.click(screen.getByRole('button', { name: /expand sidebar from library/i }));
+      expect(mockStore.setCollapsed).toHaveBeenCalledWith(false);
     });
   });
 

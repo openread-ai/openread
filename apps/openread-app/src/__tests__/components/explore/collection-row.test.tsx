@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, cleanup, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 import { CollectionRow } from '@/components/explore/CollectionRow';
+import { getPlatformScrollableRowSkeletonCount } from '@/components/platform/platform-row-density';
 import type { CatalogBook } from '@/types/catalog';
 
 // Mock next/link
@@ -219,11 +220,19 @@ describe('CollectionRow', () => {
   });
 
   describe('Loading State', () => {
-    it('should show skeleton cards when isLoading is true', () => {
+    it('should show fallback skeleton cards before layout is measured', () => {
       const { container } = render(<CollectionRow title='Loading Section' books={[]} isLoading />);
-      // Should render 5 skeleton placeholder cards
       const skeletonCards = container.querySelectorAll('.animate-pulse');
       expect(skeletonCards.length).toBe(5);
+    });
+
+    it('should calculate dense skeleton counts from the measured row width', () => {
+      expect(
+        getPlatformScrollableRowSkeletonCount(1536, {
+          cardWidth: 130,
+          gap: 10,
+        }),
+      ).toBe(12);
     });
 
     it('should still render title when loading', () => {
@@ -293,6 +302,24 @@ describe('CollectionRow', () => {
       const { container } = render(<CollectionRow title='Padding' books={eightBooks} />);
       const scrollArea = container.querySelector('.overflow-x-auto');
       expect(scrollArea?.className).toContain('px-4');
+    });
+
+    it('should not overlay mobile edge-fade gradients over book covers', async () => {
+      const { container } = render(<CollectionRow title='No Edge Fade' books={eightBooks} />);
+      const scrollArea = container.querySelector('.overflow-x-auto') as HTMLElement;
+
+      Object.defineProperty(scrollArea, 'clientWidth', { configurable: true, value: 300 });
+      Object.defineProperty(scrollArea, 'scrollWidth', { configurable: true, value: 900 });
+      Object.defineProperty(scrollArea, 'scrollLeft', { configurable: true, value: 0 });
+      fireEvent.scroll(scrollArea);
+
+      await waitFor(() => {
+        const maskedOverlays = Array.from(container.querySelectorAll('div')).filter((element) => {
+          const style = (element as HTMLElement).style;
+          return Boolean(style.maskImage || style.webkitMaskImage);
+        });
+        expect(maskedOverlays).toHaveLength(0);
+      });
     });
   });
 

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 import React from 'react';
 import { BookSection, BookSectionSkeleton } from '@/components/platform/book-section';
+import { getPlatformScrollableRowSkeletonCount } from '@/components/platform/platform-row-density';
 import type { Book } from '@/types/book';
 
 // Mock next/link
@@ -173,10 +174,25 @@ describe('BookSectionSkeleton', () => {
     expect(screen.getByText('Loading...')).toBeTruthy();
   });
 
-  it('should render default 5 skeleton items', () => {
+  it('should render minimum skeleton items before layout is measured', () => {
     render(<BookSectionSkeleton title='Loading' />);
-    // 5 items * 3 skeletons per item (cover + title + author) = 15 skeletons
+    // 5 fallback items * 3 skeletons per item (cover + title + author) = 15 skeletons
     expect(screen.getAllByTestId('skeleton').length).toBe(15);
+  });
+
+  it('should calculate dense skeleton counts from the measured row width', () => {
+    expect(
+      getPlatformScrollableRowSkeletonCount(1536, {
+        cardWidth: 160,
+        gap: 16,
+      }),
+    ).toBe(10);
+  });
+
+  it('should keep skeleton rows scrollable to avoid page overflow on narrow viewports', () => {
+    const { container } = render(<BookSectionSkeleton title='Loading' />);
+    const rail = container.querySelector('.overflow-x-auto');
+    expect(rail?.className).toContain('overflow-x-auto');
   });
 
   it('should render custom number of skeleton items', () => {

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { ChevronRight, ChevronLeft } from 'lucide-react';
 import { cn } from '@/utils/tailwind';
 import { ExploreBookCard } from '@/components/explore/ExploreBookCard';
+import { usePlatformScrollableRowSkeletonCount } from '@/components/platform/platform-row-density';
 import type { ExploreBookCardProps } from '@/components/explore/ExploreBookCard';
 
 // ── Types ───────────────────────────────────────────────
@@ -54,6 +55,11 @@ export function CollectionRow({
   className,
 }: CollectionRowProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const skeletonScrollRef = useRef<HTMLDivElement>(null);
+  const skeletonCount = usePlatformScrollableRowSkeletonCount(skeletonScrollRef, {
+    cardWidth: 130,
+    gap: 10,
+  });
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
 
@@ -111,8 +117,8 @@ export function CollectionRow({
         </div>
 
         {/* Skeleton cards */}
-        <div className='flex gap-2.5 overflow-hidden px-4'>
-          {Array.from({ length: 5 }).map((_, i) => (
+        <div ref={skeletonScrollRef} className='flex gap-2.5 overflow-hidden px-4'>
+          {Array.from({ length: skeletonCount }).map((_, i) => (
             <SkeletonCard key={i} />
           ))}
         </div>
@@ -180,28 +186,6 @@ export function CollectionRow({
           >
             <ChevronLeft className='text-base-content h-5 w-5' />
           </button>
-        )}
-
-        {/* Edge fade gradients — mobile only */}
-        {canScrollLeft && (
-          <div
-            className='pointer-events-none absolute inset-y-0 left-0 z-[5] w-8 md:hidden'
-            style={{
-              maskImage: 'linear-gradient(to right, black, transparent)',
-              WebkitMaskImage: 'linear-gradient(to right, black, transparent)',
-              background: 'var(--color-base-100, white)',
-            }}
-          />
-        )}
-        {canScrollRight && (
-          <div
-            className='pointer-events-none absolute inset-y-0 right-0 z-[5] w-8 md:hidden'
-            style={{
-              maskImage: 'linear-gradient(to left, black, transparent)',
-              WebkitMaskImage: 'linear-gradient(to left, black, transparent)',
-              background: 'var(--color-base-100, white)',
-            }}
-          />
         )}
 
         {/* Books scroll row */}

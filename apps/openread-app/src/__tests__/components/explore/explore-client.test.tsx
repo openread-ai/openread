@@ -749,9 +749,10 @@ describe('ExploreClient', () => {
       expect(screen.getByTestId('category-pills')).toBeTruthy();
     });
 
-    it('should render mobile header', () => {
+    it('should render mobile and desktop platform headers', () => {
       render(<ExploreClient />);
-      expect(screen.getByText('Explore')).toBeTruthy();
+      expect(screen.getAllByText('Explore').length).toBeGreaterThanOrEqual(2);
+      expect(screen.getByTestId('platform-page-header')).toBeTruthy();
     });
   });
 

@@ -116,7 +116,7 @@ const AIAssistantChat = ({
   bookFormat?: string;
   bookDoc: import('@/libs/document').BookDoc | null;
 }) => {
-  const { getChapters } = useBookChapters(bookDoc);
+  const { getChapters, getVisualContextImages } = useBookChapters(bookDoc, sectionHref);
   const {
     activeConversationId,
     addMessage,
@@ -147,6 +147,7 @@ const AIAssistantChat = ({
     bookFormat,
     bookSubjects,
     getChapters,
+    getVisualContextImages,
   });
 
   // update ref on every render with latest values
@@ -162,8 +163,16 @@ const AIAssistantChat = ({
       bookFormat,
       bookSubjects,
       getChapters,
+      getVisualContextImages,
     };
   });
+
+  // Pre-warm reader context when the AI surface mounts so the first user
+  // message starts from an available book context instead of a cold extraction.
+  useEffect(() => {
+    void getChapters().catch(() => undefined);
+    void getVisualContextImages().catch(() => undefined);
+  }, [getChapters, getVisualContextImages]);
 
   // create adapter ONCE and keep it stable
   const adapter = useMemo(() => {

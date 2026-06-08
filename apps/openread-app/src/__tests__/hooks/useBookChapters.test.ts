@@ -1,0 +1,144 @@
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import type { BookDoc, SectionItem } from '@/libs/document';
+import {
+  buildReaderChaptersForAI,
+  buildReaderVisualContextImages,
+} from '@/app/reader/hooks/useBookChapters';
+
+function makeDocument(text: string): Document {
+  const doc = document.implementation.createHTMLDocument('');
+  doc.body.textContent = text;
+  return doc;
+}
+
+function makeSection(id: string | number, text: string): SectionItem {
+  return {
+    id: String(id),
+    cfi: String(id),
+    size: 100,
+    linear: 'yes',
+    createDocument: async () => makeDocument(text),
+  };
+}
+
+function makeBookDoc(overrides: Partial<BookDoc> = {}): BookDoc {
+  return {
+    metadata: {
+      title: 'Dynamic Context Book',
+      author: 'OpenRead',
+      language: 'en',
+      subject: ['AI', 'Reading'],
+      description: 'A book used to validate dynamic AI context recovery.',
+    },
+    dir: 'ltr',
+    toc: [
+      { id: 1, label: 'Part One', href: '0' },
+      { id: 2, label: 'Part Two', href: '1' },
+    ],
+    sections: [],
+    splitTOCHref: (href: string) => [href],
+    getCover: async () => null,
+    ...overrides,
+  };
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe('buildReaderChaptersForAI', () => {
+  test('merges sparse readable sections instead of returning empty context', async () => {
+    const bookDoc = makeBookDoc({
+      sections: [
+        makeSection(0, 'Alpha beta.'),
+        makeSection(1, 'Gamma delta epsilon zeta eta theta.'),
+      ],
+    });
+
+    const chapters = await buildReaderChaptersForAI(bookDoc);
+
+    expect(chapters).toHaveLength(1);
+    expect(chapters[0]!.title).toBe('Reader text context');
+    expect(chapters[0]!.text).toContain('Part One');
+    expect(chapters[0]!.text).toContain('Alpha beta.');
+    expect(chapters[0]!.text).toContain('Gamma delta epsilon');
+  });
+
+  test('always returns a reader context chapter when the book document exists', async () => {
+    const bookDoc = makeBookDoc({
+      metadata: { title: '', author: '', language: '' },
+      toc: undefined,
+      sections: [],
+    });
+
+    const chapters = await buildReaderChaptersForAI(bookDoc);
+
+    expect(chapters).toHaveLength(1);
+    expect(chapters[0]).toMatchObject({
+      id: 'book-context',
+      title: 'Available book context',
+    });
+    expect(chapters[0]!.text).toContain('Reader context: This book is open in Reader.');
+  });
+
+  test('falls back to metadata and TOC when body text is unavailable', async () => {
+    const bookDoc = makeBookDoc({
+      sections: [makeSection(0, ''), makeSection(1, '')],
+    });
+
+    const chapters = await buildReaderChaptersForAI(bookDoc);
+
+    expect(chapters).toHaveLength(1);
+    expect(chapters[0]).toMatchObject({
+      id: 'book-context',
+      title: 'Available book context',
+    });
+    expect(chapters[0]!.text).toContain('Title: Dynamic Context Book');
+    expect(chapters[0]!.text).toContain('Table of contents:');
+    expect(chapters[0]!.text).toContain('Part Two');
+  });
+
+  test('extracts visual context images from image-first reader sections', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        blob: vi.fn().mockResolvedValue(new Blob(['image-bytes'], { type: 'image/png' })),
+      }),
+    );
+    const bookDoc = makeBookDoc({
+      sections: [
+        {
+          id: 'comic-page-1',
+          cfi: 'comic-page-1',
+          size: 100,
+          linear: 'yes',
+          load: async () => ({ data: '<html><body><img src="blob:comic-image" /></body></html>' }),
+        } as unknown as SectionItem,
+      ],
+    });
+
+    const images = await buildReaderVisualContextImages(bookDoc, 'comic-page-1');
+
+    expect(images).toHaveLength(1);
+    expect(images[0]).toMatchObject({
+      id: 'comic-page-1',
+      title: 'Visual page 1',
+    });
+    expect(images[0]!.dataUrl).toMatch(/^data:image\/png;base64,/);
+  });
+
+  test('resolves numeric TOC section hrefs for PDF-style documents', async () => {
+    const bookDoc = makeBookDoc({
+      sections: [makeSection(0, 'This readable section has enough body text to become a chapter.')],
+      splitTOCHref: (href: string) => [Number(href)],
+    });
+
+    const chapters = await buildReaderChaptersForAI(bookDoc);
+
+    expect(chapters[0]).toMatchObject({
+      id: '0',
+      title: 'Part One',
+    });
+  });
+});

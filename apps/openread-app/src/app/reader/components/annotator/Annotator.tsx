@@ -60,7 +60,7 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   const { isDarkMode } = useThemeStore();
   const { getConfig, saveConfig, getBookData, updateBooknotes } = useBookDataStore();
   const { getProgress, getView, getViewsById, getViewSettings } = useReaderStore();
-  const { setNotebookVisible, setNotebookNewAnnotation } = useNotebookStore();
+  const { setNotebookVisible, openNotebookForAnnotation } = useNotebookStore();
   const { listenToNativeTouchEvents } = useDeviceControlStore();
 
   useNotesSync(bookKey);
@@ -705,8 +705,7 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     const { sectionHref: href } = progress;
     selection.href = href;
     handleHighlight(true);
-    setNotebookVisible(true);
-    setNotebookNewAnnotation(selection);
+    openNotebookForAnnotation(selection);
     handleDismissPopup();
   };
 

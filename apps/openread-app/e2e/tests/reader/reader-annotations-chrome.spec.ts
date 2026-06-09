@@ -10,7 +10,24 @@ async function openFirstBookInReader(page: Page): Promise<void> {
 
   await library.goto();
   await library.expectBooksVisible();
-  await library.clickFirstBook();
+
+  const preferredTitlePattern = new RegExp(
+    process.env.AI_EVAL_TEXT_BOOK_TITLE_PATTERN ?? '1-Page Marketing',
+    'i',
+  );
+  const search = page.getByTestId('search-input');
+  if (await search.isVisible().catch(() => false)) {
+    await search.fill(preferredTitlePattern.source.replace(/\\/g, ''));
+    const preferredBook = page.getByRole('link', { name: preferredTitlePattern }).first();
+    if (await preferredBook.isVisible({ timeout: 5_000 }).catch(() => false)) {
+      await preferredBook.click();
+    } else {
+      await search.fill('');
+      await library.clickFirstBook();
+    }
+  } else {
+    await library.clickFirstBook();
+  }
 
   await reader.waitForReaderUrl();
   await expect(reader.inlineQuestionBar()).toBeVisible({ timeout: 45_000 });
@@ -57,6 +74,31 @@ test.describe('Chromium reader annotations', () => {
     const search = sidebar.getByPlaceholder('Search...');
     await expect(search).toBeVisible({ timeout: 10_000 });
     await expect(search).not.toHaveValue('');
+  });
+
+  test('annotation action opens notes tab after AI chat was active', async ({
+    authenticatedPage: page,
+  }) => {
+    await openFirstBookInReader(page);
+
+    await page.getByRole('button', { name: 'Notebook' }).click({ force: true });
+    const notebook = page.locator('.notebook-container').first();
+    await expect(notebook).toBeVisible({ timeout: 10_000 });
+    await notebook.getByRole('button', { name: 'AI' }).click();
+    await expect(notebook.getByText('AI Chat')).toBeVisible({ timeout: 10_000 });
+
+    await page.keyboard.press('Escape');
+    await expect(notebook).toBeHidden({ timeout: 10_000 });
+
+    await selectFirstReaderText(page);
+    const popup = page.locator('.selection-popup').first();
+    const annotateButton = popup.getByRole('button', { name: 'Annotate' });
+    await expect(annotateButton).toBeVisible({ timeout: 10_000 });
+    await annotateButton.click();
+
+    await expect(notebook).toBeVisible({ timeout: 10_000 });
+    await expect(notebook.getByText('Notebook')).toBeVisible({ timeout: 10_000 });
+    await expect(notebook.getByLabel('Add your notes here...')).toBeVisible({ timeout: 10_000 });
   });
 
   test('creates, edits, and deletes a note from selected reader text', async ({

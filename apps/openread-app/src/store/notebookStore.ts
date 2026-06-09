@@ -21,6 +21,7 @@ interface NotebookState {
   setNotebookActiveTab: (tab: NotebookTab) => void;
   setNotebookNewAnnotation: (selection: TextSelection | null) => void;
   setNotebookEditAnnotation: (note: BookNote | null) => void;
+  openNotebookForAnnotation: (selection: TextSelection) => void;
   saveNotebookAnnotationDraft: (key: string, note: string) => void;
   getNotebookAnnotationDraft: (key: string) => string | undefined;
 }
@@ -43,6 +44,13 @@ export const useNotebookStore = create<NotebookState>((set, get) => ({
   setNotebookNewAnnotation: (selection: TextSelection | null) =>
     set({ notebookNewAnnotation: selection }),
   setNotebookEditAnnotation: (note: BookNote | null) => set({ notebookEditAnnotation: note }),
+  openNotebookForAnnotation: (selection: TextSelection) =>
+    set({
+      isNotebookVisible: true,
+      notebookActiveTab: 'notes',
+      notebookNewAnnotation: selection,
+      notebookEditAnnotation: null,
+    }),
   saveNotebookAnnotationDraft: (key: string, note: string) =>
     set((state) => ({
       notebookAnnotationDrafts: { ...state.notebookAnnotationDrafts, [key]: note },

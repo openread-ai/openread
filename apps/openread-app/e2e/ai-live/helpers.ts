@@ -246,6 +246,7 @@ export function expectUsefulLiveAnswer(result: LiveAiChatResult) {
   ).toContain(result.question);
   expect(result.firstTokenMs).not.toBeNull();
   if (result.firstTokenMs !== null) expect(result.firstTokenMs).toBeLessThan(45_000);
+  expect(result.completeMs, JSON.stringify(result, null, 2)).not.toBeNull();
   expect(result.provider).not.toBe('unknown');
   expect(result.model).not.toBe('unknown');
   expect(result.requestId).not.toBe('unknown');

@@ -15,6 +15,7 @@ import {
   SYNC_PROTOCOL_MIN_SUPPORTED,
   SYNC_PROTOCOL_MAX_SUPPORTED,
 } from '@/libs/sync-protocol';
+import { isSyncableLibraryBookHash } from '@/utils/bookHash';
 
 const transformsToDB = {
   books: transformBookToDB,
@@ -28,8 +29,6 @@ const DBSyncTypeMap = {
   book_configs: 'configs',
 };
 
-const BOOK_HASH_REGEX =
-  /^(?:[0-9a-f]{32}|catalog:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
 const META_HASH_REGEX = /^[0-9a-f]{32}$/i;
 
 type TableName = keyof typeof transformsToDB;
@@ -185,7 +184,7 @@ export async function GET(req: NextRequest) {
   }
 
   // P9.4: Validate hash parameters against regex (defense in depth against injection)
-  if (bookParam && !BOOK_HASH_REGEX.test(bookParam)) {
+  if (bookParam && !isSyncableLibraryBookHash(bookParam)) {
     return NextResponse.json({ error: 'Invalid book_hash format' }, { status: 400 });
   }
   if (metaHashParam && !META_HASH_REGEX.test(metaHashParam)) {
@@ -629,7 +628,7 @@ export async function POST(req: NextRequest) {
           { status: 400 },
         );
       }
-      const hasInvalidHash = hashKeys.some((k) => !BOOK_HASH_REGEX.test(k));
+      const hasInvalidHash = hashKeys.some((k) => !isSyncableLibraryBookHash(k));
       if (hasInvalidHash) {
         return NextResponse.json({ error: 'Invalid hash in reconcile.books' }, { status: 400 });
       }
@@ -721,7 +720,7 @@ export async function DELETE(req: NextRequest) {
   if (!bookHash) {
     return NextResponse.json({ error: 'Missing book_hash parameter' }, { status: 400 });
   }
-  if (!BOOK_HASH_REGEX.test(bookHash)) {
+  if (!isSyncableLibraryBookHash(bookHash)) {
     return NextResponse.json({ error: 'Invalid book_hash format' }, { status: 400 });
   }
 

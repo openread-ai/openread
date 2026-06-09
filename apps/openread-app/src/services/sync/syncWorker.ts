@@ -32,6 +32,7 @@ import { getPlatformFetch } from '@/utils/fetch';
 import type { AIConversation, AIMessage } from '@/services/ai/types';
 import { aiStore } from '@/services/ai/storage/aiStore';
 import { useAIChatStore } from '@/store/aiChatStore';
+import { isSyncableLibraryBookHash } from '@/utils/bookHash';
 
 /** Supabase row shape for ai_conversations table */
 interface SupabaseAIConversation {
@@ -56,8 +57,6 @@ interface SupabaseAIMessage {
 }
 
 const LIBRARY_OWNER_STORAGE_KEY = 'openread_library_owner_user_id';
-const SYNCABLE_BOOK_HASH_REGEX =
-  /^(?:[0-9a-f]{32}|catalog:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
 const RECONCILE_RETRY_DELAYS_MS = [500, 1_500] as const;
 
 /** Realtime broadcast event names for cross-device sync */
@@ -639,7 +638,7 @@ export class SyncWorker {
       const library = useLibraryStore.getState().library;
       const localHashes: Record<string, number> = {};
       for (const book of library) {
-        if (!SYNCABLE_BOOK_HASH_REGEX.test(book.hash)) continue;
+        if (!isSyncableLibraryBookHash(book.hash)) continue;
         localHashes[book.hash] = Math.max(book.updatedAt || 0, book.deletedAt || 0);
       }
 

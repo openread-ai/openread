@@ -7,10 +7,14 @@ const mocks = vi.hoisted(() => {
   const state = {
     library: [] as Book[],
     libraryLoaded: false,
+    isReconciling: false,
   };
   const setLibrary = vi.fn((books: Book[]) => {
     state.library = books;
     state.libraryLoaded = true;
+  });
+  const setIsReconciling = vi.fn((reconciling: boolean) => {
+    state.isReconciling = reconciling;
   });
   const setSettings = vi.fn();
   const saveLibraryBooks = vi.fn().mockResolvedValue(undefined);
@@ -23,7 +27,12 @@ const mocks = vi.hoisted(() => {
   let user: { id: string } | null = null;
 
   const useLibraryStore = Object.assign(
-    vi.fn(() => ({ setLibrary })),
+    vi.fn(() => ({
+      setLibrary,
+      setIsReconciling,
+      libraryLoaded: state.libraryLoaded,
+      isReconciling: state.isReconciling,
+    })),
     {
       getState: vi.fn(() => state),
     },
@@ -32,6 +41,7 @@ const mocks = vi.hoisted(() => {
   return {
     state,
     setLibrary,
+    setIsReconciling,
     setSettings,
     saveLibraryBooks,
     saveSettings,
@@ -96,7 +106,9 @@ describe('useLibrary account isolation', () => {
     localStorage.clear();
     mocks.state.library = [];
     mocks.state.libraryLoaded = false;
+    mocks.state.isReconciling = false;
     mocks.setUser(null);
+    mocks.setIsReconciling.mockClear();
     mocks.loadLibraryBooks.mockResolvedValue([]);
     mocks.saveLibraryBooks.mockResolvedValue(undefined);
     mocks.saveSettings.mockResolvedValue(undefined);
@@ -134,6 +146,8 @@ describe('useLibrary account isolation', () => {
     expect(localStorage.getItem('openread_library_owner_user_id')).toBe('account-b');
     expect(mocks.start).toHaveBeenCalledWith('account-b');
     expect(mocks.pullNow).toHaveBeenCalledWith('books');
+    expect(mocks.setIsReconciling).toHaveBeenNthCalledWith(1, true);
+    expect(mocks.setIsReconciling).toHaveBeenLastCalledWith(false);
   });
 
   it('does not load disk books for anonymous users', async () => {
@@ -148,6 +162,7 @@ describe('useLibrary account isolation', () => {
     expect(mocks.loadLibraryBooks).not.toHaveBeenCalled();
     expect(mocks.start).not.toHaveBeenCalled();
     expect(mocks.pullNow).not.toHaveBeenCalled();
+    expect(mocks.setIsReconciling).not.toHaveBeenCalled();
   });
 
   it('does not let stale disk load overwrite an in-memory account library', async () => {
@@ -175,5 +190,28 @@ describe('useLibrary account isolation', () => {
     expect(mocks.state.library).toEqual([activeBook]);
     expect(mocks.start).toHaveBeenCalledWith('account-a');
     expect(mocks.pullNow).toHaveBeenCalledWith('books');
+    expect(mocks.setIsReconciling).toHaveBeenNthCalledWith(1, true);
+    expect(mocks.setIsReconciling).toHaveBeenLastCalledWith(false);
+  });
+
+  it('keeps libraryLoaded false until the initial authenticated book reconcile settles', async () => {
+    let resolvePull: () => void = () => {};
+    mocks.setUser({ id: 'account-a' });
+    mocks.pullNow.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        resolvePull = resolve;
+      }),
+    );
+
+    const { result } = renderHook(() => useLibrary());
+
+    await waitFor(() => expect(mocks.pullNow).toHaveBeenCalledWith('books'));
+    expect(result.current.libraryLoaded).toBe(false);
+    expect(mocks.setIsReconciling).toHaveBeenCalledWith(true);
+
+    resolvePull();
+
+    await waitFor(() => expect(result.current.libraryLoaded).toBe(true));
+    expect(mocks.setIsReconciling).toHaveBeenLastCalledWith(false);
   });
 });

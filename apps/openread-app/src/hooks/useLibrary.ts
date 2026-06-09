@@ -25,7 +25,12 @@ function resetAccountScopedWatermarks(settings: SystemSettings): SystemSettings 
 export const useLibrary = () => {
   const { envConfig } = useEnv();
   const { user } = useAuth();
-  const { setLibrary, libraryLoaded: storeLibraryLoaded } = useLibraryStore();
+  const {
+    setLibrary,
+    setIsReconciling,
+    libraryLoaded: storeLibraryLoaded,
+    isReconciling,
+  } = useLibraryStore();
   const { setSettings } = useSettingsStore();
   const [libraryLoaded, setLibraryLoaded] = useState(false);
   const initiatedKeyRef = useRef<string | null>(null);
@@ -35,6 +40,8 @@ export const useLibrary = () => {
     const initKey = userId ?? 'anonymous';
     if (initiatedKeyRef.current === initKey) return;
     initiatedKeyRef.current = initKey;
+    setLibraryLoaded(false);
+    if (userId) setIsReconciling(true);
     let cancelled = false;
 
     const initLibrary = async () => {
@@ -87,18 +94,22 @@ export const useLibrary = () => {
           setLibrary([]);
         }
       } finally {
+        if (!cancelled && userId) {
+          // AuthContext usually starts the worker, but Library can mount from the
+          // locally restored user before AuthContext's async session effect runs.
+          // Start/no-op here after account-scoped local Library initialization so
+          // the initial reconcile is not dropped while the worker is still stopped.
+          syncWorker.start(userId);
+          try {
+            await syncWorker.pullNow('books');
+          } catch (error) {
+            logger.warn('Initial account-scoped library sync failed', error);
+          } finally {
+            setIsReconciling(false);
+          }
+        }
         if (!cancelled) {
           setLibraryLoaded(true);
-          if (userId) {
-            // AuthContext usually starts the worker, but Library can mount from the
-            // locally restored user before AuthContext's async session effect runs.
-            // Start/no-op here after account-scoped local Library initialization so
-            // the initial reconcile is not dropped while the worker is still stopped.
-            syncWorker.start(userId);
-            syncWorker.pullNow('books').catch((error) => {
-              logger.warn('Initial account-scoped library sync failed', error);
-            });
-          }
         }
       }
     };
@@ -106,8 +117,9 @@ export const useLibrary = () => {
     initLibrary();
     return () => {
       cancelled = true;
+      if (userId) setIsReconciling(false);
     };
-  }, [envConfig, setLibrary, setSettings, user?.id]);
+  }, [envConfig, setIsReconciling, setLibrary, setSettings, user?.id]);
 
-  return { libraryLoaded: libraryLoaded || storeLibraryLoaded };
+  return { libraryLoaded: (libraryLoaded || storeLibraryLoaded) && !isReconciling };
 };

@@ -221,8 +221,9 @@ function createCoalescingGuard() {
 export class SyncWorker {
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private drainGuard = createCoalescingGuard();
-  private reconcileGuard = createCoalescingGuard();
   private aiPullGuard = createCoalescingGuard();
+  private reconcileRun: Promise<void> | null = null;
+  private reconcileRerunRequested = false;
   private syncClient = new SyncClient();
   private realtimeChannel: RealtimeChannel | null = null;
   private userId: string | null = null;
@@ -347,7 +348,8 @@ export class SyncWorker {
     this.userId = null;
     this.cachedSupabase = null;
     this.drainGuard.reset();
-    this.reconcileGuard.reset();
+    this.reconcileRun = null;
+    this.reconcileRerunRequested = false;
     this.aiPullGuard.reset();
     if (typeof window !== 'undefined') {
       window.removeEventListener('online', this.handleOnline);
@@ -619,11 +621,26 @@ export class SyncWorker {
    * Sends full local inventory; server returns diff (upserts + removals).
    * Used on startup, after pushes, and on Realtime events — not every 10s.
    */
-  private async reconcileBooks(): Promise<void> {
-    if (this.stopped) return;
+  private reconcileBooks(): Promise<void> {
+    if (this.stopped || isOffline()) return Promise.resolve();
+
+    this.reconcileRerunRequested = true;
+    this.reconcileRun ??= this.runBookReconcileQueue().finally(() => {
+      this.reconcileRun = null;
+    });
+
+    return this.reconcileRun;
+  }
+
+  private async runBookReconcileQueue(): Promise<void> {
+    while (this.reconcileRerunRequested && !this.stopped && !isOffline()) {
+      this.reconcileRerunRequested = false;
+      await this.reconcileBooksOnce();
+    }
+  }
+
+  private async reconcileBooksOnce(): Promise<void> {
     const reconcileUserId = this.userId;
-    if (isOffline()) return;
-    if (!this.reconcileGuard.tryEnter()) return;
     this.updateStatus({ syncing: true, error: null });
 
     try {
@@ -694,10 +711,6 @@ export class SyncWorker {
       const message = error instanceof Error ? error.message : 'Sync failed';
       this.updateStatus({ syncing: false, error: message });
       console.error('[SyncWorker] Reconciliation failed:', error);
-    } finally {
-      if (this.reconcileGuard.exit()) {
-        this.reconcileBooks();
-      }
     }
   }
 

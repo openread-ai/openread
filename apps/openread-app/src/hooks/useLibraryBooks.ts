@@ -31,9 +31,13 @@ export function useLibraryBooks(options: UseLibraryBooksOptions = {}): UseLibrar
   const { filter = 'all', limit } = options;
 
   const libraryLoaded = useLibraryStore((state) => state.libraryLoaded);
+  const isReconciling = useLibraryStore((state) => state.isReconciling);
   const library = useLibraryStore((state) => state.library);
+  const isLoading = !libraryLoaded || isReconciling;
 
   const books = useMemo(() => {
+    if (isLoading) return [];
+
     let filteredBooks: Book[];
     const visibleLibrary = library.filter((book) => !book.deletedAt);
 
@@ -107,11 +111,11 @@ export function useLibraryBooks(options: UseLibraryBooksOptions = {}): UseLibrar
     }
 
     return filteredBooks;
-  }, [filter, limit, library]);
+  }, [filter, isLoading, limit, library]);
 
   return {
     books,
-    isLoading: !libraryLoaded,
+    isLoading,
   };
 }
 

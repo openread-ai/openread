@@ -21,11 +21,12 @@ const logger = createLogger('use-sample-book');
 export function useSampleBook(): void {
   const { user, token } = useAuth();
   const libraryLoaded = useLibraryStore((s) => s.libraryLoaded);
+  const isReconciling = useLibraryStore((s) => s.isReconciling);
   const attemptedRef = useRef(false);
 
   useEffect(() => {
     // Gate: must have user + token + loaded library, and not already attempted this mount
-    if (!user || !token || !libraryLoaded || attemptedRef.current) return;
+    if (!user || !token || !libraryLoaded || isReconciling || attemptedRef.current) return;
 
     // Gate: already attempted in a previous session
     if (localStorage.getItem(SAMPLE_BOOK_ATTEMPTED_KEY)) return;
@@ -49,5 +50,5 @@ export function useSampleBook(): void {
     };
 
     run();
-  }, [user, token, libraryLoaded]);
+  }, [user, token, libraryLoaded, isReconciling]);
 }

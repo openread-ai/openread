@@ -7,6 +7,7 @@ import type { Book } from '@/types/book';
 const mockStoreState = {
   library: [] as Book[],
   libraryLoaded: true,
+  isReconciling: false,
 };
 
 // Mock the libraryStore
@@ -31,6 +32,7 @@ describe('useLibraryBooks', () => {
     vi.clearAllMocks();
     mockStoreState.library = [];
     mockStoreState.libraryLoaded = true;
+    mockStoreState.isReconciling = false;
   });
 
   describe('Basic functionality', () => {
@@ -41,10 +43,21 @@ describe('useLibraryBooks', () => {
       expect(result.current.isLoading).toBe(false);
     });
 
-    it('should return isLoading true when library not loaded', () => {
+    it('should return isLoading true and withhold books when library not loaded', () => {
+      mockStoreState.library = [createMockBook({ hash: 'stale-book' })];
       mockStoreState.libraryLoaded = false;
       const { result } = renderHook(() => useLibraryBooks());
       expect(result.current.isLoading).toBe(true);
+      expect(result.current.books).toEqual([]);
+    });
+
+    it('should return isLoading true and withhold books while initial remote reconcile is in progress', () => {
+      mockStoreState.library = [createMockBook({ hash: 'stale-book' })];
+      mockStoreState.libraryLoaded = true;
+      mockStoreState.isReconciling = true;
+      const { result } = renderHook(() => useLibraryBooks());
+      expect(result.current.isLoading).toBe(true);
+      expect(result.current.books).toEqual([]);
     });
 
     it('should return all visible books by default', () => {

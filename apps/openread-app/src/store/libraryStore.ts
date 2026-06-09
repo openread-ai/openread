@@ -7,6 +7,7 @@ import { md5Fingerprint } from '@/utils/md5';
 interface LibraryState {
   library: Book[];
   libraryLoaded: boolean;
+  isReconciling: boolean;
   isSyncing: boolean;
   syncProgress: number;
   /** P9.21: Timestamp of last successful sync (ms since epoch) */
@@ -20,6 +21,7 @@ interface LibraryState {
   currentBookshelf: (Book | BooksGroup)[];
   selectedBooks: Set<string>; // hashes for books, ids for groups
   groups: Record<string, string>;
+  setIsReconciling: (reconciling: boolean) => void;
   setIsSyncing: (syncing: boolean) => void;
   setSyncProgress: (progress: number) => void;
   setLastSyncAt: (timestamp: number | null) => void;
@@ -48,6 +50,7 @@ interface LibraryState {
 export const useLibraryStore = create<LibraryState>((set, get) => ({
   library: [],
   libraryLoaded: false,
+  isReconciling: false,
   isSyncing: false,
   syncProgress: 0,
   lastSyncAt: null,
@@ -59,6 +62,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   checkOpenWithBooks: isTauriAppPlatform(),
   checkLastOpenBooks: isTauriAppPlatform(),
 
+  setIsReconciling: (reconciling: boolean) => set({ isReconciling: reconciling }),
   setIsSyncing: (syncing: boolean) => set({ isSyncing: syncing }),
   setSyncProgress: (progress: number) => set({ syncProgress: progress }),
   setLastSyncAt: (timestamp: number | null) => set({ lastSyncAt: timestamp }),

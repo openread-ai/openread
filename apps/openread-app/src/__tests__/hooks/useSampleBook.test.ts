@@ -40,6 +40,7 @@ vi.mock('@/context/AuthContext', () => ({
 // Mock useLibraryStore
 const mockLibraryState = {
   libraryLoaded: true,
+  isReconciling: false,
   library: [] as Book[],
 };
 
@@ -63,6 +64,7 @@ describe('useSampleBook', () => {
     mockAuthReturn.user = null;
     mockAuthReturn.token = null;
     mockLibraryState.libraryLoaded = true;
+    mockLibraryState.isReconciling = false;
     mockLibraryState.library = [];
     mockImportSampleBook.mockResolvedValue(true);
     mockPullNow.mockResolvedValue(undefined);
@@ -83,6 +85,17 @@ describe('useSampleBook', () => {
     mockAuthReturn.user = { id: 'user-1' };
     mockAuthReturn.token = 'test-token';
     mockLibraryState.libraryLoaded = false;
+
+    renderHook(() => useSampleBook());
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(mockImportSampleBook).not.toHaveBeenCalled();
+  });
+
+  it('should not import while the initial library reconcile is in progress', async () => {
+    mockAuthReturn.user = { id: 'user-1' };
+    mockAuthReturn.token = 'test-token';
+    mockLibraryState.isReconciling = true;
 
     renderHook(() => useSampleBook());
 

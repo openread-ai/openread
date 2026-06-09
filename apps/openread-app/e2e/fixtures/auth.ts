@@ -134,19 +134,33 @@ export async function clearSession(page: Page): Promise<void> {
 }
 
 async function proxyR2Downloads(page: Page): Promise<void> {
+  if (process.env.AI_EVAL_SKIP_R2_PROXY === '1') return;
+
   await page.route(/r2\.cloudflarestorage\.com/, async (route) => {
     const url = route.request().url();
-    console.log(`[R2 proxy] Fetching: ${url.slice(0, 80)}...`);
-    const response = await fetch(url);
-    console.log(
-      `[R2 proxy] Status: ${response.status}, size: ${response.headers.get('content-length')}`,
-    );
-    const body = Buffer.from(await response.arrayBuffer());
-    await route.fulfill({
-      status: response.status,
-      headers: Object.fromEntries(response.headers.entries()),
-      body,
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30_000);
+
+    try {
+      console.log(`[R2 proxy] Fetching: ${url.slice(0, 80)}...`);
+      const response = await fetch(url, { signal: controller.signal });
+      console.log(
+        `[R2 proxy] Status: ${response.status}, size: ${response.headers.get('content-length')}`,
+      );
+      const body = Buffer.from(await response.arrayBuffer());
+      await route.fulfill({
+        status: response.status,
+        headers: Object.fromEntries(response.headers.entries()),
+        body,
+      });
+    } catch (error) {
+      console.warn(
+        `[R2 proxy] Falling back to browser fetch after proxy failure: ${String(error)}`,
+      );
+      await route.continue();
+    } finally {
+      clearTimeout(timeout);
+    }
   });
 }
 

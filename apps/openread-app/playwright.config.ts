@@ -32,6 +32,10 @@ for (const file of ['.env.test.local', '.env.local', '.env']) {
 }
 
 const BUCKET = process.env.OPENREAD_BUCKET_DIR ?? resolve(homedir(), '.openread-dev/artifacts');
+const isLiveAiEvalRun = process.env.LIVE_AI_EVALS === '1';
+const liveAiEvalBaseURL = isLiveAiEvalRun ? process.env.AI_EVAL_BASE_URL : undefined;
+const configuredBaseURL = liveAiEvalBaseURL ?? 'http://localhost:3000';
+const shouldStartWebServer = !liveAiEvalBaseURL;
 const screenshotMode =
   process.env.OPENREAD_PLAYWRIGHT_SCREENSHOT === 'on' ? 'on' : 'only-on-failure';
 
@@ -60,7 +64,7 @@ export default defineConfig({
   snapshotPathTemplate: '{snapshotDir}/{testFileName}/{arg}-{projectName}{ext}',
 
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: configuredBaseURL,
     trace: 'retain-on-failure',
     video: videoMode,
     // Diff output path is controlled by snapshotPathTemplate above, not by
@@ -70,13 +74,17 @@ export default defineConfig({
     screenshot: screenshotMode,
   },
 
-  webServer: {
-    command: 'corepack pnpm dev-web',
-    port: 3000,
-    reuseExistingServer:
-      process.env.OPENREAD_E2E_REUSE_SERVER === 'false' ? false : !process.env['CI'],
-    timeout: 120_000,
-  },
+  ...(shouldStartWebServer
+    ? {
+        webServer: {
+          command: 'corepack pnpm dev-web',
+          port: 3000,
+          reuseExistingServer:
+            process.env.OPENREAD_E2E_REUSE_SERVER === 'false' ? false : !process.env['CI'],
+          timeout: 120_000,
+        },
+      }
+    : {}),
 
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },

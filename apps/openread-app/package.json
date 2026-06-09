@@ -96,6 +96,7 @@
     "test:e2e:probes:eval": "dotenv -e .env.local -e .env.web -e .env.test.local -v NEXT_PUBLIC_APP_PLATFORM=web -- node scripts/run-ai-probes.mjs critical && node scripts/render-ai-probe-report.mjs critical",
     "test:e2e:report": "playwright show-report",
     "test:e2e:smoke": "dotenv -e .env.local -e .env.web -e .env.test.local -v NEXT_PUBLIC_APP_PLATFORM=web -- playwright test e2e/smoke",
+    "test:e2e:ai-live": "dotenv -e .env.local -e .env.web -e .env.test.local -v NEXT_PUBLIC_APP_PLATFORM=web -v LIVE_AI_EVALS=1 -- playwright test --project=chromium e2e/ai-live",
     "test:e2e:ui": "dotenv -e .env.local -e .env.web -e .env.test.local -v NEXT_PUBLIC_APP_PLATFORM=web -- playwright test --ui",
     "test:native:ctl": "node e2e/native/ctl.mjs",
     "native:readiness": "node e2e/native/ctl.mjs readiness",

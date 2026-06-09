@@ -194,6 +194,31 @@ describe('useLibrary account isolation', () => {
     expect(mocks.setIsReconciling).toHaveBeenLastCalledWith(false);
   });
 
+  it('does not rerun the initial reconcile when remounted for the same loaded account', async () => {
+    localStorage.setItem('openread_library_owner_user_id', 'account-remount');
+    mocks.setUser({ id: 'account-remount' });
+
+    const { result, unmount } = renderHook(() => useLibrary());
+
+    await waitFor(() => expect(result.current.libraryLoaded).toBe(true));
+    expect(mocks.start).toHaveBeenCalledWith('account-remount');
+    expect(mocks.pullNow).toHaveBeenCalledWith('books');
+
+    mocks.start.mockClear();
+    mocks.pullNow.mockClear();
+    mocks.setIsReconciling.mockClear();
+    mocks.loadLibraryBooks.mockClear();
+    unmount();
+
+    const { result: remounted } = renderHook(() => useLibrary());
+
+    await waitFor(() => expect(remounted.current.libraryLoaded).toBe(true));
+    expect(mocks.start).not.toHaveBeenCalled();
+    expect(mocks.pullNow).not.toHaveBeenCalled();
+    expect(mocks.setIsReconciling).not.toHaveBeenCalled();
+    expect(mocks.loadLibraryBooks).not.toHaveBeenCalled();
+  });
+
   it('keeps libraryLoaded false until the initial authenticated book reconcile settles', async () => {
     let resolvePull: () => void = () => {};
     mocks.setUser({ id: 'account-a' });

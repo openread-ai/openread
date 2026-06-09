@@ -280,8 +280,29 @@ vi.mock('@/components/platform/selection-toolbar', () => ({
 
 // Import mocks for modification in tests
 import { useLibraryBooks } from '@/hooks/useLibraryBooks';
+import { useSync } from '@/hooks/useSync';
 import { useLibraryViewStore } from '@/store/libraryViewStore';
 import { useAuth } from '@/context/AuthContext';
+
+const makeUseSyncMock = (overrides: Partial<ReturnType<typeof useSync>> = {}) =>
+  ({
+    syncing: false,
+    syncError: null,
+    syncResult: { books: null, configs: null, notes: null },
+    syncedBooks: null,
+    syncedConfigs: null,
+    syncedNotes: null,
+    lastSyncedAtBooks: 0,
+    lastSyncedAtNotes: 0,
+    lastSyncedAtConfigs: 0,
+    useSyncInited: true,
+    pullChanges: vi.fn(),
+    pushChanges: vi.fn(),
+    syncBooks: mockSyncBooks,
+    syncConfigs: vi.fn(),
+    syncNotes: vi.fn(),
+    ...overrides,
+  }) satisfies ReturnType<typeof useSync>;
 
 describe('LibraryPageClient', () => {
   beforeEach(() => {
@@ -298,6 +319,7 @@ describe('LibraryPageClient', () => {
       books: mockBooks,
       isLoading: false,
     });
+    vi.mocked(useSync).mockReturnValue(makeUseSyncMock());
 
     vi.mocked(useAuth).mockReturnValue({
       user: null,
@@ -409,8 +431,8 @@ describe('LibraryPageClient', () => {
     });
   });
 
-  describe('Auto-sync', () => {
-    it('should auto-sync on load for logged-in users', async () => {
+  describe('Background sync', () => {
+    it('does not start a Library page pull on mount because useLibrary owns initial reconcile', async () => {
       vi.mocked(useAuth).mockReturnValue({
         user: mockUser as unknown as ReturnType<typeof useAuth>['user'],
         token: 'test-token',
@@ -421,28 +443,11 @@ describe('LibraryPageClient', () => {
 
       render(<LibraryPageClient filter='all' title='All Books' />);
 
-      await waitFor(() => {
-        expect(mockSyncBooks).toHaveBeenCalledWith(undefined, 'pull');
-      });
-    });
-
-    it('should not auto-sync when user is not logged in', async () => {
-      vi.mocked(useAuth).mockReturnValue({
-        user: null,
-        token: null,
-        login: vi.fn(),
-        logout: vi.fn(),
-        refresh: vi.fn(),
-      });
-
-      render(<LibraryPageClient filter='all' title='All Books' />);
-
-      // Wait a bit and verify syncBooks was not called
       await new Promise((resolve) => setTimeout(resolve, 100));
-      expect(mockSyncBooks).not.toHaveBeenCalled();
+      expect(mockSyncBooks).not.toHaveBeenCalledWith(undefined, 'pull');
     });
 
-    it('should only sync once on initial load', async () => {
+    it('does not restart background pull sync across remounts', async () => {
       vi.mocked(useAuth).mockReturnValue({
         user: mockUser as unknown as ReturnType<typeof useAuth>['user'],
         token: 'test-token',
@@ -451,17 +456,25 @@ describe('LibraryPageClient', () => {
         refresh: vi.fn(),
       });
 
-      const { rerender } = render(<LibraryPageClient filter='all' title='All Books' />);
-
-      await waitFor(() => {
-        expect(mockSyncBooks).toHaveBeenCalledTimes(1);
-      });
-
-      // Re-render and verify no additional sync
-      rerender(<LibraryPageClient filter='all' title='All Books' />);
+      const { unmount } = render(<LibraryPageClient filter='all' title='All Books' />);
+      unmount();
+      render(<LibraryPageClient filter='all' title='All Books' />);
 
       await new Promise((resolve) => setTimeout(resolve, 100));
-      expect(mockSyncBooks).toHaveBeenCalledTimes(1);
+      expect(mockSyncBooks).not.toHaveBeenCalledWith(undefined, 'pull');
+    });
+
+    it('does not show the legacy inline syncing indicator during background sync', () => {
+      vi.mocked(useLibraryBooks).mockReturnValue({
+        books: [],
+        isLoading: false,
+      });
+      vi.mocked(useSync).mockReturnValue(makeUseSyncMock({ syncing: true }));
+
+      render(<LibraryPageClient filter='all' title='All Books' />);
+
+      expect(screen.queryByText('Syncing your library...')).toBeNull();
+      expect(screen.getByTestId('book-grid')).toBeTruthy();
     });
   });
 

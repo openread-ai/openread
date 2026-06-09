@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useEnv } from '@/context/EnvContext';
 import { syncWorker } from '@/services/sync/syncWorker';
@@ -11,6 +11,7 @@ import type { SystemSettings } from '@/types/settings';
 const logger = createLogger('useLibrary');
 const LIBRARY_OWNER_STORAGE_KEY = 'openread_library_owner_user_id';
 const qaAutomationEnabled = process.env.NEXT_PUBLIC_OPENREAD_QA_AUTOMATION === '1';
+let lastInitializedLibraryKey: string | null = null;
 
 function resetAccountScopedWatermarks(settings: SystemSettings): SystemSettings {
   return {
@@ -33,13 +34,15 @@ export const useLibrary = () => {
   } = useLibraryStore();
   const { setSettings } = useSettingsStore();
   const [libraryLoaded, setLibraryLoaded] = useState(false);
-  const initiatedKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     const userId = user?.id ?? null;
     const initKey = userId ?? 'anonymous';
-    if (initiatedKeyRef.current === initKey) return;
-    initiatedKeyRef.current = initKey;
+    if (lastInitializedLibraryKey === initKey && useLibraryStore.getState().libraryLoaded) {
+      setLibraryLoaded(true);
+      return;
+    }
+    lastInitializedLibraryKey = initKey;
     setLibraryLoaded(false);
     if (userId) setIsReconciling(true);
     let cancelled = false;
@@ -117,7 +120,6 @@ export const useLibrary = () => {
     initLibrary();
     return () => {
       cancelled = true;
-      if (userId) setIsReconciling(false);
     };
   }, [envConfig, setIsReconciling, setLibrary, setSettings, user?.id]);
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
+import { useAuth } from '@/context/AuthContext';
 import { useLibraryStore } from '@/store/libraryStore';
 import type { Book } from '@/types/book';
 
@@ -30,10 +31,12 @@ function getProgressPercentage(progress?: [number, number]): number {
 export function useLibraryBooks(options: UseLibraryBooksOptions = {}): UseLibraryBooksReturn {
   const { filter = 'all', limit } = options;
 
+  const { user } = useAuth();
   const libraryLoaded = useLibraryStore((state) => state.libraryLoaded);
-  const isReconciling = useLibraryStore((state) => state.isReconciling);
+  const libraryOwnerUserId = useLibraryStore((state) => state.libraryOwnerUserId);
   const library = useLibraryStore((state) => state.library);
-  const isLoading = !libraryLoaded || isReconciling;
+  const hasOwnerMismatch = Boolean(user?.id && libraryOwnerUserId !== user.id);
+  const isLoading = !libraryLoaded || hasOwnerMismatch;
 
   const books = useMemo(() => {
     if (isLoading) return [];

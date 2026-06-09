@@ -2,11 +2,33 @@ import { create } from 'zustand';
 import { Book, BookGroupType, BooksGroup } from '@/types/book';
 import { EnvConfigType, isTauriAppPlatform } from '@/services/environment';
 import { BOOK_UNGROUPED_NAME } from '@/services/constants';
+import { readLibraryPaintCache, writeLibraryPaintCache } from '@/services/libraryPaintCache';
 import { md5Fingerprint } from '@/utils/md5';
+
+function buildGroups(library: Book[]): Record<string, string> {
+  const groups: Record<string, string> = {};
+
+  library.forEach((book) => {
+    if (book.groupName && book.groupName !== BOOK_UNGROUPED_NAME) {
+      groups[md5Fingerprint(book.groupName)] = book.groupName;
+      let nextSlashIndex = book.groupName.indexOf('/', 0);
+      while (nextSlashIndex > 0) {
+        const groupName = book.groupName.substring(0, nextSlashIndex);
+        groups[md5Fingerprint(groupName)] = groupName;
+        nextSlashIndex = book.groupName.indexOf('/', nextSlashIndex + 1);
+      }
+    }
+  });
+
+  return groups;
+}
+
+const initialLibraryPaintCache = readLibraryPaintCache();
 
 interface LibraryState {
   library: Book[];
   libraryLoaded: boolean;
+  libraryOwnerUserId: string | null;
   isReconciling: boolean;
   isSyncing: boolean;
   syncProgress: number;
@@ -35,6 +57,7 @@ interface LibraryState {
   setCheckOpenWithBooks: (check: boolean) => void;
   setCheckLastOpenBooks: (check: boolean) => void;
   setLibrary: (books: Book[]) => void;
+  setLibraryOwnerUserId: (userId: string | null) => void;
   updateBook: (envConfig: EnvConfigType, book: Book) => Promise<void>;
   updateBooks: (envConfig: EnvConfigType, books: Book[]) => Promise<void>;
   setCurrentBookshelf: (bookshelf: (Book | BooksGroup)[]) => void;
@@ -48,8 +71,9 @@ interface LibraryState {
 }
 
 export const useLibraryStore = create<LibraryState>((set, get) => ({
-  library: [],
-  libraryLoaded: false,
+  library: initialLibraryPaintCache?.books ?? [],
+  libraryLoaded: Boolean(initialLibraryPaintCache),
+  libraryOwnerUserId: initialLibraryPaintCache?.ownerUserId ?? null,
   isReconciling: false,
   isSyncing: false,
   syncProgress: 0,
@@ -58,7 +82,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   dirtyBooks: new Set(),
   currentBookshelf: [],
   selectedBooks: new Set(),
-  groups: {},
+  groups: buildGroups(initialLibraryPaintCache?.books ?? []),
   checkOpenWithBooks: isTauriAppPlatform(),
   checkLastOpenBooks: isTauriAppPlatform(),
 
@@ -82,9 +106,14 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   setCheckOpenWithBooks: (check) => set({ checkOpenWithBooks: check }),
   setCheckLastOpenBooks: (check) => set({ checkLastOpenBooks: check }),
   setLibrary: (books) => {
-    const { refreshGroups } = get();
+    const { refreshGroups, libraryOwnerUserId } = get();
     set({ library: books, libraryLoaded: true });
     refreshGroups();
+    writeLibraryPaintCache(libraryOwnerUserId, books);
+  },
+  setLibraryOwnerUserId: (userId) => {
+    set({ libraryOwnerUserId: userId });
+    writeLibraryPaintCache(userId, get().library);
   },
   updateBook: async (envConfig: EnvConfigType, book: Book) => {
     const appService = await envConfig.getAppService();
@@ -94,6 +123,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       library[bookIndex] = book;
     }
     set({ library: [...library] });
+    writeLibraryPaintCache(get().libraryOwnerUserId, library);
     await appService.saveLibraryBooks(library);
   },
   updateBooks: async (envConfig: EnvConfigType, books: Book[]) => {
@@ -127,6 +157,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     const newLibrary = [...library.filter((b) => !incomingHashes.has(b.hash)), ...merged];
     set({ library: newLibrary, libraryLoaded: true });
     refreshGroups();
+    writeLibraryPaintCache(get().libraryOwnerUserId, newLibrary);
     await appService.saveLibraryBooks(newLibrary);
   },
 
@@ -151,22 +182,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   refreshGroups: () => {
-    const { library } = get();
-    const groups: Record<string, string> = {};
-
-    library.forEach((book) => {
-      if (book.groupName && book.groupName !== BOOK_UNGROUPED_NAME) {
-        groups[md5Fingerprint(book.groupName)] = book.groupName;
-        let nextSlashIndex = book.groupName.indexOf('/', 0);
-        while (nextSlashIndex > 0) {
-          const groupName = book.groupName.substring(0, nextSlashIndex);
-          groups[md5Fingerprint(groupName)] = groupName;
-          nextSlashIndex = book.groupName.indexOf('/', nextSlashIndex + 1);
-        }
-      }
-    });
-
-    set({ groups });
+    set({ groups: buildGroups(get().library) });
   },
 
   addGroup: (name: string) => {

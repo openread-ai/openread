@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor, cleanup } from '@testing-library/react';
-import { useExploreCollections, _resetCollectionsCache } from '@/hooks/useExploreCollections';
+import {
+  useExploreCollections,
+  preloadExploreCollections,
+  _resetCollectionsCache,
+} from '@/hooks/useExploreCollections';
 import type { CatalogCollection } from '@/hooks/useExploreCollections';
 import type { CatalogBook } from '@/hooks/useExploreBooks';
 
@@ -297,7 +301,7 @@ describe('useExploreCollections', () => {
   });
 
   describe('Caching', () => {
-    it('should use cache on subsequent calls within TTL', async () => {
+    it('should paint cached collections immediately and revalidate on remount', async () => {
       mockFetchResponses();
       const { result, unmount } = renderHook(() => useExploreCollections());
 
@@ -310,12 +314,32 @@ describe('useExploreCollections', () => {
 
       unmount();
 
-      // Re-render — should use cache (no new fetch calls)
+      // Re-render — cache hit should be available immediately while SWR refresh runs.
       const { result: result2 } = renderHook(() => useExploreCollections());
 
-      // Cache hit: collections should be available immediately
       expect(result2.current.collections).toHaveLength(3);
-      expect(fetchMock.mock.calls.length).toBe(firstCallCount);
+      expect(result2.current.isLoading).toBe(false);
+
+      await waitFor(() => {
+        expect(fetchMock.mock.calls.length).toBeGreaterThan(firstCallCount);
+      });
+    });
+
+    it('should let prefetch seed cache before Explore mounts', async () => {
+      mockFetchResponses();
+
+      await preloadExploreCollections(10);
+      expect(localStorage.getItem('openread_explore_collections_cache_v1')).toBeTruthy();
+
+      const prefetchCallCount = fetchMock.mock.calls.length;
+      const { result } = renderHook(() => useExploreCollections(10));
+
+      expect(result.current.collections).toHaveLength(3);
+      expect(result.current.isLoading).toBe(false);
+
+      await waitFor(() => {
+        expect(fetchMock.mock.calls.length).toBeGreaterThan(prefetchCallCount);
+      });
     });
 
     it('should clear cache on refresh', async () => {

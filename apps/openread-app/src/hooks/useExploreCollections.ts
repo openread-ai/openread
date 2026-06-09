@@ -20,109 +20,167 @@ interface UseExploreCollectionsReturn {
 // ── Client-side cache ──────────────────────────────────
 
 interface CollectionsCacheEntry {
+  booksPerCollection: number;
   collections: CollectionWithBooks[];
   timestamp: number;
 }
 
-let collectionsCache: CollectionsCacheEntry | null = null;
-const CACHE_TTL = 60_000; // 60 seconds
+const COLLECTIONS_CACHE_KEY = 'openread_explore_collections_cache_v1';
+const collectionsCache = new Map<number, CollectionsCacheEntry>();
+const CACHE_TTL = 5 * 60_000; // 5 minutes
 
-function getCachedCollections(): CollectionWithBooks[] | null {
-  if (!collectionsCache) return null;
-  if (Date.now() - collectionsCache.timestamp > CACHE_TTL) {
-    collectionsCache = null;
-    return null;
-  }
-  return collectionsCache.collections;
+function isFreshCacheEntry(
+  entry: CollectionsCacheEntry | null | undefined,
+  booksPerCollection: number,
+): entry is CollectionsCacheEntry {
+  return Boolean(
+    entry &&
+    entry.booksPerCollection === booksPerCollection &&
+    Date.now() - entry.timestamp <= CACHE_TTL,
+  );
 }
 
-function setCachedCollections(collections: CollectionWithBooks[]) {
-  collectionsCache = { collections, timestamp: Date.now() };
+function readDurableCollectionsCache(booksPerCollection: number): CollectionsCacheEntry | null {
+  if (typeof localStorage === 'undefined') return null;
+
+  try {
+    const raw = localStorage.getItem(COLLECTIONS_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CollectionsCacheEntry;
+    if (!isFreshCacheEntry(parsed, booksPerCollection)) return null;
+    collectionsCache.set(booksPerCollection, parsed);
+    return parsed;
+  } catch (error) {
+    logger.warn('Failed to read Explore collections cache', error);
+    return null;
+  }
+}
+
+function getCachedCollections(booksPerCollection: number): CollectionWithBooks[] | null {
+  const memoryEntry = collectionsCache.get(booksPerCollection);
+  if (isFreshCacheEntry(memoryEntry, booksPerCollection)) return memoryEntry.collections;
+
+  if (memoryEntry) collectionsCache.delete(booksPerCollection);
+
+  return readDurableCollectionsCache(booksPerCollection)?.collections ?? null;
+}
+
+function setCachedCollections(booksPerCollection: number, collections: CollectionWithBooks[]) {
+  const entry = { booksPerCollection, collections, timestamp: Date.now() };
+  collectionsCache.set(booksPerCollection, entry);
+
+  if (typeof localStorage === 'undefined') return;
+
+  try {
+    localStorage.setItem(COLLECTIONS_CACHE_KEY, JSON.stringify(entry));
+  } catch (error) {
+    logger.warn('Failed to persist Explore collections cache', error);
+  }
+}
+
+async function fetchExploreCollections(
+  booksPerCollection: number,
+  signal?: AbortSignal,
+): Promise<CollectionWithBooks[]> {
+  const platformFetch = await getPlatformFetch();
+
+  // Step 1: Fetch the list of collections
+  const listRes = await platformFetch(`${CATALOG_API_BASE_URL}/catalog/collections`, { signal });
+
+  if (!listRes.ok) {
+    throw new Error(`API error: ${listRes.status}`);
+  }
+
+  const listData: { collections: CatalogCollection[] } = await listRes.json();
+
+  // Filter out empty collections (book_count === 0)
+  const nonEmpty = listData.collections.filter((c) => c.book_count > 0);
+
+  // Step 2: Fetch books for each collection in parallel
+  const withBooks = await Promise.all(
+    nonEmpty.map(async (collection) => {
+      try {
+        const booksRes = await platformFetch(
+          `${CATALOG_API_BASE_URL}/catalog/collections/${collection.slug}/books?limit=${booksPerCollection}`,
+          { signal },
+        );
+
+        if (!booksRes.ok) {
+          return { ...collection, books: [] as CatalogBook[] };
+        }
+
+        const booksData: { books: CatalogBook[] } = await booksRes.json();
+        return { ...collection, books: booksData.books };
+      } catch {
+        // If individual collection fetch fails, return empty books
+        return { ...collection, books: [] as CatalogBook[] };
+      }
+    }),
+  );
+
+  // Filter out collections that ended up with 0 books after fetch
+  return withBooks.filter((c) => c.books.length > 0);
+}
+
+export async function preloadExploreCollections(booksPerCollection = 10): Promise<void> {
+  if (getCachedCollections(booksPerCollection)) return;
+
+  try {
+    const collections = await fetchExploreCollections(booksPerCollection);
+    setCachedCollections(booksPerCollection, collections);
+  } catch (error) {
+    logger.warn('Failed to preload Explore collections', error);
+  }
 }
 
 /** Reset module-level cache (for testing) */
 export function _resetCollectionsCache() {
-  collectionsCache = null;
+  collectionsCache.clear();
+  if (typeof localStorage !== 'undefined') {
+    localStorage.removeItem(COLLECTIONS_CACHE_KEY);
+  }
 }
 
 // ── Hook ───────────────────────────────────────────────
 
 export function useExploreCollections(booksPerCollection = 10): UseExploreCollectionsReturn {
-  const [collections, setCollections] = useState<CollectionWithBooks[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [collections, setCollections] = useState<CollectionWithBooks[]>(() => {
+    return getCachedCollections(booksPerCollection) ?? [];
+  });
+  const [isLoading, setIsLoading] = useState(() => collections.length === 0);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController>(null);
 
   const fetchCollections = useCallback(
     async (skipCache = false) => {
-      // Check cache first
-      if (!skipCache) {
-        const cached = getCachedCollections();
-        if (cached) {
-          setCollections(cached);
-          setIsLoading(false);
-          setError(null);
-          return;
-        }
+      const cached = skipCache ? null : getCachedCollections(booksPerCollection);
+      const hasCachedCollections = Boolean(cached?.length);
+
+      if (cached) {
+        setCollections(cached);
+        setIsLoading(false);
+        setError(null);
       }
 
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
 
-      setIsLoading(true);
-      setError(null);
+      setIsLoading(!hasCachedCollections);
+      if (!hasCachedCollections) setError(null);
 
       try {
-        const platformFetch = await getPlatformFetch();
-
-        // Step 1: Fetch the list of collections
-        const listRes = await platformFetch(`${CATALOG_API_BASE_URL}/catalog/collections`, {
-          signal: controller.signal,
-        });
-
-        if (!listRes.ok) {
-          throw new Error(`API error: ${listRes.status}`);
-        }
-
-        const listData: { collections: CatalogCollection[] } = await listRes.json();
-
-        // Filter out empty collections (book_count === 0)
-        const nonEmpty = listData.collections.filter((c) => c.book_count > 0);
-
-        // Step 2: Fetch books for each collection in parallel
-        const withBooks = await Promise.all(
-          nonEmpty.map(async (collection) => {
-            try {
-              const booksRes = await platformFetch(
-                `${CATALOG_API_BASE_URL}/catalog/collections/${collection.slug}/books?limit=${booksPerCollection}`,
-                { signal: controller.signal },
-              );
-
-              if (!booksRes.ok) {
-                return { ...collection, books: [] as CatalogBook[] };
-              }
-
-              const booksData: { books: CatalogBook[] } = await booksRes.json();
-              return { ...collection, books: booksData.books };
-            } catch {
-              // If individual collection fetch fails, return empty books
-              return { ...collection, books: [] as CatalogBook[] };
-            }
-          }),
-        );
-
-        // Filter out collections that ended up with 0 books after fetch
-        const result = withBooks.filter((c) => c.books.length > 0);
+        const result = await fetchExploreCollections(booksPerCollection, controller.signal);
 
         if (!controller.signal.aborted) {
           setCollections(result);
-          setCachedCollections(result);
+          setCachedCollections(booksPerCollection, result);
+          setError(null);
         }
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') return;
         logger.error('Failed to load collections', { error: err });
-        if (!controller.signal.aborted) {
+        if (!controller.signal.aborted && !hasCachedCollections) {
           setError(err instanceof Error ? err.message : 'Failed to load collections');
         }
       } finally {
@@ -142,9 +200,12 @@ export function useExploreCollections(booksPerCollection = 10): UseExploreCollec
   }, [fetchCollections]);
 
   const refresh = useCallback(() => {
-    collectionsCache = null;
+    collectionsCache.delete(booksPerCollection);
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem(COLLECTIONS_CACHE_KEY);
+    }
     fetchCollections(true);
-  }, [fetchCollections]);
+  }, [booksPerCollection, fetchCollections]);
 
   return { collections, isLoading, error, refresh };
 }

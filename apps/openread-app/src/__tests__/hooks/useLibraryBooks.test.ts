@@ -7,8 +7,16 @@ import type { Book } from '@/types/book';
 const mockStoreState = {
   library: [] as Book[],
   libraryLoaded: true,
+  libraryOwnerUserId: 'user-1' as string | null,
   isReconciling: false,
 };
+const authMock = vi.hoisted(() => ({
+  user: { id: 'user-1' } as { id: string } | null,
+}));
+
+vi.mock('@/context/AuthContext', () => ({
+  useAuth: () => ({ user: authMock.user }),
+}));
 
 // Mock the libraryStore
 vi.mock('@/store/libraryStore', () => ({
@@ -32,7 +40,9 @@ describe('useLibraryBooks', () => {
     vi.clearAllMocks();
     mockStoreState.library = [];
     mockStoreState.libraryLoaded = true;
+    mockStoreState.libraryOwnerUserId = 'user-1';
     mockStoreState.isReconciling = false;
+    authMock.user = { id: 'user-1' };
   });
 
   describe('Basic functionality', () => {
@@ -51,13 +61,24 @@ describe('useLibraryBooks', () => {
       expect(result.current.books).toEqual([]);
     });
 
-    it('should return isLoading true and withhold books while initial remote reconcile is in progress', () => {
+    it('should return isLoading true and withhold books when the loaded library belongs to another account', () => {
       mockStoreState.library = [createMockBook({ hash: 'stale-book' })];
       mockStoreState.libraryLoaded = true;
+      mockStoreState.libraryOwnerUserId = 'user-previous';
       mockStoreState.isReconciling = true;
       const { result } = renderHook(() => useLibraryBooks());
       expect(result.current.isLoading).toBe(true);
       expect(result.current.books).toEqual([]);
+    });
+
+    it('should return account-scoped cached books while background reconcile is in progress', () => {
+      mockStoreState.library = [createMockBook({ hash: 'cached-book' })];
+      mockStoreState.libraryLoaded = true;
+      mockStoreState.libraryOwnerUserId = 'user-1';
+      mockStoreState.isReconciling = true;
+      const { result } = renderHook(() => useLibraryBooks());
+      expect(result.current.isLoading).toBe(false);
+      expect(result.current.books.map((book) => book.hash)).toEqual(['cached-book']);
     });
 
     it('should return all visible books by default', () => {

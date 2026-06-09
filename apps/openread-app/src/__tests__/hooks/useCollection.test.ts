@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => {
   } as Book;
 
   const sidebarState = {
+    collectionsOwnerUserId: 'user-1' as string | null,
     collections: [
       {
         id: 'collection-1',
@@ -32,11 +33,27 @@ const mocks = vi.hoisted(() => {
   const libraryState = {
     library: [mockBook] as Book[],
     libraryLoaded: true,
+    libraryOwnerUserId: 'user-1' as string | null,
     isReconciling: false,
   };
+  let user: { id: string } | null = { id: 'user-1' };
 
-  return { mockBook, sidebarState, libraryState };
+  return {
+    mockBook,
+    sidebarState,
+    libraryState,
+    get user() {
+      return user;
+    },
+    setUser(nextUser: { id: string } | null) {
+      user = nextUser;
+    },
+  };
 });
+
+vi.mock('@/context/AuthContext', () => ({
+  useAuth: () => ({ user: mocks.user }),
+}));
 
 vi.mock('@/store/platformSidebarStore', () => ({
   usePlatformSidebarStore: (selector: (state: typeof mocks.sidebarState) => unknown) =>
@@ -51,8 +68,11 @@ vi.mock('@/store/libraryStore', () => ({
 describe('useCollection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.setUser({ id: 'user-1' });
+    mocks.sidebarState.collectionsOwnerUserId = 'user-1';
     mocks.libraryState.library = [mocks.mockBook];
     mocks.libraryState.libraryLoaded = true;
+    mocks.libraryState.libraryOwnerUserId = 'user-1';
     mocks.libraryState.isReconciling = false;
   });
 
@@ -63,12 +83,32 @@ describe('useCollection', () => {
     expect(result.current.books.map((book) => book.hash)).toEqual(['book-1']);
   });
 
-  it('uses loading state and withholds stale collection books during reconcile', () => {
+  it('paints account-scoped cached collection books while reconcile runs', () => {
     mocks.libraryState.isReconciling = true;
 
     const { result } = renderHook(() => useCollection('collection-1'));
 
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.books.map((book) => book.hash)).toEqual(['book-1']);
+  });
+
+  it('uses loading state and withholds collection metadata and books when owner mismatches', () => {
+    mocks.sidebarState.collectionsOwnerUserId = 'previous-user';
+
+    const { result } = renderHook(() => useCollection('collection-1'));
+
     expect(result.current.isLoading).toBe(true);
+    expect(result.current.collection).toBeUndefined();
+    expect(result.current.books).toEqual([]);
+  });
+
+  it('withholds collection metadata while the library is not ready', () => {
+    mocks.libraryState.libraryLoaded = false;
+
+    const { result } = renderHook(() => useCollection('collection-1'));
+
+    expect(result.current.isLoading).toBe(true);
+    expect(result.current.collection).toBeUndefined();
     expect(result.current.books).toEqual([]);
   });
 });

@@ -30,7 +30,6 @@ vi.mock('@/components/settings/billing', () => ({
     <div data-testid='ai-meter'>{isLoading ? 'loading' : 'ai-meter'}</div>
   ),
   StorageMeter: () => <div data-testid='storage-meter'>storage-meter</div>,
-  MCPLimitDisplay: () => <div data-testid='mcp-display'>mcp-display</div>,
   UsageHistory: ({ isLoading }: { isLoading?: boolean }) => (
     <div data-testid='usage-history'>{isLoading ? 'loading' : 'usage-history'}</div>
   ),
@@ -116,7 +115,7 @@ describe('BillingPage', () => {
     // Top row meters
     expect(screen.getByTestId('ai-meter')).toBeTruthy();
     expect(screen.getByTestId('storage-meter')).toBeTruthy();
-    expect(screen.getByTestId('mcp-display')).toBeTruthy();
+    expect(screen.queryByTestId('mcp-display')).toBeNull();
 
     // Sections below
     expect(screen.getByTestId('usage-history')).toBeTruthy();

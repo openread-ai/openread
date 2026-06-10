@@ -16,6 +16,10 @@ vi.mock('@/services/environment', () => ({
   isWebAppPlatform: () => platformMocks.isWeb,
 }));
 
+vi.mock('@/services/launchFeatures', () => ({
+  LAUNCH_MCP_ENABLED: false,
+}));
+
 vi.mock('next/navigation', () => ({
   usePathname: () => platformMocks.pathname,
   useRouter: () => ({ replace: platformMocks.replace }),
@@ -48,14 +52,14 @@ describe('Settings platform tabs', () => {
     cleanup();
   });
 
-  it('shows the API Keys tab on web', () => {
+  it('hides the API Keys tab while MCP is held back from launch', () => {
     render(
       <SettingsLayout>
         <div>Settings content</div>
       </SettingsLayout>,
     );
 
-    expect(screen.getByText('API Keys')).toBeTruthy();
+    expect(screen.queryByText('API Keys')).toBeNull();
   });
 
   it('uses neutral low-contrast styling for the active tab', () => {
@@ -96,10 +100,13 @@ describe('Settings platform tabs', () => {
     expect(screen.queryByText('API Keys')).toBeNull();
   });
 
-  it('loads the API Keys page on web builds', () => {
+  it('redirects direct API Keys route access on web while MCP is held back', async () => {
     render(<ApiKeysPage />);
 
-    expect(platformMocks.useApiKeys).toHaveBeenCalledTimes(1);
-    expect(screen.getByText('Create API Key')).toBeTruthy();
+    await waitFor(() => {
+      expect(platformMocks.replace).toHaveBeenCalledWith('/settings/account');
+    });
+    expect(platformMocks.useApiKeys).not.toHaveBeenCalled();
+    expect(screen.queryByText('Create API Key')).toBeNull();
   });
 });

@@ -17,6 +17,12 @@ vi.mock('@/utils/supabase', () => ({
   createSupabaseAdminClient: vi.fn(),
 }));
 
+vi.mock('@/services/launchFeatures', () => ({
+  LAUNCH_MCP_ENABLED: false,
+  LAUNCH_TTS_ENABLED: false,
+  LAUNCH_TRANSLATION_ENABLED: false,
+}));
+
 const fallback = getFallbackConfig();
 const tiers = fallback.tiers;
 
@@ -92,14 +98,10 @@ describe('buildPlanCardConfigs', () => {
       }
     });
 
-    it('should have MCP group for reader and pro but not free', () => {
-      const freeConfig = configs[0]!;
-      const readerConfig = configs[1]!;
-      const proConfig = configs[2]!;
-
-      expect(freeConfig.featureGroups.find((g) => g.name === 'MCP')).toBeUndefined();
-      expect(readerConfig.featureGroups.find((g) => g.name === 'MCP')).toBeTruthy();
-      expect(proConfig.featureGroups.find((g) => g.name === 'MCP')).toBeTruthy();
+    it('should hide MCP group while MCP is held back from launch', () => {
+      for (const config of configs) {
+        expect(config.featureGroups.find((g) => g.name === 'MCP')).toBeUndefined();
+      }
     });
 
     // AI Features details
@@ -164,17 +166,6 @@ describe('buildPlanCardConfigs', () => {
       const proStorage = configs[2]!.featureGroups.find((g) => g.name === 'Storage')!;
       expect(readerStorage.features[0]!.label).toBe('Up to 10 GB storage');
       expect(proStorage.features[0]!.label).toBe('Up to 50 GB storage');
-    });
-
-    // MCP details
-    it('should show 60 req/min for reader', () => {
-      const readerMCP = configs[1]!.featureGroups.find((g) => g.name === 'MCP')!;
-      expect(readerMCP.features[0]!.label).toBe('60 req/min');
-    });
-
-    it('should show 120 req/min for pro', () => {
-      const proMCP = configs[2]!.featureGroups.find((g) => g.name === 'MCP')!;
-      expect(proMCP.features[0]!.label).toBe('120 req/min');
     });
   });
 });

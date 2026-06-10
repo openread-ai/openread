@@ -1,3 +1,5 @@
+process.env['OPENREAD_ENABLE_MCP_IN_TESTS'] = '1';
+
 // localStorage mock
 if (typeof window !== 'undefined' && !window.localStorage) {
   const storage: Record<string, string> = {};

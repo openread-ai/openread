@@ -46,6 +46,7 @@ import {
   handleTouchEnd,
   handleTouchCancel,
 } from '../utils/iframeEventHandlers';
+import { shouldUseNativeChapterPull } from '../utils/mobileScroll';
 import { getMaxInlineSize } from '@/utils/config';
 import { getDirFromUILanguage } from '@/utils/rtl';
 import { isTauriAppPlatform } from '@/services/environment';
@@ -345,7 +346,7 @@ const FoliateViewer: React.FC<{
       // iframeEventHandlers.ts relay forwards them as iframe-touchstart/move/end
       // messages on window. We listen for those and read scroll boundaries from
       // the paginator's #container (shadow DOM, overflow:auto).
-      if (appService?.isMobile) {
+      if (shouldUseNativeChapterPull(appService)) {
         const pullThreshold = 80;
         const container = (view.renderer as unknown as HTMLElement)?.shadowRoot?.getElementById(
           'container',

@@ -233,23 +233,26 @@ export const handleClick = (
   }
 };
 
+const serializeTouch = (touch: Touch | undefined) =>
+  touch
+    ? {
+        clientX: touch.clientX,
+        clientY: touch.clientY,
+        screenX: touch.screenX,
+        screenY: touch.screenY,
+      }
+    : null;
+
 const handleTouchEv = (bookKey: string, event: TouchEvent, type: string) => {
-  const touch = event.targetTouches[0];
-  const touches = [];
-  if (touch) {
-    touches.push({
-      clientX: touch.clientX,
-      clientY: touch.clientY,
-      screenX: touch.screenX,
-      screenY: touch.screenY,
-    });
-  }
+  const targetTouch = serializeTouch(event.targetTouches[0]);
+  const changedTouch = serializeTouch(event.changedTouches[0]);
   window.postMessage(
     {
       type: type,
       bookKey,
       timeStamp: Date.now(),
-      targetTouches: touches,
+      targetTouches: targetTouch ? [targetTouch] : [],
+      changedTouches: changedTouch ? [changedTouch] : [],
       ...getKeyStatus(event),
     },
     '*',

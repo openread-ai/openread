@@ -67,6 +67,7 @@ interface IframeTouch {
 interface IframeTouchEvent {
   timeStamp: number;
   targetTouches: IframeTouch[];
+  changedTouches?: IframeTouch[];
 }
 
 export const useTouchEvent = (
@@ -81,6 +82,7 @@ export const useTouchEvent = (
   const touchEndRef = useRef<IframeTouch | null>(null);
   const touchStartTimeRef = useRef<number | null>(null);
   const touchEndTimeRef = useRef<number | null>(null);
+  const touchMovedRef = useRef(false);
 
   const onTouchStart = (e: IframeTouchEvent | React.TouchEvent<HTMLDivElement>) => {
     const touch = e.targetTouches[0];
@@ -93,6 +95,7 @@ export const useTouchEvent = (
     if (!touchStartRef.current) return;
     const touch = e.targetTouches[0];
     if (touch) {
+      touchMovedRef.current = true;
       touchEndRef.current = touch;
       touchEndTimeRef.current = 'timeStamp' in e ? e.timeStamp : Date.now();
     }
@@ -125,7 +128,7 @@ export const useTouchEvent = (
   const onTouchEnd = (e: IframeTouchEvent | React.TouchEvent<HTMLDivElement>) => {
     if (!touchStartRef.current) return;
 
-    const touch = e.targetTouches[0];
+    const touch = e.targetTouches[0] ?? ('changedTouches' in e ? e.changedTouches?.[0] : undefined);
     if (touch) {
       touchEndRef.current = touch;
       touchEndTimeRef.current = 'timeStamp' in e ? e.timeStamp : Date.now();
@@ -137,10 +140,18 @@ export const useTouchEvent = (
     const { current: touchStartTime } = touchStartTimeRef;
     const { current: touchEndTime } = touchEndTimeRef;
     if (touchEnd) {
-      const viewSettings = getViewSettings(bookKey)!;
-      const bookData = getBookData(bookKey)!;
       const deltaY = touchEnd.screenY - touchStart.screenY;
       const deltaX = touchEnd.screenX - touchStart.screenX;
+      const hasMoved = touchMovedRef.current || Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2;
+      if (!hasMoved) {
+        touchStartRef.current = null;
+        touchEndRef.current = null;
+        touchMovedRef.current = false;
+        return;
+      }
+
+      const viewSettings = getViewSettings(bookKey)!;
+      const bookData = getBookData(bookKey)!;
       const deltaT = touchEndTime && touchStartTime ? touchEndTime - touchStartTime : 0;
       // also check for deltaX to prevent swipe page turn from triggering the toggle
       if (
@@ -184,6 +195,7 @@ export const useTouchEvent = (
 
     touchStartRef.current = null;
     touchEndRef.current = null;
+    touchMovedRef.current = false;
   };
 
   const handleTouch = (msg: MessageEvent) => {

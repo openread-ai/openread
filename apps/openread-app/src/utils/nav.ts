@@ -4,6 +4,7 @@ import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { isPWA, isWebAppPlatform } from '@/services/environment';
 import { BOOK_IDS_SEPARATOR } from '@/services/constants';
 import { AppService } from '@/types/system';
+import { SETTINGS_ACCOUNT_PATH } from '@/lib/billing-routes';
 import { createLogger } from '@/utils/logger';
 
 const logger = createLogger('nav');
@@ -76,7 +77,7 @@ export const navigateToLogin = (router: ReturnType<typeof useRouter>) => {
 };
 
 export const navigateToProfile = (router: ReturnType<typeof useRouter>) => {
-  router.push('/user');
+  router.push(SETTINGS_ACCOUNT_PATH);
 };
 
 export const navigateToLibrary = (

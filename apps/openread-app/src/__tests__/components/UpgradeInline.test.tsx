@@ -55,10 +55,10 @@ describe('UpgradeInline', () => {
     expect(screen.queryByText('TTS is gated.')).toBeNull();
   });
 
-  it('should link to /user#plans by default', () => {
+  it('should link to /settings/billing#plans by default', () => {
     render(<UpgradeInline message='Test message' price='$9.99/mo' />);
     const link = screen.getByRole('link');
-    expect(link.getAttribute('href')).toBe('/user#plans');
+    expect(link.getAttribute('href')).toBe('/settings/billing#plans');
   });
 
   it('should use custom ctaHref when provided', () => {

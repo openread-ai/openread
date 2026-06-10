@@ -35,6 +35,14 @@ vi.mock('@/utils/logger', () => ({
   })),
 }));
 
+vi.mock('@/hooks/useTierConfig', async () => {
+  const { getFallbackConfig } =
+    await vi.importActual<typeof import('@/lib/tier-defaults')>('@/lib/tier-defaults');
+  return {
+    useTierConfig: () => ({ config: getFallbackConfig(), isLoading: false, error: null }),
+  };
+});
+
 import { useFeatureGate } from '@/hooks/useFeatureGate';
 
 describe('useFeatureGate', () => {

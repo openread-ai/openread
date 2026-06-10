@@ -1,7 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import { PlanCards } from '@/components/settings/plan-cards';
-import type { PlanDetails } from '@/app/user/utils/plan';
+import type { PlanDetails } from '@/libs/payment/plan-details';
+import type { TierConfig } from '@/lib/tier-types';
+
+const { mockTierConfigState } = vi.hoisted(() => ({
+  mockTierConfigState: { config: undefined as TierConfig | undefined },
+}));
 
 // Mock next/navigation
 vi.mock('next/navigation', () => ({
@@ -37,6 +42,18 @@ vi.mock('@/utils/supabase', () => ({
     from: vi.fn(),
   })),
 }));
+
+vi.mock('@/hooks/useTierConfig', async () => {
+  const { getFallbackConfig } =
+    await vi.importActual<typeof import('@/lib/tier-defaults')>('@/lib/tier-defaults');
+  return {
+    useTierConfig: () => ({
+      config: mockTierConfigState.config ?? getFallbackConfig(),
+      isLoading: false,
+      error: null,
+    }),
+  };
+});
 
 // Mock eventDispatcher
 const mockDispatch = vi.fn();
@@ -102,9 +119,12 @@ const mockPlans: PlanDetails[] = [
 
 describe('PlanCards', () => {
   const mockOnUpgrade = vi.fn();
+  const mockOnManagePlan = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockTierConfigState.config = undefined;
+    mockOnManagePlan.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -130,6 +150,27 @@ describe('PlanCards', () => {
       expect(screen.getByText('$0.00')).toBeTruthy();
       expect(screen.getByText('$9.99')).toBeTruthy();
       expect(screen.getByText('$19.99')).toBeTruthy();
+    });
+
+    it('should render plan cards from the runtime tier config contract', async () => {
+      const { getFallbackConfig } = await import('@/lib/tier-defaults');
+      const fallback = getFallbackConfig();
+      mockTierConfigState.config = {
+        ...fallback,
+        tiers: {
+          ...fallback.tiers,
+          reader: {
+            ...fallback.tiers.reader,
+            display_name: 'Scholar',
+            display_price_cents: 1234,
+          },
+        },
+      };
+
+      render(<PlanCards plans={[]} onUpgrade={mockOnUpgrade} />);
+
+      expect(screen.getByText('Scholar')).toBeTruthy();
+      expect(screen.getByText('$12.34')).toBeTruthy();
     });
 
     it('should show feature groups', () => {
@@ -208,21 +249,25 @@ describe('PlanCards', () => {
       fireEvent.click(switchButtons[0]!);
 
       await waitFor(() => {
-        expect(mockOnUpgrade).toHaveBeenCalledWith('price_reader_monthly');
+        expect(mockOnUpgrade).toHaveBeenCalledWith('reader', 'month');
       });
     });
 
-    it('should not call onUpgrade when clicking on free plan', () => {
-      render(<PlanCards plans={mockPlans} currentPlanId='reader' onUpgrade={mockOnUpgrade} />);
+    it('should route lower-tier changes through Manage Plan instead of checkout', async () => {
+      render(
+        <PlanCards
+          plans={mockPlans}
+          currentPlanId='reader'
+          onUpgrade={mockOnUpgrade}
+          onManagePlan={mockOnManagePlan}
+        />,
+      );
 
-      // Find the Free Plan button specifically
-      const freeButtons = screen
-        .getAllByRole('button')
-        .filter((btn) => btn.textContent === 'Free Plan');
-      if (freeButtons.length > 0) {
-        fireEvent.click(freeButtons[0]!);
-      }
+      fireEvent.click(screen.getByText('Manage Plan'));
 
+      await waitFor(() => {
+        expect(mockOnManagePlan).toHaveBeenCalledTimes(1);
+      });
       expect(mockOnUpgrade).not.toHaveBeenCalled();
     });
 
@@ -268,22 +313,23 @@ describe('PlanCards', () => {
     });
   });
 
-  describe('Upgrade Restrictions', () => {
-    it('should disable upgrade buttons when user is on Pro plan', () => {
-      render(<PlanCards plans={mockPlans} currentPlanId='pro' onUpgrade={mockOnUpgrade} />);
+  describe('Plan Change Restrictions', () => {
+    it('should show Manage Plan for lower tiers when user is on Pro plan', () => {
+      render(
+        <PlanCards
+          plans={mockPlans}
+          currentPlanId='pro'
+          onUpgrade={mockOnUpgrade}
+          onManagePlan={mockOnManagePlan}
+        />,
+      );
 
-      // Find the Free Plan button specifically
-      const freeButtons = screen
-        .getAllByRole('button')
-        .filter((btn) => btn.textContent === 'Free Plan');
-      expect(freeButtons.length).toBeGreaterThan(0);
-      expect(freeButtons[0]).toHaveProperty('disabled', true);
-
-      // Switch Plan buttons should be disabled
-      const switchButtons = screen.queryAllByText('Switch Plan');
-      switchButtons.forEach((btn) => {
-        expect(btn.closest('button')).toHaveProperty('disabled', true);
+      const manageButtons = screen.getAllByText('Manage Plan');
+      expect(manageButtons.length).toBe(2);
+      manageButtons.forEach((btn) => {
+        expect(btn.closest('button')).toHaveProperty('disabled', false);
       });
+      expect(screen.queryAllByText('Switch Plan')).toHaveLength(0);
     });
   });
 

@@ -19,13 +19,11 @@ import { getAccessToken } from '@/utils/access';
 import { LAUNCH_TTS_ENABLED, LAUNCH_TRANSLATION_ENABLED } from '@/services/launchFeatures';
 import { createLogger } from '@/utils/logger';
 import type { PaymentProvider } from '@/types/payment';
+import { getIAPManagementUrl } from '@/libs/payment/iap/client';
 
 const logger = createLogger('cancellation-flow');
 
 type CancelStep = 'retention' | 'survey' | 'confirm';
-
-const APPLE_SUBSCRIPTIONS_URL = 'itms-apps://apps.apple.com/account/subscriptions';
-const GOOGLE_SUBSCRIPTIONS_URL = 'https://play.google.com/store/account/subscriptions';
 
 const FEATURES_LOST = [
   'Unlimited library books',
@@ -157,9 +155,9 @@ export function CancellationFlow({
     try {
       await submitSurvey(surveyData);
 
-      const deepLink = source === 'apple' ? APPLE_SUBSCRIPTIONS_URL : GOOGLE_SUBSCRIPTIONS_URL;
-
-      window.open(deepLink, '_blank');
+      if (source !== 'stripe') {
+        window.open(getIAPManagementUrl(source), '_blank');
+      }
       setStep('confirm');
     } catch (error) {
       logger.error('Failed to process IAP cancellation:', error);

@@ -19,14 +19,17 @@ import {
   formatPriceDisplay,
   type GatedFeature,
 } from '@/lib/tier-gates';
+import { getFallbackConfig } from '@/lib/tier-defaults';
 import type { UserPlan } from '@/types/quota';
+
+const TEST_TIER_CONFIG = getFallbackConfig();
 
 describe('tier-gates', () => {
   // ─── getTierGates ──────────────────────────────────────────────────
 
   describe('getTierGates', () => {
     it('should return correct free tier gates', () => {
-      const gates = getTierGates('free');
+      const gates = getTierGates('free', TEST_TIER_CONFIG);
       expect(gates.can_tts).toBe(false);
       expect(gates.can_sync).toBe(false);
       expect(gates.can_translate).toBe(false);
@@ -35,7 +38,7 @@ describe('tier-gates', () => {
     });
 
     it('should return correct reader tier gates', () => {
-      const gates = getTierGates('reader');
+      const gates = getTierGates('reader', TEST_TIER_CONFIG);
       expect(gates.can_tts).toBe(false);
       expect(gates.can_sync).toBe(true);
       expect(gates.can_translate).toBe(false);
@@ -44,7 +47,7 @@ describe('tier-gates', () => {
     });
 
     it('should return correct pro tier gates', () => {
-      const gates = getTierGates('pro');
+      const gates = getTierGates('pro', TEST_TIER_CONFIG);
       expect(gates.can_tts).toBe(false);
       expect(gates.can_sync).toBe(true);
       expect(gates.can_translate).toBe(false);
@@ -53,8 +56,8 @@ describe('tier-gates', () => {
     });
 
     it('should fall back to free for unknown plan', () => {
-      const gates = getTierGates('unknown' as UserPlan);
-      expect(gates).toEqual(getTierGates('free'));
+      const gates = getTierGates('unknown' as UserPlan, TEST_TIER_CONFIG);
+      expect(gates).toEqual(getTierGates('free', TEST_TIER_CONFIG));
     });
   });
 
@@ -63,7 +66,7 @@ describe('tier-gates', () => {
   describe('checkFeatureGate', () => {
     describe('TTS gate', () => {
       it('free: not allowed because TTS is disabled for launch', () => {
-        const result = checkFeatureGate('tts', 'free');
+        const result = checkFeatureGate('tts', 'free', TEST_TIER_CONFIG);
         expect(result.allowed).toBe(false);
         expect(result.requiredTier).toBe('reader');
         expect(result.requiredTierName).toBe('Reader');
@@ -74,13 +77,13 @@ describe('tier-gates', () => {
       });
 
       it('reader: not allowed because TTS is disabled for launch', () => {
-        const result = checkFeatureGate('tts', 'reader');
+        const result = checkFeatureGate('tts', 'reader', TEST_TIER_CONFIG);
         expect(result.allowed).toBe(false);
         expect(result.message).toContain('not currently available');
       });
 
       it('pro: not allowed because TTS is disabled for launch', () => {
-        const result = checkFeatureGate('tts', 'pro');
+        const result = checkFeatureGate('tts', 'pro', TEST_TIER_CONFIG);
         expect(result.allowed).toBe(false);
         expect(result.message).toContain('not currently available');
       });
@@ -88,26 +91,26 @@ describe('tier-gates', () => {
 
     describe('sync gate', () => {
       it('free: not allowed, requires reader', () => {
-        const result = checkFeatureGate('sync', 'free');
+        const result = checkFeatureGate('sync', 'free', TEST_TIER_CONFIG);
         expect(result.allowed).toBe(false);
         expect(result.requiredTier).toBe('reader');
         expect(result.message).toContain('Cloud Sync');
       });
 
       it('reader: allowed', () => {
-        const result = checkFeatureGate('sync', 'reader');
+        const result = checkFeatureGate('sync', 'reader', TEST_TIER_CONFIG);
         expect(result.allowed).toBe(true);
       });
 
       it('pro: allowed', () => {
-        const result = checkFeatureGate('sync', 'pro');
+        const result = checkFeatureGate('sync', 'pro', TEST_TIER_CONFIG);
         expect(result.allowed).toBe(true);
       });
     });
 
     describe('translate gate', () => {
       it('free: not allowed because translation is disabled for launch', () => {
-        const result = checkFeatureGate('translate', 'free');
+        const result = checkFeatureGate('translate', 'free', TEST_TIER_CONFIG);
         expect(result.allowed).toBe(false);
         expect(result.requiredTier).toBe('pro');
         expect(result.requiredTierName).toBe('Pro');
@@ -118,14 +121,14 @@ describe('tier-gates', () => {
       });
 
       it('reader: not allowed because translation is disabled for launch', () => {
-        const result = checkFeatureGate('translate', 'reader');
+        const result = checkFeatureGate('translate', 'reader', TEST_TIER_CONFIG);
         expect(result.allowed).toBe(false);
         expect(result.requiredTier).toBe('pro');
         expect(result.message).toContain('not currently available');
       });
 
       it('pro: not allowed because translation is disabled for launch', () => {
-        const result = checkFeatureGate('translate', 'pro');
+        const result = checkFeatureGate('translate', 'pro', TEST_TIER_CONFIG);
         expect(result.allowed).toBe(false);
         expect(result.message).toContain('not currently available');
       });
@@ -133,26 +136,26 @@ describe('tier-gates', () => {
 
     describe('BYOK gate', () => {
       it('free: not allowed, requires reader', () => {
-        const result = checkFeatureGate('byok', 'free');
+        const result = checkFeatureGate('byok', 'free', TEST_TIER_CONFIG);
         expect(result.allowed).toBe(false);
         expect(result.requiredTier).toBe('reader');
         expect(result.message).toContain('Bring Your Own Key');
       });
 
       it('reader: allowed', () => {
-        const result = checkFeatureGate('byok', 'reader');
+        const result = checkFeatureGate('byok', 'reader', TEST_TIER_CONFIG);
         expect(result.allowed).toBe(true);
       });
 
       it('pro: allowed', () => {
-        const result = checkFeatureGate('byok', 'pro');
+        const result = checkFeatureGate('byok', 'pro', TEST_TIER_CONFIG);
         expect(result.allowed).toBe(true);
       });
     });
 
     describe('boost gate', () => {
       it('free: not allowed because boosts are disabled', () => {
-        const result = checkFeatureGate('boost', 'free');
+        const result = checkFeatureGate('boost', 'free', TEST_TIER_CONFIG);
         expect(result.allowed).toBe(false);
         expect(result.message).toContain('not currently available');
         expect(result.priceDisplay).toBe('');
@@ -160,14 +163,14 @@ describe('tier-gates', () => {
       });
 
       it('reader: not allowed because boosts are disabled', () => {
-        const result = checkFeatureGate('boost', 'reader');
+        const result = checkFeatureGate('boost', 'reader', TEST_TIER_CONFIG);
         expect(result.allowed).toBe(false);
         expect(result.message).toContain('not currently available');
         expect(result.ctaText).toBe('');
       });
 
       it('pro: not allowed because boosts are disabled', () => {
-        const result = checkFeatureGate('boost', 'pro');
+        const result = checkFeatureGate('boost', 'pro', TEST_TIER_CONFIG);
         expect(result.allowed).toBe(false);
         expect(result.message).toContain('not currently available');
         expect(result.ctaText).toBe('');
@@ -175,11 +178,18 @@ describe('tier-gates', () => {
     });
 
     describe('all features x all plans matrix', () => {
-      const features: GatedFeature[] = ['tts', 'sync', 'translate', 'byok', 'boost'];
+      const features = [
+        'tts',
+        'sync',
+        'translate',
+        'byok',
+        'boost',
+      ] as const satisfies GatedFeature[];
+      type GateMatrixFeature = (typeof features)[number];
       const plans: UserPlan[] = ['free', 'reader', 'pro'];
 
       // Expected: feature -> [free, reader, pro]
-      const expected: Record<GatedFeature, [boolean, boolean, boolean]> = {
+      const expected: Record<GateMatrixFeature, [boolean, boolean, boolean]> = {
         tts: [false, false, false],
         sync: [false, true, true],
         translate: [false, false, false],
@@ -193,7 +203,7 @@ describe('tier-gates', () => {
           const expectedAllowed = expected[feature][i];
 
           it(`${feature} x ${plan} = ${expectedAllowed ? 'allowed' : 'gated'}`, () => {
-            const result = checkFeatureGate(feature, plan);
+            const result = checkFeatureGate(feature, plan, TEST_TIER_CONFIG);
             expect(result.allowed).toBe(expectedAllowed);
           });
         }
@@ -204,37 +214,37 @@ describe('tier-gates', () => {
 
     describe('price display (S4.2)', () => {
       it('free user TTS gate is disabled without an upgrade CTA', () => {
-        const result = checkFeatureGate('tts', 'free');
+        const result = checkFeatureGate('tts', 'free', TEST_TIER_CONFIG);
         expect(result.priceDisplay).toBe('');
         expect(result.ctaText).toBe('');
       });
 
       it('free user sync gate shows Reader price', () => {
-        const result = checkFeatureGate('sync', 'free');
+        const result = checkFeatureGate('sync', 'free', TEST_TIER_CONFIG);
         expect(result.priceDisplay).toBe('$9.99/mo');
         expect(result.ctaText).toContain('Reader');
       });
 
       it('free user translate gate is disabled without an upgrade CTA', () => {
-        const result = checkFeatureGate('translate', 'free');
+        const result = checkFeatureGate('translate', 'free', TEST_TIER_CONFIG);
         expect(result.priceDisplay).toBe('');
         expect(result.ctaText).toBe('');
       });
 
       it('free user BYOK gate shows Reader price', () => {
-        const result = checkFeatureGate('byok', 'free');
+        const result = checkFeatureGate('byok', 'free', TEST_TIER_CONFIG);
         expect(result.priceDisplay).toBe('$9.99/mo');
         expect(result.ctaText).toContain('Reader');
       });
 
       it('reader user translate gate is disabled without an upgrade CTA', () => {
-        const result = checkFeatureGate('translate', 'reader');
+        const result = checkFeatureGate('translate', 'reader', TEST_TIER_CONFIG);
         expect(result.priceDisplay).toBe('');
         expect(result.ctaText).toBe('');
       });
 
       it('allowed features have empty cta', () => {
-        const result = checkFeatureGate('sync', 'reader');
+        const result = checkFeatureGate('sync', 'reader', TEST_TIER_CONFIG);
         expect(result.allowed).toBe(true);
         expect(result.ctaText).toBe('');
       });
@@ -242,10 +252,30 @@ describe('tier-gates', () => {
       it('pro user sees empty ctaText for all features, including disabled boosts', () => {
         const features: GatedFeature[] = ['tts', 'sync', 'translate', 'byok', 'boost'];
         for (const feature of features) {
-          const result = checkFeatureGate(feature, 'pro');
+          const result = checkFeatureGate(feature, 'pro', TEST_TIER_CONFIG);
           expect(result.ctaText).toBe('');
         }
       });
+    });
+  });
+
+  describe('runtime tier config contract', () => {
+    it('uses the provided runtime config instead of fallback-only gates', () => {
+      const fallback = getFallbackConfig();
+      const config = {
+        ...fallback,
+        tiers: {
+          ...fallback.tiers,
+          reader: {
+            ...fallback.tiers.reader,
+            can_tts: true,
+          },
+        },
+      };
+
+      const result = checkFeatureGate('tts', 'reader', config);
+      expect(result.allowed).toBe(true);
+      expect(getTierGates('reader', config).can_tts).toBe(true);
     });
   });
 

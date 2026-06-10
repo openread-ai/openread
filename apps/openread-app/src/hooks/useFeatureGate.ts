@@ -12,8 +12,10 @@
 import { useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useQuotaStats } from '@/hooks/useQuotaStats';
+import { useTierConfig } from '@/hooks/useTierConfig';
 import type { UserPlan } from '@/types/quota';
 import { checkFeatureGate, type GatedFeature, type FeatureGateResult } from '@/lib/tier-gates';
+import { getFeatureDefinition } from '@/lib/plan-upgrades';
 
 export type { GatedFeature, FeatureGateResult };
 
@@ -22,6 +24,8 @@ export interface UseFeatureGateReturn extends FeatureGateResult {
   plan: UserPlan;
   /** Whether the hook is still loading user state */
   isLoading: boolean;
+  /** Runtime tier-config load error, if gates cannot be evaluated safely */
+  error: Error | null;
 }
 
 /**
@@ -41,20 +45,39 @@ export interface UseFeatureGateReturn extends FeatureGateResult {
 export function useFeatureGate(feature: GatedFeature): UseFeatureGateReturn {
   const { user } = useAuth();
   const { userProfilePlan } = useQuotaStats();
+  const { config, isLoading: isTierConfigLoading, error } = useTierConfig();
 
-  const isLoading = user === undefined;
+  const isLoading = user === undefined || isTierConfigLoading;
 
   const plan: UserPlan = useMemo(() => {
     if (!user) return 'free';
     return userProfilePlan || 'free';
   }, [user, userProfilePlan]);
 
-  const gateResult = useMemo(() => checkFeatureGate(feature, plan), [feature, plan]);
+  const gateResult = useMemo(() => {
+    if (!config) {
+      const definition = getFeatureDefinition(feature);
+      return {
+        feature,
+        label: definition.label,
+        allowed: false,
+        availableOnAnyTier: false,
+        requiredTier: definition.suggestedTier,
+        requiredTierName: definition.suggestedTier,
+        upgradeIntent: null,
+        message: error?.message ?? 'Tier configuration is unavailable.',
+        priceDisplay: '',
+        ctaText: '',
+      } satisfies FeatureGateResult;
+    }
+    return checkFeatureGate(feature, plan, config);
+  }, [config, error, feature, plan]);
 
   return {
     ...gateResult,
     plan,
     isLoading,
+    error,
   };
 }
 

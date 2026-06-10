@@ -66,10 +66,9 @@ describe('tier-config', () => {
   // getTierConfig
   // -------------------------------------------------------------------
   describe('getTierConfig', () => {
-    it('should return fallback when Supabase query fails', async () => {
+    it('should throw when Supabase query fails', async () => {
       setupDbFailure();
-      const config = await getTierConfig();
-      expect(config).toEqual(getFallbackConfig());
+      await expect(getTierConfig()).rejects.toThrow('Failed to read tier_config');
     });
 
     it('should return DB config when Supabase query succeeds', async () => {
@@ -89,16 +88,14 @@ describe('tier-config', () => {
       expect(mockFrom).toHaveBeenCalledTimes(1);
     });
 
-    it('should return fallback when Supabase throws an exception', async () => {
+    it('should throw when Supabase throws an exception', async () => {
       setupDbException();
-      const config = await getTierConfig();
-      expect(config).toEqual(getFallbackConfig());
+      await expect(getTierConfig()).rejects.toThrow('Failed to load runtime tier_config');
     });
 
-    it('should return fallback when data.config is null', async () => {
+    it('should throw when data.config is null', async () => {
       mockSingle.mockResolvedValue({ data: { config: null }, error: null });
-      const config = await getTierConfig();
-      expect(config).toEqual(getFallbackConfig());
+      await expect(getTierConfig()).rejects.toThrow('No active tier_config row found');
     });
   });
 
@@ -218,7 +215,7 @@ describe('tier-config', () => {
   // getFallbackConfig
   // -------------------------------------------------------------------
   describe('getFallbackConfig', () => {
-    it('should return the hardcoded fallback config', () => {
+    it('should return the shared static seed config for tests and migrations only', () => {
       const config = getFallbackConfig();
       expect(config.tiers).toHaveProperty('free');
       expect(config.tiers).toHaveProperty('reader');

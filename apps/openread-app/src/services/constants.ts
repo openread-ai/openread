@@ -16,8 +16,6 @@ import {
   ViewSettings,
 } from '@/types/book';
 import { KOSyncSettings, ReadSettings, SystemSettings } from '@/types/settings';
-import { UserStorageQuota, UserDailyTranslationQuota } from '@/types/quota';
-import { BYTES_PER_GB, getFallbackConfig } from '@/lib/tier-defaults';
 import { getDefaultMaxBlockSize, getDefaultMaxInlineSize } from '@/utils/config';
 import { stubTranslation as _ } from '@/utils/misc';
 import { DEFAULT_AI_SETTINGS } from './ai/constants';
@@ -694,25 +692,6 @@ export const MIN_ZOOM_LEVEL = 50;
 export const ZOOM_STEP = 10;
 
 export const SHOW_UNREAD_STATUS_BADGE = false;
-
-/**
- * FALLBACK ONLY — the source of truth is the `tier_config` Supabase table.
- * Use getTierDefinition(plan) from '@/lib/tier-config' for runtime values.
- * These constants are used when the database is unreachable.
- */
-const DEFAULT_TIERS = getFallbackConfig().tiers;
-
-export const DEFAULT_STORAGE_QUOTA: UserStorageQuota = {
-  free: DEFAULT_TIERS.free.storage_gb * BYTES_PER_GB,
-  reader: DEFAULT_TIERS.reader.storage_gb * BYTES_PER_GB,
-  pro: DEFAULT_TIERS.pro.storage_gb * BYTES_PER_GB,
-};
-
-export const DEFAULT_DAILY_TRANSLATION_QUOTA: UserDailyTranslationQuota = {
-  free: DEFAULT_TIERS.free.can_translate ? Number.POSITIVE_INFINITY : 0,
-  reader: DEFAULT_TIERS.reader.can_translate ? Number.POSITIVE_INFINITY : 0,
-  pro: DEFAULT_TIERS.pro.can_translate ? Number.POSITIVE_INFINITY : 0,
-};
 
 export const DOUBLE_CLICK_INTERVAL_THRESHOLD_MS = 250;
 export const DISABLE_DOUBLE_CLICK_ON_MOBILE = true;

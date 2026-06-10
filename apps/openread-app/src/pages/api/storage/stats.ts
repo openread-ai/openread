@@ -2,6 +2,8 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { createSupabaseAdminClient } from '@/utils/supabase';
 import { corsAllMethods, runMiddleware } from '@/utils/cors';
 import { validateUserAndToken, getStoragePlanData } from '@/utils/access';
+import { getTierDefinition, TierConfigError } from '@/lib/tier-config';
+import { BYTES_PER_GB } from '@/lib/tier-defaults';
 import { createLogger } from '@/utils/logger';
 
 const logger = createLogger('stats');
@@ -49,8 +51,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const totalFiles = totalStats?.length || 0;
     const totalSize = totalStats?.reduce((sum, file) => sum + (file.file_size || 0), 0) || 0;
 
-    // Get storage plan data
-    const { usage, quota } = getStoragePlanData(token);
+    // Get storage quota from runtime tier_config; do not use stale client defaults.
+    const { plan, usage } = getStoragePlanData(token);
+    const tier = await getTierDefinition(plan);
+    const quota = tier.storage_gb * BYTES_PER_GB;
     const usagePercentage = quota > 0 ? Math.round((usage / quota) * 100) : 0;
 
     // Get stats grouped by book_hash
@@ -106,6 +110,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     return res.status(200).json(response);
   } catch (error) {
+    if (error instanceof TierConfigError) {
+      return res.status(503).json({
+        error: error.message,
+        code: 'TIER_CONFIG_UNAVAILABLE',
+      });
+    }
     logger.error('Something went wrong', error);
     return res.status(500).json({ error: 'Something went wrong' });
   }

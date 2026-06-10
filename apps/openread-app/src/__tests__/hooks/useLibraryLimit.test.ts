@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
+import { getFallbackConfig } from '@/lib/tier-defaults';
+
+const TEST_TIER_CONFIG = getFallbackConfig();
 
 // ── Hoisted mocks ──────────────────────────────────────
 
@@ -44,6 +47,14 @@ vi.mock('@/utils/logger', () => ({
   }),
 }));
 
+vi.mock('@/hooks/useTierConfig', async () => {
+  const { getFallbackConfig } =
+    await vi.importActual<typeof import('@/lib/tier-defaults')>('@/lib/tier-defaults');
+  return {
+    useTierConfig: () => ({ config: getFallbackConfig(), isLoading: false, error: null }),
+  };
+});
+
 // ── Import SUT after mocks ─────────────────────────────
 
 import {
@@ -51,7 +62,6 @@ import {
   checkLibraryLimit,
   getLibraryLimitForPlan,
 } from '@/hooks/useLibraryLimit';
-import { getFallbackConfig } from '@/lib/tier-config';
 
 // ── Helpers ────────────────────────────────────────────
 
@@ -75,61 +85,66 @@ describe('useLibraryLimit', () => {
 
   describe('getLibraryLimitForPlan (pure function)', () => {
     it('returns 10 for free plan', () => {
-      const limit = getLibraryLimitForPlan('free');
+      const limit = getLibraryLimitForPlan('free', TEST_TIER_CONFIG);
       expect(limit).toBe(10);
     });
 
     it('returns null (unlimited) for reader plan', () => {
-      const limit = getLibraryLimitForPlan('reader');
+      const limit = getLibraryLimitForPlan('reader', TEST_TIER_CONFIG);
       expect(limit).toBeNull();
     });
 
     it('returns null (unlimited) for pro plan', () => {
-      const limit = getLibraryLimitForPlan('pro');
+      const limit = getLibraryLimitForPlan('pro', TEST_TIER_CONFIG);
       expect(limit).toBeNull();
     });
 
-    it('reads from tier-config fallback, not hardcoded', () => {
-      const config = getFallbackConfig();
-      expect(getLibraryLimitForPlan('free')).toBe(config.tiers.free.library_limit);
-      expect(getLibraryLimitForPlan('reader')).toBe(config.tiers.reader.library_limit);
-      expect(getLibraryLimitForPlan('pro')).toBe(config.tiers.pro.library_limit);
+    it('reads from the provided tier config fixture, not hardcoded values', () => {
+      expect(getLibraryLimitForPlan('free', TEST_TIER_CONFIG)).toBe(
+        TEST_TIER_CONFIG.tiers.free.library_limit,
+      );
+      expect(getLibraryLimitForPlan('reader', TEST_TIER_CONFIG)).toBe(
+        TEST_TIER_CONFIG.tiers.reader.library_limit,
+      );
+      expect(getLibraryLimitForPlan('pro', TEST_TIER_CONFIG)).toBe(
+        TEST_TIER_CONFIG.tiers.pro.library_limit,
+      );
     });
   });
 
   describe('checkLibraryLimit (pure function)', () => {
     it('allows Free user with 9 books to add 1 more', () => {
-      const result = checkLibraryLimit(9, 'free');
+      const result = checkLibraryLimit(9, 'free', TEST_TIER_CONFIG);
       expect(result.allowed).toBe(true);
       expect(result.limit).toBe(10);
     });
 
     it('blocks Free user with 10 books', () => {
-      const result = checkLibraryLimit(10, 'free');
+      const result = checkLibraryLimit(10, 'free', TEST_TIER_CONFIG);
       expect(result.allowed).toBe(false);
       expect(result.limit).toBe(10);
     });
 
     it('blocks Free user with 15 books (legacy overage)', () => {
-      const result = checkLibraryLimit(15, 'free');
+      const result = checkLibraryLimit(15, 'free', TEST_TIER_CONFIG);
       expect(result.allowed).toBe(false);
       expect(result.limit).toBe(10);
     });
 
     it('allows Reader user with 100 books (no limit)', () => {
-      const result = checkLibraryLimit(100, 'reader');
+      const result = checkLibraryLimit(100, 'reader', TEST_TIER_CONFIG);
       expect(result.allowed).toBe(true);
       expect(result.limit).toBeNull();
     });
 
     it('allows Pro user with 1000 books (no limit)', () => {
-      const result = checkLibraryLimit(1000, 'pro');
+      const result = checkLibraryLimit(1000, 'pro', TEST_TIER_CONFIG);
       expect(result.allowed).toBe(true);
       expect(result.limit).toBeNull();
     });
 
     it('allows Free user with 0 books', () => {
-      const result = checkLibraryLimit(0, 'free');
+      const result = checkLibraryLimit(0, 'free', TEST_TIER_CONFIG);
       expect(result.allowed).toBe(true);
       expect(result.limit).toBe(10);
     });

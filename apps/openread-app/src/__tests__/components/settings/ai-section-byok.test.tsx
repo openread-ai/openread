@@ -46,6 +46,14 @@ vi.mock('@/hooks/useQuotaStats', () => ({
   }),
 }));
 
+vi.mock('@/hooks/useTierConfig', async () => {
+  const { getFallbackConfig } =
+    await vi.importActual<typeof import('@/lib/tier-defaults')>('@/lib/tier-defaults');
+  return {
+    useTierConfig: () => ({ config: getFallbackConfig(), isLoading: false, error: null }),
+  };
+});
+
 vi.mock('@/store/settingsStore', () => {
   const mockState = {
     settings: {

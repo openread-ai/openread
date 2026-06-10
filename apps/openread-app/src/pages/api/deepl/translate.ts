@@ -5,16 +5,13 @@ import { createLogger } from '@/utils/logger';
 
 const logger = createLogger('deepl');
 import { getCloudflareContext } from '@opennextjs/cloudflare';
-import {
-  getDailyTranslationPlanData,
-  getSubscriptionPlan,
-  validateUserAndToken,
-} from '@/utils/access';
+import { getSubscriptionPlan, validateUserAndToken } from '@/utils/access';
 import { ErrorCodes } from '@/services/translators';
 import {
   LAUNCH_DISABLED_FEATURE_MESSAGE,
   LAUNCH_TRANSLATION_ENABLED,
 } from '@/services/launchFeatures';
+import { getTierDefinition, TierConfigError } from '@/lib/tier-config';
 import { UsageStatsManager } from '@/utils/usage';
 
 const DEFAULT_DEEPL_FREE_API = 'https://api-free.deepl.com/v2/translate';
@@ -44,16 +41,6 @@ const generateCacheKey = (text: string, sourceLang: string, targetLang: string):
   const inputString = `${sourceLang}:${targetLang}:${text}`;
   const hash = crypto.createHash('sha1').update(inputString).digest('hex');
   return `tr:${hash}`;
-};
-
-const checkDailyUsage = async (userId: string, token: string, chars: number) => {
-  const { quota: dailyQuota } = getDailyTranslationPlanData(token);
-  const dailyUsage = await UsageStatsManager.getCurrentUsage(userId, 'translation_chars', 'daily');
-
-  if (dailyQuota <= dailyUsage + chars) {
-    throw new Error(ErrorCodes.DAILY_QUOTA_EXCEEDED);
-  }
-  return dailyUsage;
 };
 
 const updateDailyUsage = async (
@@ -103,12 +90,26 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
   const deepFreeApiUrl = DEEPL_FREE_API || DEFAULT_DEEPL_FREE_API;
   const deeplProApiUrl = DEEPL_PRO_API || DEFAULT_DEEPL_PRO_API;
 
-  let deeplApiUrl = deepFreeApiUrl;
-  let userPlan = 'free';
-  if (user && token) {
-    userPlan = getSubscriptionPlan(token);
-    if (userPlan === 'pro') deeplApiUrl = deeplProApiUrl;
+  if (!user || !token) {
+    return res.status(401).json({ error: ErrorCodes.UNAUTHORIZED });
   }
+
+  let deeplApiUrl = deepFreeApiUrl;
+  const userPlan = getSubscriptionPlan(token);
+  const tier = await getTierDefinition(userPlan).catch((error: unknown) => {
+    if (error instanceof TierConfigError) return null;
+    throw error;
+  });
+  if (!tier) {
+    return res.status(503).json({
+      error: 'Runtime tier configuration is unavailable',
+      code: 'TIER_CONFIG_UNAVAILABLE',
+    });
+  }
+  if (!tier.can_translate) {
+    return res.status(403).json({ error: LAUNCH_DISABLED_FEATURE_MESSAGE });
+  }
+  if (userPlan === 'pro') deeplApiUrl = deeplProApiUrl;
   const deeplAuthKey =
     deeplApiUrl === deeplProApiUrl
       ? getDeepLAPIKey(process.env['DEEPL_PRO_API_KEYS'])
@@ -143,9 +144,6 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
             logger.error('Cache retrieval error:', cacheError);
           }
         }
-
-        if (!user || !token) return res.status(401).json({ error: ErrorCodes.UNAUTHORIZED });
-        await checkDailyUsage(user?.id, token, singleText.length);
 
         return await callDeepLAPI(
           singleText,

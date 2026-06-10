@@ -13,7 +13,7 @@ import { Skeleton } from '@/components/primitives/skeleton';
 import { CancelSubscriptionDialog } from '@/components/settings/cancel-subscription-dialog';
 import { useTranslation } from '@/hooks/useTranslation';
 import { cn } from '@/utils/tailwind';
-import { CreditCard, ExternalLink } from 'lucide-react';
+import { CreditCard, ExternalLink, RotateCcw } from 'lucide-react';
 import type { Subscription } from '@/hooks/useSubscription';
 
 function formatShortDate(date: Date): string {
@@ -28,13 +28,15 @@ interface CurrentPlanCardProps {
   subscription: Subscription | null;
   isLoading?: boolean;
   onManagePlan: () => Promise<void>;
+  onRestorePurchases?: () => Promise<void>;
+  isRestoringPurchases?: boolean;
 }
 
-const sourceLabels: Record<string, string> = {
+const sourceLabels = {
   stripe: 'Stripe',
   apple: 'Apple',
   google: 'Google Play',
-};
+} as const;
 
 const statusStyles: Record<Subscription['status'], string> = {
   active: 'bg-success/10 text-success',
@@ -43,7 +45,13 @@ const statusStyles: Record<Subscription['status'], string> = {
   past_due: 'bg-error/10 text-error',
 };
 
-export function CurrentPlanCard({ subscription, isLoading, onManagePlan }: CurrentPlanCardProps) {
+export function CurrentPlanCard({
+  subscription,
+  isLoading,
+  onManagePlan,
+  onRestorePurchases,
+  isRestoringPurchases,
+}: CurrentPlanCardProps) {
   const _ = useTranslation();
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [isManaging, setIsManaging] = useState(false);
@@ -96,7 +104,9 @@ export function CurrentPlanCard({ subscription, isLoading, onManagePlan }: Curre
     );
   }
 
-  const billingSource = sourceLabels.stripe; // Default to Stripe for web
+  const billingSourceProvider = subscription.source;
+  const hasBillingSource = billingSourceProvider != null;
+  const billingSource = billingSourceProvider ? sourceLabels[billingSourceProvider] : _('Unknown');
   const nextBillingLabel = subscription.currentPeriodEnd
     ? subscription.cancelAtPeriodEnd
       ? _('Cancels on {{date}}', { date: formatShortDate(subscription.currentPeriodEnd) })
@@ -131,12 +141,33 @@ export function CurrentPlanCard({ subscription, isLoading, onManagePlan }: Curre
           </div>
 
           <div className='flex flex-wrap gap-2'>
-            <Button variant='outline' size='sm' onClick={handleManage} disabled={isManaging}>
+            <Button
+              variant='outline'
+              size='sm'
+              onClick={handleManage}
+              disabled={isManaging || !hasBillingSource}
+            >
               <CreditCard className='mr-2 h-4 w-4' aria-hidden='true' />
-              {isManaging ? _('Loading...') : _('Manage Plan')}
+              {isManaging
+                ? _('Loading...')
+                : hasBillingSource
+                  ? _('Manage Plan')
+                  : _('Billing unavailable')}
             </Button>
 
-            {!subscription.cancelAtPeriodEnd && (
+            {onRestorePurchases && (
+              <Button
+                variant='outline'
+                size='sm'
+                onClick={onRestorePurchases}
+                disabled={isRestoringPurchases}
+              >
+                <RotateCcw className='mr-2 h-4 w-4' aria-hidden='true' />
+                {isRestoringPurchases ? _('Restoring...') : _('Restore Purchases')}
+              </Button>
+            )}
+
+            {hasBillingSource && !subscription.cancelAtPeriodEnd && (
               <Button
                 variant='ghost'
                 size='sm'
@@ -150,11 +181,15 @@ export function CurrentPlanCard({ subscription, isLoading, onManagePlan }: Curre
         </CardContent>
       </Card>
 
-      <CancelSubscriptionDialog
-        open={showCancelDialog}
-        onOpenChange={setShowCancelDialog}
-        periodEnd={subscription.currentPeriodEnd}
-      />
+      {subscription.source && (
+        <CancelSubscriptionDialog
+          open={showCancelDialog}
+          onOpenChange={setShowCancelDialog}
+          periodEnd={subscription.currentPeriodEnd}
+          source={subscription.source}
+          planName={subscription.planName}
+        />
+      )}
     </>
   );
 }

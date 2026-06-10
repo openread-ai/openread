@@ -1,12 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
+import type { UserPlan } from '@/types/quota';
+
+vi.mock('@/hooks/useTierConfig', async () => {
+  const { getFallbackConfig } =
+    await vi.importActual<typeof import('@/lib/tier-defaults')>('@/lib/tier-defaults');
+  return {
+    useTierConfig: () => ({ config: getFallbackConfig(), isLoading: false, error: null }),
+  };
+});
+
 import {
   useFeatureFlags,
   useCanSync,
   useCanAnalyze,
   useCanUseKnowledgeGraph,
 } from '@/hooks/useFeatureFlags';
-import type { UserPlan } from '@/types/quota';
 
 // Mock state
 let mockUser: { id: string } | null = null;

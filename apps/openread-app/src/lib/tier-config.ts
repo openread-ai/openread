@@ -4,7 +4,8 @@
  * Reads from the `tier_config` Supabase table (append-only).
  * Latest row by created_at is the active config.
  * Caches in memory for 5 minutes.
- * Falls back to hardcoded defaults if DB is unreachable.
+ * Throws if the runtime contract cannot be loaded; callers must not invent
+ * plan/gate behavior from stale hardcoded config.
  */
 
 import type { UserPlan } from '@/types/quota';
@@ -24,6 +25,13 @@ export type {
 
 const log = createLogger('tier-config');
 
+export class TierConfigError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = 'TierConfigError';
+  }
+}
+
 // ─── Cache ───────────────────────────────────────────────────────────
 
 let cachedConfig: TierConfig | null = null;
@@ -34,7 +42,7 @@ const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 /**
  * Get the active tier configuration. Reads from DB with 5-minute cache.
- * Falls back to FALLBACK_CONFIG if DB is unreachable or table is empty.
+ * Throws when the runtime tier contract is unavailable.
  */
 export async function getTierConfig(): Promise<TierConfig> {
   const now = Date.now();
@@ -51,19 +59,25 @@ export async function getTierConfig(): Promise<TierConfig> {
       .limit(1)
       .single();
 
-    if (error || !data?.config) {
-      log.warn('Failed to read tier_config from DB, using fallback:', error?.message);
-      cachedConfig = FALLBACK_CONFIG;
-    } else {
-      cachedConfig = data.config as TierConfig;
+    if (error) {
+      throw new TierConfigError(`Failed to read tier_config: ${error.message}`);
     }
-  } catch (err) {
-    log.warn('Exception reading tier_config, using fallback:', err);
-    cachedConfig = FALLBACK_CONFIG;
-  }
+    if (!data?.config) {
+      throw new TierConfigError('No active tier_config row found');
+    }
 
-  cachedAt = now;
-  return cachedConfig!;
+    cachedConfig = data.config as TierConfig;
+    cachedAt = now;
+    return cachedConfig;
+  } catch (err) {
+    if (err instanceof TierConfigError) {
+      log.error(err.message);
+      throw err;
+    }
+    const error = err instanceof Error ? err : new Error(String(err));
+    log.error('Exception reading tier_config', error);
+    throw new TierConfigError('Failed to load runtime tier_config', { cause: error });
+  }
 }
 
 /**
@@ -100,7 +114,8 @@ export function invalidateTierConfigCache(): void {
 }
 
 /**
- * Get the fallback config (for testing or when DB is explicitly not available).
+ * Get the static launch tier seed for tests/migrations only.
+ * Runtime paths must use getTierConfig() and fail if tier_config is unavailable.
  */
 export function getFallbackConfig(): TierConfig {
   return FALLBACK_CONFIG;

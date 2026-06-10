@@ -41,10 +41,10 @@ describe('LibraryLimitBanner', () => {
     expect(link.textContent).toContain('Start Reading');
   });
 
-  it('should link to /user#plans', () => {
+  it('should link to /settings/billing#plans', () => {
     render(<LibraryLimitBanner limit={10} priceCents={999} />);
     const link = screen.getByRole('link');
-    expect(link.getAttribute('href')).toBe('/user#plans');
+    expect(link.getAttribute('href')).toBe('/settings/billing#plans');
   });
 
   it('should format different prices correctly', () => {

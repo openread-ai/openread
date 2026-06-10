@@ -60,7 +60,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(403).json({
         error: 'STORAGE_NOT_AVAILABLE',
         message: 'Cloud storage is not available on your current plan',
-        upgradeUrl: '/user#plans',
+        upgradeUrl: '/settings/billing#plans',
       });
     }
 
@@ -71,7 +71,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         message: 'Storage limit reached. Upgrade your plan or remove files.',
         used: quota.usedBytes,
         limit: quota.totalBytes,
-        upgradeUrl: '/user#plans',
+        upgradeUrl: '/settings/billing#plans',
       });
     }
 

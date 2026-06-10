@@ -6,16 +6,16 @@
  * Client-side hook for checking whether the current user can add books
  * to their library, based on the tier-config library_limit.
  *
- * Uses getFallbackConfig() for client-safe access to tier definitions.
- * The fallback config mirrors the DB tier_config table defaults, so
- * limits stay configurable without hardcoding magic numbers.
+ * Uses the client-safe tier contract endpoint. If the runtime config cannot
+ * be loaded, book additions are denied rather than guessed from stale defaults.
  */
 
 import { useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useQuotaStats } from '@/hooks/useQuotaStats';
 import { useLibraryStore } from '@/store/libraryStore';
-import { getFallbackConfig } from '@/lib/tier-defaults';
+import { useTierConfig } from '@/hooks/useTierConfig';
+import type { TierConfig } from '@/lib/tier-types';
 import type { UserPlan } from '@/types/quota';
 
 export interface LibraryLimitInfo {
@@ -36,11 +36,10 @@ export interface LibraryLimitInfo {
 }
 
 /**
- * Get the library_limit for a given plan from the fallback config.
+ * Get the library_limit for a given plan from the provided tier config.
  * Returns null for unlimited (paid tiers).
  */
-export function getLibraryLimitForPlan(plan: UserPlan): number | null {
-  const config = getFallbackConfig();
+export function getLibraryLimitForPlan(plan: UserPlan, config: TierConfig): number | null {
   const tier = config.tiers[plan] ?? config.tiers.free;
   return tier.library_limit;
 }
@@ -52,8 +51,9 @@ export function getLibraryLimitForPlan(plan: UserPlan): number | null {
 export function checkLibraryLimit(
   currentBookCount: number,
   plan: UserPlan,
+  config: TierConfig,
 ): { allowed: boolean; limit: number | null } {
-  const limit = getLibraryLimitForPlan(plan);
+  const limit = getLibraryLimitForPlan(plan, config);
   if (limit === null) return { allowed: true, limit: null };
   return { allowed: currentBookCount < limit, limit };
 }
@@ -72,9 +72,10 @@ export function checkLibraryLimit(
 export function useLibraryLimit(): LibraryLimitInfo {
   const { user } = useAuth();
   const { userProfilePlan } = useQuotaStats();
+  const { config, isLoading: isTierConfigLoading } = useTierConfig();
   const library = useLibraryStore((state) => state.library);
 
-  const isLoading = user === undefined;
+  const isLoading = user === undefined || isTierConfigLoading;
 
   const plan: UserPlan = useMemo(() => {
     if (!user) return 'free';
@@ -86,8 +87,16 @@ export function useLibraryLimit(): LibraryLimitInfo {
   }, [library]);
 
   const { canAddBook, libraryLimit, upgradeTierName, upgradePriceCents } = useMemo(() => {
-    const config = getFallbackConfig();
-    const { allowed, limit } = checkLibraryLimit(currentCount, plan);
+    if (!config) {
+      return {
+        canAddBook: false,
+        libraryLimit: 0,
+        upgradeTierName: '',
+        upgradePriceCents: 0,
+      };
+    }
+
+    const { allowed, limit } = checkLibraryLimit(currentCount, plan, config);
     const readerTier = config.tiers.reader;
     return {
       canAddBook: allowed,
@@ -95,7 +104,7 @@ export function useLibraryLimit(): LibraryLimitInfo {
       upgradeTierName: readerTier.display_name,
       upgradePriceCents: readerTier.display_price_cents,
     };
-  }, [currentCount, plan]);
+  }, [config, currentCount, plan]);
 
   return {
     canAddBook,

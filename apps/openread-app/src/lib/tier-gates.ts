@@ -1,13 +1,21 @@
 /**
  * Client-safe feature gate definitions per tier.
  *
- * These mirror the `can_*` flags from the Gen 3 v3 tier defaults.
- * Runtime source of truth is the `tier_config` Supabase table; this client-safe
- * fallback derives price copy from `lib/tier-defaults.ts`.
+ * Runtime source of truth is the `tier_config` Supabase table. This module is a
+ * compatibility facade over the canonical upgrade/feature registry in
+ * `plan-upgrades.ts`, so feature availability, upgrade CTAs, and plan checkout
+ * intents stay aligned as launch features are added or removed.
  */
 
 import type { UserPlan } from '@/types/quota';
-import { getFallbackConfig } from '@/lib/tier-defaults';
+import type { TierConfig } from '@/lib/tier-types';
+import {
+  FEATURE_REGISTRY,
+  formatPriceDisplay,
+  resolveFeatureAccess,
+  type FeatureAccessResult,
+  type UpgradeFeature,
+} from '@/lib/plan-upgrades';
 
 export interface TierGates {
   can_tts: boolean;
@@ -17,48 +25,30 @@ export interface TierGates {
   can_boost: boolean;
 }
 
-function gatesFromTier(plan: UserPlan): TierGates {
-  const tier = getFallbackConfig().tiers[plan];
-  return {
-    can_tts: tier.can_tts,
-    can_sync: tier.can_sync,
-    can_translate: tier.can_translate,
-    can_byok: tier.can_byok,
-    can_boost: tier.can_boost,
-  };
-}
-
-const TIER_GATES: Record<UserPlan, TierGates> = {
-  free: gatesFromTier('free'),
-  reader: gatesFromTier('reader'),
-  pro: gatesFromTier('pro'),
-};
+const GATE_FEATURES = {
+  can_tts: 'tts',
+  can_sync: 'sync',
+  can_translate: 'translate',
+  can_byok: 'byok',
+  can_boost: 'boost',
+} as const satisfies Record<keyof TierGates, UpgradeFeature>;
 
 /**
  * Get feature gates for a plan. Falls back to free tier for unknown plans.
  */
-export function getTierGates(plan: UserPlan): TierGates {
-  return TIER_GATES[plan] || TIER_GATES.free;
+export function getTierGates(plan: UserPlan, config: TierConfig): TierGates {
+  const normalizedPlan = config.tiers[plan] ? plan : 'free';
+  return {
+    can_tts: resolveFeatureAccess(GATE_FEATURES.can_tts, normalizedPlan, config).allowed,
+    can_sync: resolveFeatureAccess(GATE_FEATURES.can_sync, normalizedPlan, config).allowed,
+    can_translate: resolveFeatureAccess(GATE_FEATURES.can_translate, normalizedPlan, config)
+      .allowed,
+    can_byok: resolveFeatureAccess(GATE_FEATURES.can_byok, normalizedPlan, config).allowed,
+    can_boost: resolveFeatureAccess(GATE_FEATURES.can_boost, normalizedPlan, config).allowed,
+  };
 }
 
-export type GatedFeature = 'tts' | 'sync' | 'translate' | 'byok' | 'boost';
-
-const FEATURE_TO_GATE_KEY: Record<GatedFeature, keyof TierGates> = {
-  tts: 'can_tts',
-  sync: 'can_sync',
-  translate: 'can_translate',
-  byok: 'can_byok',
-  boost: 'can_boost',
-};
-
-/** The minimum tier required for each feature */
-const FEATURE_REQUIRED_TIER: Record<GatedFeature, UserPlan> = {
-  tts: 'reader',
-  sync: 'reader',
-  translate: 'pro',
-  byok: 'reader',
-  boost: 'reader',
-};
+export type GatedFeature = UpgradeFeature;
 
 /** Human-readable tier display names */
 const TIER_DISPLAY_NAMES: Record<UserPlan, string> = {
@@ -67,63 +57,17 @@ const TIER_DISPLAY_NAMES: Record<UserPlan, string> = {
   pro: 'Pro',
 };
 
-export interface FeatureGateResult {
-  /** Whether the current plan allows this feature */
-  allowed: boolean;
-  /** The minimum tier required to use this feature */
-  requiredTier: UserPlan;
-  /** Display name for the required tier (e.g. "Reader", "Pro") */
-  requiredTierName: string;
-  /** Upgrade message for the feature */
-  message: string;
-  /** Monthly price display string for the required tier (e.g. "$9.99/mo") */
-  priceDisplay: string;
-  /** Full CTA text with tier name and price (e.g. "Start Reading — $9.99/mo") */
-  ctaText: string;
-}
-
-/**
- * Format cents as a monthly price string (e.g. 999 -> "$9.99/mo").
- * Returns an empty string for 0 cents (free tier).
- */
-export function formatPriceDisplay(priceCents: number): string {
-  if (priceCents <= 0) return '';
-  return `$${(priceCents / 100).toFixed(2)}/mo`;
-}
+export type FeatureGateResult = FeatureAccessResult;
 
 /**
  * Check whether a specific feature is allowed for a given plan.
  */
-export function checkFeatureGate(feature: GatedFeature, plan: UserPlan): FeatureGateResult {
-  const gates = getTierGates(plan);
-  const gateKey = FEATURE_TO_GATE_KEY[feature];
-  const allowed = gates[gateKey];
-  const requiredTier = FEATURE_REQUIRED_TIER[feature];
-  const requiredTierName = TIER_DISPLAY_NAMES[requiredTier];
-
-  const featureLabels: Record<GatedFeature, string> = {
-    tts: 'Text-to-Speech',
-    sync: 'Cloud Sync',
-    translate: 'Translation',
-    byok: 'Bring Your Own Key',
-    boost: 'AI Boosts',
-  };
-
-  const featureAvailableOnAnyTier = Object.values(TIER_GATES).some((tier) => tier[gateKey]);
-  const message = allowed
-    ? ''
-    : featureAvailableOnAnyTier
-      ? `${featureLabels[feature]} is available on ${requiredTierName}.`
-      : `${featureLabels[feature]} is not currently available.`;
-
-  // Pull price from the client-safe fallback config
-  const config = getFallbackConfig();
-  const tierDef = config.tiers[requiredTier] ?? config.tiers.free;
-  const priceDisplay = featureAvailableOnAnyTier
-    ? formatPriceDisplay(tierDef.display_price_cents)
-    : '';
-  const ctaText =
-    allowed || !featureAvailableOnAnyTier ? '' : `Start ${requiredTierName} \u2014 ${priceDisplay}`;
-
-  return { allowed, requiredTier, requiredTierName, message, priceDisplay, ctaText };
+export function checkFeatureGate(
+  feature: GatedFeature,
+  plan: UserPlan,
+  config: TierConfig,
+): FeatureGateResult {
+  return resolveFeatureAccess(feature, plan, config);
 }
+
+export { FEATURE_REGISTRY, TIER_DISPLAY_NAMES, formatPriceDisplay };

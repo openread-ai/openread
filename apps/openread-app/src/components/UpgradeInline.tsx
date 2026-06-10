@@ -18,7 +18,7 @@ interface UpgradeInlineProps {
   ctaText?: string;
   /** Monthly price string (e.g. "$9.99/mo"). Appended to ctaText if ctaText is not provided. */
   price?: string;
-  /** Optional custom link. Defaults to /user#plans. */
+  /** Optional custom link. Defaults to /settings/billing#plans. */
   ctaHref?: string;
   /** Optional className for the container. */
   className?: string;
@@ -30,7 +30,7 @@ const UpgradeInline: React.FC<UpgradeInlineProps> = ({
   message,
   ctaText,
   price,
-  ctaHref = '/user#plans',
+  ctaHref = '/settings/billing#plans',
   className,
   onDismiss,
 }) => {

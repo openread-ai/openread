@@ -35,6 +35,7 @@ function makeSubscription(overrides: Partial<Subscription> = {}): Subscription {
     status: 'active',
     currentPeriodEnd: new Date('2026-05-01T12:00:00Z'),
     cancelAtPeriodEnd: false,
+    source: 'stripe',
     ...overrides,
   };
 }
@@ -116,6 +117,19 @@ describe('CurrentPlanCard', () => {
     const sub = makeSubscription();
     render(<CurrentPlanCard subscription={sub} onManagePlan={mockOnManage} />);
     expect(screen.getByText(/via Stripe/)).toBeTruthy();
+  });
+
+  it('should show native restore action for IAP subscriptions', () => {
+    const sub = makeSubscription({ source: 'apple' });
+    render(
+      <CurrentPlanCard
+        subscription={sub}
+        onManagePlan={mockOnManage}
+        onRestorePurchases={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/via Apple/)).toBeTruthy();
+    expect(screen.getByText('Restore Purchases')).toBeTruthy();
   });
 
   it('should show Manage Plan button', () => {

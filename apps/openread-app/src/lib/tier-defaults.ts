@@ -13,8 +13,8 @@ import type { TierConfig } from '@/lib/tier-types';
  * surfaces must treat them as unavailable unless a later final config changes.
  *
  * Runtime source of truth: latest row in the `tier_config` Supabase table.
- * Shared code fallback source of truth: `@openread/types` so web/Tauri and Hono
- * API fallback paths use the same launch contract.
+ * Static seed/test source: `@openread/types` so migrations, tests, and explicit
+ * fixtures share the same launch contract without becoming runtime fallbacks.
  */
 export const FALLBACK_CONFIG: TierConfig = GEN3_V3_FALLBACK_TIER_CONFIG;
 

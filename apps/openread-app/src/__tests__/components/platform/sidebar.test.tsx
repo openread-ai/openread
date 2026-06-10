@@ -166,6 +166,19 @@ describe('Sidebar', () => {
       expect(mockStore.toggleCollapsed).toHaveBeenCalled();
     });
 
+    it('should remove reserved mobile toolbar spacing when rendered inside the mobile drawer', () => {
+      const { container } = render(<Sidebar reserveMobileToolbarSpace={false} />);
+      const sidebar = container.querySelector('aside');
+      const nav = container.querySelector('nav');
+      const profile = container.querySelector('aside > div:last-of-type');
+
+      expect(sidebar?.className).toContain('min-h-0');
+      expect(nav?.className).toContain('min-h-0');
+      expect(nav?.className).toContain('pt-2');
+      expect(nav?.className).not.toContain('pt-16');
+      expect(profile?.className).toContain('flex-shrink-0');
+    });
+
     it('should render as a narrow icon rail when collapsed', () => {
       mockStore.isCollapsed = true;
       const { container } = render(<Sidebar collapsible />);

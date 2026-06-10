@@ -157,9 +157,13 @@ describe('Sidebar', () => {
       expect(screen.getByText('No collections yet')).toBeTruthy();
     });
 
-    it('should not render the desktop collapse trigger inside the sidebar', () => {
+    it('should render the desktop collapse trigger inside the sidebar', () => {
       render(<Sidebar collapsible />);
-      expect(screen.queryByRole('button', { name: /collapse sidebar/i })).toBeNull();
+      const collapseButton = screen.getByRole('button', { name: /collapse sidebar/i });
+
+      expect(collapseButton).toBeTruthy();
+      fireEvent.click(collapseButton);
+      expect(mockStore.toggleCollapsed).toHaveBeenCalled();
     });
 
     it('should render as a narrow icon rail when collapsed', () => {
@@ -171,6 +175,7 @@ describe('Sidebar', () => {
       expect(sidebar?.className).toContain('transition-[width]');
       expect(sidebar?.className).toContain('duration-200');
       expect(sidebar?.className).toContain('ease-linear');
+      expect(screen.getByRole('button', { name: /^expand sidebar$/i })).toBeTruthy();
       expect(screen.getByRole('button', { name: /expand sidebar from home/i })).toBeTruthy();
       expect(screen.queryByRole('link', { name: /home/i })).toBeNull();
     });
@@ -186,6 +191,14 @@ describe('Sidebar', () => {
       expect(screen.queryByRole('link', { name: /fiction/i })).toBeNull();
 
       fireEvent.click(screen.getByRole('button', { name: /expand sidebar from library/i }));
+      expect(mockStore.setCollapsed).toHaveBeenCalledWith(false);
+    });
+
+    it('should expand when clicking the collapsed sidebar background', () => {
+      mockStore.isCollapsed = true;
+      render(<Sidebar collapsible />);
+
+      fireEvent.click(screen.getByRole('button', { name: /expand collapsed sidebar/i }));
       expect(mockStore.setCollapsed).toHaveBeenCalledWith(false);
     });
   });

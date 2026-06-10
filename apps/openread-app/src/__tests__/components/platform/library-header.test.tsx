@@ -204,9 +204,11 @@ describe('LibraryHeader', () => {
       render(<LibraryHeader {...defaultProps} />);
       const titleRow = screen.getByTestId('library-title-row');
 
-      expect(titleRow.className).toContain('md:h-14');
+      expect(titleRow.className).toContain('md:min-h-14');
       expect(titleRow.className).toContain('md:border-b');
       expect(titleRow.className).toContain('md:-mt-6');
+      expect(titleRow.className).toContain('md:pl-6');
+      expect(screen.getByTestId('library-controls-row')).toBeTruthy();
     });
 
     it('should render the book count with "books" text', () => {
@@ -421,8 +423,9 @@ describe('LibraryHeader', () => {
   describe('Styling', () => {
     it('should have responsive layout classes', () => {
       const { container } = render(<LibraryHeader {...defaultProps} />);
-      const headerDiv = container.firstChild as HTMLElement;
-      expect(headerDiv.className).toContain('space-y-4');
+      const header = container.firstChild as HTMLElement;
+      expect(header.className).toContain('md:min-h-14');
+      expect(header.className).toContain('md:pl-6');
     });
 
     it('should have title styled as h1 with proper classes', () => {

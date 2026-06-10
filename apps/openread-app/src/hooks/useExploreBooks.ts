@@ -255,20 +255,20 @@ export function useExploreBooks(params: UseExploreBooksParams = {}): UseExploreB
         const data = await res.json();
 
         if (!controller.signal.aborted) {
-          const newBooks = append ? [...books, ...data.books] : data.books;
-          setBooks(newBooks);
+          const nextBooks = (data.books || []) as CatalogBook[];
+          setBooks((prev) => (append ? [...prev, ...nextBooks] : nextBooks));
           setTotal(data.total);
           setIsStale(false);
 
           // Cache the result
           if (!append) {
-            setCache(cacheKey, data.books, data.total);
+            setCache(cacheKey, nextBooks, data.total);
           }
 
           // After local results arrive, also fetch IA results
           if (shouldSearchIA && params.q && !append) {
             setIaPage(1);
-            fetchIA(params.q, 1, false, newBooks);
+            fetchIA(params.q, 1, false, nextBooks);
           }
         }
       } catch (err) {

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { deduplicateIA, _clearQueryCache } from '@/hooks/useExploreBooks';
 import type { CatalogBook } from '@/hooks/useExploreBooks';
 
@@ -188,6 +188,38 @@ describe('useExploreBooks', () => {
       // All fetch calls should be to /catalog/books (not ia/search)
       const urls = mockFetch.mock.calls.map((c: unknown[]) => c[0] as string);
       expect(urls.every((u) => u.includes('/catalog/books'))).toBe(true);
+    });
+
+    it('should append the next category page when loadMore is called', async () => {
+      mockFetch.mockImplementation((url: string) => {
+        const page = new URL(url, 'https://api.openread.ai').searchParams.get('page');
+        const books =
+          page === '2'
+            ? [makeLocalBook({ id: 'local-2', title: 'Local Book 2' })]
+            : [makeLocalBook({ id: 'local-1', title: 'Local Book 1' })];
+
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ books, total: 40 }),
+        });
+      });
+
+      const { result } = renderHook(() => useExploreBooks({ subject: 'Science', limit: 20 }));
+
+      await waitFor(() => {
+        expect(result.current.books.map((book) => book.id)).toEqual(['local-1']);
+      });
+
+      act(() => {
+        result.current.loadMore();
+      });
+
+      await waitFor(() => {
+        expect(result.current.books.map((book) => book.id)).toEqual(['local-1', 'local-2']);
+      });
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(mockFetch.mock.calls[1]?.[0]).toContain('page=2');
     });
   });
 

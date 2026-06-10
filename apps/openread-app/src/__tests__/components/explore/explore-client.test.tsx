@@ -656,21 +656,27 @@ describe('ExploreClient', () => {
       expect(screen.getByText('Browse All Books')).toBeTruthy();
     });
 
-    it('should show Load more button when hasMore is true', () => {
+    it('should show and trigger Load more when hasMore is true', () => {
+      const loadMore = vi.fn();
       mockSearchQuery = 'python';
       mockExploreBooksReturn = {
         ...mockExploreBooksReturn,
         books: mockBooks,
         total: 50,
         hasMore: true,
+        loadMore,
       };
-      const { container } = render(<ExploreClient />);
-      // Now uses an IntersectionObserver sentinel div instead of a button
-      const sentinel = container.querySelector('.flex.justify-center.py-8');
-      expect(sentinel).toBeTruthy();
+      render(<ExploreClient />);
+
+      const button = screen.getByRole('button', { name: 'Load more' });
+      expect(button).toBeTruthy();
+      expect(screen.getByText('Showing {{shown}} of {{total}} books')).toBeTruthy();
+
+      fireEvent.click(button);
+      expect(loadMore).toHaveBeenCalledTimes(1);
     });
 
-    it('should show Loading... text when loading more', () => {
+    it('should show Loading more state when loading more', () => {
       mockSearchQuery = 'python';
       mockExploreBooksReturn = {
         ...mockExploreBooksReturn,
@@ -679,12 +685,11 @@ describe('ExploreClient', () => {
         hasMore: true,
         isLoading: true,
       };
-      const { container } = render(<ExploreClient />);
-      // Now uses a Loader2 spinner in the sentinel div instead of "Loading..." text
-      const sentinel = container.querySelector('.flex.justify-center.py-8');
-      expect(sentinel).toBeTruthy();
-      const spinner = sentinel?.querySelector('.animate-spin');
-      expect(spinner).toBeTruthy();
+      render(<ExploreClient />);
+
+      const button = screen.getByRole('button', { name: 'Loading more...' });
+      expect(button).toBeTruthy();
+      expect(button).toHaveProperty('disabled', true);
     });
 
     it('should show skeleton cards on initial load', () => {
@@ -735,6 +740,20 @@ describe('ExploreClient', () => {
       };
       render(<ExploreClient />);
       expect(screen.getByText('No books in this category')).toBeTruthy();
+    });
+
+    it('should show visible Load more control for category results with additional pages', () => {
+      mockSelectedCategory = 'Science,Physics,Chemistry';
+      mockExploreBooksReturn = {
+        ...mockExploreBooksReturn,
+        books: mockBooks,
+        total: 3586,
+        hasMore: true,
+      };
+      render(<ExploreClient />);
+
+      expect(screen.getByRole('button', { name: 'Load more' })).toBeTruthy();
+      expect(screen.getByText('Showing {{shown}} of {{total}} books')).toBeTruthy();
     });
   });
 

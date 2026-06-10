@@ -7,6 +7,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { usePlatformSidebarStore } from '@/store/platformSidebarStore';
 import { LIBRARY_OWNER_STORAGE_KEY } from '@/services/libraryPaintCache';
 import { createLogger } from '@/utils/logger';
+import type { Book } from '@/types/book';
 import type { SystemSettings } from '@/types/settings';
 
 const logger = createLogger('useLibrary');
@@ -21,6 +22,23 @@ function resetAccountScopedWatermarks(settings: SystemSettings): SystemSettings 
     lastSyncedAtNotes: 0,
     lastSyncedAtSettings: 0,
   };
+}
+
+function mergeRegeneratedCoverImageUrls(currentLibrary: Book[], diskBooks: Book[]): Book[] | null {
+  const diskBooksByHash = new Map(diskBooks.map((book) => [book.hash, book]));
+  let changed = false;
+
+  const merged = currentLibrary.map((book) => {
+    if (book.coverImageUrl) return book;
+
+    const diskBook = diskBooksByHash.get(book.hash);
+    if (!diskBook?.coverImageUrl) return book;
+
+    changed = true;
+    return { ...book, coverImageUrl: diskBook.coverImageUrl };
+  });
+
+  return changed ? merged : null;
 }
 
 export const useLibrary = () => {
@@ -120,6 +138,11 @@ export const useLibrary = () => {
         if (currentLibrary.length === 0) {
           setLibraryOwnerUserId(userId);
           setLibrary(diskBooks);
+        } else {
+          const mergedLibrary = mergeRegeneratedCoverImageUrls(currentLibrary, diskBooks);
+          if (mergedLibrary) {
+            setLibrary(mergedLibrary);
+          }
         }
       } catch (error) {
         logger.error('Failed to initialize library', error);

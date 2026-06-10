@@ -11,6 +11,38 @@ interface LibraryPaintCacheEntry {
   timestamp: number;
 }
 
+function isDurableCoverImageUrl(url: string | null | undefined): url is string {
+  if (!url || url === '_blank') return Boolean(url);
+  if (url.startsWith('/')) return true;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+export function sanitizeLibraryPaintCacheBooks(books: Book[]): Book[] {
+  return books.map((book) => {
+    const next: Book = { ...book };
+
+    if (!isDurableCoverImageUrl(next.coverImageUrl)) {
+      delete next.coverImageUrl;
+    }
+
+    if (next.metadata) {
+      const metadata = { ...next.metadata };
+      if (!isDurableCoverImageUrl(metadata.coverImageUrl)) {
+        delete metadata.coverImageUrl;
+      }
+      delete metadata.coverImageBlobUrl;
+      next.metadata = metadata;
+    }
+
+    return next;
+  });
+}
+
 function getLocalStorage(): Storage | null {
   return typeof window === 'undefined' ? null : window.localStorage;
 }
@@ -50,7 +82,10 @@ export function readLibraryPaintCache(
     ) {
       return null;
     }
-    return parsed as LibraryPaintCacheEntry;
+    return {
+      ...(parsed as LibraryPaintCacheEntry),
+      books: sanitizeLibraryPaintCacheBooks(parsed.books as Book[]),
+    };
   } catch {
     return null;
   }
@@ -67,7 +102,7 @@ export function writeLibraryPaintCache(ownerUserId: string | null, books: Book[]
       JSON.stringify({
         version: LIBRARY_PAINT_CACHE_VERSION,
         ownerUserId,
-        books,
+        books: sanitizeLibraryPaintCacheBooks(books),
         timestamp: Date.now(),
       } satisfies LibraryPaintCacheEntry),
     );

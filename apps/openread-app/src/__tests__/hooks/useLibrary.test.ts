@@ -213,6 +213,50 @@ describe('useLibrary account isolation', () => {
     expect(mocks.setIsReconciling).toHaveBeenLastCalledWith(false);
   });
 
+  it('reattaches regenerated disk cover URLs to an already-hydrated cached library', async () => {
+    const cachedBook = {
+      hash: 'cached-local-book',
+      title: 'Cached Local Book',
+      author: 'A',
+      format: 'epub',
+      updatedAt: 200,
+    } as Book;
+    const diskBookWithRegeneratedCover = {
+      ...cachedBook,
+      title: 'Older Disk Title',
+      updatedAt: 100,
+      coverImageUrl: 'blob:http://localhost:3000/regenerated-cover',
+    } as Book;
+    mocks.state.library = [cachedBook];
+    mocks.state.libraryLoaded = true;
+    mocks.state.libraryOwnerUserId = 'account-cover-refresh';
+    localStorage.setItem('openread_library_owner_user_id', 'account-cover-refresh');
+    mocks.setUser({ id: 'account-cover-refresh' });
+    mocks.loadLibraryBooks.mockResolvedValue([diskBookWithRegeneratedCover]);
+
+    const { result } = renderHook(() => useLibrary());
+
+    await waitFor(() => expect(result.current.libraryLoaded).toBe(true));
+    await waitFor(() =>
+      expect(mocks.setLibrary).toHaveBeenCalledWith([
+        expect.objectContaining({
+          hash: 'cached-local-book',
+          title: 'Cached Local Book',
+          updatedAt: 200,
+          coverImageUrl: 'blob:http://localhost:3000/regenerated-cover',
+        }),
+      ]),
+    );
+    expect(mocks.state.library).toEqual([
+      expect.objectContaining({
+        hash: 'cached-local-book',
+        title: 'Cached Local Book',
+        updatedAt: 200,
+        coverImageUrl: 'blob:http://localhost:3000/regenerated-cover',
+      }),
+    ]);
+  });
+
   it('does not rerun the initial reconcile when remounted for the same loaded account', async () => {
     localStorage.setItem('openread_library_owner_user_id', 'account-remount');
     mocks.setUser({ id: 'account-remount' });

@@ -930,7 +930,8 @@ describe('ExploreClient', () => {
       expect(screen.getByTestId('book-ia-badge-ia-book-1')).toBeTruthy();
     });
 
-    it('should show Load More from IA button when iaHasMore is true', () => {
+    it('should show and trigger visible Load more control when iaHasMore is true', () => {
+      const iaLoadMore = vi.fn();
       mockSearchQuery = 'python';
       mockExploreBooksReturn = {
         ...mockExploreBooksReturn,
@@ -940,15 +941,20 @@ describe('ExploreClient', () => {
         iaTotal: 500,
         iaLoading: false,
         iaHasMore: true,
+        iaLoadMore,
       };
       render(<ExploreClient />);
-      // Now uses an IntersectionObserver sentinel div instead of a button
+
       const iaSection = screen.getByTestId('ia-results-section');
-      const sentinel = iaSection.querySelector('.flex.justify-center.py-8');
-      expect(sentinel).toBeTruthy();
+      expect(iaSection.textContent).toContain('Showing {{shown}} of {{total}} books');
+      const button = screen.getByRole('button', { name: 'Load more' });
+      expect(button).toBeTruthy();
+
+      fireEvent.click(button);
+      expect(iaLoadMore).toHaveBeenCalledTimes(1);
     });
 
-    it('should show IA loading spinner when iaLoading and iaHasMore', () => {
+    it('should show IA loading state when iaLoading and iaHasMore', () => {
       mockSearchQuery = 'python';
       mockExploreBooksReturn = {
         ...mockExploreBooksReturn,
@@ -960,12 +966,10 @@ describe('ExploreClient', () => {
         iaHasMore: true,
       };
       render(<ExploreClient />);
-      // The IA sentinel div shows a Loader2 spinner when loading
-      const iaSection = screen.getByTestId('ia-results-section');
-      const sentinel = iaSection.querySelector('.flex.justify-center.py-8');
-      expect(sentinel).toBeTruthy();
-      const spinner = sentinel?.querySelector('.animate-spin');
-      expect(spinner).toBeTruthy();
+
+      const button = screen.getByRole('button', { name: 'Loading more...' });
+      expect(button).toBeTruthy();
+      expect(button).toHaveProperty('disabled', true);
     });
 
     it('should not show IA section in browse mode', () => {
@@ -1055,10 +1059,9 @@ describe('ExploreClient', () => {
         iaHasMore: false,
       };
       render(<ExploreClient />);
-      // No sentinel div when iaHasMore is false
       const iaSection = screen.getByTestId('ia-results-section');
-      const sentinel = iaSection.querySelector('.flex.justify-center.py-8');
-      expect(sentinel).toBeNull();
+      expect(iaSection.textContent).not.toContain('Showing {{shown}} of {{total}} books');
+      expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull();
     });
   });
 

@@ -217,6 +217,7 @@ vi.mock('@/components/explore/CategoryPills', () => ({
   CategoryPills: ({
     onCategoryChange,
     onSelectionChange,
+    sticky,
     className,
   }: {
     onCategoryChange?: (subjects: string[] | undefined) => void;
@@ -224,7 +225,7 @@ vi.mock('@/components/explore/CategoryPills', () => ({
     sticky?: boolean;
     className?: string;
   }) => (
-    <div data-testid='category-pills' className={className}>
+    <div data-testid='category-pills' data-sticky={sticky ? 'true' : 'false'} className={className}>
       <button
         type='button'
         data-testid='select-all-category'
@@ -804,9 +805,12 @@ describe('ExploreClient', () => {
       expect(screen.getByTestId('search-bar')).toBeTruthy();
     });
 
-    it('should render CategoryPills', () => {
-      render(<ExploreClient />);
-      expect(screen.getByTestId('category-pills')).toBeTruthy();
+    it('should render CategoryPills without sticky positioning so mobile scrolls as one page', () => {
+      const { container } = render(<ExploreClient />);
+      const categoryPills = screen.getByTestId('category-pills');
+      expect(categoryPills).toBeTruthy();
+      expect(categoryPills.getAttribute('data-sticky')).toBe('false');
+      expect(container.querySelector('.overflow-y-auto')).toBeNull();
     });
 
     it('should render mobile and desktop platform headers', () => {

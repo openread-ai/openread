@@ -55,11 +55,14 @@ export { toEpoch, toISO } from './timestamp.js';
 export {
   BYTES_PER_GB,
   GEN3_V3_FALLBACK_TIER_CONFIG,
+  evaluateLibraryLimit,
   getGen3V3FallbackTierConfig,
+  getLibraryLimitForPlan,
 } from './tier-config.js';
 export type {
   BoostOption,
   CostRates,
+  LibraryLimitDecision,
   RegionalPricingEntry,
   StorageAddon,
   TierConfig,

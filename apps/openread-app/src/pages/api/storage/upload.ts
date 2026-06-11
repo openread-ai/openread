@@ -8,6 +8,7 @@ import {
 } from '@/utils/access';
 import { getDownloadSignedUrl, getUploadSignedUrl } from '@/utils/object';
 import { OPENREAD_PUBLIC_STORAGE_BASE_URL } from '@/services/constants';
+import { assertCanIncreaseLibrary, isLibraryLimitError } from '@/lib/library-limit';
 import { getStorageQuota, incrementStorageUsed } from '@/lib/storage-quota';
 import type { UserPlan } from '@/types/quota';
 
@@ -51,6 +52,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: 'Missing file info' });
     }
 
+    // P9.3: Use file_type column instead of filename pattern matching
+    const isCoverFile =
+      fileName.toLowerCase().endsWith('cover.png') ||
+      fileName.toLowerCase().endsWith('cover.jpg') ||
+      fileName.toLowerCase().endsWith('cover.jpeg');
+    const fileType = isCoverFile ? 'cover' : 'book';
+
     // Tier-based storage enforcement via storage-quota module
     const plan = getSubscriptionPlan(token) as UserPlan;
     const quota = await getStorageQuota(user.id, plan);
@@ -75,6 +83,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
+    if (fileType === 'book') {
+      try {
+        await assertCanIncreaseLibrary(user.id, plan, { bookHash });
+      } catch (error) {
+        if (isLibraryLimitError(error)) {
+          return res.status(error.status).json({
+            error: error.code,
+            message: error.message,
+            ...error.details,
+          });
+        }
+        throw error;
+      }
+    }
+
     const fileKey = `${user.id}/${fileName}`;
     const supabase = createSupabaseAdminClient();
     const { data: existingRecord, error: fetchError } = await supabase
@@ -88,13 +111,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (fetchError && fetchError.code !== 'PGRST116') {
       return res.status(500).json({ error: fetchError.message });
     }
-    // P9.3: Use file_type column instead of filename pattern matching
-    const isCoverFile =
-      fileName.toLowerCase().endsWith('cover.png') ||
-      fileName.toLowerCase().endsWith('cover.jpg') ||
-      fileName.toLowerCase().endsWith('cover.jpeg');
-    const fileType = isCoverFile ? 'cover' : 'book';
-
     let objSize = fileSize;
     let storageIncrementBytes = 0;
     if (existingRecord) {

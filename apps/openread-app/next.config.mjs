@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { withSentryConfig } from '@sentry/nextjs';
 import withSerwistInit from '@serwist/next';
 import withBundleAnalyzer from '@next/bundle-analyzer';
@@ -11,6 +12,7 @@ if (isDev) {
 }
 
 const exportOutput = appPlatform !== 'web' && !isDev;
+const pdfjsAlias = path.resolve(process.cwd(), 'public/vendor/pdfjs');
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -31,12 +33,14 @@ const nextConfig = {
   webpack: (config) => {
     config.resolve.alias = {
       ...config.resolve.alias,
+      '@pdfjs': pdfjsAlias,
       nunjucks: 'nunjucks/browser/nunjucks.js',
     };
     return config;
   },
   turbopack: {
     resolveAlias: {
+      '@pdfjs': pdfjsAlias,
       nunjucks: 'nunjucks/browser/nunjucks.js',
     },
   },

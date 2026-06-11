@@ -15,6 +15,10 @@ import { useAuth } from '@/context/AuthContext';
 import { useQuotaStats } from '@/hooks/useQuotaStats';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useTierConfig } from '@/hooks/useTierConfig';
+import {
+  evaluateLibraryLimit,
+  getLibraryLimitForPlan as getSharedLibraryLimitForPlan,
+} from '@openread/types';
 import type { TierConfig } from '@/lib/tier-types';
 import type { UserPlan } from '@/types/quota';
 
@@ -40,8 +44,7 @@ export interface LibraryLimitInfo {
  * Returns null for unlimited (paid tiers).
  */
 export function getLibraryLimitForPlan(plan: UserPlan, config: TierConfig): number | null {
-  const tier = config.tiers[plan] ?? config.tiers.free;
-  return tier.library_limit;
+  return getSharedLibraryLimitForPlan(plan, config);
 }
 
 /**
@@ -53,9 +56,8 @@ export function checkLibraryLimit(
   plan: UserPlan,
   config: TierConfig,
 ): { allowed: boolean; limit: number | null } {
-  const limit = getLibraryLimitForPlan(plan, config);
-  if (limit === null) return { allowed: true, limit: null };
-  return { allowed: currentBookCount < limit, limit };
+  const decision = evaluateLibraryLimit(plan, config, currentBookCount);
+  return { allowed: decision.allowed, limit: decision.limit };
 }
 
 /**

@@ -17,6 +17,7 @@
  * - `FILE_TOO_LARGE`: Uploaded file exceeds size limit (400)
  * - `DUPLICATE_BOOK`: User already has this book in their library (409)
  * - `RATE_LIMITED`: Too many requests (429)
+ * - `LIBRARY_LIMIT_REACHED`: User cannot add another active book on current plan (403)
  *
  * Client-side errors (SDK only):
  * - `NETWORK_ERROR`: Network failure during request
@@ -36,6 +37,7 @@ export type ApiErrorCode =
   | 'FILE_TOO_LARGE'
   | 'DUPLICATE_BOOK'
   | 'RATE_LIMITED'
+  | 'LIBRARY_LIMIT_REACHED'
   // Client-side errors (SDK)
   | 'NETWORK_ERROR'
   | 'UPLOAD_FAILED'

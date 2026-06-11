@@ -65,6 +65,43 @@ export interface TierConfig {
 
 export const BYTES_PER_GB = 1024 * 1024 * 1024;
 
+export interface LibraryLimitDecision {
+  allowed: boolean;
+  limit: number | null;
+  activeCount: number;
+  remaining: number | null;
+}
+
+export function getLibraryLimitForPlan(plan: UserPlan, config: TierConfig): number | null {
+  return (config.tiers[plan] ?? config.tiers.free).library_limit;
+}
+
+export function evaluateLibraryLimit(
+  plan: UserPlan,
+  config: TierConfig,
+  activeCount: number,
+  requestedIncrease = 1,
+): LibraryLimitDecision {
+  const limit = getLibraryLimitForPlan(plan, config);
+
+  if (limit === null || requestedIncrease <= 0) {
+    return {
+      allowed: true,
+      limit,
+      activeCount,
+      remaining: limit === null ? null : Math.max(0, limit - activeCount),
+    };
+  }
+
+  const remaining = Math.max(0, limit - activeCount);
+  return {
+    allowed: activeCount + requestedIncrease <= limit,
+    limit,
+    activeCount,
+    remaining,
+  };
+}
+
 /**
  * Gen 3 v3 FINAL pricing/tier defaults.
  *

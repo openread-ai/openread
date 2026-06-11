@@ -199,14 +199,6 @@ vi.mock('@/hooks/useWelcomeScreen', () => ({
   })),
 }));
 
-// Mock useOnboarding — prevent onboarding dialog from appearing
-vi.mock('@/hooks/useOnboarding', () => ({
-  useOnboarding: vi.fn(() => ({
-    showOnboarding: false,
-    completeOnboarding: vi.fn(),
-  })),
-}));
-
 // Mock useLibraryViewStore
 vi.mock('@/store/libraryViewStore', () => ({
   useLibraryViewStore: vi.fn((selector?: (state: typeof mockLibraryViewState) => unknown) => {
@@ -355,6 +347,13 @@ describe('LibraryPageClient', () => {
       expect(screen.getByTestId('book-book-1')).toBeTruthy();
       expect(screen.getByTestId('book-book-2')).toBeTruthy();
       expect(screen.getByTestId('book-book-3')).toBeTruthy();
+    });
+
+    it('should not force the legacy onboarding modal when Library is opened', () => {
+      localStorage.removeItem('openread_onboarding_completed');
+      render(<LibraryPageClient filter='all' title='All Books' />);
+      expect(screen.queryByTestId('onboarding-dialog')).toBeNull();
+      expect(screen.getByTestId('library-header')).toBeTruthy();
     });
   });
 

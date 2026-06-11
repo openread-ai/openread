@@ -45,7 +45,6 @@ export default function ActivityCaptureBridge() {
     const handleTarget = async (target: ActivityCaptureTarget) => {
       if (target.onboarding === 'skip') {
         localStorage.setItem('has_seen_welcome', 'true');
-        localStorage.setItem('openread_onboarding_completed', new Date().toISOString());
       }
 
       if (target.qa === 'settings-contract') {
@@ -263,7 +262,6 @@ async function installQaAuthFromSessionUrl(
   localStorage.setItem('refresh_token', session.refresh_token);
   localStorage.setItem('user', JSON.stringify(session.user));
   localStorage.setItem('has_seen_welcome', 'true');
-  localStorage.setItem('openread_onboarding_completed', new Date().toISOString());
 
   const storageKey = supabaseStorageKey();
   if (storageKey) localStorage.setItem(storageKey, JSON.stringify(session));

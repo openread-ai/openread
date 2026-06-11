@@ -10,11 +10,15 @@ export type { CatalogBook } from '@/types/catalog';
 
 const logger = createLogger('explore-books');
 
-interface UseExploreBooksParams {
+export interface UseExploreBooksParams {
   q?: string;
   subject?: string;
   language?: string;
   languages?: string[];
+  sources?: string[];
+  minPages?: number;
+  maxPages?: number;
+  enabled?: boolean;
   region?: string;
   sort?: 'popularity' | 'relevance' | 'title_asc' | 'title_desc' | 'added_desc';
   limit?: number;
@@ -106,9 +110,10 @@ export function useExploreBooks(params: UseExploreBooksParams = {}): UseExploreB
   const iaAbortRef = useRef<AbortController>(null);
 
   const limit = params.limit ?? 20;
+  const enabled = params.enabled ?? true;
 
   // Whether we should also search IA (only when actively searching by query, not browsing/filtering)
-  const shouldSearchIA = !!params.q;
+  const shouldSearchIA = enabled && !!params.q;
 
   // Stable serialized key for params (excluding page)
   const paramsKey = useMemo(
@@ -118,6 +123,10 @@ export function useExploreBooks(params: UseExploreBooksParams = {}): UseExploreB
         subject: params.subject,
         language: params.language,
         languages: params.languages,
+        sources: params.sources,
+        minPages: params.minPages,
+        maxPages: params.maxPages,
+        enabled,
         region: params.region,
         sort: params.sort,
         limit,
@@ -127,6 +136,10 @@ export function useExploreBooks(params: UseExploreBooksParams = {}): UseExploreB
       params.subject,
       params.language,
       params.languages,
+      params.sources,
+      params.minPages,
+      params.maxPages,
+      enabled,
       params.region,
       params.sort,
       limit,
@@ -140,6 +153,9 @@ export function useExploreBooks(params: UseExploreBooksParams = {}): UseExploreB
       if (params.subject) searchParams.set('subject', params.subject);
       if (params.language) searchParams.set('language', params.language);
       if (params.languages?.length) searchParams.set('languages', params.languages.join(','));
+      if (params.sources?.length) searchParams.set('sources', params.sources.join(','));
+      if (params.minPages !== undefined) searchParams.set('minPages', String(params.minPages));
+      if (params.maxPages !== undefined) searchParams.set('maxPages', String(params.maxPages));
       if (params.region) searchParams.set('region', params.region);
       if (params.sort) searchParams.set('sort', params.sort);
       searchParams.set('page', String(fetchPage));
@@ -290,6 +306,23 @@ export function useExploreBooks(params: UseExploreBooksParams = {}): UseExploreB
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
+    if (!enabled) {
+      abortRef.current?.abort();
+      iaAbortRef.current?.abort();
+      setBooks([]);
+      setTotal(0);
+      setPage(1);
+      setIsLoading(false);
+      setIsStale(false);
+      setError(null);
+      setIaBooks([]);
+      setIaTotal(0);
+      setIaPage(1);
+      setIaError(null);
+      setIaLoading(false);
+      return;
+    }
+
     // Clear IA state when params change
     if (!shouldSearchIA) {
       iaAbortRef.current?.abort();
@@ -302,33 +335,34 @@ export function useExploreBooks(params: UseExploreBooksParams = {}): UseExploreB
     // Fetch immediately — debouncing is handled by ExploreSearchBar (300ms)
     setPage(1);
     fetchBooks(1, false);
-  }, [fetchBooks, params.q, shouldSearchIA]);
+  }, [fetchBooks, params.q, shouldSearchIA, enabled]);
 
   const loadMore = useCallback(() => {
-    if (isLoading) return;
+    if (!enabled || isLoading) return;
     const nextPage = page + 1;
     if ((nextPage - 1) * limit >= total) return;
     setPage(nextPage);
     fetchBooks(nextPage, true);
-  }, [isLoading, page, limit, total, fetchBooks]);
+  }, [enabled, isLoading, page, limit, total, fetchBooks]);
 
   const iaLoadMore = useCallback(() => {
-    if (iaLoading || !params.q) return;
+    if (!enabled || iaLoading || !params.q) return;
     const nextPage = iaPage + 1;
     if ((nextPage - 1) * limit >= iaTotal) return;
     setIaPage(nextPage);
     fetchIA(params.q, nextPage, true, books);
-  }, [iaLoading, iaPage, limit, iaTotal, fetchIA, params.q, books]);
+  }, [enabled, iaLoading, iaPage, limit, iaTotal, fetchIA, params.q, books]);
 
   const refresh = useCallback(() => {
+    if (!enabled) return;
     // Clear cache for current params to force fresh fetch
     queryCache.delete(`${paramsKey}:1`);
     setPage(1);
     fetchBooks(1, false);
-  }, [fetchBooks, paramsKey]);
+  }, [enabled, fetchBooks, paramsKey]);
 
-  const hasMore = page * limit < total;
-  const iaHasMore = iaPage * limit < iaTotal;
+  const hasMore = enabled && page * limit < total;
+  const iaHasMore = enabled && iaPage * limit < iaTotal;
 
   return {
     books,

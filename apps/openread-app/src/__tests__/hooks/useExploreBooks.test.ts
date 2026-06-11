@@ -175,6 +175,14 @@ describe('useExploreBooks', () => {
   });
 
   describe('local-only fetch (no search query)', () => {
+    it('should not fetch catalog data when disabled', async () => {
+      renderHook(() => useExploreBooks({ enabled: false }));
+
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
     it('should fetch local books and NOT trigger IA search', async () => {
       setupFetchRouter({ local: { books: [makeLocalBook()], total: 1 } });
 
@@ -188,6 +196,29 @@ describe('useExploreBooks', () => {
       // All fetch calls should be to /catalog/books (not ia/search)
       const urls = mockFetch.mock.calls.map((c: unknown[]) => c[0] as string);
       expect(urls.every((u) => u.includes('/catalog/books'))).toBe(true);
+    });
+
+    it('should include source and page-range filters in catalog requests', async () => {
+      setupFetchRouter({ local: { books: [makeLocalBook()], total: 1 } });
+
+      renderHook(() =>
+        useExploreBooks({
+          sources: ['openstax', 'doab'],
+          minPages: 20,
+          maxPages: 150,
+          sort: 'popularity',
+        }),
+      );
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalled();
+      });
+
+      const url = new URL(mockFetch.mock.calls[0]?.[0] as string, 'https://api.openread.ai');
+      expect(url.searchParams.get('sources')).toBe('openstax,doab');
+      expect(url.searchParams.get('minPages')).toBe('20');
+      expect(url.searchParams.get('maxPages')).toBe('150');
+      expect(url.searchParams.get('sort')).toBe('popularity');
     });
 
     it('should append the next category page when loadMore is called', async () => {

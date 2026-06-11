@@ -106,6 +106,8 @@ const mockBooks: CatalogBook[] = [
   },
 ];
 
+const mockUseExploreBooks = vi.fn();
+
 let mockExploreBooksReturn = {
   books: [] as CatalogBook[],
   total: 0,
@@ -125,16 +127,19 @@ let mockExploreBooksReturn = {
 
 vi.mock('@/hooks/useExploreBooks', () => ({
   CATALOG_API_BASE: 'http://localhost:3001',
-  useExploreBooks: () => mockExploreBooksReturn,
+  useExploreBooks: (params: unknown) => {
+    mockUseExploreBooks(params);
+    return mockExploreBooksReturn;
+  },
 }));
 
-// ── Mock useExploreCollections ─────────────────────────
+// ── Mock useExploreRails ───────────────────────────────
 
-const mockCollectionBooks: CatalogBook[] = [
+const mockRailBooks: CatalogBook[] = [
   {
-    id: 'col-book-1',
-    title: 'Collection Book 1',
-    author_name: 'Col Author 1',
+    id: 'rail-book-1',
+    title: 'Rail Book 1',
+    author_name: 'Rail Author 1',
     language: 'en',
     format_type: 'epub',
     cover_image_key: null,
@@ -146,25 +151,25 @@ const mockCollectionBooks: CatalogBook[] = [
   },
 ];
 
-let mockCollectionsReturn = {
-  collections: [
+let mockRailsReturn = {
+  rails: [
     {
-      id: 'col-1',
-      slug: 'trending',
-      name: 'Trending',
-      description: 'Top trending books',
-      sort_order: 1,
-      book_count: 10,
-      books: mockCollectionBooks,
+      id: 'trending',
+      title: 'Trending',
+      description: 'Popular books from the full catalog.',
+      params: { sort: 'popularity' as const },
+      href: '/explore?rail=trending',
+      books: mockRailBooks,
+      total: 25,
     },
     {
-      id: 'col-2',
-      slug: 'staff-picks',
-      name: 'Staff Picks',
-      description: 'Curated by our team',
-      sort_order: 2,
-      book_count: 5,
-      books: mockCollectionBooks,
+      id: 'recently-added',
+      title: 'Recently Added',
+      description: 'Newest books available in OpenRead.',
+      params: { sort: 'added_desc' as const },
+      href: '/explore?rail=recently-added',
+      books: mockRailBooks,
+      total: 40,
     },
   ],
   isLoading: false,
@@ -172,8 +177,8 @@ let mockCollectionsReturn = {
   refresh: vi.fn(),
 };
 
-vi.mock('@/hooks/useExploreCollections', () => ({
-  useExploreCollections: () => mockCollectionsReturn,
+vi.mock('@/hooks/useExploreRails', () => ({
+  useExploreRails: () => mockRailsReturn,
 }));
 
 // ── Mock V2 components ─────────────────────────────────
@@ -274,7 +279,7 @@ vi.mock('@/components/explore/CollectionRow', () => ({
         <button
           type='button'
           data-testid={`collection-wishlist-toggle-${title.toLowerCase().replace(/\s+/g, '-')}`}
-          onClick={() => onWishlistToggle('col-book-1')}
+          onClick={() => onWishlistToggle('rail-book-1')}
         >
           Toggle Wishlist
         </button>
@@ -283,7 +288,7 @@ vi.mock('@/components/explore/CollectionRow', () => ({
         <button
           type='button'
           data-testid={`collection-card-tap-${title.toLowerCase().replace(/\s+/g, '-')}`}
-          onClick={() => onCardTap('col-book-1')}
+          onClick={() => onCardTap('rail-book-1')}
         >
           Tap Card
         </button>
@@ -467,6 +472,7 @@ beforeEach(() => {
   mockWishlistedIds.clear();
   mockSearchParams = new URLSearchParams();
   mockRouterPush.mockClear();
+  mockUseExploreBooks.mockClear();
   mockGetImportState = vi.fn(() => ({ status: 'idle', progress: 0 }));
   mockExploreBooksReturn = {
     books: [],
@@ -484,25 +490,25 @@ beforeEach(() => {
     iaLoadMore: vi.fn(),
     iaHasMore: false,
   };
-  mockCollectionsReturn = {
-    collections: [
+  mockRailsReturn = {
+    rails: [
       {
-        id: 'col-1',
-        slug: 'trending',
-        name: 'Trending',
-        description: 'Top trending books',
-        sort_order: 1,
-        book_count: 10,
-        books: mockCollectionBooks,
+        id: 'trending',
+        title: 'Trending',
+        description: 'Popular books from the full catalog.',
+        params: { sort: 'popularity' as const },
+        href: '/explore?rail=trending',
+        books: mockRailBooks,
+        total: 25,
       },
       {
-        id: 'col-2',
-        slug: 'staff-picks',
-        name: 'Staff Picks',
-        description: 'Curated by our team',
-        sort_order: 2,
-        book_count: 5,
-        books: mockCollectionBooks,
+        id: 'recently-added',
+        title: 'Recently Added',
+        description: 'Newest books available in OpenRead.',
+        params: { sort: 'added_desc' as const },
+        href: '/explore?rail=recently-added',
+        books: mockRailBooks,
+        total: 40,
       },
     ],
     isLoading: false,
@@ -519,31 +525,31 @@ afterEach(() => {
 
 describe('ExploreClient', () => {
   describe('Browse Mode (no search, no category)', () => {
-    it('should render collection rows when no search query or category', () => {
+    it('should render dynamic rail rows when no search query or category', () => {
       render(<ExploreClient />);
-      expect(screen.getByTestId('collection-rows')).toBeTruthy();
+      expect(screen.getByTestId('explore-rails')).toBeTruthy();
     });
 
-    it('should render all collections from useExploreCollections', () => {
+    it('should render all rails from useExploreRails', () => {
       render(<ExploreClient />);
       expect(screen.getByTestId('collection-row-trending')).toBeTruthy();
-      expect(screen.getByTestId('collection-row-staff-picks')).toBeTruthy();
+      expect(screen.getByTestId('collection-row-recently-added')).toBeTruthy();
     });
 
     it('should render collection titles', () => {
       render(<ExploreClient />);
       const titles = screen.getAllByTestId('collection-title');
       expect(titles.some((t) => t.textContent === 'Trending')).toBe(true);
-      expect(titles.some((t) => t.textContent === 'Staff Picks')).toBe(true);
+      expect(titles.some((t) => t.textContent === 'Recently Added')).toBe(true);
     });
 
-    it('should render See All links for collections', () => {
+    it('should render See All links for rails', () => {
       render(<ExploreClient />);
       const links = screen.getAllByText('See All');
       expect(links.length).toBe(2);
       const hrefs = links.map((l) => l.getAttribute('href'));
-      expect(hrefs).toContain('/explore/collection/trending');
-      expect(hrefs).toContain('/explore/collection/staff-picks');
+      expect(hrefs).toContain('/explore?rail=trending');
+      expect(hrefs).toContain('/explore?rail=recently-added');
     });
 
     it('should not render search results grid in browse mode', () => {
@@ -551,53 +557,88 @@ describe('ExploreClient', () => {
       expect(screen.queryByTestId('search-results-grid')).toBeNull();
     });
 
-    it('should render icons for known collection slugs', () => {
+    it('should render icons for known rail ids', () => {
       render(<ExploreClient />);
       const icons = screen.getAllByTestId('collection-icon');
       expect(icons.length).toBeGreaterThanOrEqual(1);
     });
 
-    it('should render books within collection rows', () => {
+    it('should render books within rail rows', () => {
       render(<ExploreClient />);
-      // Each collection row has mockCollectionBooks (1 book: col-book-1)
-      const collectionBooks = screen.getAllByTestId('collection-book-col-book-1');
-      expect(collectionBooks.length).toBe(2); // One per collection
+      // Each rail row has mockRailBooks (1 book: rail-book-1)
+      const railBooks = screen.getAllByTestId('collection-book-rail-book-1');
+      expect(railBooks.length).toBe(2); // One per rail
+    });
+  });
+
+  describe('Rail Mode', () => {
+    it('should open a dynamic rail as a full paginated grid', () => {
+      mockSearchParams = new URLSearchParams('rail=open-textbooks');
+      mockExploreBooksReturn = {
+        ...mockExploreBooksReturn,
+        books: mockBooks,
+        total: 42,
+      };
+
+      render(<ExploreClient />);
+
+      expect(screen.getByTestId('search-results-grid')).toBeTruthy();
+      expect(screen.queryByTestId('explore-rails')).toBeNull();
+      expect(screen.getByText('Open Textbooks')).toBeTruthy();
+      expect(
+        screen.getByText('Textbooks and academic books from open catalog sources.'),
+      ).toBeTruthy();
+      expect(mockUseExploreBooks).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sources: ['openstax', 'oapen', 'doab'],
+          sort: 'popularity',
+        }),
+      );
+    });
+
+    it('should return from a rail to the Explore rail surface', () => {
+      mockSearchParams = new URLSearchParams('rail=trending');
+      render(<ExploreClient />);
+
+      fireEvent.click(screen.getByText('Back to Explore'));
+
+      expect(mockRouterPush).toHaveBeenCalledWith('/explore', { scroll: false });
     });
   });
 
   describe('Browse Mode - Loading State', () => {
-    it('should render skeleton collection rows when loading', () => {
-      mockCollectionsReturn = {
-        collections: [],
+    it('should render skeleton rail rows when loading', () => {
+      mockRailsReturn = {
+        rails: [],
         isLoading: true,
         error: null,
         refresh: vi.fn(),
       };
       render(<ExploreClient />);
-      // Should render 3 skeleton rows (Trending, Staff Picks, Recently Added)
+      // Should render 3 skeleton rows (Trending, Recently Added, Classic Literature)
       expect(screen.getByText('Trending')).toBeTruthy();
-      expect(screen.getByText('Staff Picks')).toBeTruthy();
       expect(screen.getByText('Recently Added')).toBeTruthy();
+      expect(screen.getByText('Classic Literature')).toBeTruthy();
     });
   });
 
   describe('Browse Mode - Error State', () => {
-    it('should display error message when collections fetch fails', () => {
-      mockCollectionsReturn = {
-        collections: [],
+    it('should display error message when rail fetch fails', () => {
+      mockRailsReturn = {
+        rails: [],
         isLoading: false,
-        error: 'Failed to load collections',
+        error: 'Failed to load rails',
         refresh: vi.fn(),
       };
       render(<ExploreClient />);
-      expect(screen.getByText('Failed to load collections')).toBeTruthy();
+      expect(screen.getByText('Failed to load rails')).toBeTruthy();
     });
   });
 
   describe('Browse Mode - Empty State', () => {
-    it('should show empty state when no collections and not loading', () => {
-      mockCollectionsReturn = {
-        collections: [],
+    it('should show empty state when no rails and not loading', () => {
+      mockRailsReturn = {
+        rails: [],
         isLoading: false,
         error: null,
         refresh: vi.fn(),
@@ -617,7 +658,7 @@ describe('ExploreClient', () => {
       };
       render(<ExploreClient />);
       expect(screen.getByTestId('search-results-grid')).toBeTruthy();
-      expect(screen.queryByTestId('collection-rows')).toBeNull();
+      expect(screen.queryByTestId('explore-rails')).toBeNull();
     });
 
     it('should render ExploreBookCard for each search result', () => {
@@ -727,7 +768,7 @@ describe('ExploreClient', () => {
       };
       render(<ExploreClient />);
       expect(screen.getByTestId('search-results-grid')).toBeTruthy();
-      expect(screen.queryByTestId('collection-rows')).toBeNull();
+      expect(screen.queryByTestId('explore-rails')).toBeNull();
     });
 
     it('should show empty category message when no books in category', () => {
@@ -779,7 +820,7 @@ describe('ExploreClient', () => {
     it('should switch from browse to search when category is selected via pills', () => {
       // Start in browse mode
       render(<ExploreClient />);
-      expect(screen.getByTestId('collection-rows')).toBeTruthy();
+      expect(screen.getByTestId('explore-rails')).toBeTruthy();
 
       // Simulate selecting a category
       fireEvent.click(screen.getByTestId('select-science-category'));
@@ -1131,7 +1172,7 @@ describe('ExploreClient', () => {
     it('should call toggleWishlist when CollectionRow wishlist toggle is clicked', () => {
       render(<ExploreClient />);
       fireEvent.click(screen.getByTestId('collection-wishlist-toggle-trending'));
-      expect(mockToggleWishlist).toHaveBeenCalledWith('col-book-1');
+      expect(mockToggleWishlist).toHaveBeenCalledWith('rail-book-1');
     });
 
     it('should redirect to /auth when not authenticated and wishlist toggled', () => {
@@ -1243,11 +1284,11 @@ describe('ExploreClient', () => {
       expect(screen.getByTestId('sheet-book-id').textContent).toBe('search-1');
     });
 
-    it('should render BookDetailSheet when URL has ?book= param matching a collection book', () => {
-      mockSearchParams = new URLSearchParams('book=col-book-1');
+    it('should render BookDetailSheet when URL has ?book= param matching a rail book', () => {
+      mockSearchParams = new URLSearchParams('book=rail-book-1');
       render(<ExploreClient />);
       expect(screen.getByTestId('book-detail-sheet')).toBeTruthy();
-      expect(screen.getByTestId('sheet-book-title').textContent).toBe('Collection Book 1');
+      expect(screen.getByTestId('sheet-book-title').textContent).toBe('Rail Book 1');
     });
 
     it('should not render BookDetailSheet when ?book= param does not match any book', () => {
@@ -1273,7 +1314,7 @@ describe('ExploreClient', () => {
     it('should call router.push with ?book= param when card is tapped in collection row', () => {
       render(<ExploreClient />);
       fireEvent.click(screen.getByTestId('collection-card-tap-trending'));
-      expect(mockRouterPush).toHaveBeenCalledWith(expect.stringContaining('book=col-book-1'), {
+      expect(mockRouterPush).toHaveBeenCalledWith(expect.stringContaining('book=rail-book-1'), {
         scroll: false,
       });
     });

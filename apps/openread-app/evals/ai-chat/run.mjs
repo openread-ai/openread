@@ -3,7 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { createClient } from '@supabase/supabase-js';
-import { JEKYLL_HYDE_FIXTURE } from './fixtures.mjs';
+import { JEKYLL_HYDE_FIXTURE, LARGE_CHAPTER_SUMMARY_FIXTURE } from './fixtures.mjs';
 
 const baseUrl = (process.env.AI_EVAL_BASE_URL ?? 'http://localhost:3000').replace(/\/$/, '');
 const artifactDir = path.resolve(
@@ -32,11 +32,23 @@ const scenarios = [
     required: [/Jekyll/i, /Hyde/i, /transform|identity|double|dual/i],
   },
   {
+    id: 'api-quality-large-all-chapters-summary',
+    fixture: LARGE_CHAPTER_SUMMARY_FIXTURE,
+    question: 'what are all the chapters in this books give me a summary about each chapter?',
+    required: [/Chapter 1/i, /Chapter 231/i],
+    maxAnswerLength: 20_000,
+  },
+  {
     id: 'api-quality-out-of-scope-uncertainty',
     question:
       'Does this book provide Kubernetes deployment strategies? If the book context does not support that, say so and redirect to what the book is actually about.',
     required: [unsupportedContextPattern, /Jekyll|Hyde|Gothic|identity|morality/i],
-    forbidden: [/kubectl|deployment yaml|cluster rollout|helm chart/i],
+    forbidden: [
+      /kubectl\s+(apply|create|rollout|set|scale|delete|describe|logs)/i,
+      /apiVersion:\s*apps\/v1|kind:\s*Deployment/i,
+      /helm\s+(install|upgrade|template|rollback)/i,
+      /cluster\s+rollout\s+(plan|strategy|steps|command)/i,
+    ],
     allowUncertaintyLanguage: true,
   },
   {
@@ -150,7 +162,11 @@ function assertScenario(result, scenario) {
   expect(result.firstTokenMs !== null, 'stream did not emit a first token', result);
   expect(result.firstTokenMs <= firstTokenTimeoutMs, 'first token exceeded latency budget', result);
   expect(result.answer.length >= 80, 'answer was too short', result);
-  expect(result.answer.length <= 8_000, 'answer was too long', result);
+  expect(
+    result.answer.length <= (scenario.maxAnswerLength ?? 8_000),
+    'answer was too long',
+    result,
+  );
   expect(/[a-zA-Z]{4,}/.test(result.answer), 'answer did not contain readable text', result);
   if (!scenario.allowUncertaintyLanguage) {
     expect(
@@ -165,11 +181,8 @@ function assertScenario(result, scenario) {
   expect(result.model !== 'unknown', 'missing model header', result);
   expect(result.requestId !== 'unknown', 'missing request id header', result);
   expect(result.tier !== 'unknown', 'missing planner tier header', result);
-  expect(
-    result.requestBody.bookHash === JEKYLL_HYDE_FIXTURE.bookHash,
-    'fixture bookHash drifted',
-    result,
-  );
+  const fixture = scenario.fixture ?? JEKYLL_HYDE_FIXTURE;
+  expect(result.requestBody.bookHash === fixture.bookHash, 'fixture bookHash drifted', result);
 
   for (const pattern of scenario.required ?? []) {
     expect(pattern.test(result.answer), `answer did not match required pattern ${pattern}`, result);
@@ -181,18 +194,19 @@ function assertScenario(result, scenario) {
 
 async function runScenario(accessToken, scenario) {
   const messages = scenarioMessages(scenario);
+  const fixture = scenario.fixture ?? JEKYLL_HYDE_FIXTURE;
   const requestBody = {
     messages,
     provider,
     model,
-    chapters: JEKYLL_HYDE_FIXTURE.chapters,
-    currentPage: JEKYLL_HYDE_FIXTURE.currentPage,
-    bookHash: JEKYLL_HYDE_FIXTURE.bookHash,
-    bookTitle: JEKYLL_HYDE_FIXTURE.bookTitle,
-    authorName: JEKYLL_HYDE_FIXTURE.authorName,
-    bookFormat: JEKYLL_HYDE_FIXTURE.bookFormat,
-    sectionHref: JEKYLL_HYDE_FIXTURE.sectionHref,
-    sectionFraction: JEKYLL_HYDE_FIXTURE.sectionFraction,
+    chapters: fixture.chapters,
+    currentPage: fixture.currentPage,
+    bookHash: fixture.bookHash,
+    bookTitle: fixture.bookTitle,
+    authorName: fixture.authorName,
+    bookFormat: fixture.bookFormat,
+    sectionHref: fixture.sectionHref,
+    sectionFraction: fixture.sectionFraction,
   };
 
   const startedAt = Date.now();

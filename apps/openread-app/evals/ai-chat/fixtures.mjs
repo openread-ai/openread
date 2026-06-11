@@ -27,3 +27,19 @@ export const JEKYLL_HYDE_FIXTURE = {
     },
   ],
 };
+
+export const LARGE_CHAPTER_SUMMARY_FIXTURE = {
+  bookHash: '0123456789abcdef0123456789abcdef',
+  bookTitle: 'Synthetic Large Chapter Book',
+  authorName: 'OpenRead Eval Fixture',
+  bookFormat: 'epub',
+  currentPage: 1200,
+  sectionHref: 'large-chapter-1',
+  sectionFraction: 0.1,
+  chapters: Array.from({ length: 231 }, (_, index) => ({
+    id: `large-chapter-${index + 1}`,
+    index,
+    title: `Chapter ${index + 1}`,
+    text: `Chapter ${index + 1} introduces topic ${index + 1}, develops a specific idea, and gives the reader concrete context for that part of the book. `.repeat(22),
+  })),
+};

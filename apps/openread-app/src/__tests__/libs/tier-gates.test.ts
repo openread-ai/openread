@@ -31,7 +31,7 @@ describe('tier-gates', () => {
     it('should return correct free tier gates', () => {
       const gates = getTierGates('free', TEST_TIER_CONFIG);
       expect(gates.can_tts).toBe(false);
-      expect(gates.can_sync).toBe(false);
+      expect(gates.can_sync).toBe(true);
       expect(gates.can_translate).toBe(false);
       expect(gates.can_byok).toBe(false);
       expect(gates.can_boost).toBe(false);
@@ -90,11 +90,10 @@ describe('tier-gates', () => {
     });
 
     describe('sync gate', () => {
-      it('free: not allowed, requires reader', () => {
+      it('free: allowed', () => {
         const result = checkFeatureGate('sync', 'free', TEST_TIER_CONFIG);
-        expect(result.allowed).toBe(false);
-        expect(result.requiredTier).toBe('reader');
-        expect(result.message).toContain('Cloud Sync');
+        expect(result.allowed).toBe(true);
+        expect(result.message).toBe('');
       });
 
       it('reader: allowed', () => {
@@ -191,7 +190,7 @@ describe('tier-gates', () => {
       // Expected: feature -> [free, reader, pro]
       const expected: Record<GateMatrixFeature, [boolean, boolean, boolean]> = {
         tts: [false, false, false],
-        sync: [false, true, true],
+        sync: [true, true, true],
         translate: [false, false, false],
         byok: [false, true, true],
         boost: [false, false, false],
@@ -219,10 +218,11 @@ describe('tier-gates', () => {
         expect(result.ctaText).toBe('');
       });
 
-      it('free user sync gate shows Reader price', () => {
+      it('free user sync gate is allowed without an upgrade CTA', () => {
         const result = checkFeatureGate('sync', 'free', TEST_TIER_CONFIG);
-        expect(result.priceDisplay).toBe('$9.99/mo');
-        expect(result.ctaText).toContain('Reader');
+        expect(result.allowed).toBe(true);
+        expect(result.priceDisplay).toBe('');
+        expect(result.ctaText).toBe('');
       });
 
       it('free user translate gate is disabled without an upgrade CTA', () => {

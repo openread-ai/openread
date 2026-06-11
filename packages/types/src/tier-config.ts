@@ -53,11 +53,18 @@ export interface CostRates {
   payment_processing_rate: number;
 }
 
+export interface PlanCardDisplayGroup {
+  name: string;
+  features: string[];
+}
+
 export interface TierConfig {
   tiers: Record<UserPlan, TierDefinition>;
   regional_pricing: Record<string, RegionalPricingEntry>;
   storage_addons: StorageAddon[];
   boosts: BoostOption[];
+  featureAliases: Record<string, string>;
+  planCardDisplayPolicy: Record<UserPlan, PlanCardDisplayGroup[]>;
   ai_budget_ceiling: number;
   max_agent_steps: number;
   cost_rates: CostRates;
@@ -124,7 +131,7 @@ export const GEN3_V3_FALLBACK_TIER_CONFIG: TierConfig = {
       storage_gb: 1,
       library_limit: 10,
       can_tts: false,
-      can_sync: false,
+      can_sync: true,
       can_translate: false,
       can_byok: false,
       can_boost: false,
@@ -182,6 +189,35 @@ export const GEN3_V3_FALLBACK_TIER_CONFIG: TierConfig = {
   },
   storage_addons: [],
   boosts: [],
+  featureAliases: {
+    essential_ai: 'Essential AI',
+    standard_ai: 'Standard AI',
+    premium_ai: 'Premium AI',
+    basic_ai_models: 'Basic AI models',
+    standard_ai_models: 'Standard AI models',
+    premium_ai_models: 'Premium AI models',
+    starter_library: 'Starter library',
+    unlimited_library: 'Unlimited library',
+    sync_across_devices: 'Sync across devices',
+    early_access: 'Early access',
+    cloud_storage: '{{storage_gb}} GB cloud storage',
+  },
+  planCardDisplayPolicy: {
+    free: [
+      { name: 'AI Features', features: ['essential_ai', 'basic_ai_models'] },
+      { name: 'Reading', features: ['starter_library', 'sync_across_devices'] },
+    ],
+    reader: [
+      { name: 'AI Features', features: ['standard_ai', 'standard_ai_models'] },
+      { name: 'Reading', features: ['unlimited_library', 'sync_across_devices'] },
+      { name: 'Storage', features: ['cloud_storage'] },
+    ],
+    pro: [
+      { name: 'AI Features', features: ['premium_ai', 'premium_ai_models'] },
+      { name: 'Reading', features: ['unlimited_library', 'sync_across_devices', 'early_access'] },
+      { name: 'Storage', features: ['cloud_storage'] },
+    ],
+  },
   ai_budget_ceiling: 12000,
   max_agent_steps: 12,
   cost_rates: {

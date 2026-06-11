@@ -17,21 +17,17 @@ vi.mock('@/utils/supabase', () => ({
   createSupabaseAdminClient: vi.fn(),
 }));
 
-vi.mock('@/services/launchFeatures', () => ({
-  LAUNCH_BYOK_ENABLED: false,
-  LAUNCH_MCP_ENABLED: false,
-  LAUNCH_TTS_ENABLED: false,
-  LAUNCH_TRANSLATION_ENABLED: false,
-}));
-
 const fallback = getFallbackConfig();
-const tiers = fallback.tiers;
+
+function labelsFor(config: PlanCardConfig): string[] {
+  return config.featureGroups.flatMap((group) => group.features.map((feature) => feature.label));
+}
 
 describe('buildPlanCardConfigs', () => {
   let configs: PlanCardConfig[];
 
   beforeAll(() => {
-    configs = buildPlanCardConfigs(tiers);
+    configs = buildPlanCardConfigs(fallback);
   });
 
   it('should return exactly 3 configs in order: free, reader, pro', () => {
@@ -74,99 +70,40 @@ describe('buildPlanCardConfigs', () => {
     expect(configs[2]!.ctaLabel).toBe('Go Pro');
   });
 
-  // Feature groups structure
-  describe('Feature Groups', () => {
-    it('should have AI Features group for all plans', () => {
-      for (const config of configs) {
-        const aiGroup = config.featureGroups.find((g) => g.name === 'AI Features');
-        expect(aiGroup).toBeTruthy();
-        expect(aiGroup!.features.length).toBeGreaterThan(0);
-      }
+  describe('canonical card display policy', () => {
+    it('should render public aliases for Free without exposing storage', () => {
+      expect(labelsFor(configs[0]!)).toEqual([
+        'Essential AI',
+        'Basic AI models',
+        'Starter library',
+        'Sync across devices',
+      ]);
+      expect(labelsFor(configs[0]!).some((label) => label.includes('storage'))).toBe(false);
     });
 
-    it('should have Reading group for all plans', () => {
-      for (const config of configs) {
-        const readingGroup = config.featureGroups.find((g) => g.name === 'Reading');
-        expect(readingGroup).toBeTruthy();
-        expect(readingGroup!.features.length).toBeGreaterThan(0);
-      }
+    it('should render public aliases for Reader from the canonical policy', () => {
+      expect(labelsFor(configs[1]!)).toEqual([
+        'Standard AI',
+        'Standard AI models',
+        'Unlimited library',
+        'Sync across devices',
+        '10 GB cloud storage',
+      ]);
     });
 
-    it('should have Storage group for all plans', () => {
-      for (const config of configs) {
-        const storageGroup = config.featureGroups.find((g) => g.name === 'Storage');
-        expect(storageGroup).toBeTruthy();
-      }
+    it('should render public aliases for Pro from the canonical policy', () => {
+      expect(labelsFor(configs[2]!)).toEqual([
+        'Premium AI',
+        'Premium AI models',
+        'Unlimited library',
+        'Sync across devices',
+        'Early access',
+        '50 GB cloud storage',
+      ]);
     });
 
-    it('should hide MCP group while MCP is held back from launch', () => {
-      for (const config of configs) {
-        expect(config.featureGroups.find((g) => g.name === 'MCP')).toBeUndefined();
-      }
-    });
-
-    // AI Features details
-    it('should show limited usage for free tier', () => {
-      const freeAI = configs[0]!.featureGroups.find((g) => g.name === 'AI Features')!;
-      expect(freeAI.features.some((f) => f.label === 'Limited AI usage')).toBe(true);
-    });
-
-    it('should show generous usage for reader tier', () => {
-      const readerAI = configs[1]!.featureGroups.find((g) => g.name === 'AI Features')!;
-      expect(readerAI.features.some((f) => f.label === 'Generous AI usage')).toBe(true);
-    });
-
-    it('should show extended usage for pro tier', () => {
-      const proAI = configs[2]!.featureGroups.find((g) => g.name === 'AI Features')!;
-      expect(proAI.features.some((f) => f.label === 'Extended AI usage')).toBe(true);
-    });
-
-    it('should show Premium AI models for pro tier', () => {
-      const proAI = configs[2]!.featureGroups.find((g) => g.name === 'AI Features')!;
-      expect(proAI.features.some((f) => f.label === 'Premium AI models')).toBe(true);
-    });
-
-    it('should show Basic AI models for free and Standard for reader', () => {
-      const freeAI = configs[0]!.featureGroups.find((g) => g.name === 'AI Features')!;
-      const readerAI = configs[1]!.featureGroups.find((g) => g.name === 'AI Features')!;
-      expect(freeAI.features.some((f) => f.label === 'Basic AI models')).toBe(true);
-      expect(readerAI.features.some((f) => f.label === 'Standard AI models')).toBe(true);
-    });
-
-    // Reading details
-    it('should show library limit for free tier', () => {
-      const freeReading = configs[0]!.featureGroups.find((g) => g.name === 'Reading')!;
-      expect(freeReading.features.some((f) => f.label === '10 book library')).toBe(true);
-    });
-
-    it('should show unlimited library for paid tiers', () => {
-      const readerReading = configs[1]!.featureGroups.find((g) => g.name === 'Reading')!;
-      const proReading = configs[2]!.featureGroups.find((g) => g.name === 'Reading')!;
-      expect(readerReading.features.some((f) => f.label === 'Unlimited library')).toBe(true);
-      expect(proReading.features.some((f) => f.label === 'Unlimited library')).toBe(true);
-    });
-
-    it('should hide TTS while it is held back from launch', () => {
-      const freeReading = configs[0]!.featureGroups.find((g) => g.name === 'Reading')!;
-      const readerReading = configs[1]!.featureGroups.find((g) => g.name === 'Reading')!;
-      const proReading = configs[2]!.featureGroups.find((g) => g.name === 'Reading')!;
-      expect(freeReading.features.some((f) => f.label === 'AI Read Aloud (TTS)')).toBe(false);
-      expect(readerReading.features.some((f) => f.label === 'AI Read Aloud (TTS)')).toBe(false);
-      expect(proReading.features.some((f) => f.label === 'AI Read Aloud (TTS)')).toBe(false);
-    });
-
-    // Storage details
-    it('should show base storage for free tier', () => {
-      const freeStorage = configs[0]!.featureGroups.find((g) => g.name === 'Storage')!;
-      expect(freeStorage.features[0]!.label).toBe('Up to 1 GB storage');
-      expect(freeStorage.features[0]!.included).toBe(true);
-    });
-
-    it('should show base storage for paid tiers', () => {
-      const readerStorage = configs[1]!.featureGroups.find((g) => g.name === 'Storage')!;
-      const proStorage = configs[2]!.featureGroups.find((g) => g.name === 'Storage')!;
-      expect(readerStorage.features[0]!.label).toBe('Up to 10 GB storage');
-      expect(proStorage.features[0]!.label).toBe('Up to 50 GB storage');
+    it('should make sync a real Free entitlement in the fallback contract', () => {
+      expect(fallback.tiers.free.can_sync).toBe(true);
     });
   });
 });

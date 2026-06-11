@@ -78,7 +78,7 @@ describe('useFeatureFlags', () => {
       expect(result.current.plan).toBe('free');
       // Tier-gate driven flags
       expect(result.current.flags.canTTS).toBe(false);
-      expect(result.current.flags.cloudSync).toBe(false);
+      expect(result.current.flags.cloudSync).toBe(true);
       expect(result.current.flags.canTranslate).toBe(false);
       expect(result.current.flags.canBYOK).toBe(false);
       expect(result.current.flags.canBoost).toBe(false);
@@ -120,15 +120,14 @@ describe('useFeatureFlags', () => {
       expect(result.current.canBYOK()).toBe(false);
     });
 
-    it('should return false for canSync (tier-gated, not just auth)', async () => {
+    it('should return true for canSync', async () => {
       const { result } = renderHook(() => useFeatureFlags());
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
       });
 
-      // Free tier: can_sync is false, so canSync() is false even if authenticated
-      expect(result.current.canSync()).toBe(false);
+      expect(result.current.canSync()).toBe(true);
     });
 
     it('should return true for canAnalyze', async () => {
@@ -311,7 +310,7 @@ describe('useFeatureFlags', () => {
       expect(result.current.flags.aiAnalysis).toBe(true);
       expect(result.current.flags.knowledgeGraph).toBe(false);
       expect(result.current.flags.canTTS).toBe(false);
-      expect(result.current.flags.cloudSync).toBe(false);
+      expect(result.current.flags.cloudSync).toBe(true);
     });
   });
 
@@ -403,7 +402,7 @@ describe('useCanSync', () => {
     expect(result.current.canSync).toBe(false);
   });
 
-  it('should return false for free authenticated user (tier-gated)', async () => {
+  it('should return true for free authenticated user', async () => {
     mockUser = { id: 'user-1' };
     mockUserProfilePlan = 'free';
 
@@ -413,8 +412,7 @@ describe('useCanSync', () => {
       expect(result.current.isLoading).toBe(false);
     });
 
-    // Free tier: can_sync is false
-    expect(result.current.canSync).toBe(false);
+    expect(result.current.canSync).toBe(true);
   });
 
   it('should return true for reader user', async () => {

@@ -77,16 +77,16 @@ describe('useFeatureGate', () => {
       expect(result.current.plan).toBe('free');
     });
 
-    it('should gate sync for free users', async () => {
+    it('should allow sync for free users', async () => {
       const { result } = renderHook(() => useFeatureGate('sync'));
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
       });
 
-      expect(result.current.allowed).toBe(false);
-      expect(result.current.requiredTier).toBe('reader');
-      expect(result.current.message).toContain('Cloud Sync');
+      expect(result.current.allowed).toBe(true);
+      expect(result.current.requiredTier).toBe('free');
+      expect(result.current.message).toBe('');
     });
 
     it('should disable translate for free users because translation is retired for launch', async () => {
@@ -302,15 +302,16 @@ describe('useFeatureGate', () => {
       expect(result.current.ctaText).toBe('');
     });
 
-    it('should include Reader price for sync gate', async () => {
+    it('should not include price or CTA for allowed sync gate', async () => {
       const { result } = renderHook(() => useFeatureGate('sync'));
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
       });
 
-      expect(result.current.priceDisplay).toBe('$9.99/mo');
-      expect(result.current.ctaText).toContain('Reader');
+      expect(result.current.allowed).toBe(true);
+      expect(result.current.priceDisplay).toBe('');
+      expect(result.current.ctaText).toBe('');
     });
 
     it('should include Reader price for BYOK gate', async () => {

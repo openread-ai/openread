@@ -11,12 +11,12 @@ import { getFallbackConfig } from '@/lib/tier-defaults';
 const TEST_TIER_CONFIG = getFallbackConfig();
 
 describe('plan-upgrades', () => {
-  it('routes active launch gates to the first paid tier that unlocks them', () => {
+  it('keeps Free sync allowed and routes paid-only gates to the first paid tier that unlocks them', () => {
     const sync = resolveFeatureAccess('sync', 'free', TEST_TIER_CONFIG);
-    expect(sync.allowed).toBe(false);
-    expect(sync.requiredTier).toBe('reader');
-    expect(sync.upgradeIntent).toEqual({ plan: 'reader', interval: 'month' });
-    expect(sync.ctaText).toContain('Reader');
+    expect(sync.allowed).toBe(true);
+    expect(sync.requiredTier).toBe('free');
+    expect(sync.upgradeIntent).toBeNull();
+    expect(sync.ctaText).toBe('');
 
     const earlyAccess = resolveFeatureAccess('early_access', 'reader', TEST_TIER_CONFIG);
     expect(earlyAccess.allowed).toBe(false);

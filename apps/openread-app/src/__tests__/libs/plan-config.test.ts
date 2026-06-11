@@ -18,6 +18,7 @@ vi.mock('@/utils/supabase', () => ({
 }));
 
 vi.mock('@/services/launchFeatures', () => ({
+  LAUNCH_BYOK_ENABLED: false,
   LAUNCH_MCP_ENABLED: false,
   LAUNCH_TTS_ENABLED: false,
   LAUNCH_TRANSLATION_ENABLED: false,

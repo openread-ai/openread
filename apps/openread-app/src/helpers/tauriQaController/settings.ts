@@ -58,10 +58,10 @@ const SETTINGS_SCENARIOS: Record<string, TauriQaScenario> = {
   'SET-030': { expectedText: PREFERENCES_AI_TEXT, actions: assertAiModeControls },
   'SET-031': { expectedText: PREFERENCES_AI_TEXT, actions: assertAiModeControls },
   'SET-032': { expectedText: PREFERENCES_AI_TEXT, actions: assertAiModeControls },
-  'SET-033': { expectedText: ['Bring Your Own Key'] },
-  'SET-034': { expectedText: ['Bring Your Own Key', 'Provider'] },
-  'SET-035': { expectedText: ['Bring Your Own Key'] },
-  'SET-036': { expectedText: ['Bring Your Own Key'] },
+  'SET-033': { expectedText: PREFERENCES_AI_TEXT, actions: assertByokLaunchHoldback },
+  'SET-034': { expectedText: PREFERENCES_AI_TEXT, actions: assertByokLaunchHoldback },
+  'SET-035': { expectedText: PREFERENCES_AI_TEXT, actions: assertByokLaunchHoldback },
+  'SET-036': { expectedText: PREFERENCES_AI_TEXT, actions: assertByokLaunchHoldback },
   'SET-037': { expectedText: ['Notifications'] },
   'SET-038': { expectedText: ['Privacy', 'Usage Analytics'] },
   'SET-039': { expectedText: ['Privacy', 'Download My Data'] },
@@ -115,6 +115,34 @@ function expectationForRoute(route: string): TauriQaScenario {
   if (route.startsWith('/settings/billing')) return { expectedText: BILLING_TEXT };
   if (route.startsWith('/reader')) return { expectedText: [], actions: assertReaderSurface };
   return { expectedText: ACCOUNT_TEXT };
+}
+
+async function assertByokLaunchHoldback(
+  target: ActivityCaptureTarget,
+  result: MutableTauriQaResult,
+) {
+  await waitFor(() => includesAll(bodyText(), PREFERENCES_AI_TEXT), DEFAULT_QA_TIMEOUT_MS);
+
+  const byokVisible = bodyText().includes('Bring Your Own Key');
+  addAssertion(result, 'BYOK settings section is hidden for launch holdback', !byokVisible);
+  if (byokVisible) throw new Error('BYOK settings section is still rendered.');
+
+  const probe = await probeByokDisabledEndpoint('/api/settings/api-keys');
+  addAssertion(
+    result,
+    'direct BYOK provider-key endpoint returned 503 launch-disabled response',
+    probe.ok,
+    probe,
+  );
+  if (!probe.ok) {
+    throw new Error(`BYOK provider-key endpoint was not launch-disabled: ${JSON.stringify(probe)}`);
+  }
+
+  addByokQaEvidenceNote(`${target.qaScenarioId ?? 'SET'} BYOK launch holdback`, [
+    'Bring Your Own Key settings UI is hidden for launch.',
+    'Provider selection and raw key inputs are unavailable.',
+    'Direct GET /api/settings/api-keys => 503 BYOK is not available for this release.',
+  ]);
 }
 
 async function assertStorageCheckoutDisabled(
@@ -177,6 +205,16 @@ async function assertStorageCancelDisabled(
   ]);
 }
 
+async function probeByokDisabledEndpoint(path: string) {
+  const response = await fetch(path);
+  const payload = (await response.json().catch(() => null)) as { error?: unknown } | null;
+  return {
+    ok: response.status === 503 && payload?.error === 'BYOK is not available for this release.',
+    status: response.status,
+    error: payload?.error ?? null,
+  };
+}
+
 async function probeDisabledStorageEndpoint(path: string, body: Record<string, unknown>) {
   const response = await fetch(path, {
     method: 'POST',
@@ -191,11 +229,29 @@ async function probeDisabledStorageEndpoint(path: string, body: Record<string, u
   };
 }
 
+function addByokQaEvidenceNote(title: string, details: string[]) {
+  addFixedQaEvidenceNote(
+    'openread-tauri-byok-evidence-note',
+    'BYOK launch holdback QA evidence',
+    title,
+    details,
+  );
+}
+
 function addStorageQaEvidenceNote(title: string, details: string[]) {
-  document.getElementById('openread-tauri-storage-evidence-note')?.remove();
+  addFixedQaEvidenceNote(
+    'openread-tauri-storage-evidence-note',
+    'Storage endpoint QA evidence',
+    title,
+    details,
+  );
+}
+
+function addFixedQaEvidenceNote(id: string, ariaLabel: string, title: string, details: string[]) {
+  document.getElementById(id)?.remove();
   const note = document.createElement('aside');
-  note.id = 'openread-tauri-storage-evidence-note';
-  note.setAttribute('aria-label', 'Storage endpoint QA evidence');
+  note.id = id;
+  note.setAttribute('aria-label', ariaLabel);
   note.style.position = 'fixed';
   note.style.left = '8px';
   note.style.right = '8px';

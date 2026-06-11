@@ -25,6 +25,7 @@ import type { AISettings, AIMessage } from '@/services/ai/types';
 import { useBookChapters } from '@/app/reader/hooks/useBookChapters';
 import { Thread } from '@/components/assistant/Thread';
 import { getBookIdFromKey } from '@/utils/readerBookKey';
+import { LAUNCH_BYOK_ENABLED } from '@/services/launchFeatures';
 
 // Helper function to convert AIMessage array to ExportedMessageRepository format
 // Each message needs to be wrapped with { message, parentId } structure
@@ -253,8 +254,8 @@ const AIAssistantChat = ({
   }, [addMessage, createConversation, bookHash]);
 
   // BYOK: determine if user has a BYOK provider selected
-  const byokProvider = aiSettings.byokProvider;
-  const byokModel = aiSettings.byokModel;
+  const byokProvider = LAUNCH_BYOK_ENABLED ? aiSettings.byokProvider : undefined;
+  const byokModel = LAUNCH_BYOK_ENABLED ? aiSettings.byokModel : undefined;
 
   const handleSelectModel = useCallback((modelId: string) => {
     // Update the settings ref immediately so the adapter uses the new model

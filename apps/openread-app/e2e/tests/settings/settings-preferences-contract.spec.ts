@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Page, TestInfo } from '@playwright/test';
 import { test, expect } from '../../fixtures';
 import { TEST_USER } from '../../fixtures/test-users';
 import {
@@ -44,13 +44,6 @@ async function enableAiIfNeeded(page: Page) {
   if (!(await toggle.isChecked())) await toggle.check({ force: true });
   await expect(toggle).toBeChecked();
 }
-
-type ProviderKeyFixture = {
-  provider: string;
-  keyPrefix: string;
-  isValid: boolean;
-  lastTestedAt: string | null;
-};
 
 function fakePlanToken(plan: 'free' | 'reader' | 'pro') {
   const payload = {
@@ -110,64 +103,24 @@ async function forcePlan(page: Page, plan: 'free' | 'reader' | 'pro') {
   );
 }
 
-async function mockProviderKeys(
-  page: Page,
-  options: {
-    initialKeys?: ProviderKeyFixture[];
-    testResult?: { isValid: boolean; error?: string };
-  } = {},
-) {
-  let keys = [...(options.initialKeys ?? [])];
-  const testResult = options.testResult ?? { isValid: true };
+async function expectByokLaunchHoldback(page: Page, testInfo: TestInfo, scenarioId: string) {
+  await openPreferences(page);
+  await enableAiIfNeeded(page);
 
-  await page.route('**/settings/api-keys**', async (route) => {
-    const request = route.request();
-    const url = new URL(request.url());
-    const path = url.pathname;
+  await expect(page.getByText('Bring Your Own Key', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Select provider' })).toHaveCount(0);
 
-    if (path.endsWith('/test') && request.method() === 'POST') {
-      const { provider } = request.postDataJSON() as { provider: string };
-      keys = keys.map((key) =>
-        key.provider === provider ? { ...key, isValid: testResult.isValid } : key,
-      );
-      await route.fulfill({ json: testResult });
-      return;
-    }
+  const response = await page.request.get('/api/settings/api-keys');
+  const payload = (await response.json().catch(() => null)) as { error?: unknown } | null;
+  expect(response.status()).toBe(503);
+  expect(payload?.error).toBe('BYOK is not available for this release.');
 
-    if (request.method() === 'GET') {
-      await route.fulfill({ json: keys });
-      return;
-    }
-
-    if (request.method() === 'POST') {
-      const { provider } = request.postDataJSON() as { provider: string; apiKey: string };
-      keys = [
-        ...keys.filter((key) => key.provider !== provider),
-        {
-          provider,
-          keyPrefix: provider === 'openai' ? 'sk-qa...' : 'qa-key...',
-          isValid: true,
-          lastTestedAt: new Date().toISOString(),
-        },
-      ];
-      await route.fulfill({ json: { success: true } });
-      return;
-    }
-
-    if (request.method() === 'DELETE') {
-      const provider = decodeURIComponent(path.split('/').pop() ?? '');
-      keys = keys.filter((key) => key.provider !== provider);
-      await route.fulfill({ json: { success: true } });
-      return;
-    }
-
-    await route.fulfill({ status: 405, json: { error: 'Method not allowed' } });
-  });
-}
-
-async function selectByokProvider(page: Page, providerName: string) {
-  await page.getByRole('button', { name: 'Select provider' }).click();
-  await page.getByRole('button', { name: providerName }).click();
+  await setScenarioEvidenceNote(page, `${scenarioId} BYOK launch holdback`, [
+    'BYOK is parked for launch, so Settings does not render the Bring Your Own Key section.',
+    'Provider selection and raw key inputs are unavailable.',
+    'Direct GET /api/settings/api-keys returns 503 with the canonical launch-disabled message.',
+  ]);
+  await attachViewportEvidence(page, testInfo, `${scenarioId}-byok-launch-holdback-unavailable`);
 }
 
 async function mockOllamaTags(page: Page, available: boolean) {
@@ -393,130 +346,32 @@ test.describe('Settings preferences contract', () => {
     await attachScenarioEvidence(page, testInfo, 'SET-032-terminal-ollama-unavailable-detection');
   });
 
-  test('SET-033 shows BYOK gated state for Free users', async ({
+  test('SET-033 shows BYOK launch holdback state for Free users', async ({
     authenticatedPage: page,
   }, testInfo) => {
     await forcePlan(page, 'free');
-    await mockProviderKeys(page);
-    await openPreferences(page);
-    await enableAiIfNeeded(page);
-
-    await page.getByText('Bring Your Own Key', { exact: true }).scrollIntoViewIfNeeded();
-    await expect(page.getByText('Bring Your Own Key', { exact: true })).toBeVisible();
-    await expect(page.getByText(/Reader\+|Reader and Pro|Upgrade/i).first()).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Select provider' })).toHaveCount(0);
-    await setScenarioEvidenceNote(page, 'SET-033 start', [
-      'Free-plan BYOK area is scrolled into view.',
-      'Provider selection is gated and no raw key is exposed.',
-    ]);
-    await attachViewportEvidence(page, testInfo, 'SET-033-start-byok-gated-free-no-access-state');
-
-    await setScenarioEvidenceNote(page, 'SET-033 terminal', [
-      'BYOK remains gated for the Free/no-access state.',
-      'Upgrade/Reader+ copy is visible instead of provider selection.',
-    ]);
-    await attachViewportEvidence(
-      page,
-      testInfo,
-      'SET-033-terminal-byok-gated-free-no-access-state',
-    );
+    await expectByokLaunchHoldback(page, testInfo, 'SET-033');
   });
 
-  test('SET-034 saves and tests a BYOK provider key successfully', async ({
+  test('SET-034 blocks BYOK provider key save/test during launch holdback', async ({
     authenticatedPage: page,
   }, testInfo) => {
     await forcePlan(page, 'reader');
-    await mockProviderKeys(page);
-    await openPreferences(page);
-    await enableAiIfNeeded(page);
-    await attachScenarioEvidence(
-      page,
-      testInfo,
-      'SET-034-start-byok-provider-key-save-test-success',
-    );
-
-    await selectByokProvider(page, 'OpenAI');
-    await page.getByPlaceholder('Enter your API key...').fill('sk-qa-openai-key-success');
-    await page.getByRole('button', { name: 'Test Connection' }).click();
-
-    await expect(page.getByText('Connection successful')).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText('Saved Keys')).toBeVisible();
-    await expect(page.getByText('sk-qa...')).toBeVisible();
-    await expect(page.getByText('Valid').first()).toBeVisible();
-
-    await attachScenarioEvidence(
-      page,
-      testInfo,
-      'SET-034-terminal-byok-provider-key-save-test-success',
-    );
+    await expectByokLaunchHoldback(page, testInfo, 'SET-034');
   });
 
-  test('SET-035 removes a saved BYOK provider key', async ({
+  test('SET-035 keeps saved BYOK provider keys hidden during launch holdback', async ({
     authenticatedPage: page,
   }, testInfo) => {
     await forcePlan(page, 'reader');
-    await mockProviderKeys(page, {
-      initialKeys: [
-        {
-          provider: 'openai',
-          keyPrefix: 'sk-qa...',
-          isValid: true,
-          lastTestedAt: new Date().toISOString(),
-        },
-      ],
-    });
-    await openPreferences(page);
-    await enableAiIfNeeded(page);
-
-    await expect(page.getByText('Saved Keys')).toBeVisible();
-    await expect(page.getByText('sk-qa...')).toBeVisible();
-    await page.getByText('Saved Keys').scrollIntoViewIfNeeded();
-    await setScenarioEvidenceNote(page, 'SET-035 start', [
-      'Saved OpenAI provider key row is visible before removal.',
-      'Only the redacted key prefix is shown.',
-    ]);
-    await attachViewportEvidence(page, testInfo, 'SET-035-start-byok-provider-key-remove');
-
-    await page.getByRole('button', { name: 'Remove OpenAI key' }).click();
-
-    await expect(page.getByText('sk-qa...')).toHaveCount(0);
-    await expect(page.getByText('OpenAI key removed')).toBeVisible();
-    await page.getByText('Bring Your Own Key', { exact: true }).scrollIntoViewIfNeeded();
-    await setScenarioEvidenceNote(page, 'SET-035 terminal', [
-      'Saved key row is gone after removal.',
-      'Removal toast is visible and no raw key is exposed.',
-    ]);
-
-    await attachViewportEvidence(page, testInfo, 'SET-035-terminal-byok-provider-key-remove');
+    await expectByokLaunchHoldback(page, testInfo, 'SET-035');
   });
 
-  test('SET-036 reports an invalid BYOK provider key state', async ({
+  test('SET-036 blocks invalid BYOK provider key flow during launch holdback', async ({
     authenticatedPage: page,
   }, testInfo) => {
     await forcePlan(page, 'reader');
-    await mockProviderKeys(page, {
-      testResult: { isValid: false, error: 'Mock invalid key' },
-    });
-    await openPreferences(page);
-    await enableAiIfNeeded(page);
-    await attachScenarioEvidence(
-      page,
-      testInfo,
-      'SET-036-start-byok-invalid-untestable-provider-state',
-    );
-
-    await selectByokProvider(page, 'OpenAI');
-    await page.getByPlaceholder('Enter your API key...').fill('sk-qa-openai-key-invalid');
-    await page.getByRole('button', { name: 'Test Connection' }).click();
-
-    await expect(page.getByText('Mock invalid key')).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText('Connection successful')).toHaveCount(0);
-
-    await attachScenarioEvidence(
-      page,
-      testInfo,
-      'SET-036-terminal-byok-invalid-untestable-provider-state',
-    );
+    await expectByokLaunchHoldback(page, testInfo, 'SET-036');
   });
 
   test('SET-037 persists notification preference toggles locally', async ({

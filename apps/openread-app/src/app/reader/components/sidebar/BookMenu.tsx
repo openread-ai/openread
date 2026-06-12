@@ -14,7 +14,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { useParallelViewStore } from '@/store/parallelViewStore';
 // import { isWebAppPlatform } from '@/services/environment'; // disabled: About Openread
 import { eventDispatcher } from '@/utils/event';
-import { FIXED_LAYOUT_FORMATS } from '@/types/book';
+import { getParallelReadMenuBooks } from '../../utils/parallelReadEligibility';
 // import { DOWNLOAD_OPENREAD_URL } from '@/services/constants'; // disabled: Download Openread
 // import { navigateToLogin } from '@/utils/nav'; // disabled: Discord
 // import { saveSysSettings } from '@/helpers/settings'; // disabled: Discord
@@ -23,16 +23,17 @@ import { FIXED_LAYOUT_FORMATS } from '@/types/book';
 // import { setAboutDialogVisible } from '@/components/AboutWindow'; // disabled: About
 import { useBookDataStore } from '@/store/bookDataStore';
 import { sortTocItems } from '@/utils/toc';
+import { getBookIdFromKey } from '@/utils/readerBookKey';
 import useBooksManager from '../../hooks/useBooksManager';
 import MenuItem from '@/components/MenuItem';
 import Menu from '@/components/Menu';
 
-interface BookMenuProps {
-  menuClassName?: string;
+interface BookMenuItemsProps {
+  bookKey?: string;
   setIsDropdownOpen?: (isOpen: boolean) => void;
 }
 
-const BookMenu: React.FC<BookMenuProps> = ({ menuClassName, setIsDropdownOpen }) => {
+export const BookMenuItems: React.FC<BookMenuItemsProps> = ({ bookKey, setIsDropdownOpen }) => {
   const _ = useTranslation();
   // Discord login redirect hooks — disabled for now, uncomment when re-enabling
   // const router = useRouter();
@@ -43,14 +44,23 @@ const BookMenu: React.FC<BookMenuProps> = ({ menuClassName, setIsDropdownOpen })
   const { getBookData } = useBookDataStore();
   const { getVisibleLibrary } = useLibraryStore();
   const { openParallelView } = useBooksManager();
-  const { sideBarBookKey } = useSidebarStore();
+  const { sideBarBookKey, setSideBarBookKey } = useSidebarStore();
   const { parallelViews, setParallel, unsetParallel } = useParallelViewStore();
-  const viewSettings = getViewSettings(sideBarBookKey!);
+  const activeBookKey = bookKey ?? sideBarBookKey ?? bookKeys[0];
+  const activeBookId = activeBookKey ? getBookIdFromKey(activeBookKey) : undefined;
+  const viewSettings = activeBookKey ? getViewSettings(activeBookKey) : undefined;
 
   const [isSortedTOC, setIsSortedTOC] = React.useState(viewSettings?.sortedTOC || false);
 
+  React.useEffect(() => {
+    setIsSortedTOC(viewSettings?.sortedTOC || false);
+  }, [viewSettings?.sortedTOC, activeBookKey]);
+
+  const eligibleParallelBooks = getParallelReadMenuBooks(getVisibleLibrary(), activeBookId);
+
   const handleParallelView = (id: string) => {
-    openParallelView(id);
+    if (activeBookKey) setSideBarBookKey(activeBookKey);
+    openParallelView(id, activeBookKey);
     setIsDropdownOpen?.(false);
   };
   const handleReloadPage = () => {
@@ -61,29 +71,29 @@ const BookMenu: React.FC<BookMenuProps> = ({ menuClassName, setIsDropdownOpen })
   // const showAboutOpenread = () => { setAboutDialogVisible(true); setIsDropdownOpen?.(false); };
   // const downloadOpenread = () => { window.open(DOWNLOAD_OPENREAD_URL, '_blank'); setIsDropdownOpen?.(false); };
   const handleExportAnnotations = () => {
-    eventDispatcher.dispatch('export-annotations', { bookKey: sideBarBookKey });
+    eventDispatcher.dispatch('export-annotations', { bookKey: activeBookKey });
     setIsDropdownOpen?.(false);
   };
   const handleToggleSortTOC = () => {
+    if (!activeBookKey) return;
     const newSorted = !isSortedTOC;
     setIsSortedTOC(newSorted);
     setIsDropdownOpen?.(false);
-    if (sideBarBookKey) {
-      const viewSettings = getViewSettings(sideBarBookKey)!;
-      viewSettings.sortedTOC = newSorted;
-      setViewSettings(sideBarBookKey, viewSettings);
 
-      // Sort TOC in place instead of recreating the entire viewer
-      const bookData = getBookData(sideBarBookKey);
-      const toc = bookData?.bookDoc?.toc;
-      if (toc) {
-        if (newSorted) {
-          sortTocItems(toc);
-        } else {
-          toc.sort((a, b) => (a.id ?? 0) - (b.id ?? 0));
-        }
-        eventDispatcher.dispatch('toc-updated', { bookKey: sideBarBookKey });
+    const nextViewSettings = getViewSettings(activeBookKey)!;
+    nextViewSettings.sortedTOC = newSorted;
+    setViewSettings(activeBookKey, nextViewSettings);
+
+    // Sort TOC in place instead of recreating the entire viewer
+    const bookData = getBookData(activeBookKey);
+    const toc = bookData?.bookDoc?.toc;
+    if (toc) {
+      if (newSorted) {
+        sortTocItems(toc);
+      } else {
+        toc.sort((a, b) => (a.id ?? 0) - (b.id ?? 0));
       }
+      eventDispatcher.dispatch('toc-updated', { bookKey: activeBookKey });
     }
   };
   const handleSetParallel = () => {
@@ -97,15 +107,12 @@ const BookMenu: React.FC<BookMenuProps> = ({ menuClassName, setIsDropdownOpen })
   // disabled: KOReader Sync, Proofread, Discord — can be considered for future
   // const showKoSyncSettingsWindow = () => { setKOSyncSettingsWindowVisible(true); setIsDropdownOpen?.(false); };
   // const showProofreadRulesWindow = () => { setProofreadRulesVisibility(true); setIsDropdownOpen?.(false); };
-  // const handlePullKOSync = () => { eventDispatcher.dispatch('pull-kosync', { bookKey: sideBarBookKey }); setIsDropdownOpen?.(false); };
-  // const handlePushKOSync = () => { eventDispatcher.dispatch('push-kosync', { bookKey: sideBarBookKey }); setIsDropdownOpen?.(false); };
+  // const handlePullKOSync = () => { eventDispatcher.dispatch('pull-kosync', { bookKey: activeBookKey }); setIsDropdownOpen?.(false); };
+  // const handlePushKOSync = () => { eventDispatcher.dispatch('push-kosync', { bookKey: activeBookKey }); setIsDropdownOpen?.(false); };
   // const toggleDiscordPresence = () => { ... };
 
   return (
-    <Menu
-      className={clsx('book-menu dropdown-content z-20 shadow-2xl', menuClassName)}
-      onCancel={() => setIsDropdownOpen?.(false)}
-    >
+    <>
       <MenuItem
         label={_('Parallel Read')}
         buttonClass={bookKeys.length > 1 ? 'lg:tooltip lg:tooltip-bottom' : ''}
@@ -120,16 +127,13 @@ const BookMenu: React.FC<BookMenuProps> = ({ menuClassName, setIsDropdownOpen })
         }
       >
         <ul className='max-h-60 overflow-y-auto'>
-          {getVisibleLibrary()
-            .filter((book) => !FIXED_LAYOUT_FORMATS.has(book.format))
-            .filter((book) => !!book.downloadedAt)
-            .slice(0, 20)
-            .map((book) => (
-              <MenuItem
-                key={book.hash}
-                Icon={
+          {eligibleParallelBooks.map((book) => (
+            <MenuItem
+              key={book.hash}
+              Icon={
+                book.coverImageUrl ? (
                   <Image
-                    src={book.coverImageUrl!}
+                    src={book.coverImageUrl}
                     alt={book.title}
                     width={56}
                     height={80}
@@ -138,12 +142,13 @@ const BookMenu: React.FC<BookMenuProps> = ({ menuClassName, setIsDropdownOpen })
                       (e.target as HTMLImageElement).style.display = 'none';
                     }}
                   />
-                }
-                label={book.title}
-                labelClass='max-w-36'
-                onClick={() => handleParallelView(book.hash)}
-              />
-            ))}
+                ) : undefined
+              }
+              label={book.title}
+              labelClass='max-w-36'
+              onClick={() => handleParallelView(book.hash)}
+            />
+          ))}
         </ul>
       </MenuItem>
       {bookKeys.length > 1 &&
@@ -188,6 +193,21 @@ const BookMenu: React.FC<BookMenuProps> = ({ menuClassName, setIsDropdownOpen })
       {/* <hr aria-hidden='true' className='border-base-200 my-1' />
       {isWebAppPlatform() && <MenuItem label={_('Download Openread')} onClick={downloadOpenread} />}
       <MenuItem label={_('About Openread')} onClick={showAboutOpenread} /> */}
+    </>
+  );
+};
+
+interface BookMenuProps extends BookMenuItemsProps {
+  menuClassName?: string;
+}
+
+const BookMenu: React.FC<BookMenuProps> = ({ bookKey, menuClassName, setIsDropdownOpen }) => {
+  return (
+    <Menu
+      className={clsx('book-menu dropdown-content z-20 shadow-2xl', menuClassName)}
+      onCancel={() => setIsDropdownOpen?.(false)}
+    >
+      <BookMenuItems bookKey={bookKey} setIsDropdownOpen={setIsDropdownOpen} />
     </Menu>
   );
 };

@@ -32,6 +32,7 @@ import { tauriHandleToggleFullScreen } from '@/utils/window';
 import { LAUNCH_TTS_ENABLED, LAUNCH_TRANSLATION_ENABLED } from '@/services/launchFeatures';
 import MenuItem from '@/components/MenuItem';
 import Menu from '@/components/Menu';
+import { BookMenuItems } from './sidebar/BookMenu';
 
 interface ViewMenuProps {
   bookKey: string;
@@ -359,6 +360,13 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
       )}
 
       <hr aria-hidden='true' className='border-base-300 my-1' />
+
+      {appService?.isMobile && (
+        <>
+          <BookMenuItems bookKey={bookKey} setIsDropdownOpen={setIsDropdownOpen} />
+          <hr aria-hidden='true' className='border-base-300 my-1' />
+        </>
+      )}
 
       <MenuItem
         label={

@@ -60,10 +60,12 @@ export const navigateToReader = (
   navOptions?: { scroll?: boolean },
 ) => {
   const ids = bookIds.join(BOOK_IDS_SEPARATOR);
+  const params = new URLSearchParams(queryParams || '');
   if (isWebAppPlatform() && !isPWA()) {
-    router.push(`/reader/${ids}${queryParams ? `?${queryParams}` : ''}`, navOptions);
+    params.delete('ids');
+    const nextParams = params.toString();
+    router.push(`/reader/${ids}${nextParams ? `?${nextParams}` : ''}`, navOptions);
   } else {
-    const params = new URLSearchParams(queryParams || '');
     params.set('ids', ids);
     router.push(`/reader?${params.toString()}`, navOptions);
   }

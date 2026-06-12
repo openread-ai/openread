@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEnv } from '@/context/EnvContext';
 import { useReaderStore } from '@/store/readerStore';
@@ -14,38 +13,36 @@ const useBooksManager = () => {
   const { bookKeys } = useReaderStore();
   const { setBookKeys, initViewState } = useReaderStore();
   const { sideBarBookKey, setSideBarBookKey } = useSidebarStore();
-  const [shouldUpdateSearchParams, setShouldUpdateSearchParams] = useState(false);
   const { setParallel } = useParallelViewStore();
 
-  useEffect(() => {
-    if (shouldUpdateSearchParams) {
-      const ids = bookKeys.map((key) => getBookIdFromKey(key));
-      if (ids) {
-        navigateToReader(router, ids, searchParams?.toString() || '', { scroll: false });
-      }
-      setShouldUpdateSearchParams(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bookKeys, shouldUpdateSearchParams]);
+  const syncSearchParams = (nextBookKeys: string[]) => {
+    const ids = nextBookKeys.map((key) => getBookIdFromKey(key));
+    navigateToReader(router, ids, searchParams?.toString() || '', { scroll: false });
+  };
 
   // Append a new book and sync with bookKeys and URL
-  const appendBook = (id: string, isPrimary: boolean, isParallel: boolean) => {
+  const appendBook = (
+    id: string,
+    isPrimary: boolean,
+    isParallel: boolean,
+    sourceBookKey = sideBarBookKey,
+  ) => {
     const newKey = createBookKey(id);
     initViewState(envConfig, id, newKey, isPrimary);
+    const updatedKeys = bookKeys.includes(newKey) ? bookKeys : [...bookKeys, newKey];
     if (!bookKeys.includes(newKey)) {
-      const updatedKeys = [...bookKeys, newKey];
       setBookKeys(updatedKeys);
     }
-    if (isParallel) setParallel([sideBarBookKey!, newKey]);
+    if (isParallel && sourceBookKey) setParallel([sourceBookKey, newKey]);
     setSideBarBookKey(newKey);
-    setShouldUpdateSearchParams(true);
+    syncSearchParams(updatedKeys);
   };
 
   // Close a book and sync with bookKeys and URL
   const dismissBook = (bookKey: string) => {
     const updatedKeys = bookKeys.filter((key) => key !== bookKey);
     setBookKeys(updatedKeys);
-    setShouldUpdateSearchParams(true);
+    syncSearchParams(updatedKeys);
   };
 
   const getNextBookKey = (bookKey: string) => {
@@ -54,9 +51,9 @@ const useBooksManager = () => {
     return bookKeys[nextIndex]!;
   };
 
-  const openParallelView = (id: string) => {
-    const sideBarBookId = sideBarBookKey ? getBookIdFromKey(sideBarBookKey) : undefined;
-    appendBook(id, sideBarBookId != id, true);
+  const openParallelView = (id: string, sourceBookKey = sideBarBookKey) => {
+    const sourceBookId = sourceBookKey ? getBookIdFromKey(sourceBookKey) : undefined;
+    appendBook(id, sourceBookId != id, true, sourceBookKey);
   };
 
   return {

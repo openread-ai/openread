@@ -110,10 +110,10 @@ describe('tier-config', () => {
     it('should return correct free tier definition', async () => {
       const tier = await getTierDefinition('free');
       expect(tier.display_name).toBe('Free');
-      expect(tier.ai_messages_per_window).toBe(25);
-      expect(tier.ai_window_hours).toBe(24);
+      expect(tier.ai_messages_per_window).toBe(100);
+      expect(tier.ai_window_hours).toBe(168);
       expect(tier.ai_rate_limit).toBe(5);
-      expect(tier.ai_rate_window_hours).toBe(1);
+      expect(tier.ai_rate_window_hours).toBe(5);
       expect(tier.ai_fallback_model).toBeNull();
       expect(tier.storage_gb).toBe(1);
       expect(tier.can_tts).toBe(false);
@@ -125,8 +125,10 @@ describe('tier-config', () => {
     it('should return correct reader tier definition', async () => {
       const tier = await getTierDefinition('reader');
       expect(tier.display_name).toBe('Reader');
-      expect(tier.ai_messages_per_window).toBe(50);
-      expect(tier.ai_window_hours).toBe(3);
+      expect(tier.ai_messages_per_window).toBe(500);
+      expect(tier.ai_window_hours).toBe(168);
+      expect(tier.ai_rate_limit).toBe(50);
+      expect(tier.ai_rate_window_hours).toBe(5);
       expect(tier.ai_fallback_model).toBe('openai/gpt-oss-20b');
       expect(tier.storage_gb).toBe(10);
       expect(tier.can_tts).toBe(false);
@@ -138,8 +140,10 @@ describe('tier-config', () => {
     it('should return correct pro tier definition', async () => {
       const tier = await getTierDefinition('pro');
       expect(tier.display_name).toBe('Pro');
-      expect(tier.ai_messages_per_window).toBe(100);
-      expect(tier.ai_window_hours).toBe(3);
+      expect(tier.ai_messages_per_window).toBe(1000);
+      expect(tier.ai_window_hours).toBe(168);
+      expect(tier.ai_rate_limit).toBe(100);
+      expect(tier.ai_rate_window_hours).toBe(5);
       expect(tier.ai_fallback_model).toBe('openai/gpt-oss-120b');
       expect(tier.storage_gb).toBe(50);
       expect(tier.can_tts).toBe(false);
@@ -153,7 +157,7 @@ describe('tier-config', () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const tier = await getTierDefinition('unknown' as any);
       expect(tier.display_name).toBe('Free');
-      expect(tier.ai_messages_per_window).toBe(25);
+      expect(tier.ai_messages_per_window).toBe(100);
     });
   });
 

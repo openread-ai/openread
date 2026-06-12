@@ -26,13 +26,6 @@ vi.mock('@/hooks/useSubscription', () => ({
 
 // Mock all billing sub-components to isolate page-level tests
 vi.mock('@/components/settings/billing', () => ({
-  AIUsageMeter: ({ isLoading }: { isLoading?: boolean }) => (
-    <div data-testid='ai-meter'>{isLoading ? 'loading' : 'ai-meter'}</div>
-  ),
-  StorageMeter: () => <div data-testid='storage-meter'>storage-meter</div>,
-  UsageHistory: ({ isLoading }: { isLoading?: boolean }) => (
-    <div data-testid='usage-history'>{isLoading ? 'loading' : 'usage-history'}</div>
-  ),
   CurrentPlanCard: () => <div data-testid='current-plan'>current-plan</div>,
   PaymentMethod: () => <div data-testid='payment-method'>payment-method</div>,
   InvoiceList: () => <div data-testid='invoice-list'>invoice-list</div>,
@@ -112,13 +105,13 @@ describe('BillingPage', () => {
 
     render(<BillingPage />);
 
-    // Top row meters
-    expect(screen.getByTestId('ai-meter')).toBeTruthy();
-    expect(screen.getByTestId('storage-meter')).toBeTruthy();
+    // Usage sections live on /settings/usage, not Billing
+    expect(screen.queryByTestId('ai-meter')).toBeNull();
+    expect(screen.queryByTestId('storage-meter')).toBeNull();
+    expect(screen.queryByTestId('usage-history')).toBeNull();
     expect(screen.queryByTestId('mcp-display')).toBeNull();
 
-    // Sections below
-    expect(screen.getByTestId('usage-history')).toBeTruthy();
+    // Billing sections
     expect(screen.getByTestId('current-plan')).toBeTruthy();
     expect(screen.getByTestId('payment-method')).toBeTruthy();
     expect(screen.getByTestId('invoice-list')).toBeTruthy();

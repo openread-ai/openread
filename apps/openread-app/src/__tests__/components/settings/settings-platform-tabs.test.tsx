@@ -69,6 +69,8 @@ describe('Settings platform tabs', () => {
       </SettingsLayout>,
     );
 
+    expect(screen.getByText('Usage').closest('a')?.getAttribute('href')).toBe('/settings/usage');
+
     const activeTab = screen.getByText('Account').closest('a');
     expect(activeTab?.className).toContain('bg-base-200/60');
     expect(activeTab?.className).toContain('text-base-content/80');

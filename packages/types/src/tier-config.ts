@@ -1,13 +1,13 @@
 export type UserPlan = 'free' | 'reader' | 'pro';
 
 export interface TierDefinition {
-  /** Messages allowed per time window. null = unlimited. */
+  /** Messages allowed in the primary rolling window. null = unlimited. */
   ai_messages_per_window: number | null;
-  /** Time window in hours for AI message limit reset. */
+  /** Primary rolling window duration in hours. Gen 3 v3 uses 168 for weekly caps. */
   ai_window_hours: number;
-  /** Rate limit: max messages per rate window. null = no rate limit (use window only). */
+  /** Short-window burst cap. null = no short-window cap. */
   ai_rate_limit: number | null;
-  /** Rate window in hours. Only applies when ai_rate_limit is set. */
+  /** Short rolling window duration in hours. Only applies when ai_rate_limit is set. */
   ai_rate_window_hours: number | null;
   /** Model to fall back to when window limit is hit. null = hard stop (free tier). */
   ai_fallback_model: string | null;
@@ -123,10 +123,10 @@ export function evaluateLibraryLimit(
 export const GEN3_V3_FALLBACK_TIER_CONFIG: TierConfig = {
   tiers: {
     free: {
-      ai_messages_per_window: 25,
-      ai_window_hours: 24,
+      ai_messages_per_window: 100,
+      ai_window_hours: 168,
       ai_rate_limit: 5,
-      ai_rate_window_hours: 1,
+      ai_rate_window_hours: 5,
       ai_fallback_model: null,
       storage_gb: 1,
       library_limit: 10,
@@ -143,10 +143,10 @@ export const GEN3_V3_FALLBACK_TIER_CONFIG: TierConfig = {
       display_name: 'Free',
     },
     reader: {
-      ai_messages_per_window: 50,
-      ai_window_hours: 3,
-      ai_rate_limit: null,
-      ai_rate_window_hours: null,
+      ai_messages_per_window: 500,
+      ai_window_hours: 168,
+      ai_rate_limit: 50,
+      ai_rate_window_hours: 5,
       ai_fallback_model: 'openai/gpt-oss-20b',
       storage_gb: 10,
       library_limit: null,
@@ -163,10 +163,10 @@ export const GEN3_V3_FALLBACK_TIER_CONFIG: TierConfig = {
       display_name: 'Reader',
     },
     pro: {
-      ai_messages_per_window: 100,
-      ai_window_hours: 3,
-      ai_rate_limit: null,
-      ai_rate_window_hours: null,
+      ai_messages_per_window: 1000,
+      ai_window_hours: 168,
+      ai_rate_limit: 100,
+      ai_rate_window_hours: 5,
       ai_fallback_model: 'openai/gpt-oss-120b',
       storage_gb: 50,
       library_limit: null,

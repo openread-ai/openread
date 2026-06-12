@@ -22,6 +22,7 @@ function getProgressColor(percent: number): string {
 
 function formatResetDate(resetAt: string, limitType: LimitType): string {
   if (limitType === 'daily') return 'at midnight';
+  if (limitType === 'weekly') return 'on the rolling weekly window';
   if (limitType === 'window') return 'soon';
   const date = new Date(resetAt);
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -57,9 +58,11 @@ export function AIUsageMeter({ isLoading }: AIUsageMeterProps) {
   const periodLabel =
     limitType === 'monthly'
       ? _('this month')
-      : limitType === 'window'
-        ? _('this window')
-        : _('today');
+      : limitType === 'weekly'
+        ? _('this week')
+        : limitType === 'window'
+          ? _('this window')
+          : _('today');
   const resetLabel = resetAt ? ` ${_('Resets')} ${formatResetDate(resetAt, limitType)}.` : '';
 
   return (

@@ -10,7 +10,7 @@
  * import { Openread } from '@openread/sdk';
  *
  * const sdk = new Openread({
- *   baseUrl: 'https://api.openread.app',
+ *   baseUrl: 'https://api.openread.ai',
  *   getAccessToken: async () => {
  *     const { data } = await supabase.auth.getSession();
  *     return data.session?.access_token ?? null;
@@ -289,7 +289,7 @@ class BooksClient {
  * import { supabase } from './supabase';
  *
  * const sdk = new Openread({
- *   baseUrl: 'https://api.openread.app',
+ *   baseUrl: 'https://api.openread.ai',
  *   getAccessToken: async () => {
  *     const { data } = await supabase.auth.getSession();
  *     if (!data.session) return null;

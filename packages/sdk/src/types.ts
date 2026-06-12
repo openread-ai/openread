@@ -9,7 +9,7 @@
 export interface OpenreadConfig {
   /**
    * Base URL of the OpenRead API.
-   * @example 'https://api.openread.app'
+   * @example 'https://api.openread.ai'
    */
   baseUrl: string;
 

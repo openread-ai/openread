@@ -191,25 +191,23 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
               <span className='line-clamp-1 max-w-[40vw] text-xs font-semibold'>{bookTitle}</span>
             </div>
             <div className='bg-base-100 z-20 ms-auto flex h-full items-center gap-x-3'>
+              <button
+                className='btn btn-ghost h-8 min-h-8 w-8 p-0'
+                onClick={() => {
+                  eventDispatcher.dispatch('search-term', { bookKey });
+                }}
+                aria-label={_('Search')}
+              >
+                <PiMagnifyingGlassBold size={iconSize16} />
+              </button>
               {appService?.isIOSApp && (
-                <>
-                  <button
-                    className='btn btn-ghost h-8 min-h-8 w-8 p-0'
-                    onClick={() => {
-                      eventDispatcher.dispatch('search-term', { bookKey });
-                    }}
-                    aria-label={_('Search')}
-                  >
-                    <PiMagnifyingGlassBold size={iconSize16} />
-                  </button>
-                  <button
-                    className='btn btn-ghost h-8 min-h-8 w-8 p-0'
-                    onClick={onToggleProgress}
-                    aria-label={_('Reading Progress')}
-                  >
-                    <RxSlider size={iconSize16} />
-                  </button>
-                </>
+                <button
+                  className='btn btn-ghost h-8 min-h-8 w-8 p-0'
+                  onClick={onToggleProgress}
+                  aria-label={_('Reading Progress')}
+                >
+                  <RxSlider size={iconSize16} />
+                </button>
               )}
               <BookmarkToggler bookKey={bookKey} />
               {!appService?.isIOSApp && (

@@ -78,6 +78,10 @@ apps/openread-app/test-results/
 apps/openread-app/playwright-report/
 .playwright-mcp/
 
+# Local validation evidence and scratch runners
+artifacts/
+apps/openread-app/artifacts/
+
 # Pi local/user preferences
 # Keep personal themes and settings in ~/.pi/agent rather than the repo.
 .pi/themes/

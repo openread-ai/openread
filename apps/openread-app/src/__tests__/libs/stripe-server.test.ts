@@ -4,6 +4,10 @@ const mockSubscriptionRetrieve = vi.fn();
 const mockInvoiceRetrieve = vi.fn();
 const mockInvoicePaymentsList = vi.fn();
 const mockPaymentIntentRetrieve = vi.fn();
+const mockPaymentInsert = vi.fn().mockResolvedValue({ data: null, error: null });
+const mockPaymentUpdate = vi.fn().mockReturnValue({
+  eq: vi.fn().mockResolvedValue({ data: null, error: null }),
+});
 const mockUpdateUserStorage = vi.fn().mockResolvedValue(undefined);
 
 const mockStripeClient = {
@@ -71,7 +75,13 @@ function tableMock(table: string) {
 
   if (table === 'payments') {
     return {
-      upsert: vi.fn().mockResolvedValue({ data: null, error: null }),
+      select: vi.fn(() => ({
+        eq: vi.fn(() => ({
+          maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+        })),
+      })),
+      insert: mockPaymentInsert,
+      update: mockPaymentUpdate,
     };
   }
 
@@ -160,17 +170,13 @@ describe('stripe server billing persistence', () => {
     const { recordStripeInvoicePaymentFromInvoice } = await import('@/libs/payment/stripe/server');
     await recordStripeInvoicePaymentFromInvoice({ id: 'in_1' } as never);
 
-    const paymentsClient = mockSupabaseFrom.mock.results
-      .map((result) => result.value)
-      .find((client) => client.upsert);
-
     expect(mockInvoicePaymentsList).toHaveBeenCalledWith({
       invoice: 'in_1',
       status: 'paid',
       limit: 1,
     });
     expect(mockSupabaseFrom).toHaveBeenCalledWith('payments');
-    expect(paymentsClient.upsert).toHaveBeenCalledWith(
+    expect(mockPaymentInsert).toHaveBeenCalledWith(
       expect.objectContaining({
         user_id: 'user-1',
         provider: 'stripe',
@@ -186,7 +192,6 @@ describe('stripe server billing persistence', () => {
           stripe_subscription_id: 'sub_1',
         }),
       }),
-      { onConflict: 'stripe_payment_intent_id', ignoreDuplicates: false },
     );
     expect(mockUpdateUserStorage).toHaveBeenCalledWith('user-1');
   });
@@ -225,12 +230,8 @@ describe('stripe server billing persistence', () => {
       payment: { type: 'payment_intent', payment_intent: 'pi_1' },
     } as never);
 
-    const paymentsClient = mockSupabaseFrom.mock.results
-      .map((result) => result.value)
-      .find((client) => client.upsert);
-
     expect(mockSupabaseFrom).toHaveBeenCalledWith('payments');
-    expect(paymentsClient.upsert).toHaveBeenCalledWith(
+    expect(mockPaymentInsert).toHaveBeenCalledWith(
       expect.objectContaining({
         user_id: 'user-1',
         provider: 'stripe',
@@ -246,7 +247,6 @@ describe('stripe server billing persistence', () => {
           stripe_subscription_id: 'sub_1',
         }),
       }),
-      { onConflict: 'stripe_payment_intent_id', ignoreDuplicates: false },
     );
     expect(mockUpdateUserStorage).toHaveBeenCalledWith('user-1');
   });

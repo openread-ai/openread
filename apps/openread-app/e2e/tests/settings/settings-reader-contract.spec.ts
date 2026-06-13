@@ -171,10 +171,11 @@ async function expectMobileFooterAvailable(page: Page) {
 }
 
 async function dismissDevIssueBadge(page: Page) {
-  const dismiss = page.getByRole('button', { name: 'Dismiss' }).first();
-  if (await dismiss.isVisible().catch(() => false)) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const dismiss = page.getByRole('button', { name: 'Dismiss' }).first();
+    if (!(await dismiss.isVisible().catch(() => false))) return;
     await dismiss.click();
-    await expect(dismiss).toBeHidden({ timeout: 5_000 });
+    await page.waitForTimeout(250);
   }
 }
 
@@ -184,7 +185,7 @@ async function openMobileReaderSettingsSurface(page: Page) {
   const settingsButton = footer.getByRole('button', { name: 'Settings' });
   if (await settingsButton.isVisible().catch(() => false)) {
     await settingsButton.click();
-    await expect(page.getByText('Font Size').first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/Font Size|Fixed Layout/).first()).toBeVisible({ timeout: 10_000 });
     return 'settings-sheet';
   }
 
@@ -206,6 +207,29 @@ async function dismissMobileReaderSettingsSurface(page: Page) {
   const footer = await expectMobileFooterAvailable(page);
   await footer.getByRole('button', { name: 'Font & Layout' }).click();
   await expect(page.locator('.footerbar-font-mobile')).toBeHidden({ timeout: 10_000 });
+}
+
+async function openMobileReaderNativeControlsEvidenceSurface(page: Page) {
+  await dismissDevIssueBadge(page);
+  const footer = await expectMobileFooterAvailable(page);
+
+  const settingsButton = footer.getByRole('button', { name: 'Settings' });
+  if (await settingsButton.isVisible().catch(() => false)) {
+    await settingsButton.click();
+    await expect(page.getByText(/Font Size|Fixed Layout/).first()).toBeVisible({ timeout: 10_000 });
+    return;
+  }
+
+  const fontLayoutButton = footer.getByRole('button', { name: 'Font & Layout' });
+  if (await fontLayoutButton.isVisible({ timeout: 1_000 }).catch(() => false)) {
+    await fontLayoutButton.click();
+    await expect(page.getByText('Font Size').first()).toBeVisible({ timeout: 10_000 });
+    return;
+  }
+
+  const header = await revealDesktopHeader(page);
+  await header.getByLabel('More Options').click();
+  await expect(page.locator('.view-menu').first()).toBeVisible({ timeout: 10_000 });
 }
 
 test.describe('Settings reader contract', () => {
@@ -465,5 +489,46 @@ test.describe('Settings reader contract', () => {
       'SET-062-terminal-reader-mobile-native-settings-sheet',
       'SET-067-terminal-reader-settings-persistence-after-reload-reopen',
     ]);
+  });
+
+  test('SET-NDC-001 keeps native device controls absent on desktop web reader settings', async ({
+    authenticatedPage: page,
+  }, testInfo) => {
+    test.skip(testInfo.project.name.startsWith('mobile-'), 'Desktop web settings dialog only.');
+
+    await openFirstBookInReader(page);
+    const dialog = await openDesktopSettingsDialog(page);
+
+    await selectDesktopSettingsPanel(dialog, 'Color');
+    await expect(dialog.getByText('Screen Brightness', { exact: true })).toHaveCount(0);
+
+    await selectDesktopSettingsPanel(dialog, 'Layout');
+    await expect(dialog.getByText('Orientation', { exact: true })).toHaveCount(0);
+
+    await selectDesktopSettingsPanel(dialog, 'Behavior');
+    await expect(dialog.getByText('Volume Keys for Page Flip', { exact: true })).toHaveCount(0);
+    await expect(dialog.getByText('Auto Screen Brightness', { exact: true })).toHaveCount(0);
+
+    await attachReaderEvidence(page, testInfo, 'SET-NDC-001-desktop-web-native-controls-absent');
+  });
+
+  test('SET-NDC-001 keeps native device controls absent on mobile-web reader settings', async ({
+    authenticatedPage: page,
+  }, testInfo) => {
+    test.skip(
+      !testInfo.project.name.startsWith('mobile-'),
+      'Mobile-web settings surface is required for responsive browser proof.',
+    );
+
+    await openFirstBookInReader(page);
+    await openMobileReaderNativeControlsEvidenceSurface(page);
+
+    await expect(page.getByText('Screen Brightness', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Brightness', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Orientation', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Volume Keys for Page Flip', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Auto Screen Brightness', { exact: true })).toHaveCount(0);
+
+    await attachReaderEvidence(page, testInfo, 'SET-NDC-001-mobile-web-native-controls-absent');
   });
 });

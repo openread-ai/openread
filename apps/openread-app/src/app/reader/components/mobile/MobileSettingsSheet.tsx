@@ -5,6 +5,7 @@ import { TbSunMoon, TbBoxMargin } from 'react-icons/tb';
 import { RxLineHeight } from 'react-icons/rx';
 import { useEnv } from '@/context/EnvContext';
 import { useReaderStore } from '@/store/readerStore';
+import { useBookDataStore } from '@/store/bookDataStore';
 import { useThemeStore } from '@/store/themeStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useDeviceControlStore } from '@/store/deviceStore';
@@ -25,12 +26,20 @@ export function MobileSettingsContent({ bookKey }: { bookKey: string; onClose?: 
 function MobileSettingsInner({ bookKey }: { bookKey: string }) {
   const _ = useTranslation();
   const { envConfig, appService } = useEnv();
-  const { getView, getViewSettings } = useReaderStore();
+  const { getView, getViewSettings, setViewSettings } = useReaderStore();
+  const { getBookData } = useBookDataStore();
   const { themeMode, themeColor, isDarkMode, setThemeMode, setThemeColor } = useThemeStore();
   const { settings } = useSettingsStore();
   const { getScreenBrightness, setScreenBrightness } = useDeviceControlStore();
   const viewSettings = getViewSettings(bookKey);
   const view = getView(bookKey);
+  const bookData = getBookData(bookKey);
+  const isFixedLayout =
+    bookData?.isFixedLayout || bookData?.bookDoc?.rendition?.layout === 'pre-paginated';
+
+  const [zoomLevel, setZoomLevel] = useState(viewSettings?.zoomLevel ?? 100);
+  const [zoomMode, setZoomMode] = useState(viewSettings?.zoomMode ?? 'fit-page');
+  const [spreadMode, setSpreadMode] = useState(viewSettings?.spreadMode ?? 'none');
 
   const [screenBrightnessValue, setScreenBrightnessValue] = useState(
     settings.screenBrightness >= 0 ? settings.screenBrightness : SCREEN_BRIGHTNESS_LIMITS.DEFAULT,
@@ -113,6 +122,208 @@ function MobileSettingsInner({ bookKey }: { bookKey: string }) {
     setThemeMode(modeOrder[themeMode]);
   };
 
+  const saveFixedLayoutZoomLevel = useCallback(
+    (value: number) => {
+      if (!viewSettings) return;
+      setZoomLevel(value);
+      setViewSettings(bookKey, { ...viewSettings, zoomLevel: value });
+      view?.renderer.setAttribute('scale-factor', value);
+      saveViewSettings(envConfig, bookKey, 'zoomLevel', value, true, true);
+    },
+    [bookKey, envConfig, setViewSettings, view, viewSettings],
+  );
+
+  const saveFixedLayoutZoomMode = useCallback(
+    (value: typeof zoomMode) => {
+      if (!viewSettings) return;
+      setZoomMode(value);
+      setViewSettings(bookKey, { ...viewSettings, zoomMode: value });
+      view?.renderer.setAttribute('zoom', value);
+      saveViewSettings(envConfig, bookKey, 'zoomMode', value, true, false);
+    },
+    [bookKey, envConfig, setViewSettings, view, viewSettings],
+  );
+
+  const saveFixedLayoutSpreadMode = useCallback(
+    (value: typeof spreadMode) => {
+      if (!viewSettings) return;
+      setSpreadMode(value);
+      setViewSettings(bookKey, { ...viewSettings, spreadMode: value });
+      view?.renderer.setAttribute('spread', value);
+      saveViewSettings(envConfig, bookKey, 'spreadMode', value, true, false);
+    },
+    [bookKey, envConfig, setViewSettings, view, viewSettings],
+  );
+
+  const brightnessControl = appService?.hasScreenBrightness ? (
+    <div>
+      <label className='text-base-content/60 mb-2 block text-xs font-medium'>
+        {_('Brightness')}
+      </label>
+      <Slider
+        label={_('Screen Brightness')}
+        initialValue={screenBrightnessValue}
+        bubbleLabel={`${screenBrightnessValue}`}
+        minIcon={<PiSun size={16} />}
+        maxIcon={<PiSun size={24} />}
+        onChange={handleScreenBrightnessChange}
+        min={SCREEN_BRIGHTNESS_LIMITS.MIN}
+        max={SCREEN_BRIGHTNESS_LIMITS.MAX}
+        valueToPosition={(value: number, min: number, max: number): number => {
+          if (value <= min) return 0;
+          if (value >= max) return 100;
+          return Math.pow(value / max, 0.5) * 100;
+        }}
+        positionToValue={(position: number, min: number, max: number): number => {
+          if (position <= 0) return min;
+          if (position >= 100) return max;
+          return Math.max(min, Math.min(max, Math.pow(position / 100, 2) * max));
+        }}
+      />
+    </div>
+  ) : null;
+
+  if (isFixedLayout) {
+    return (
+      <>
+        <div className='flex flex-col gap-6 px-4 pb-20'>
+          <div>
+            <label className='text-base-content/60 mb-2 block text-xs font-medium'>
+              {_('Fixed Layout')}
+            </label>
+            <div className='bg-base-300/40 space-y-3 rounded-xl p-3'>
+              <Slider
+                label={_('Zoom Level')}
+                initialValue={zoomLevel}
+                bubbleLabel={`${zoomLevel}%`}
+                minLabel='50%'
+                maxLabel='400%'
+                min={50}
+                max={400}
+                step={10}
+                onChange={saveFixedLayoutZoomLevel}
+              />
+              <div>
+                <label className='text-base-content/60 mb-2 block text-xs font-medium'>
+                  {_('Zoom Mode')}
+                </label>
+                <div className='bg-base-200 flex rounded-lg p-1'>
+                  {[
+                    ['fit-page', _('Fit Page')],
+                    ['fit-width', _('Fit Width')],
+                    ['original-size', _('Original Size')],
+                  ].map(([value, label]) => (
+                    <button
+                      key={value}
+                      onClick={() => saveFixedLayoutZoomMode(value as typeof zoomMode)}
+                      className={clsx(
+                        'flex flex-1 items-center justify-center rounded-md py-1.5 text-xs font-medium transition-colors',
+                        zoomMode === value
+                          ? 'bg-base-100 text-base-content shadow-sm'
+                          : 'text-base-content/50',
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className='text-base-content/60 mb-2 block text-xs font-medium'>
+                  {_('Page Spread')}
+                </label>
+                <div className='bg-base-200 flex rounded-lg p-1'>
+                  {[
+                    ['none', _('Single Page')],
+                    ['auto', _('Two Page Spread')],
+                  ].map(([value, label]) => (
+                    <button
+                      key={value}
+                      onClick={() => saveFixedLayoutSpreadMode(value as typeof spreadMode)}
+                      className={clsx(
+                        'flex flex-1 items-center justify-center rounded-md py-1.5 text-xs font-medium transition-colors',
+                        spreadMode === value
+                          ? 'bg-base-100 text-base-content shadow-sm'
+                          : 'text-base-content/50',
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Brightness */}
+          {brightnessControl}
+
+          {/* Theme colors */}
+          <div>
+            <label className='text-base-content/60 mb-2 block text-xs font-medium'>
+              {_('Theme')}
+            </label>
+            <div
+              className='flex gap-2.5 overflow-x-auto pb-1'
+              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+            >
+              {themes.map(({ name, label, colors }) => {
+                const isSelected = themeColor === name;
+                const bg = isDarkMode ? colors.dark['base-100'] : colors.light['base-100'];
+                const fg = isDarkMode ? colors.dark['base-content'] : colors.light['base-content'];
+                return (
+                  <button
+                    key={name}
+                    onClick={() => setThemeColor(name)}
+                    className='flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full transition-all hover:opacity-80'
+                    style={{ backgroundColor: bg, color: fg, border: `1.5px solid ${fg}20` }}
+                    aria-label={_(label)}
+                  >
+                    {isSelected ? (
+                      '✓'
+                    ) : (
+                      <span className='text-[10px] font-medium'>{_(label).charAt(0)}</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Dark Mode toggle */}
+          <div>
+            <label className='text-base-content/60 mb-2 block text-xs font-medium'>
+              {_('Dark Mode')}
+            </label>
+            <div className='bg-base-200 flex rounded-lg p-1'>
+              {(
+                [
+                  { key: 'auto', label: _('Auto'), Icon: TbSunMoon },
+                  { key: 'light', label: _('Light'), Icon: PiSun },
+                  { key: 'dark', label: _('Dark'), Icon: PiMoon },
+                ] as const
+              ).map(({ key, label, Icon }) => (
+                <button
+                  key={key}
+                  onClick={() => (key === themeMode ? cycleThemeMode() : setThemeMode(key))}
+                  className={clsx(
+                    'flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-medium transition-colors',
+                    themeMode === key
+                      ? 'bg-base-100 text-base-content shadow-sm'
+                      : 'text-base-content/50',
+                  )}
+                >
+                  <Icon size={14} />
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <div className='flex flex-col gap-6 px-4 pb-20'>
@@ -189,33 +400,7 @@ function MobileSettingsInner({ bookKey }: { bookKey: string }) {
         </div>
 
         {/* Brightness */}
-        {appService?.hasScreenBrightness && (
-          <div>
-            <label className='text-base-content/60 mb-2 block text-xs font-medium'>
-              {_('Brightness')}
-            </label>
-            <Slider
-              label={_('Screen Brightness')}
-              initialValue={screenBrightnessValue}
-              bubbleLabel={`${screenBrightnessValue}`}
-              minIcon={<PiSun size={16} />}
-              maxIcon={<PiSun size={24} />}
-              onChange={handleScreenBrightnessChange}
-              min={SCREEN_BRIGHTNESS_LIMITS.MIN}
-              max={SCREEN_BRIGHTNESS_LIMITS.MAX}
-              valueToPosition={(value: number, min: number, max: number): number => {
-                if (value <= min) return 0;
-                if (value >= max) return 100;
-                return Math.pow(value / max, 0.5) * 100;
-              }}
-              positionToValue={(position: number, min: number, max: number): number => {
-                if (position <= 0) return min;
-                if (position >= 100) return max;
-                return Math.max(min, Math.min(max, Math.pow(position / 100, 2) * max));
-              }}
-            />
-          </div>
-        )}
+        {brightnessControl}
 
         {/* Line Spacing */}
         <div>

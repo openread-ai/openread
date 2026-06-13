@@ -20,6 +20,7 @@ import { useEnv } from '@/context/EnvContext';
 import { useReaderStore } from '@/store/readerStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useSettingsStore } from '@/store/settingsStore';
+import { useBookDataStore } from '@/store/bookDataStore';
 import { useCustomFontStore } from '@/store/customFontStore';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import { getOSPlatform, isCJKEnv } from '@/utils/misc';
@@ -95,10 +96,14 @@ const FontPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
   const _ = useTranslation();
   const { envConfig, appService } = useEnv();
   const { getView, getViewSettings } = useReaderStore();
+  const { getBookData } = useBookDataStore();
   const { settings, fontPanelView, setFontPanelView } = useSettingsStore();
   const { fonts: allCustomFonts, getFontFamilies } = useCustomFontStore();
   const viewSettings = getViewSettings(bookKey) || settings.globalViewSettings;
   const view = getView(bookKey);
+  const bookData = getBookData(bookKey);
+  const isFixedLayout =
+    bookData?.isFixedLayout || bookData?.bookDoc?.rendition?.layout === 'pre-paginated';
   const iconSize18 = useResponsiveSize(18);
 
   const fontFamilyOptions = [
@@ -283,6 +288,21 @@ const FontPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
     return (
       <div className='my-4 w-full'>
         <CustomFonts bookKey={bookKey} onBack={handleBackToMain} />
+      </div>
+    );
+  }
+
+  if (isFixedLayout) {
+    return (
+      <div className='my-4 w-full space-y-6'>
+        <div className='card bg-base-100 border-base-200 border p-4 shadow'>
+          <h2 className='mb-2 font-medium'>{_('Fixed Layout')}</h2>
+          <p className='text-base-content/70 text-sm'>
+            {_(
+              'Font controls are unavailable for fixed-layout books. Use Layout for zoom and page spread controls.',
+            )}
+          </p>
+        </div>
       </div>
     );
   }

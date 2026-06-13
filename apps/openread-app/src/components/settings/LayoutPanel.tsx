@@ -33,6 +33,8 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
   const view = getView(bookKey);
   const bookData = getBookData(bookKey);
   const gridInsets = getGridInsets(bookKey) || { top: 0, bottom: 0, left: 0, right: 0 };
+  const isFixedLayout =
+    bookData?.isFixedLayout || bookData?.bookDoc?.rendition?.layout === 'pre-paginated';
 
   const [paragraphMargin, setParagraphMargin] = useState(viewSettings.paragraphMargin);
   const [lineHeight, setLineHeight] = useState(viewSettings.lineHeight);
@@ -73,10 +75,62 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
   const [tapToToggleFooter, setTapToToggleFooter] = useState(viewSettings.tapToToggleFooter);
   const [progressStyle, setProgressStyle] = useState(viewSettings.progressStyle);
   const [screenOrientation, setScreenOrientation] = useState(viewSettings.screenOrientation);
+  const [zoomLevel, setZoomLevel] = useState(viewSettings.zoomLevel);
+  const [zoomMode, setZoomMode] = useState(viewSettings.zoomMode);
+  const [spreadMode, setSpreadMode] = useState(viewSettings.spreadMode);
+  const [keepCoverSpread, setKeepCoverSpread] = useState(viewSettings.keepCoverSpread);
 
   const resetToDefaults = useResetViewSettings();
 
+  const resetFixedLayoutControls = () => {
+    if (!appService) return;
+
+    const currentBookData = getBookData(bookKey);
+    const currentViewSettings = getViewSettings(bookKey) || settings.globalViewSettings;
+    const defaultSettings = appService.getDefaultViewSettings();
+    const nextZoomLevel = defaultSettings.zoomLevel ?? currentViewSettings.zoomLevel;
+    const nextZoomMode = defaultSettings.zoomMode ?? currentViewSettings.zoomMode;
+    const nextSpreadMode = defaultSettings.spreadMode ?? currentViewSettings.spreadMode;
+    const nextKeepCoverSpread =
+      defaultSettings.keepCoverSpread ?? currentViewSettings.keepCoverSpread;
+
+    setZoomLevel(nextZoomLevel);
+    setZoomMode(nextZoomMode);
+    setSpreadMode(nextSpreadMode);
+    setKeepCoverSpread(nextKeepCoverSpread);
+    setViewSettings(bookKey, {
+      ...currentViewSettings,
+      zoomLevel: nextZoomLevel,
+      zoomMode: nextZoomMode,
+      spreadMode: nextSpreadMode,
+      keepCoverSpread: nextKeepCoverSpread,
+    });
+
+    if (currentBookData?.bookDoc?.sections?.length) {
+      const coverSide = currentBookData.bookDoc.dir === 'rtl' ? 'right' : 'left';
+      currentBookData.bookDoc.sections[0]!.pageSpread = nextKeepCoverSpread ? '' : coverSide;
+    }
+
+    view?.renderer.setAttribute('scale-factor', nextZoomLevel);
+    view?.renderer.setAttribute('zoom', nextZoomMode);
+    view?.renderer.setAttribute('spread', nextSpreadMode);
+    saveViewSettings(envConfig, bookKey, 'zoomLevel', nextZoomLevel, true, true);
+    saveViewSettings(envConfig, bookKey, 'zoomMode', nextZoomMode, true, false);
+    saveViewSettings(envConfig, bookKey, 'spreadMode', nextSpreadMode, true, false);
+    saveViewSettings(envConfig, bookKey, 'keepCoverSpread', nextKeepCoverSpread, true, false);
+  };
+
   const handleReset = () => {
+    const currentBookData = getBookData(bookKey);
+    const currentIsFixedLayout =
+      currentBookData?.isFixedLayout ||
+      currentBookData?.bookDoc?.rendition?.layout === 'pre-paginated';
+
+    if (currentIsFixedLayout) {
+      resetFixedLayoutControls();
+      return;
+    }
+
     resetToDefaults({
       paragraphMargin: setParagraphMargin,
       lineHeight: setLineHeight,
@@ -386,6 +440,113 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
   const langCode = getBookLangCode(bookData?.bookDoc?.metadata?.language);
   const mightBeRTLBook = MIGHT_BE_RTL_LANGS.includes(langCode) || isCJKEnv();
   const isVertical = viewSettings.vertical || writingMode.includes('vertical');
+
+  const saveFixedLayoutZoomLevel = (value: number) => {
+    setZoomLevel(value);
+    setViewSettings(bookKey, { ...viewSettings, zoomLevel: value });
+    view?.renderer.setAttribute('scale-factor', value);
+    saveViewSettings(envConfig, bookKey, 'zoomLevel', value, true, true);
+  };
+
+  const saveFixedLayoutZoomMode = (value: typeof viewSettings.zoomMode) => {
+    setZoomMode(value);
+    setViewSettings(bookKey, { ...viewSettings, zoomMode: value });
+    view?.renderer.setAttribute('zoom', value);
+    saveViewSettings(envConfig, bookKey, 'zoomMode', value, true, false);
+  };
+
+  const saveFixedLayoutSpreadMode = (value: typeof viewSettings.spreadMode) => {
+    setSpreadMode(value);
+    setViewSettings(bookKey, { ...viewSettings, spreadMode: value });
+    view?.renderer.setAttribute('spread', value);
+    saveViewSettings(envConfig, bookKey, 'spreadMode', value, true, false);
+  };
+
+  const saveKeepCoverSpread = (value: boolean) => {
+    setKeepCoverSpread(value);
+    if (bookData?.bookDoc?.sections?.length) {
+      const coverSide = bookData.bookDoc.dir === 'rtl' ? 'right' : 'left';
+      bookData.bookDoc.sections[0]!.pageSpread = value ? '' : coverSide;
+    }
+    setViewSettings(bookKey, { ...viewSettings, keepCoverSpread: value });
+    view?.renderer.setAttribute('spread', spreadMode);
+    saveViewSettings(envConfig, bookKey, 'keepCoverSpread', value, true, false);
+  };
+
+  if (isFixedLayout) {
+    return (
+      <div className='my-4 w-full space-y-6'>
+        <div className='w-full' data-setting-id='settings.layout.fixedLayout'>
+          <h2 className='mb-2 font-medium'>{_('Fixed Layout')}</h2>
+          <div className='card bg-base-100 border-base-200 border shadow'>
+            <div className='divide-base-200 divide-y'>
+              <NumberInput
+                label={_('Zoom Level')}
+                value={zoomLevel}
+                onChange={saveFixedLayoutZoomLevel}
+                min={50}
+                max={400}
+                step={10}
+                data-setting-id='settings.layout.fixedLayout.zoomLevel'
+              />
+              <div className='config-item' data-setting-id='settings.layout.fixedLayout.zoomMode'>
+                <span>{_('Zoom Mode')}</span>
+                <div className='flex flex-wrap justify-end gap-2'>
+                  {[
+                    ['fit-page', _('Fit Page')],
+                    ['fit-width', _('Fit Width')],
+                    ['original-size', _('Original Size')],
+                  ].map(([value, label]) => (
+                    <button
+                      key={value}
+                      type='button'
+                      className={`btn btn-xs ${zoomMode === value ? 'btn-active' : 'btn-ghost'}`}
+                      onClick={() => saveFixedLayoutZoomMode(value as typeof viewSettings.zoomMode)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className='config-item' data-setting-id='settings.layout.fixedLayout.spreadMode'>
+                <span>{_('Page Spread')}</span>
+                <div className='flex justify-end gap-2'>
+                  {[
+                    ['none', _('Single Page')],
+                    ['auto', _('Two Page Spread')],
+                  ].map(([value, label]) => (
+                    <button
+                      key={value}
+                      type='button'
+                      className={`btn btn-xs ${spreadMode === value ? 'btn-active' : 'btn-ghost'}`}
+                      onClick={() =>
+                        saveFixedLayoutSpreadMode(value as typeof viewSettings.spreadMode)
+                      }
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div
+                className='config-item'
+                data-setting-id='settings.layout.fixedLayout.keepCoverSpread'
+              >
+                <span>{_('Separate Cover Page')}</span>
+                <input
+                  type='checkbox'
+                  className='toggle'
+                  checked={keepCoverSpread}
+                  disabled={spreadMode === 'none'}
+                  onChange={() => saveKeepCoverSpread(!keepCoverSpread)}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className='my-4 w-full space-y-6'>

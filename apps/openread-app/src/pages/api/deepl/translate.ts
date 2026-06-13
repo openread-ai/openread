@@ -5,7 +5,8 @@ import { createLogger } from '@/utils/logger';
 
 const logger = createLogger('deepl');
 import { getCloudflareContext } from '@opennextjs/cloudflare';
-import { getSubscriptionPlan, validateUserAndToken } from '@/utils/access';
+import { resolveServerUserPlan } from '@/lib/server-plan';
+import { validateUserAndToken } from '@/utils/access';
 import { ErrorCodes } from '@/services/translators';
 import {
   LAUNCH_DISABLED_FEATURE_MESSAGE,
@@ -45,13 +46,12 @@ const generateCacheKey = (text: string, sourceLang: string, targetLang: string):
 
 const updateDailyUsage = async (
   userId: string | undefined,
-  token: string | undefined,
+  userPlan: string | undefined,
   incrementUsage: number,
 ) => {
-  if (!userId || !token) return 0;
+  if (!userId || !userPlan) return 0;
 
   try {
-    const userPlan = getSubscriptionPlan(token);
     const newUsage = await UsageStatsManager.trackUsage(
       userId,
       'translation_chars',
@@ -95,7 +95,7 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
   }
 
   let deeplApiUrl = deepFreeApiUrl;
-  const userPlan = getSubscriptionPlan(token);
+  const userPlan = await resolveServerUserPlan(user.id);
   const tier = await getTierDefinition(userPlan).catch((error: unknown) => {
     if (error instanceof TierConfigError) return null;
     throw error;
@@ -160,7 +160,7 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
     const translatedCharsCount = translations.reduce((a, b) => a + (b?.text.length || 0), 0);
     const newDailyUsage = await updateDailyUsage(
       user?.id,
-      token,
+      userPlan,
       originalCharsCount + translatedCharsCount,
     );
     translations.forEach((translation) => {

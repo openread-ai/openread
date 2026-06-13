@@ -1,9 +1,10 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { createSupabaseAdminClient } from '@/utils/supabase';
 import { corsAllMethods, runMiddleware } from '@/utils/cors';
-import { validateUserAndToken, getStoragePlanData } from '@/utils/access';
-import { getTierDefinition, TierConfigError } from '@/lib/tier-config';
-import { BYTES_PER_GB } from '@/lib/tier-defaults';
+import { getStorageQuota } from '@/lib/storage-quota';
+import { resolveServerUserPlan } from '@/lib/server-plan';
+import { TierConfigError } from '@/lib/tier-config';
+import { validateUserAndToken } from '@/utils/access';
 import { createLogger } from '@/utils/logger';
 
 const logger = createLogger('stats');
@@ -51,11 +52,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const totalFiles = totalStats?.length || 0;
     const totalSize = totalStats?.reduce((sum, file) => sum + (file.file_size || 0), 0) || 0;
 
-    // Get storage quota from runtime tier_config; do not use stale client defaults.
-    const { plan, usage } = getStoragePlanData(token);
-    const tier = await getTierDefinition(plan);
-    const quota = tier.storage_gb * BYTES_PER_GB;
-    const usagePercentage = quota > 0 ? Math.round((usage / quota) * 100) : 0;
+    // Use the same canonical DB-backed plan/quota path as upload enforcement and /api/storage/quota.
+    const plan = await resolveServerUserPlan(user.id, supabase);
+    const storageQuota = await getStorageQuota(user.id, plan);
+    const usage = storageQuota.usedBytes;
+    const quota = storageQuota.totalBytes;
+    const usagePercentage = Math.round(storageQuota.percentUsed);
 
     // Get stats grouped by book_hash
     const { data: bookHashStats, error: bookHashError } = await supabase.rpc(

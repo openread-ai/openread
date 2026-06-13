@@ -1,16 +1,12 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { createSupabaseAdminClient } from '@/utils/supabase';
 import { corsAllMethods, runMiddleware } from '@/utils/cors';
-import {
-  getSubscriptionPlan,
-  validateUserAndToken,
-  STORAGE_QUOTA_GRACE_BYTES,
-} from '@/utils/access';
+import { resolveServerUserPlan } from '@/lib/server-plan';
+import { validateUserAndToken, STORAGE_QUOTA_GRACE_BYTES } from '@/utils/access';
 import { getDownloadSignedUrl, getUploadSignedUrl } from '@/utils/object';
 import { OPENREAD_PUBLIC_STORAGE_BASE_URL } from '@/services/constants';
 import { assertCanIncreaseLibrary, isLibraryLimitError } from '@/lib/library-limit';
 import { getStorageQuota, incrementStorageUsed } from '@/lib/storage-quota';
-import type { UserPlan } from '@/types/quota';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   await runMiddleware(req, res, corsAllMethods);
@@ -60,7 +56,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const fileType = isCoverFile ? 'cover' : 'book';
 
     // Tier-based storage enforcement via storage-quota module
-    const plan = getSubscriptionPlan(token) as UserPlan;
+    const plan = await resolveServerUserPlan(user.id);
     const quota = await getStorageQuota(user.id, plan);
 
     // Defensive guard for configurations with 0 GB storage.

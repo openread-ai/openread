@@ -47,6 +47,7 @@ const Notebook: React.FC = ({}) => {
   const { setNotebookNewAnnotation, setNotebookEditAnnotation, setNotebookActiveTab } =
     useNotebookStore();
   const { activeConversationId, createConversation } = useAIChatStore();
+  const conversations = useAIChatStore((s) => s.conversations);
   const { primaryBookHash, getParallelHashes } = usePrimaryBookHash(sideBarBookKey ?? '');
 
   const [isSearchBarVisible, setIsSearchBarVisible] = useState(false);
@@ -233,6 +234,13 @@ const Notebook: React.FC = ({}) => {
   }
   const { bookDoc } = bookData;
   const languageDir = getBookDirFromLanguage(bookDoc.metadata.language);
+  const bookTitle =
+    typeof bookDoc.metadata.title === 'string' ? bookDoc.metadata.title : _('Untitled Book');
+  const activeConversation = conversations.find(
+    (conversation) => conversation.id === activeConversationId,
+  );
+  const notebookTitle =
+    notebookActiveTab === 'ai' ? activeConversation?.title || bookTitle : bookTitle;
 
   const hasSearchResults = filteredAnnotationNotes.length > 0 || filteredExcerptNotes.length > 0;
   const hasAnyNotes = annotationNotes.length > 0 || excerptNotes.length > 0;
@@ -309,6 +317,7 @@ const Notebook: React.FC = ({}) => {
             handleToggleSearchBar={handleToggleSearchBar}
             showSearchButton={notebookActiveTab === 'notes'}
             activeTab={notebookActiveTab}
+            title={notebookTitle}
             onNewChat={handleNewAIChat}
           />
           {notebookActiveTab === 'notes' && (

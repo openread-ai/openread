@@ -73,6 +73,8 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
   // On macOS, native traffic lights handle minimize/maximize/close — no HTML buttons needed.
   // On Windows/Linux, show HTML buttons since there are no native decorations.
   const windowButtonVisible = appService?.hasWindowBar && !appService?.hasTrafficLight;
+  const useMobileWebHeader =
+    !!appService?.isMobile && !appService?.isIOSApp && !appService?.isAndroidApp;
 
   const docs = view?.renderer.getContents() ?? [];
   const pointerInDoc = docs.some(({ doc }) => doc?.body?.style.cursor === 'pointer');
@@ -188,8 +190,21 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
               >
                 <PiCaretLeftBold size={iconSize16} />
               </button>
-              <span className='line-clamp-1 max-w-[40vw] text-xs font-semibold'>{bookTitle}</span>
+              {!useMobileWebHeader && (
+                <span className='line-clamp-1 max-w-[40vw] text-xs font-semibold'>{bookTitle}</span>
+              )}
             </div>
+            {useMobileWebHeader && (
+              <div
+                role='contentinfo'
+                aria-label={_('Title') + ' - ' + bookTitle}
+                className='pointer-events-none absolute inset-x-16 top-0 z-10 flex h-full items-center justify-center'
+              >
+                <span className='line-clamp-1 max-w-full text-center text-base font-semibold'>
+                  {bookTitle}
+                </span>
+              </div>
+            )}
             <div className='bg-base-100 z-20 ms-auto flex h-full items-center gap-x-3'>
               <button
                 className='btn btn-ghost h-8 min-h-8 w-8 p-0'

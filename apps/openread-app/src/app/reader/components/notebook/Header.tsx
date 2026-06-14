@@ -16,6 +16,7 @@ const NotebookHeader: React.FC<{
   handleToggleSearchBar: () => void;
   showSearchButton?: boolean;
   activeTab?: 'notes' | 'ai';
+  title?: string;
   onNewChat?: () => void;
 }> = ({
   isPinned,
@@ -25,6 +26,7 @@ const NotebookHeader: React.FC<{
   handleToggleSearchBar,
   showSearchButton = true,
   activeTab = 'notes',
+  title,
   onNewChat,
 }) => {
   const _ = useTranslation();
@@ -32,14 +34,14 @@ const NotebookHeader: React.FC<{
   const iconSize18 = useResponsiveSize(18);
   return (
     <div className='notebook-header relative flex h-11 items-center px-3' dir='ltr'>
-      <div className='absolute inset-0 z-[-1] flex items-center justify-center space-x-2'>
+      <div className='pointer-events-none absolute inset-x-12 inset-y-0 z-[-1] flex items-center justify-center gap-2'>
         {activeTab === 'ai' ? (
-          <LuMessageSquare size={iconSize18} />
+          <LuMessageSquare className='hidden shrink-0 sm:block' size={iconSize18} />
         ) : (
-          <LuNotebookPen size={iconSize18} />
+          <LuNotebookPen className='hidden shrink-0 sm:block' size={iconSize18} />
         )}
-        <div className='notebook-title hidden text-sm font-medium sm:flex'>
-          {activeTab === 'ai' ? _('AI Chat') : _('Notebook')}
+        <div className='notebook-title text-base-content max-w-full truncate text-center text-sm font-medium'>
+          {title || (activeTab === 'ai' ? _('AI Chat') : _('Notebook'))}
         </div>
       </div>
       <div className='flex w-full items-center gap-x-4'>

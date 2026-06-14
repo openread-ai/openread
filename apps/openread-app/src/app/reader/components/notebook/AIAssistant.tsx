@@ -278,6 +278,7 @@ const AIAssistantChat = ({
       adapter={adapter}
       historyAdapter={historyAdapter}
       bookKey={bookKey}
+      bookTitle={bookTitle}
       isLoadingHistory={isLoadingHistory}
       hasActiveConversation={!!activeConversationId}
       provider={aiSettings.provider}
@@ -292,6 +293,7 @@ const AIAssistantWithRuntime = ({
   adapter,
   historyAdapter,
   bookKey,
+  bookTitle,
   isLoadingHistory,
   hasActiveConversation,
   provider,
@@ -302,6 +304,7 @@ const AIAssistantWithRuntime = ({
   adapter: NonNullable<ReturnType<typeof createAgenticAdapter>>;
   historyAdapter: ThreadHistoryAdapter;
   bookKey: string;
+  bookTitle: string;
   isLoadingHistory: boolean;
   hasActiveConversation: boolean;
   provider: string;
@@ -319,6 +322,7 @@ const AIAssistantWithRuntime = ({
     <AssistantRuntimeProvider runtime={runtime}>
       <ThreadWrapper
         bookKey={bookKey}
+        bookTitle={bookTitle}
         isLoadingHistory={isLoadingHistory}
         hasActiveConversation={hasActiveConversation}
         provider={provider}
@@ -332,6 +336,7 @@ const AIAssistantWithRuntime = ({
 
 const ThreadWrapper = ({
   bookKey,
+  bookTitle,
   isLoadingHistory,
   hasActiveConversation,
   provider,
@@ -340,6 +345,7 @@ const ThreadWrapper = ({
   onSelectModel,
 }: {
   bookKey: string;
+  bookTitle: string;
   isLoadingHistory: boolean;
   hasActiveConversation: boolean;
   provider: string;
@@ -383,7 +389,8 @@ const ThreadWrapper = ({
       byokProvider={byokProvider}
       byokModel={byokModel}
       onSelectModel={onSelectModel}
-      composerKeyboardAvoidance={!!appService?.isMobile}
+      composerKeyboardAvoidance={!!appService?.isIOSApp}
+      bookTitle={bookTitle}
     />
   );
 };

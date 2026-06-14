@@ -4,6 +4,7 @@ import { useEnv } from '@/context/EnvContext';
 import { useReaderStore } from '@/store/readerStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useBookDataStore } from '@/store/bookDataStore';
+import { useSettingsStore } from '@/store/settingsStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useDeviceControlStore } from '@/store/deviceStore';
 import { eventDispatcher } from '@/utils/event';
@@ -30,6 +31,7 @@ const FooterBar: React.FC<FooterBarProps> = ({
   const _ = useTranslation();
   const { appService } = useEnv();
   const { getConfig, setConfig, getBookData } = useBookDataStore();
+  const { settings } = useSettingsStore();
   const { hoveredBookKey, setHoveredBookKey } = useReaderStore();
   const { getView, getViewState, getProgress, getViewSettings } = useReaderStore();
   const { isSideBarVisible, setSideBarVisible } = useSidebarStore();
@@ -224,6 +226,9 @@ const FooterBar: React.FC<FooterBarProps> = ({
   );
 
   const useMobileSettingsSheet = isMobile || appService?.isIOSApp;
+  const aiEnabled = settings?.aiSettings?.enabled ?? true;
+  const useMobileWebReaderChatDock =
+    aiEnabled && !!appService?.isMobile && !appService?.isIOSApp && !appService?.isAndroidApp;
 
   return (
     <>
@@ -240,21 +245,23 @@ const FooterBar: React.FC<FooterBarProps> = ({
       />
 
       {/* Main footer container */}
-      <div
-        role='group'
-        aria-label={_('Footer Bar')}
-        className={containerClasses}
-        dir={viewSettings?.rtl ? 'rtl' : 'ltr'}
-        onFocus={() => !appService?.isMobile && setHoveredBookKey(bookKey)}
-        onMouseLeave={() => window.innerWidth >= 640 && setHoveredBookKey('')}
-      >
-        {useMobileSettingsSheet ? (
-          <MobileFooterBarV2 bookKey={bookKey} />
-        ) : (
-          <MobileFooterBar {...commonProps} />
-        )}
-        <DesktopFooterBar {...commonProps} />
-      </div>
+      {!useMobileWebReaderChatDock && (
+        <div
+          role='group'
+          aria-label={_('Footer Bar')}
+          className={containerClasses}
+          dir={viewSettings?.rtl ? 'rtl' : 'ltr'}
+          onFocus={() => !appService?.isMobile && setHoveredBookKey(bookKey)}
+          onMouseLeave={() => window.innerWidth >= 640 && setHoveredBookKey('')}
+        >
+          {useMobileSettingsSheet ? (
+            <MobileFooterBarV2 bookKey={bookKey} />
+          ) : (
+            <MobileFooterBar {...commonProps} />
+          )}
+          <DesktopFooterBar {...commonProps} />
+        </div>
+      )}
       {isVisible && needHorizontalScroll && (
         <div className='bg-base-100 pointer-events-none absolute bottom-0 left-0 hidden h-3 w-full sm:block' />
       )}

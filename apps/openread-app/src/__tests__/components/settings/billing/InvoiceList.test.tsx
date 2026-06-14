@@ -41,6 +41,7 @@ const sampleInvoices: Invoice[] = [
     id: 'inv_1',
     date: invoiceDate1,
     amount: 999,
+    currency: 'USD',
     status: 'paid',
     invoiceUrl: 'https://stripe.com/inv/1',
     pdfUrl: 'https://stripe.com/inv/1.pdf',
@@ -49,6 +50,7 @@ const sampleInvoices: Invoice[] = [
     id: 'inv_2',
     date: invoiceDate2,
     amount: 499,
+    currency: 'USD',
     status: 'paid',
     invoiceUrl: 'https://stripe.com/inv/2',
     pdfUrl: 'https://stripe.com/inv/2.pdf',
@@ -57,6 +59,7 @@ const sampleInvoices: Invoice[] = [
     id: 'inv_3',
     date: invoiceDate3,
     amount: 499,
+    currency: 'USD',
     status: 'paid',
     invoiceUrl: 'https://stripe.com/inv/3',
     pdfUrl: '',
@@ -76,14 +79,14 @@ describe('InvoiceList', () => {
     expect(skeletons.length).toBeGreaterThan(0);
   });
 
-  it('should show empty state when no invoices', () => {
+  it('should show empty state when no paid receipts exist', () => {
     render(<InvoiceList invoices={[]} />);
-    expect(screen.getByText('No invoices yet')).toBeTruthy();
+    expect(screen.getByText('No paid receipts yet')).toBeTruthy();
   });
 
-  it('should display Invoices title', () => {
+  it('should display Receipts title', () => {
     render(<InvoiceList invoices={sampleInvoices} />);
-    expect(screen.getByText('Invoices')).toBeTruthy();
+    expect(screen.getByText('Receipts')).toBeTruthy();
   });
 
   it('should display table headers', () => {
@@ -110,11 +113,24 @@ describe('InvoiceList', () => {
     expect(fourNinetyNine.length).toBe(2);
   });
 
+  it('should show Stripe hosted receipt links when invoiceUrl is available', () => {
+    render(<InvoiceList invoices={sampleInvoices} />);
+    const receiptLinks = screen.getAllByText('Receipt');
+    expect(receiptLinks.length).toBe(3);
+  });
+
   it('should show PDF download link when pdfUrl is available', () => {
     render(<InvoiceList invoices={sampleInvoices} />);
     const pdfLinks = screen.getAllByText('PDF');
     // inv_1 and inv_2 have pdfUrl, inv_3 has empty string
     expect(pdfLinks.length).toBe(2);
+  });
+
+  it('should open hosted receipt in new tab', () => {
+    render(<InvoiceList invoices={sampleInvoices} />);
+    const receiptLink = screen.getAllByLabelText('View hosted invoice')[0];
+    expect(receiptLink?.getAttribute('target')).toBe('_blank');
+    expect(receiptLink?.getAttribute('rel')).toBe('noopener noreferrer');
   });
 
   it('should open PDF in new tab', () => {
@@ -126,6 +142,6 @@ describe('InvoiceList', () => {
 
   it('should display description text', () => {
     render(<InvoiceList invoices={sampleInvoices} />);
-    expect(screen.getByText('Your recent invoices')).toBeTruthy();
+    expect(screen.getByText('Your paid Stripe receipts and invoice PDFs')).toBeTruthy();
   });
 });

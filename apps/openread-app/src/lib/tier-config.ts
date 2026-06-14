@@ -90,19 +90,19 @@ export async function getTierDefinition(plan: UserPlan): Promise<TierDefinition>
 }
 
 /**
- * Get regional pricing for a country code (ISO 3166-1 alpha-2).
- * Falls back to USD defaults derived from tier display prices.
+ * Get launch pricing for public display.
+ *
+ * Stripe web billing is USD-only at launch. The country argument is accepted
+ * for backwards-compatible callers but must not select local rates.
  */
-export async function getRegionalPricing(countryCode: string): Promise<RegionalPricingEntry> {
+export async function getRegionalPricing(_countryCode: string): Promise<RegionalPricingEntry> {
   const config = await getTierConfig();
-  return (
-    config.regional_pricing[countryCode?.toUpperCase()] || {
-      currency: 'USD',
-      symbol: '$',
-      reader: config.tiers.reader.display_price_cents / 100,
-      pro: config.tiers.pro.display_price_cents / 100,
-    }
-  );
+  return {
+    currency: 'USD',
+    symbol: '$',
+    reader: config.tiers.reader.display_price_cents / 100,
+    pro: config.tiers.pro.display_price_cents / 100,
+  };
 }
 
 /**

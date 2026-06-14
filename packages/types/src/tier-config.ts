@@ -183,10 +183,7 @@ export const GEN3_V3_FALLBACK_TIER_CONFIG: TierConfig = {
       display_name: 'Pro',
     },
   },
-  regional_pricing: {
-    IN: { currency: 'INR', symbol: '₹', reader: 349, pro: 699 },
-    BR: { currency: 'BRL', symbol: 'R$', reader: 29.99, pro: 59.99 },
-  },
+  regional_pricing: {},
   storage_addons: [],
   boosts: [],
   featureAliases: {

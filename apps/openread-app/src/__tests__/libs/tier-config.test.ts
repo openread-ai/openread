@@ -169,20 +169,12 @@ describe('tier-config', () => {
       setupDbSuccess(getFallbackConfig());
     });
 
-    it('should return Indian pricing for country code IN', async () => {
+    it('should return canonical USD pricing for regional country codes', async () => {
       const pricing = await getRegionalPricing('IN');
-      expect(pricing.currency).toBe('INR');
-      expect(pricing.symbol).toBe('\u20B9');
-      expect(pricing.reader).toBe(349);
-      expect(pricing.pro).toBe(699);
-    });
-
-    it('should return Brazilian pricing for country code BR', async () => {
-      const pricing = await getRegionalPricing('BR');
-      expect(pricing.currency).toBe('BRL');
-      expect(pricing.symbol).toBe('R$');
-      expect(pricing.reader).toBe(29.99);
-      expect(pricing.pro).toBe(59.99);
+      expect(pricing.currency).toBe('USD');
+      expect(pricing.symbol).toBe('$');
+      expect(pricing.reader).toBe(9.99);
+      expect(pricing.pro).toBe(19.99);
     });
 
     it('should return USD default for unknown country code', async () => {
@@ -194,9 +186,9 @@ describe('tier-config', () => {
       expect(pricing.pro).toBe(19.99);
     });
 
-    it('should be case-insensitive for country codes', async () => {
+    it('should ignore country code casing for USD-only launch pricing', async () => {
       const pricing = await getRegionalPricing('in');
-      expect(pricing.currency).toBe('INR');
+      expect(pricing.currency).toBe('USD');
     });
   });
 
@@ -228,8 +220,7 @@ describe('tier-config', () => {
       expect(config.max_agent_steps).toBe(12);
       expect(config.storage_addons).toHaveLength(0);
       expect(config.boosts).toHaveLength(0);
-      expect(config.regional_pricing).toHaveProperty('IN');
-      expect(config.regional_pricing).toHaveProperty('BR');
+      expect(config.regional_pricing).toEqual({});
     });
 
     it('should have consistent cost rates', () => {

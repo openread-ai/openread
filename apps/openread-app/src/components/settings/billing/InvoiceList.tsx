@@ -30,10 +30,10 @@ interface InvoiceListProps {
 export function InvoiceList({ invoices, isLoading }: InvoiceListProps) {
   const _ = useTranslation();
 
-  const formatAmount = (amount: number) => {
+  const formatAmount = (amount: number, currency: string) => {
     return new Intl.NumberFormat(getLocale(), {
       style: 'currency',
-      currency: 'USD',
+      currency: currency.toUpperCase(),
     }).format(amount / 100);
   };
 
@@ -56,14 +56,14 @@ export function InvoiceList({ invoices, isLoading }: InvoiceListProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{_('Invoices')}</CardTitle>
-        <CardDescription>{_('Your recent invoices')}</CardDescription>
+        <CardTitle>{_('Receipts')}</CardTitle>
+        <CardDescription>{_('Your paid Stripe receipts and invoice PDFs')}</CardDescription>
       </CardHeader>
       <CardContent>
         {invoices.length === 0 ? (
           <div className='flex flex-col items-center justify-center py-6'>
             <Receipt className='text-base-content/40 h-10 w-10' aria-hidden='true' />
-            <p className='text-base-content/60 mt-3 text-sm'>{_('No invoices yet')}</p>
+            <p className='text-base-content/60 mt-3 text-sm'>{_('No paid receipts yet')}</p>
           </div>
         ) : (
           <div className='overflow-x-auto'>
@@ -86,22 +86,37 @@ export function InvoiceList({ invoices, isLoading }: InvoiceListProps) {
                   <tr key={invoice.id} className='border-base-300 hover:bg-base-200/50'>
                     <td className='text-base-content text-sm'>{formatShortDate(invoice.date)}</td>
                     <td className='text-base-content text-sm font-medium'>
-                      {formatAmount(invoice.amount)}
+                      {formatAmount(invoice.amount, invoice.currency)}
                     </td>
                     <td className='text-right'>
-                      {invoice.pdfUrl && (
-                        <Button variant='ghost' size='sm' asChild>
-                          <a
-                            href={invoice.pdfUrl}
-                            target='_blank'
-                            rel='noopener noreferrer'
-                            aria-label={_('Download invoice PDF')}
-                          >
-                            <Download className='mr-1 h-4 w-4' aria-hidden='true' />
-                            {_('PDF')}
-                          </a>
-                        </Button>
-                      )}
+                      <div className='flex justify-end gap-1'>
+                        {invoice.invoiceUrl && (
+                          <Button variant='ghost' size='sm' asChild>
+                            <a
+                              href={invoice.invoiceUrl}
+                              target='_blank'
+                              rel='noopener noreferrer'
+                              aria-label={_('View hosted invoice')}
+                            >
+                              <Receipt className='mr-1 h-4 w-4' aria-hidden='true' />
+                              {_('Receipt')}
+                            </a>
+                          </Button>
+                        )}
+                        {invoice.pdfUrl && (
+                          <Button variant='ghost' size='sm' asChild>
+                            <a
+                              href={invoice.pdfUrl}
+                              target='_blank'
+                              rel='noopener noreferrer'
+                              aria-label={_('Download invoice PDF')}
+                            >
+                              <Download className='mr-1 h-4 w-4' aria-hidden='true' />
+                              {_('PDF')}
+                            </a>
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

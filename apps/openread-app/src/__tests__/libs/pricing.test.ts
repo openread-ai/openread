@@ -2,8 +2,6 @@ import { describe, it, expect } from 'vitest';
 import { getCountryFromHeaders, formatPrice, type RegionalPrice } from '@/lib/pricing';
 
 const USD_PRICING: RegionalPrice = { currency: 'USD', symbol: '$', reader: 9.99, pro: 19.99 };
-const INR_PRICING: RegionalPrice = { currency: 'INR', symbol: '₹', reader: 349, pro: 699 };
-const BRL_PRICING: RegionalPrice = { currency: 'BRL', symbol: 'R$', reader: 29.99, pro: 59.99 };
 
 describe('pricing helpers', () => {
   describe('getCountryFromHeaders', () => {
@@ -37,19 +35,9 @@ describe('pricing helpers', () => {
   });
 
   describe('formatPrice', () => {
-    it('formats USD prices', () => {
+    it('formats canonical USD prices', () => {
       expect(formatPrice(USD_PRICING, 'reader')).toBe('$9.99');
       expect(formatPrice(USD_PRICING, 'pro')).toBe('$19.99');
-    });
-
-    it('formats INR prices', () => {
-      expect(formatPrice(INR_PRICING, 'reader')).toBe('₹349');
-      expect(formatPrice(INR_PRICING, 'pro')).toBe('₹699');
-    });
-
-    it('formats BRL prices', () => {
-      expect(formatPrice(BRL_PRICING, 'reader')).toBe('R$29.99');
-      expect(formatPrice(BRL_PRICING, 'pro')).toBe('R$59.99');
     });
   });
 });

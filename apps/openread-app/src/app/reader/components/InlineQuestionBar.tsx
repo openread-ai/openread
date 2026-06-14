@@ -22,6 +22,7 @@ import { useThemeStore } from '@/store/themeStore';
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
 import { appendSpeechText, useSpeechToText } from '@/hooks/useSpeechToText';
+import { useDismissableLayer } from '@/hooks/useDismissableLayer';
 import { usePrimaryBookHash } from '@/app/reader/hooks/usePrimaryBookHash';
 import { cn } from '@/utils/tailwind';
 
@@ -34,6 +35,7 @@ const InlineQuestionBar: React.FC<InlineQuestionBarProps> = ({ bookKey }) => {
   const [question, setQuestion] = useState('');
   const [dismissed, setDismissed] = useState(false);
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
+  const actionMenuRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const {
     isSupported: speechSupported,
@@ -111,6 +113,12 @@ const InlineQuestionBar: React.FC<InlineQuestionBarProps> = ({ bookKey }) => {
       : _('Start speech to text')
     : _('Focus message input');
 
+  useDismissableLayer({
+    enabled: actionMenuOpen,
+    layerRef: actionMenuRef,
+    onDismiss: () => setActionMenuOpen(false),
+  });
+
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
@@ -186,32 +194,6 @@ const InlineQuestionBar: React.FC<InlineQuestionBarProps> = ({ bookKey }) => {
               : 'border-base-content/10 bg-base-100/95 pointer-events-auto w-[85%] max-w-sm items-center gap-2 rounded-2xl border px-3 py-2 shadow-lg backdrop-blur-xl',
         )}
       >
-        {useMobileWebDock && actionMenuOpen && (
-          <div
-            className='bg-base-100 border-base-content/10 absolute bottom-full left-0 mb-2 w-44 overflow-hidden rounded-2xl border p-1 shadow-xl'
-            role='menu'
-          >
-            <button
-              type='button'
-              onClick={handleGoToLibrary}
-              className='hover:bg-base-200 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm'
-              role='menuitem'
-            >
-              <UploadIcon className='size-4' />
-              {_('Import books')}
-            </button>
-            <button
-              type='button'
-              onClick={handleGoToExplore}
-              className='hover:bg-base-200 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm'
-              role='menuitem'
-            >
-              <CompassIcon className='size-4' />
-              {_('Explore catalog')}
-            </button>
-          </div>
-        )}
-
         {useMobileWebDock ? (
           <>
             <input
@@ -224,15 +206,42 @@ const InlineQuestionBar: React.FC<InlineQuestionBarProps> = ({ bookKey }) => {
             />
 
             <div className='flex items-center gap-3'>
-              <button
-                type='button'
-                onClick={() => setActionMenuOpen((open) => !open)}
-                className='bg-base-content text-base-100 flex size-11 shrink-0 items-center justify-center rounded-full transition-transform active:scale-95'
-                aria-label={_('Import or explore books')}
-                aria-expanded={actionMenuOpen}
-              >
-                <PlusIcon className='size-6' />
-              </button>
+              <div ref={actionMenuRef} className='relative shrink-0'>
+                {actionMenuOpen && (
+                  <div
+                    className='bg-base-100 border-base-content/10 absolute bottom-full left-0 mb-2 w-44 overflow-hidden rounded-2xl border p-1 shadow-xl'
+                    role='menu'
+                  >
+                    <button
+                      type='button'
+                      onClick={handleGoToLibrary}
+                      className='hover:bg-base-200 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm'
+                      role='menuitem'
+                    >
+                      <UploadIcon className='size-4' />
+                      {_('Import books')}
+                    </button>
+                    <button
+                      type='button'
+                      onClick={handleGoToExplore}
+                      className='hover:bg-base-200 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm'
+                      role='menuitem'
+                    >
+                      <CompassIcon className='size-4' />
+                      {_('Explore catalog')}
+                    </button>
+                  </div>
+                )}
+                <button
+                  type='button'
+                  onClick={() => setActionMenuOpen((open) => !open)}
+                  className='bg-base-content text-base-100 flex size-11 items-center justify-center rounded-full transition-transform active:scale-95'
+                  aria-label={_('Import or explore books')}
+                  aria-expanded={actionMenuOpen}
+                >
+                  <PlusIcon className='size-6' />
+                </button>
+              </div>
 
               <button
                 type='button'

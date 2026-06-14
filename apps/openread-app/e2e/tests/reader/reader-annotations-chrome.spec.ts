@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test';
 import { test, expect } from '../../fixtures';
+import { attachScenarioEvidence } from '../../helpers/settings-contract';
 import { LibraryPage } from '../../pages/LibraryPage';
 import { ReaderPage } from '../../pages/ReaderPage';
 import { selectFirstReaderText } from '../../helpers/select-reader-text';
@@ -36,7 +37,11 @@ async function openFirstBookInReader(page: Page): Promise<void> {
 test.describe('Chromium reader annotations', () => {
   test('selects reader iframe text and exposes annotation actions', async ({
     authenticatedPage: page,
-  }) => {
+  }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== 'chromium',
+      'Desktop custom selection popup is validated on chromium; mobile-web has separate expected absence coverage.',
+    );
     await openFirstBookInReader(page);
     await selectFirstReaderText(page);
 
@@ -50,17 +55,23 @@ test.describe('Chromium reader annotations', () => {
       'Search',
       'Dictionary',
       'Wikipedia',
-      'Translate',
-      'Speak',
       'Proofread',
     ]) {
       await expect(popup.getByRole('button', { name: label })).toBeVisible();
     }
+
+    await expect(popup.getByRole('button', { name: 'Translate' })).toHaveCount(0);
+    await expect(popup.getByRole('button', { name: 'Speak' })).toHaveCount(0);
+    await attachScenarioEvidence(page, testInfo, 'AN-ACT-01-WD-selection-actions');
   });
 
   test('selection search action opens sidebar search with selected text', async ({
     authenticatedPage: page,
-  }) => {
+  }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== 'chromium',
+      'Desktop custom selection search flow is validated on chromium; mobile-web has separate expected absence coverage.',
+    );
     await openFirstBookInReader(page);
     await selectFirstReaderText(page);
 
@@ -74,11 +85,16 @@ test.describe('Chromium reader annotations', () => {
     const search = sidebar.getByPlaceholder('Search...');
     await expect(search).toBeVisible({ timeout: 10_000 });
     await expect(search).not.toHaveValue('');
+    await attachScenarioEvidence(page, testInfo, 'AN-SRCH-01-WD-selection-search');
   });
 
   test('annotation action opens notes tab after AI chat was active', async ({
     authenticatedPage: page,
-  }) => {
+  }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== 'chromium',
+      'Desktop annotation-to-notebook flow is validated on chromium; mobile-web has separate expected absence coverage.',
+    );
     await openFirstBookInReader(page);
 
     await page.getByRole('button', { name: 'Notebook' }).click({ force: true });
@@ -99,11 +115,16 @@ test.describe('Chromium reader annotations', () => {
     await expect(notebook).toBeVisible({ timeout: 10_000 });
     await expect(notebook.getByText('Notebook')).toBeVisible({ timeout: 10_000 });
     await expect(notebook.getByLabel('Add your notes here...')).toBeVisible({ timeout: 10_000 });
+    await attachScenarioEvidence(page, testInfo, 'AN-NB-01-WD-notebook-notes-tab');
   });
 
   test('creates, edits, and deletes a note from selected reader text', async ({
     authenticatedPage: page,
-  }) => {
+  }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== 'chromium',
+      'Desktop note lifecycle is validated on chromium; mobile-web has separate expected absence coverage.',
+    );
     await openFirstBookInReader(page);
     await selectFirstReaderText(page);
 
@@ -131,8 +152,25 @@ test.describe('Chromium reader annotations', () => {
     noteItem = notebook.locator('.booknote-item').filter({ hasText: updatedNoteText }).first();
     await expect(noteItem).toBeVisible({ timeout: 10_000 });
 
+    await attachScenarioEvidence(page, testInfo, 'AN-CRUD-01-WD-note-created');
+
     await noteItem.hover();
     await noteItem.getByRole('button', { name: 'Delete' }).click();
     await expect(noteItem).toBeHidden({ timeout: 10_000 });
+  });
+
+  test('mobile-web keeps custom selection popup absent for native selection handling', async ({
+    authenticatedPage: page,
+  }, testInfo) => {
+    test.skip(
+      !['mobile-chromium', 'mobile-webkit'].includes(testInfo.project.name),
+      'Mobile-web expected absence coverage only.',
+    );
+
+    await openFirstBookInReader(page);
+    await selectFirstReaderText(page, 36, { waitForPopup: false });
+
+    await expect(page.locator('.selection-popup').first()).toBeHidden({ timeout: 5_000 });
+    await attachScenarioEvidence(page, testInfo, 'AN-SEL-01-MW-selection-popup-expected-absence');
   });
 });

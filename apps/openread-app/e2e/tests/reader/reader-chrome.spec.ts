@@ -1,5 +1,6 @@
 import type { Locator, Page } from '@playwright/test';
 import { test, expect } from '../../fixtures';
+import { attachScenarioEvidence } from '../../helpers/settings-contract';
 import { LibraryPage } from '../../pages/LibraryPage';
 import { ReaderPage } from '../../pages/ReaderPage';
 
@@ -208,7 +209,7 @@ test.describe('Chromium reader chrome', () => {
 
   test('quick action menu exposes selectable annotation shortcuts when enabled', async ({
     authenticatedPage: page,
-  }) => {
+  }, testInfo) => {
     await openFirstBookInReader(page);
 
     const header = await revealHeader(page);
@@ -225,11 +226,13 @@ test.describe('Chromium reader chrome', () => {
       'Instant Search',
       'Instant Dictionary',
       'Instant Wikipedia',
-      'Instant Translate',
-      'Instant Speak',
     ]) {
       await expect(menu.getByRole('menuitem', { name: label })).toBeVisible();
     }
+
+    await expect(menu.getByRole('menuitem', { name: 'Instant Translate' })).toHaveCount(0);
+    await expect(menu.getByRole('menuitem', { name: 'Instant Speak' })).toHaveCount(0);
+    await attachScenarioEvidence(page, testInfo, 'QA-MENU-01-WD-quick-action-menu');
 
     await page.keyboard.press('Escape');
     await expect(menu).toBeHidden({ timeout: 5_000 });
@@ -324,7 +327,7 @@ test.describe('Chromium reader chrome', () => {
 
   test('opens sidebar search and tab controls from reader chrome', async ({
     authenticatedPage: page,
-  }) => {
+  }, testInfo) => {
     await openFirstBookInReader(page);
 
     const sidebar = await openPanelFromHeader(page, 'Toggle Sidebar', '.sidebar-container');
@@ -344,10 +347,15 @@ test.describe('Chromium reader chrome', () => {
     const bookMenu = page.locator('.book-menu').first();
     await expect(bookMenu).toBeVisible({ timeout: 10_000 });
     await expect(bookMenu.getByText('Parallel Read')).toBeVisible();
-    await expect(bookMenu.getByRole('menuitem', { name: 'Export Annotations' })).toBeVisible();
+    const exportAnnotations = bookMenu.getByRole('menuitem', { name: 'Export Annotations' });
+    await expect(exportAnnotations).toBeVisible();
     await expect(bookMenu.getByRole('menuitem', { name: 'Sort TOC by Page' })).toBeVisible();
     await expect(bookMenu.getByRole('menuitem', { name: /Reload Page/ })).toBeVisible();
-    await page.keyboard.press('Escape');
+    await attachScenarioEvidence(page, testInfo, 'BM-EXP-01-WD-export-annotations-entry');
+
+    await exportAnnotations.click();
+    await expect(page.getByText('No annotations to export')).toBeVisible({ timeout: 10_000 });
+    await attachScenarioEvidence(page, testInfo, 'BM-EXP-02-WD-export-empty-state');
 
     await sidebar.getByTitle('Show Search Bar').click();
     const search = sidebar.getByPlaceholder('Search...');
@@ -389,7 +397,9 @@ test.describe('Chromium reader chrome', () => {
     await expect(page.getByRole('document', { name: 'Book Content' })).toBeVisible();
   });
 
-  test('opens notebook panels from reader chrome', async ({ authenticatedPage: page }) => {
+  test('opens notebook panels from reader chrome', async ({
+    authenticatedPage: page,
+  }, testInfo) => {
     await openFirstBookInReader(page);
 
     await openPanelFromHeader(page, 'Toggle Sidebar', '.sidebar-container');
@@ -397,6 +407,7 @@ test.describe('Chromium reader chrome', () => {
     await expect(notebook).toHaveAttribute('aria-label', 'Notebook');
     await expect(notebook.getByRole('button', { name: 'Notes' })).toBeVisible();
     await expect(notebook.getByRole('button', { name: 'AI' })).toBeVisible();
+    await attachScenarioEvidence(page, testInfo, 'NB-OPEN-01-WD-notebook-tabs');
 
     await notebook.getByRole('button', { name: 'Notes' }).click();
     await expect(notebook.getByText('Notebook').first()).toBeVisible();

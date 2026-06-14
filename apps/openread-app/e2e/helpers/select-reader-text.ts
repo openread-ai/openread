@@ -1,6 +1,10 @@
 import type { Frame, Page } from '@playwright/test';
 
-export async function selectFirstReaderText(page: Page, maxChars = 36) {
+export async function selectFirstReaderText(
+  page: Page,
+  maxChars = 36,
+  options: { waitForPopup?: boolean } = {},
+) {
   await page.waitForSelector('iframe', { state: 'attached', timeout: 45_000 });
 
   const popup = page.locator('.selection-popup').first();
@@ -110,6 +114,8 @@ export async function selectFirstReaderText(page: Page, maxChars = 36) {
         .catch(() => false);
 
       if (!selected) continue;
+
+      if (options.waitForPopup === false) return;
 
       try {
         await popup.waitFor({ state: 'visible', timeout: 5_000 });

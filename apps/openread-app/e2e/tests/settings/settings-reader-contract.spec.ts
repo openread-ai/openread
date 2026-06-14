@@ -50,6 +50,12 @@ async function openReflowableBookInReader(page: Page): Promise<string> {
   return REFLOWABLE_BOOK_HASH;
 }
 
+async function useCjkUiLocale(page: Page) {
+  await page.addInitScript(() => {
+    window.localStorage.setItem('i18nextLng', 'zh-CN');
+  });
+}
+
 async function revealDesktopHeader(page: Page) {
   const viewport = page.viewportSize() ?? { width: 1280, height: 720 };
   await page.mouse.move(Math.floor(viewport.width / 2), 12);
@@ -657,6 +663,95 @@ test.describe('Settings reader contract', () => {
       page,
       testInfo,
       'BLC-003-ipad-web-menu-settings-panels-expected-absence',
+    );
+  });
+
+  test('CL-001 validates desktop conditional language CJK vertical and EPUB controls', async ({
+    authenticatedPage: page,
+  }, testInfo) => {
+    test.skip(
+      testInfo.project.name.startsWith('mobile-'),
+      'Desktop conditional settings dialog only.',
+    );
+
+    await useCjkUiLocale(page);
+    await openReflowableBookInReader(page);
+    const dialog = await openDesktopSettingsDialog(page);
+
+    await selectDesktopSettingsPanel(dialog, 'Language');
+    await expect(
+      dialog.locator('[data-setting-id="settings.language.interfaceLanguage"]'),
+    ).toBeVisible();
+    await expect(
+      dialog.locator('[data-setting-id="settings.language.translationEnabled"]'),
+    ).toHaveCount(0);
+    await expect(
+      dialog.locator('[data-setting-id="settings.language.ttsTextTranslation"]'),
+    ).toHaveCount(0);
+    await expect(
+      dialog.locator('[data-setting-id="settings.language.quotationMarks"]'),
+    ).toBeVisible();
+    await expect(
+      dialog.locator('[data-setting-id="settings.language.chineseConversion"]'),
+    ).toBeVisible();
+    await attachReaderEvidence(page, testInfo, 'CL-001-desktop-cjk-language-controls');
+
+    await selectDesktopSettingsPanel(dialog, 'Font');
+    await expect(dialog.locator('[data-setting-id="settings.font.cjkFont"]')).toBeVisible();
+    await attachReaderEvidence(page, testInfo, 'CL-001-desktop-cjk-font-control');
+
+    await selectDesktopSettingsPanel(dialog, 'Layout');
+    const writingMode = dialog.locator('[data-setting-id="settings.layout.writingMode"]');
+    await expect(writingMode).toBeVisible();
+    await expect(dialog.locator('[data-setting-id="settings.layout.borderFrame"]')).toHaveCount(0);
+    await writingMode.getByRole('button').nth(2).click();
+    await expect(dialog.locator('[data-setting-id="settings.layout.borderFrame"]')).toBeVisible();
+    await attachReaderEvidence(page, testInfo, 'CL-001-desktop-cjk-vertical-border-controls');
+    await writingMode.getByRole('button').first().click();
+
+    await selectDesktopSettingsPanel(dialog, 'Behavior');
+    await expect(
+      dialog.locator('[data-setting-id="settings.control.allowJavascript"]'),
+    ).toBeVisible();
+    await attachReaderEvidence(page, testInfo, 'CL-001-desktop-epub-javascript-control');
+  });
+
+  test('CL-002 validates mobile-web conditional language controls remain simplified', async ({
+    authenticatedPage: page,
+  }, testInfo) => {
+    test.skip(
+      !['mobile-chromium', 'mobile-webkit'].includes(testInfo.project.name),
+      'Phone-sized mobile-web settings surface is required for compact conditional proof.',
+    );
+
+    await useCjkUiLocale(page);
+    await openReflowableBookInReader(page);
+    await openMobileReaderSettingsSurface(page);
+
+    await expect(page.getByText('Font Size').first()).toBeVisible();
+    await expect(
+      page.locator('[data-setting-id="settings.language.translationEnabled"]'),
+    ).toHaveCount(0);
+    await expect(
+      page.locator('[data-setting-id="settings.language.ttsTextTranslation"]'),
+    ).toHaveCount(0);
+    await expect(page.locator('[data-setting-id="settings.language.quotationMarks"]')).toHaveCount(
+      0,
+    );
+    await expect(
+      page.locator('[data-setting-id="settings.language.chineseConversion"]'),
+    ).toHaveCount(0);
+    await expect(page.locator('[data-setting-id="settings.font.cjkFont"]')).toHaveCount(0);
+    await expect(page.locator('[data-setting-id="settings.layout.writingMode"]')).toHaveCount(0);
+    await expect(page.locator('[data-setting-id="settings.layout.borderFrame"]')).toHaveCount(0);
+    await expect(page.locator('[data-setting-id="settings.control.allowJavascript"]')).toHaveCount(
+      0,
+    );
+
+    await attachReaderEvidence(
+      page,
+      testInfo,
+      'CL-002-mobile-web-conditional-controls-expected-absence',
     );
   });
 

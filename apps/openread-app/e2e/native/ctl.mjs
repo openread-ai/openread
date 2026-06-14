@@ -17,6 +17,8 @@ import { parseSettingsContract } from '../qa/lib/settings-contract.mjs';
 loadEnvFiles();
 
 const args = parseArgs(process.argv.slice(2));
+const appRoot = process.cwd();
+const srcTauriDir = resolve(appRoot, 'src-tauri');
 const commandName = args._[0] ?? 'help';
 const platforms = splitArg(args.platform ?? args.platforms).length
   ? splitArg(args.platform ?? args.platforms)
@@ -178,6 +180,11 @@ async function settingsCommand() {
 async function readinessForPlatform(platform) {
   if (platform === 'native-ios' || platform === 'native-ipados') {
     return platformCheck(platform, [
+      fileCheck(
+        'iOS generated Xcode project exists',
+        resolve(srcTauriDir, 'gen/apple/Openread.xcodeproj/project.pbxproj'),
+        'Run `pnpm tauri ios init --ci --skip-targets-install` from apps/openread-app before native iOS validation.',
+      ),
       commandCheck('xcrun is available', 'xcrun', ['--version']),
       commandCheck('iOS simulators are listable', 'xcrun', ['simctl', 'list', 'devices', '--json']),
       iosInstalledAppCheck(platform),
@@ -187,6 +194,16 @@ async function readinessForPlatform(platform) {
 
   if (platform === 'native-android') {
     return platformCheck(platform, [
+      fileCheck(
+        'Android generated manifest exists',
+        resolve(srcTauriDir, 'gen/android/app/src/main/AndroidManifest.xml'),
+        'Run `ANDROID_HOME=${ANDROID_HOME:-/opt/homebrew/share/android-commandlinetools} ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-/opt/homebrew/share/android-commandlinetools} pnpm tauri android init --ci --skip-targets-install` from apps/openread-app before native Android validation.',
+      ),
+      fileCheck(
+        'Android generated Gradle wrapper exists',
+        resolve(srcTauriDir, 'gen/android/gradlew'),
+        'Run `pnpm tauri android init --ci --skip-targets-install` from apps/openread-app before native Android validation.',
+      ),
       commandCheck('adb is available', androidTool('adb'), ['version']),
       commandCheck('adb can list devices', androidTool('adb'), adbArgs(['devices'])),
       commandCheck(
@@ -5181,6 +5198,14 @@ function iosInstalledAppCheck(platform) {
     iosBundleId,
     'app',
   ]);
+}
+
+function fileCheck(label, path, missingDetail) {
+  return {
+    label,
+    ok: existsSync(path),
+    detail: existsSync(path) ? path : `${missingDetail} Missing: ${path}`,
+  };
 }
 
 function commandCheck(label, executable, commandArgs) {

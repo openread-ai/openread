@@ -5,6 +5,7 @@ import {
   attachScenarioEvidenceSlots,
   setScenarioEvidenceNote,
 } from '../../helpers/settings-contract';
+import { navigateToBookReader } from '../../helpers/navigate-to-reader';
 import { LibraryPage } from '../../pages/LibraryPage';
 import { ReaderPage } from '../../pages/ReaderPage';
 
@@ -13,6 +14,7 @@ type StoredSettings = {
 };
 
 const SETTINGS_PATH = 'Settings/settings.json';
+const REFLOWABLE_BOOK_HASH = '65c789be32848655bc89109cb69cc712';
 
 async function openFirstBookInReader(page: Page): Promise<string> {
   const library = new LibraryPage(page);
@@ -37,6 +39,15 @@ function currentReaderBookHash(page: Page): string | null {
   const url = new URL(page.url());
   const ids = url.searchParams.get('ids') ?? url.pathname.split('/reader/')[1] ?? '';
   return decodeURIComponent(ids).split('+').filter(Boolean)[0] ?? null;
+}
+
+async function openReflowableBookInReader(page: Page): Promise<string> {
+  await navigateToBookReader(page, REFLOWABLE_BOOK_HASH);
+  await expect(page.getByTestId('reader-content-ready')).toBeVisible({ timeout: 45_000 });
+  await expect(page.getByRole('document', { name: 'Book Content' })).toBeVisible({
+    timeout: 45_000,
+  });
+  return REFLOWABLE_BOOK_HASH;
 }
 
 async function revealDesktopHeader(page: Page) {
@@ -489,6 +500,164 @@ test.describe('Settings reader contract', () => {
       'SET-062-terminal-reader-mobile-native-settings-sheet',
       'SET-067-terminal-reader-settings-persistence-after-reload-reopen',
     ]);
+  });
+
+  test('BLC-001 validates desktop behavior language and custom settings panels', async ({
+    authenticatedPage: page,
+  }, testInfo) => {
+    test.skip(testInfo.project.name.startsWith('mobile-'), 'Desktop reader settings dialog only.');
+
+    await openReflowableBookInReader(page);
+    const dialog = await openDesktopSettingsDialog(page);
+
+    await selectDesktopSettingsPanel(dialog, 'Behavior');
+    await expect(dialog.locator('[data-setting-id="settings.control.scrolledMode"]')).toBeVisible();
+    await expect(
+      dialog.locator('[data-setting-id="settings.control.continuousScroll"]'),
+    ).toBeVisible();
+    await expect(
+      dialog.locator('[data-setting-id="settings.control.overlapPixels"]'),
+    ).toBeVisible();
+    await expect(
+      dialog.locator('[data-setting-id="settings.control.clickToPaginate"]'),
+    ).toBeVisible();
+    await expect(
+      dialog.locator('[data-setting-id="settings.control.clickBothSides"]'),
+    ).toBeVisible();
+    await expect(
+      dialog.locator('[data-setting-id="settings.control.swapClickSides"]'),
+    ).toBeVisible();
+    await expect(
+      dialog.locator('[data-setting-id="settings.control.disableDoubleClick"]'),
+    ).toBeVisible();
+    await expect(
+      dialog.locator('[data-setting-id="settings.control.enableQuickActions"]'),
+    ).toBeVisible();
+    await expect(dialog.locator('[data-setting-id="settings.control.quickAction"]')).toBeVisible();
+    await expect(
+      dialog.locator('[data-setting-id="settings.control.copyToNotebook"]'),
+    ).toBeVisible();
+    await expect(
+      dialog.locator('[data-setting-id="settings.control.pagingAnimation"]'),
+    ).toBeVisible();
+    await expect(dialog.locator('[data-setting-id="settings.control.einkMode"]')).toBeVisible();
+    await expect(
+      dialog.locator('[data-setting-id="settings.control.allowJavascript"]'),
+    ).toBeVisible();
+    await expect(dialog.getByText('Volume Keys for Page Flip', { exact: true })).toHaveCount(0);
+    await expect(dialog.getByText('Auto Screen Brightness', { exact: true })).toHaveCount(0);
+
+    const initialContinuousScroll = Boolean(await getGlobalViewSetting(page, 'continuousScroll'));
+    const continuousScrollToggle = dialog
+      .locator('[data-setting-id="settings.control.continuousScroll"] input')
+      .first();
+    await continuousScrollToggle.setChecked(!initialContinuousScroll);
+    await waitForGlobalViewSetting(page, 'continuousScroll', !initialContinuousScroll);
+    await continuousScrollToggle.setChecked(initialContinuousScroll);
+    await waitForGlobalViewSetting(page, 'continuousScroll', initialContinuousScroll);
+    await attachReaderEvidence(
+      page,
+      testInfo,
+      'BLC-001-desktop-behavior-controls-visible-and-persist',
+    );
+
+    await selectDesktopSettingsPanel(dialog, 'Language');
+    await expect(
+      dialog.locator('[data-setting-id="settings.language.interfaceLanguage"]'),
+    ).toBeVisible();
+    await expect(
+      dialog.locator('[data-setting-id="settings.language.translationEnabled"]'),
+    ).toHaveCount(0);
+    await expect(
+      dialog.locator('[data-setting-id="settings.language.quotationMarks"]'),
+    ).toHaveCount(0);
+    await expect(
+      dialog.locator('[data-setting-id="settings.language.chineseConversion"]'),
+    ).toHaveCount(0);
+    await attachReaderEvidence(page, testInfo, 'BLC-001-desktop-language-launch-held-conditional');
+
+    await selectDesktopSettingsPanel(dialog, 'Custom');
+    await expect(dialog.getByPlaceholder('Enter CSS for book content styling...')).toBeVisible();
+    await expect(
+      dialog.getByPlaceholder('Enter CSS for reader interface styling...'),
+    ).toBeVisible();
+    await attachReaderEvidence(page, testInfo, 'BLC-001-desktop-custom-css-controls-visible');
+  });
+
+  test('BLC-002 validates mobile-web expected absence for desktop-only behavior language and custom panels', async ({
+    authenticatedPage: page,
+  }, testInfo) => {
+    test.skip(
+      !['mobile-chromium', 'mobile-webkit'].includes(testInfo.project.name),
+      'Phone-sized mobile-web settings surface is required for compact browser proof.',
+    );
+
+    await openReflowableBookInReader(page);
+    await openMobileReaderSettingsSurface(page);
+
+    await expect(page.getByText('Font Size').first()).toBeVisible();
+    await expect(page.getByText(/Line Spacing|Page Margin|Margins/).first()).toBeVisible();
+    await expect(page.getByText('Theme').first()).toBeVisible();
+
+    for (const absentLabel of [
+      'Behavior',
+      'Language',
+      'Custom',
+      'Continuous Scroll',
+      'Click to Paginate',
+      'Tap to Paginate',
+      'Enable Quick Actions',
+      'Interface Language',
+      'Translation',
+      'Custom Content CSS',
+      'Custom Reader UI CSS',
+      'E-Ink Mode',
+      'Color E-Ink Mode',
+      'Allow JavaScript',
+    ]) {
+      await expect(page.getByText(absentLabel, { exact: true })).toHaveCount(0);
+    }
+
+    await attachReaderEvidence(
+      page,
+      testInfo,
+      'BLC-002-mobile-web-settings-simplified-expected-absence',
+    );
+  });
+
+  test('BLC-003 validates iPad web expected absence for desktop-only settings panels', async ({
+    authenticatedPage: page,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== 'mobile-webkit-ipad', 'iPad web tablet menu path only.');
+
+    await openReflowableBookInReader(page);
+    await dismissDevIssueBadge(page);
+    const header = page.getByRole('group', { name: 'Header Bar' });
+    await expect(header).toBeVisible({ timeout: 10_000 });
+    await header.getByLabel('More Options').click();
+    const menu = page.locator('.view-menu').first();
+    await expect(menu).toBeVisible({ timeout: 10_000 });
+
+    await expect(menu.getByText('Scrolled Mode', { exact: true })).toBeVisible();
+    await expect(menu.getByText('Paragraph Mode', { exact: true })).toBeVisible();
+    for (const absentLabel of [
+      'Font & Layout',
+      'Behavior',
+      'Language',
+      'Custom',
+      'Continuous Scroll',
+      'Interface Language',
+      'Custom Content CSS',
+      'Allow JavaScript',
+    ]) {
+      await expect(menu.getByText(absentLabel, { exact: true })).toHaveCount(0);
+    }
+
+    await attachReaderEvidence(
+      page,
+      testInfo,
+      'BLC-003-ipad-web-menu-settings-panels-expected-absence',
+    );
   });
 
   test('SET-NDC-001 keeps native device controls absent on desktop web reader settings', async ({

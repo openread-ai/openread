@@ -171,7 +171,7 @@ export function resolveFeatureAccess(
 export function canSelectPlan(currentPlan: UserPlan | undefined, targetPlan: UserPlan): boolean {
   if (!isBillablePlan(targetPlan)) return false;
   if (!currentPlan) return true;
-  return PLAN_ORDER.indexOf(targetPlan) > PLAN_ORDER.indexOf(currentPlan);
+  return targetPlan !== currentPlan;
 }
 
 export function requiresBillingPortal(
@@ -179,7 +179,7 @@ export function requiresBillingPortal(
   targetPlan: UserPlan,
 ): boolean {
   if (!currentPlan || currentPlan === 'free' || currentPlan === targetPlan) return false;
-  return PLAN_ORDER.indexOf(targetPlan) < PLAN_ORDER.indexOf(currentPlan);
+  return targetPlan === 'free';
 }
 
 export function resolvePlanUpgradeIntent(

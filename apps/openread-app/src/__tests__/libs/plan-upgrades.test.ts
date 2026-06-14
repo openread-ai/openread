@@ -35,19 +35,19 @@ describe('plan-upgrades', () => {
     }
   });
 
-  it('allows only upward paid plan selection', () => {
+  it('allows paid plan changes through the canonical subscription change flow', () => {
     expect(canSelectPlan('free', 'reader')).toBe(true);
     expect(canSelectPlan('free', 'pro')).toBe(true);
     expect(canSelectPlan('reader', 'pro')).toBe(true);
+    expect(canSelectPlan('pro', 'reader')).toBe(true);
     expect(canSelectPlan('reader', 'free')).toBe(false);
-    expect(canSelectPlan('pro', 'reader')).toBe(false);
     expect(canSelectPlan('pro', 'pro')).toBe(false);
   });
 
-  it('routes lower-tier paid subscription changes through the billing portal', () => {
+  it('reserves the billing portal for cancelling to Free, not paid plan changes', () => {
     expect(requiresBillingPortal('reader', 'free')).toBe(true);
-    expect(requiresBillingPortal('pro', 'reader')).toBe(true);
     expect(requiresBillingPortal('pro', 'free')).toBe(true);
+    expect(requiresBillingPortal('pro', 'reader')).toBe(false);
     expect(requiresBillingPortal('free', 'reader')).toBe(false);
     expect(requiresBillingPortal('reader', 'pro')).toBe(false);
     expect(requiresBillingPortal('pro', 'pro')).toBe(false);

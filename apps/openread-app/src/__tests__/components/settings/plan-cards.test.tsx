@@ -253,7 +253,7 @@ describe('PlanCards', () => {
       });
     });
 
-    it('should route lower-tier changes through Manage Plan instead of checkout', async () => {
+    it('should route cancellation to Free through Manage Plan instead of checkout', async () => {
       render(
         <PlanCards
           plans={mockPlans}
@@ -314,7 +314,7 @@ describe('PlanCards', () => {
   });
 
   describe('Plan Change Restrictions', () => {
-    it('should show Manage Plan for lower tiers when user is on Pro plan', () => {
+    it('should use canonical subscription changes for paid downgrades and Manage Plan for Free', () => {
       render(
         <PlanCards
           plans={mockPlans}
@@ -325,11 +325,9 @@ describe('PlanCards', () => {
       );
 
       const manageButtons = screen.getAllByText('Manage Plan');
-      expect(manageButtons.length).toBe(2);
-      manageButtons.forEach((btn) => {
-        expect(btn.closest('button')).toHaveProperty('disabled', false);
-      });
-      expect(screen.queryAllByText('Switch Plan')).toHaveLength(0);
+      expect(manageButtons.length).toBe(1);
+      expect(manageButtons[0]!.closest('button')).toHaveProperty('disabled', false);
+      expect(screen.queryAllByText('Switch Plan')).toHaveLength(1);
     });
   });
 

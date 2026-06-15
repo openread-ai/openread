@@ -5,10 +5,17 @@ import { validateSyncMutation } from '@openread/sync/validation';
 import {
   buildBookConfigMutation,
   buildBookMutation,
+  buildAIConversationMutation,
+  buildAIMessageMutation,
   buildBookNoteMutation,
+  buildCollectionMutations,
+  buildFileMetadataMutationsFromBook,
+  buildSettingsMutation,
   buildSyncMutationsFromQueueItems,
 } from '@/services/sync/adapters';
+import type { AIConversation, AIMessage } from '@/services/ai/types';
 import type { Book, BookConfig, BookNote } from '@/types/book';
+import type { SystemSettings } from '@/types/settings';
 
 const context = { userId: 'user-1', deviceId: 'device-1', now: 1_000 };
 
@@ -113,6 +120,109 @@ describe('canonical sync mutation adapters', () => {
         cfi: 'epubcfi(/6/4)',
         deletedAt: 3_000,
       },
+    });
+  });
+
+  it('builds valid settings mutations from roaming settings', () => {
+    const mutation = buildSettingsMutation(
+      {
+        libraryViewMode: 'grid',
+        keepLogin: true,
+        autoUpload: true,
+        telemetryEnabled: false,
+        aiSettings: { defaultProvider: 'groq' },
+      } as unknown as SystemSettings,
+      context,
+    );
+
+    expect(validateSyncMutation(mutation).ok).toBe(true);
+    expect(mutation).toMatchObject({
+      entity: 'settings',
+      entityId: 'settings',
+      payload: {
+        id: 'settings',
+        settings: {
+          libraryViewMode: 'grid',
+          keepLogin: true,
+          autoUpload: true,
+          telemetryEnabled: false,
+        },
+      },
+    });
+  });
+
+  it('builds valid collection mutations preserving the full collection snapshot', () => {
+    const mutations = buildCollectionMutations(
+      [
+        {
+          id: 'collection-1',
+          name: 'Favorites',
+          bookHashes: ['book-hash-1'],
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: 2_000,
+        },
+      ],
+      context,
+    );
+
+    expect(mutations).toHaveLength(1);
+    expect(validateSyncMutation(mutations[0]).ok).toBe(true);
+    expect(mutations[0]).toMatchObject({
+      entity: 'collection',
+      entityId: 'collection-1',
+      payload: {
+        id: 'collection-1',
+        name: 'Favorites',
+        bookHashes: ['book-hash-1'],
+        updatedAt: 2_000,
+      },
+    });
+  });
+
+  it('builds valid AI conversation and message mutations with canonical entity ids', () => {
+    const conversation: AIConversation = {
+      id: 'conversation-1',
+      bookHash: 'book-hash-1',
+      title: 'Question thread',
+      createdAt: 1_000,
+      updatedAt: 2_000,
+      parallelBookHashes: ['book-hash-2'],
+    };
+    const message: AIMessage = {
+      id: 'message-1',
+      conversationId: conversation.id,
+      role: 'user',
+      content: 'What happened?',
+      createdAt: 2_500,
+      parentId: null,
+    };
+
+    const conversationMutation = buildAIConversationMutation(conversation, context);
+    const messageMutation = buildAIMessageMutation(message, context);
+
+    expect(validateSyncMutation(conversationMutation).ok).toBe(true);
+    expect(validateSyncMutation(messageMutation).ok).toBe(true);
+    expect(conversationMutation.payload!.parallelBookHashes).toEqual(['book-hash-2']);
+    expect(messageMutation).toMatchObject({
+      entity: 'aiMessage',
+      entityId: 'conversation-1:message-1',
+      payload: { id: 'message-1', conversationId: 'conversation-1', content: 'What happened?' },
+    });
+  });
+
+  it('builds file metadata mutations for uploaded book and cover records without bytes', () => {
+    const mutations = buildFileMetadataMutationsFromBook(
+      book({ uploadedAt: 4_000, coverDownloadedAt: 4_100 }),
+      context,
+    );
+
+    expect(mutations).toHaveLength(2);
+    expect(mutations.every((mutation) => validateSyncMutation(mutation).ok)).toBe(true);
+    expect(mutations.map((mutation) => mutation.payload!.fileType)).toEqual(['book', 'cover']);
+    expect(mutations[0]!.payload).not.toHaveProperty('bytes');
+    expect(mutations[0]).toMatchObject({
+      entity: 'fileMetadata',
+      payload: { bookHash: 'book-hash-1', status: 'uploaded' },
     });
   });
 

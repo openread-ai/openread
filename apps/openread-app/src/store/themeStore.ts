@@ -139,6 +139,11 @@ export const useThemeStore = create<ThemeState>((set, get) => {
       settings.globalReadSettings.customThemes = customThemes;
       const appService = await envConfig.getAppService();
       await appService.saveSettings(settings);
+      void import('@/services/sync/helpers')
+        .then(({ enqueueSettingsForSync }) => enqueueSettingsForSync(settings))
+        .catch((error) => {
+          console.error('[ThemeStore] Failed to enqueue custom theme settings sync:', error);
+        });
     },
     handleSystemThemeChange: (systemIsDarkMode) => {
       const { themeMode, themeColor } = get();

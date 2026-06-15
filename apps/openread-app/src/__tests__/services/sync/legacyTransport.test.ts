@@ -158,10 +158,19 @@ describe('LegacySyncTransport', () => {
     expect(cleanupDeletedBook).toHaveBeenCalledTimes(2);
   });
 
-  it('returns conflicts for unsupported canonical mutations instead of dropping them silently', async () => {
-    const pushChanges = vi.fn().mockResolvedValue({ books: [], configs: [], notes: [] });
-    const transport = new LegacySyncTransport({ pushChanges } as never);
-    const unsupported: SyncMutation<'settings'> = {
+  it('bridges settings and collections through the legacy settings channel without dropping remote collections', async () => {
+    const remoteCollection = {
+      id: 'collection-remote',
+      name: 'Read later',
+      bookHashes: ['book-2'],
+      updatedAt: 1_500,
+    };
+    const pushChanges = vi.fn().mockResolvedValue({ settings: {} });
+    const pullChanges = vi.fn().mockResolvedValue({
+      settings: { _collections: [remoteCollection] },
+    });
+    const transport = new LegacySyncTransport({ pushChanges, pullChanges } as never);
+    const settingsMutation: SyncUpsertMutation<'settings'> = {
       id: 'm-settings',
       entity: 'settings',
       entityId: 'settings',
@@ -169,8 +178,187 @@ describe('LegacySyncTransport', () => {
       baseRevision: null,
       userId: 'user-1',
       deviceId: 'device-1',
+      clientUpdatedAt: 1_000,
+      payload: { id: 'settings', settings: { libraryViewMode: 'grid' }, updatedAt: 1_000 },
+    };
+    const collectionMutation: SyncUpsertMutation<'collection'> = {
+      id: 'm-collection',
+      entity: 'collection',
+      entityId: 'collection-1',
+      op: 'upsert',
+      baseRevision: null,
+      userId: 'user-1',
+      deviceId: 'device-1',
+      clientUpdatedAt: 2_000,
+      payload: {
+        id: 'collection-1',
+        name: 'Favorites',
+        bookHashes: ['book-1'],
+        updatedAt: 2_000,
+      },
+    };
+
+    const response = await transport.push({
+      protocolVersion: 1,
+      userId: 'user-1',
+      deviceId: 'device-1',
+      mutations: [settingsMutation, collectionMutation],
+    });
+
+    expect(pullChanges).toHaveBeenCalledWith(0, 'settings');
+    expect(pushChanges).toHaveBeenCalledWith({
+      settings: {
+        libraryViewMode: 'grid',
+        _collections: [remoteCollection, collectionMutation.payload],
+        _updatedAt: new Date(2_000).toISOString(),
+      },
+    });
+    expect(response.accepted.map((ack) => ack.mutationId)).toEqual(['m-settings', 'm-collection']);
+  });
+
+  it('keeps newer remote collection snapshots when stale partial mutations arrive', async () => {
+    const newerRemoteCollection = {
+      id: 'collection-1',
+      name: 'Remote winner',
+      bookHashes: ['book-2'],
+      updatedAt: 5_000,
+    };
+    const pushChanges = vi.fn().mockResolvedValue({ settings: {} });
+    const pullChanges = vi.fn().mockResolvedValue({
+      settings: { _collections: [newerRemoteCollection] },
+    });
+    const transport = new LegacySyncTransport({ pushChanges, pullChanges } as never);
+    const staleCollectionMutation: SyncUpsertMutation<'collection'> = {
+      id: 'm-collection-stale',
+      entity: 'collection',
+      entityId: 'collection-1',
+      op: 'upsert',
+      baseRevision: null,
+      userId: 'user-1',
+      deviceId: 'device-1',
+      clientUpdatedAt: 2_000,
+      payload: {
+        id: 'collection-1',
+        name: 'Local stale',
+        bookHashes: ['book-1'],
+        updatedAt: 2_000,
+      },
+    };
+
+    await transport.push({
+      protocolVersion: 1,
+      userId: 'user-1',
+      deviceId: 'device-1',
+      mutations: [staleCollectionMutation],
+    });
+
+    expect(pushChanges).toHaveBeenCalledWith({
+      settings: {
+        _collections: [newerRemoteCollection],
+        _updatedAt: new Date(5_000).toISOString(),
+      },
+    });
+  });
+
+  it('preserves untouched collections across split canonical collection batches', async () => {
+    let remoteSettings: Record<string, unknown> = {
+      _collections: [{ id: 'collection-untouched', name: 'Untouched', updatedAt: 1_000 }],
+    };
+    const pushChanges = vi
+      .fn()
+      .mockImplementation(async (payload: { settings?: Record<string, unknown> }) => {
+        remoteSettings = { ...remoteSettings, ...(payload.settings ?? {}) };
+        return { settings: remoteSettings };
+      });
+    const pullChanges = vi.fn().mockImplementation(async () => ({ settings: remoteSettings }));
+    const outbox = new SyncOutbox(new MemorySyncOutboxStorage(), () => 1_000);
+    const transport = new LegacySyncTransport({ pushChanges, pullChanges } as never);
+    const engine = new SyncEngine({
+      userId: 'user-1',
+      deviceId: 'device-1',
+      outbox,
+      transport,
+      batchSize: 1,
+      claimOwner: 'test-claim-owner',
+    });
+    await outbox.enqueue({
+      id: 'm-collection-1',
+      entity: 'collection',
+      entityId: 'collection-1',
+      op: 'upsert',
+      baseRevision: null,
+      userId: 'user-1',
+      deviceId: 'device-1',
+      clientUpdatedAt: 2_000,
+      payload: { id: 'collection-1', name: 'One', bookHashes: [], updatedAt: 2_000 },
+    });
+    await outbox.enqueue({
+      id: 'm-collection-2',
+      entity: 'collection',
+      entityId: 'collection-2',
+      op: 'upsert',
+      baseRevision: null,
+      userId: 'user-1',
+      deviceId: 'device-1',
+      clientUpdatedAt: 3_000,
+      payload: { id: 'collection-2', name: 'Two', bookHashes: [], updatedAt: 3_000 },
+    });
+
+    await expect(engine.drainOnce()).resolves.toMatchObject({ attempted: 1, accepted: 1 });
+    await expect(engine.drainOnce()).resolves.toMatchObject({ attempted: 1, accepted: 1 });
+
+    const finalCollectionIds = ((remoteSettings._collections as Array<{ id: string }>) ?? [])
+      .map((collection) => collection.id)
+      .sort();
+    expect(finalCollectionIds).toEqual(['collection-1', 'collection-2', 'collection-untouched']);
+  });
+
+  it('acknowledges file metadata without raw-byte side effects in the legacy bridge', async () => {
+    const pushChanges = vi.fn().mockResolvedValue({});
+    const transport = new LegacySyncTransport({ pushChanges } as never);
+    const fileMutation: SyncUpsertMutation<'fileMetadata'> = {
+      id: 'm-file',
+      entity: 'fileMetadata',
+      entityId: 'user-1/Books/book.epub',
+      op: 'upsert',
+      baseRevision: null,
+      userId: 'user-1',
+      deviceId: 'device-1',
+      clientUpdatedAt: 3_000,
+      payload: {
+        id: 'user-1/Books/book.epub',
+        bookHash: 'book-1',
+        fileType: 'book',
+        status: 'uploaded',
+        updatedAt: 3_000,
+      },
+    };
+
+    const response = await transport.push({
+      protocolVersion: 1,
+      userId: 'user-1',
+      deviceId: 'device-1',
+      mutations: [fileMutation],
+    });
+
+    expect(pushChanges).not.toHaveBeenCalled();
+    expect(response.accepted).toHaveLength(1);
+    expect(response.accepted[0]!.mutationId).toBe('m-file');
+  });
+
+  it('returns conflicts for unsupported canonical mutations instead of dropping them silently', async () => {
+    const pushChanges = vi.fn().mockResolvedValue({ books: [], configs: [], notes: [] });
+    const transport = new LegacySyncTransport({ pushChanges } as never);
+    const unsupported: SyncMutation<'settings'> = {
+      id: 'm-settings-delete',
+      entity: 'settings',
+      entityId: 'settings',
+      op: 'delete',
+      baseRevision: null,
+      userId: 'user-1',
+      deviceId: 'device-1',
       clientUpdatedAt: 1,
-      payload: { id: 'settings', settings: { theme: 'dark' }, updatedAt: 1 },
+      tombstone: { deletedAt: 1 },
     };
 
     const response = await transport.push({
@@ -184,7 +372,7 @@ describe('LegacySyncTransport', () => {
     expect(response.accepted).toEqual([]);
     expect(response.conflicts).toMatchObject([
       {
-        mutationId: 'm-settings',
+        mutationId: 'm-settings-delete',
         entity: 'settings',
         reason: 'validation-failed',
       },

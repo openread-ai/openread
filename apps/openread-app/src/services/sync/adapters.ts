@@ -1,6 +1,11 @@
 import type { DeviceId, SyncMutation, SyncPayloadByEntity, UserId } from '@openread/sync';
 
+import { CLOUD_BOOKS_SUBDIR } from '@/services/constants';
+import type { AIConversation, AIMessage } from '@/services/ai/types';
 import type { Book, BookConfig, BookNote } from '@/types/book';
+import type { SystemSettings } from '@/types/settings';
+import { getCoverFilename, getRemoteBookFilename } from '@/utils/book';
+import { extractRoamingSettings } from '@/utils/transform';
 import type { QueueItem } from './offlineQueue';
 
 export type SyncQueueInput = Pick<QueueItem, 'type' | 'action' | 'payload'>;
@@ -20,8 +25,14 @@ type SerializableValue =
   | SerializableRecord;
 type SerializableRecord = { [key: string]: SerializableValue };
 
-const toTimestamp = (value: unknown, fallback: number): number =>
-  typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+const toTimestamp = (value: unknown, fallback: number): number => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+};
 
 const latestTimestamp = (updatedAt: unknown, deletedAt: unknown, fallback: number): number =>
   Math.max(toTimestamp(updatedAt, fallback), toTimestamp(deletedAt, 0));
@@ -152,6 +163,159 @@ export function buildBookNoteMutation(
     ...withBase('bookNote', entityId, context, updatedAt),
     payload,
   };
+}
+
+export interface CollectionSyncInput {
+  id: string;
+  name: string;
+  bookHashes?: string[];
+  createdAt?: string | number;
+  updatedAt?: number;
+  deletedAt?: number | null;
+}
+
+export function buildSettingsMutation(
+  settings: SystemSettings,
+  context: SyncMutationContext,
+): SyncMutation<'settings'> {
+  const now = context.now ?? Date.now();
+  const roaming = extractRoamingSettings(settings);
+  const updatedAt = toTimestamp(roaming['_updatedAt'], now);
+  const payload: SyncPayloadByEntity['settings'] = {
+    id: 'settings',
+    settings: optionalSerializableRecord(roaming) ?? {},
+    updatedAt,
+  };
+
+  return {
+    ...withBase('settings', 'settings', context, updatedAt),
+    payload,
+  };
+}
+
+export function buildCollectionMutation(
+  collection: CollectionSyncInput,
+  context: SyncMutationContext,
+): SyncMutation<'collection'> {
+  const now = context.now ?? Date.now();
+  const updatedAt = latestTimestamp(collection.updatedAt, collection.deletedAt, now);
+  const payload: SyncPayloadByEntity['collection'] = {
+    id: collection.id,
+    name: collection.name || 'Untitled collection',
+    bookHashes: Array.isArray(collection.bookHashes) ? [...collection.bookHashes] : [],
+    createdAt: toTimestamp(collection.createdAt, updatedAt),
+    updatedAt,
+    deletedAt: typeof collection.deletedAt === 'number' ? collection.deletedAt : null,
+  };
+
+  return {
+    ...withBase('collection', collection.id, context, updatedAt),
+    payload,
+  };
+}
+
+export function buildCollectionMutations(
+  collections: CollectionSyncInput[],
+  context: SyncMutationContext,
+): SyncMutation<'collection'>[] {
+  return collections.map((collection) => buildCollectionMutation(collection, context));
+}
+
+export function buildAIConversationMutation(
+  conversation: AIConversation,
+  context: SyncMutationContext,
+): SyncMutation<'aiConversation'> {
+  const now = context.now ?? Date.now();
+  const updatedAt = latestTimestamp(conversation.updatedAt, conversation.deletedAt, now);
+  const payload: SyncPayloadByEntity['aiConversation'] & { parallelBookHashes?: string[] } = {
+    id: conversation.id,
+    bookHash: conversation.bookHash,
+    title: conversation.title || 'New conversation',
+    createdAt: toTimestamp(conversation.createdAt, updatedAt),
+    updatedAt,
+    deletedAt: typeof conversation.deletedAt === 'number' ? conversation.deletedAt : null,
+    ...(conversation.parallelBookHashes?.length
+      ? { parallelBookHashes: [...conversation.parallelBookHashes] }
+      : {}),
+  };
+
+  return {
+    ...withBase('aiConversation', conversation.id, context, updatedAt),
+    payload,
+  };
+}
+
+export function buildAIMessageMutation(
+  message: AIMessage,
+  context: SyncMutationContext,
+): SyncMutation<'aiMessage'> {
+  const now = context.now ?? Date.now();
+  const updatedAt = toTimestamp(message.createdAt, now);
+  const payload: SyncPayloadByEntity['aiMessage'] & { parentId?: string | null } = {
+    id: message.id,
+    conversationId: message.conversationId,
+    role: message.role,
+    content: message.content,
+    createdAt: toTimestamp(message.createdAt, updatedAt),
+    updatedAt,
+    ...(message.parentId !== undefined ? { parentId: message.parentId } : {}),
+  };
+
+  return {
+    ...withBase('aiMessage', `${message.conversationId}:${message.id}`, context, updatedAt),
+    payload,
+  };
+}
+
+export function buildFileMetadataMutation(
+  book: Book,
+  context: SyncMutationContext,
+): SyncMutation<'fileMetadata'> | null {
+  const now = context.now ?? Date.now();
+  const uploadedAt = toTimestamp(book.uploadedAt, 0);
+  if (!uploadedAt) return null;
+
+  const storageKey = `${context.userId}/${CLOUD_BOOKS_SUBDIR}/${getRemoteBookFilename(book)}`;
+  const payload: SyncPayloadByEntity['fileMetadata'] = {
+    id: storageKey,
+    bookHash: book.hash,
+    fileType: 'book',
+    storageKey,
+    status: 'uploaded',
+    updatedAt: uploadedAt || now,
+  };
+
+  return {
+    ...withBase('fileMetadata', storageKey, context, payload.updatedAt),
+    payload,
+  };
+}
+
+export function buildFileMetadataMutationsFromBook(
+  book: Book,
+  context: SyncMutationContext,
+): SyncMutation<'fileMetadata'>[] {
+  const bookFile = buildFileMetadataMutation(book, context);
+  if (!bookFile) return [];
+
+  const coverUploadedAt = toTimestamp(book.coverDownloadedAt, 0);
+  if (!coverUploadedAt) return [bookFile];
+
+  const coverStorageKey = `${context.userId}/${CLOUD_BOOKS_SUBDIR}/${getCoverFilename(book)}`;
+  return [
+    bookFile,
+    {
+      ...withBase('fileMetadata', coverStorageKey, context, coverUploadedAt),
+      payload: {
+        id: coverStorageKey,
+        bookHash: book.hash,
+        fileType: 'cover',
+        storageKey: coverStorageKey,
+        status: 'uploaded',
+        updatedAt: coverUploadedAt,
+      },
+    },
+  ];
 }
 
 export function buildSyncMutationFromQueueItem(

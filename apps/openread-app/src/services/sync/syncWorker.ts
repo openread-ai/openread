@@ -4,11 +4,13 @@
  *
  * - Runs on demand and through fallback polling when Realtime is unavailable
  * - Pauses when offline, resumes on reconnection
- * - Uses the canonical SyncEngine for book/config/note outbox mutations
+ * - Uses the canonical SyncEngine for all app-side outbox mutations
  * - Single source of truth for all sync operations and watermarks
  */
 
 import { offlineQueue, type QueueItem } from './offlineQueue';
+import type { SyncMutation } from '@openread/sync';
+
 import { SyncEngine, type SyncDrainResult } from './engine';
 import { createLegacySyncTransport } from './legacyTransport';
 import { SyncClient, type SyncType } from '@/libs/sync';
@@ -17,7 +19,6 @@ import {
   transformBookFromDB,
   transformBookConfigFromDB,
   transformBookNoteFromDB,
-  extractRoamingSettings,
   applyRoamingSettings,
 } from '@/utils/transform';
 import { useLibraryStore } from '@/store/libraryStore';
@@ -36,6 +37,12 @@ import { aiStore } from '@/services/ai/storage/aiStore';
 import { useAIChatStore } from '@/store/aiChatStore';
 import { isSyncableLibraryBookHash } from '@/utils/bookHash';
 import { getDeviceId } from '@/services/deviceService';
+import {
+  buildAIConversationMutation,
+  buildAIMessageMutation,
+  buildCollectionMutations,
+  buildSettingsMutation,
+} from './adapters';
 
 /** Supabase row shape for ai_conversations table */
 interface SupabaseAIConversation {
@@ -393,6 +400,14 @@ export class SyncWorker {
     return this.userId;
   }
 
+  private async enqueueCanonicalMutations(mutations: SyncMutation[]): Promise<void> {
+    if (!this.canonicalEngine || !this.userId || mutations.length === 0) return;
+    for (const mutation of mutations) {
+      await this.canonicalEngine.enqueue(mutation);
+    }
+    await this.syncNow();
+  }
+
   /**
    * Subscribe to status changes.
    */
@@ -420,38 +435,33 @@ export class SyncWorker {
   }
 
   /**
-   * Push current roaming settings to the server.
-   * Saves the watermark locally without going through saveSettings
-   * to avoid infinite recursion (saveSettings must not trigger pushSettings).
+   * Backward-compatible settings entrypoint. New callers should enqueue via sync/helpers.
    */
   async pushSettings(): Promise<void> {
-    if (isOffline()) return;
+    if (!this.userId) return;
 
     try {
       const settings = useSettingsStore.getState().settings;
-      const roaming = extractRoamingSettings(settings);
-      await this.syncClient.pushChanges({ settings: roaming });
-      await saveWatermarks({ lastSyncedAtSettings: Date.now() });
-      this.broadcast(SYNC_EVENTS.SETTINGS);
+      await this.enqueueCanonicalMutations([
+        buildSettingsMutation(settings, { userId: this.userId, deviceId: getDeviceId() }),
+      ]);
     } catch (error) {
       console.error('[SyncWorker] Push settings failed:', error);
     }
   }
 
   /**
-   * Push collections to server via the settings sync channel.
-   * Collections are stored as a `_collections` key in user_settings JSON.
+   * Backward-compatible collections entrypoint. New callers should enqueue via sync/helpers.
    */
   async pushCollections(): Promise<void> {
-    if (isOffline()) return;
+    if (!this.userId) return;
 
     try {
       const { usePlatformSidebarStore } = await import('@/store/platformSidebarStore');
       const collections = usePlatformSidebarStore.getState().collections;
-      await this.syncClient.pushChanges({
-        settings: { _collections: collections, _updatedAt: new Date().toISOString() },
-      });
-      this.broadcast(SYNC_EVENTS.SETTINGS);
+      await this.enqueueCanonicalMutations(
+        buildCollectionMutations(collections, { userId: this.userId, deviceId: getDeviceId() }),
+      );
     } catch (error) {
       console.error('[SyncWorker] Push collections failed:', error);
     }
@@ -476,57 +486,30 @@ export class SyncWorker {
   }
 
   /**
-   * Push an AI conversation to Supabase. Online-only — skips if offline.
-   * Does NOT use the offline queue; AI data persists in IndexedDB locally.
+   * Backward-compatible AI conversation entrypoint. New callers should enqueue via sync/helpers.
    */
   async pushAIConversation(conversation: AIConversation): Promise<void> {
-    if (isOffline() || !this.userId) return;
+    if (!this.userId) return;
 
     try {
-      const sb = await this.getAuthenticatedSupabase();
-      if (!sb) return;
-      const { error } = await sb.from('ai_conversations').upsert({
-        id: conversation.id,
-        user_id: this.userId,
-        book_hash: conversation.bookHash,
-        title: conversation.title,
-        deleted_at: conversation.deletedAt ? new Date(conversation.deletedAt).toISOString() : null,
-        created_at: new Date(conversation.createdAt).toISOString(),
-        updated_at: new Date(conversation.updatedAt).toISOString(),
-        // TODO: add parallel_book_hashes column to Supabase ai_conversations table, then sync here
-      });
-      if (error) {
-        console.error('[SyncWorker] Push AI conversation failed:', error.message);
-      } else {
-        this.broadcast(SYNC_EVENTS.AI_CONVERSATIONS);
-      }
+      await this.enqueueCanonicalMutations([
+        buildAIConversationMutation(conversation, { userId: this.userId, deviceId: getDeviceId() }),
+      ]);
     } catch (error) {
       console.error('[SyncWorker] Push AI conversation error:', error);
     }
   }
 
   /**
-   * Push an AI message to Supabase. Online-only — skips if offline.
+   * Backward-compatible AI message entrypoint. New callers should enqueue via sync/helpers.
    */
   async pushAIMessage(message: AIMessage): Promise<void> {
-    if (isOffline() || !this.userId) return;
+    if (!this.userId) return;
 
     try {
-      const sb = await this.getAuthenticatedSupabase();
-      if (!sb) return;
-      const { error } = await sb.from('ai_messages').upsert({
-        id: message.id,
-        conversation_id: message.conversationId,
-        user_id: this.userId,
-        role: message.role,
-        content: message.content,
-        created_at: new Date(message.createdAt).toISOString(),
-      });
-      if (error) {
-        console.error('[SyncWorker] Push AI message failed:', error.message);
-      } else {
-        this.broadcast(SYNC_EVENTS.AI_CONVERSATIONS);
-      }
+      await this.enqueueCanonicalMutations([
+        buildAIMessageMutation(message, { userId: this.userId, deviceId: getDeviceId() }),
+      ]);
     } catch (error) {
       console.error('[SyncWorker] Push AI message error:', error);
     }
@@ -584,6 +567,8 @@ export class SyncWorker {
         this.broadcast(SYNC_EVENTS.BOOKS);
         this.broadcast(SYNC_EVENTS.CONFIGS);
         this.broadcast(SYNC_EVENTS.NOTES);
+        this.broadcast(SYNC_EVENTS.SETTINGS);
+        this.broadcast(SYNC_EVENTS.AI_CONVERSATIONS);
       }
       // After pushing changes, reconcile to pick up cross-device updates
       if (result.synced > 0) {

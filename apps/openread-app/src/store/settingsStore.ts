@@ -35,6 +35,11 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   saveSettings: async (envConfig: EnvConfigType, settings: SystemSettings) => {
     const appService = await envConfig.getAppService();
     await appService.saveSettings(settings);
+    void import('@/services/sync/helpers')
+      .then(({ enqueueSettingsForSync }) => enqueueSettingsForSync(settings))
+      .catch((error) => {
+        console.error('[SettingsStore] Failed to enqueue settings sync:', error);
+      });
   },
   setSettingsDialogBookKey: (bookKey) => set({ settingsDialogBookKey: bookKey }),
   setSettingsDialogOpen: (open) => set({ isSettingsDialogOpen: open }),

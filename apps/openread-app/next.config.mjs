@@ -51,6 +51,7 @@ const nextConfig = {
     '@assistant-ui/react',
     '@assistant-ui/react-ai-sdk',
     '@assistant-ui/react-markdown',
+    '@openread/sync',
     'streamdown',
     ...(isDev
       ? []

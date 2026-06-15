@@ -25,6 +25,7 @@ import { useBookDataStore } from './bookDataStore';
 import { useLibraryStore } from './libraryStore';
 import { uniqueId } from '@/utils/misc';
 import { getBookIdFromKey } from '@/utils/readerBookKey';
+import { getInitialReaderViewSettings } from '@/app/reader/utils/readerMode';
 
 interface ViewState {
   /* Unique key for each book view */
@@ -218,6 +219,17 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
       }));
       const configViewSettings = config.viewSettings!;
       const globalViewSettings = settings.globalViewSettings;
+      const viewSettings = getInitialReaderViewSettings({
+        globalViewSettings,
+        configViewSettings,
+        context: {
+          platform: { isMobile: appService.isMobile },
+          book: {
+            isFixedLayout,
+            renditionLayout: bookDoc.rendition?.layout,
+          },
+        },
+      });
       set((state) => ({
         viewStates: {
           ...state.viewStates,
@@ -236,15 +248,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
             rsvpEnabled: false,
             syncing: false,
             gridInsets: null,
-            viewSettings: {
-              ...globalViewSettings,
-              ...configViewSettings,
-              // On mobile, force scroll + continuous scroll and disable paragraph
-              // mode AFTER config so cloud sync can't override with desktop settings
-              ...(appService.isMobile
-                ? { scrolled: true, continuousScroll: true, paragraphMode: { enabled: false } }
-                : {}),
-            },
+            viewSettings,
           },
         },
       }));

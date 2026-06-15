@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { loadShortcuts, ShortcutConfig } from '../helpers/shortcuts';
 
 export type KeyActionHandlers = {
-  [K in keyof ShortcutConfig]?: (event?: KeyboardEvent | MessageEvent) => void;
+  [K in keyof ShortcutConfig]?: (
+    event?: KeyboardEvent | MessageEvent,
+  ) => void | boolean | Promise<void | boolean>;
 };
 
 const useShortcuts = (actions: KeyActionHandlers, dependencies: React.DependencyList = []) => {
@@ -59,7 +61,7 @@ const useShortcuts = (actions: KeyActionHandlers, dependencies: React.Dependency
     for (const [actionName, actionHandler] of Object.entries(actions)) {
       const shortcutKey = actionName as keyof ShortcutConfig;
       const handler = actionHandler as
-        | ((event?: KeyboardEvent | MessageEvent) => void | boolean)
+        | ((event?: KeyboardEvent | MessageEvent) => void | boolean | Promise<void | boolean>)
         | undefined;
       const shortcutList = shortcuts[shortcutKey as keyof ShortcutConfig];
       // console.log('Checking action:', shortcutKey);
@@ -69,9 +71,9 @@ const useShortcuts = (actions: KeyActionHandlers, dependencies: React.Dependency
           isShortcutMatch(shortcut, key, ctrlKey, altKey, metaKey, shiftKey),
         )
       ) {
-        if (handler(event)) {
-          return true;
-        }
+        const result = handler(event);
+        if (result && typeof result === 'object' && 'then' in result) return true;
+        return result === true;
       }
     }
     return false;

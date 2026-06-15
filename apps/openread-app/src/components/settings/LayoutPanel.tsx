@@ -15,6 +15,7 @@ import { getStyles } from '@/utils/style';
 import { getMaxInlineSize } from '@/utils/config';
 import { lockScreenOrientation } from '@/utils/bridge';
 import { saveViewSettings } from '@/helpers/settings';
+import { applyReaderModeToRenderer } from '@/app/reader/utils/readerMode';
 import { getBookDirFromWritingMode, getBookLangCode } from '@/utils/book';
 import { MIGHT_BE_RTL_LANGS } from '@/services/constants';
 import { SettingsPanelPanelProp } from './SettingsDialog';
@@ -295,9 +296,13 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
     if (gapPercent === viewSettings.gapPercent) return;
     saveViewSettings(envConfig, bookKey, 'gapPercent', gapPercent, false, false);
     view?.renderer.setAttribute('gap', `${gapPercent}%`);
-    if (viewSettings.scrolled) {
-      view?.renderer.setAttribute('flow', 'scrolled');
-    }
+    applyReaderModeToRenderer(view?.renderer, viewSettings, {
+      platform: { isMobile: !!appService?.isMobile },
+      book: {
+        isFixedLayout,
+        renditionLayout: bookData?.bookDoc?.rendition?.layout,
+      },
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gapPercent]);
 

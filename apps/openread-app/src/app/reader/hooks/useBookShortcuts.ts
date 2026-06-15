@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useEnv } from '@/context/EnvContext';
 import { useReaderStore } from '@/store/readerStore';
 import { useNotebookStore } from '@/store/notebookStore';
 import { isTauriAppPlatform } from '@/services/environment';
@@ -11,7 +12,13 @@ import { eventDispatcher } from '@/utils/event';
 import { MAX_ZOOM_LEVEL, MIN_ZOOM_LEVEL, ZOOM_STEP } from '@/services/constants';
 import { viewPagination } from './usePagination';
 import { getStyles } from '@/utils/style';
+import { saveViewSettings } from '@/helpers/settings';
 import useShortcuts from '@/hooks/useShortcuts';
+import {
+  canUseScrolledMode,
+  persistReaderMode,
+  setScrolledMode,
+} from '@/app/reader/utils/readerMode';
 import { LAUNCH_TTS_ENABLED } from '@/services/launchFeatures';
 import useBooksManager from './useBooksManager';
 
@@ -21,6 +28,7 @@ interface UseBookShortcutsProps {
 }
 
 const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) => {
+  const { envConfig, appService } = useEnv();
   const { getView, getViewState, getViewSettings, setViewSettings } = useReaderStore();
   const { toggleSideBar, setSideBarBookKey } = useSidebarStore();
   const { setSettingsDialogOpen } = useSettingsStore();
@@ -36,12 +44,29 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
 
   const toggleScrollMode = () => {
     const viewSettings = getViewSettings(sideBarBookKey ?? '');
-    if (viewSettings && sideBarBookKey) {
-      viewSettings.scrolled = !viewSettings.scrolled;
-      setViewSettings(sideBarBookKey, viewSettings!);
-      const flowMode = viewSettings.scrolled ? 'scrolled' : 'paginated';
-      getView(sideBarBookKey)?.renderer.setAttribute('flow', flowMode);
-    }
+    const bookData = getBookData(sideBarBookKey ?? '');
+    if (!viewSettings || !sideBarBookKey) return false;
+
+    const context = {
+      platform: { isMobile: !!appService?.isMobile },
+      book: {
+        isFixedLayout: bookData?.isFixedLayout,
+        renditionLayout: bookData?.bookDoc?.rendition?.layout,
+      },
+    };
+    if (!canUseScrolledMode(context)) return true;
+
+    persistReaderMode({
+      envConfig,
+      bookKey: sideBarBookKey,
+      current: viewSettings,
+      next: setScrolledMode(viewSettings, context, !viewSettings.scrolled),
+      context,
+      renderer: getView(sideBarBookKey)?.renderer,
+      setViewSettings,
+      saveViewSettings,
+    });
+    return true;
   };
 
   const switchSideBar = () => {

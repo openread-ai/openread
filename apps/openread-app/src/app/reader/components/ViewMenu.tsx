@@ -23,11 +23,16 @@ import { useReaderStore } from '@/store/readerStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useTranslation } from '@/hooks/useTranslation';
-import { getStyles } from '@/utils/style';
 import { navigateToLogin } from '@/utils/nav';
 import { eventDispatcher } from '@/utils/event';
-import { getMaxInlineSize } from '@/utils/config';
 import { saveViewSettings } from '@/helpers/settings';
+import {
+  canUseParagraphMode,
+  canUseScrolledMode,
+  getReaderMode,
+  persistReaderMode,
+  setScrolledMode,
+} from '@/app/reader/utils/readerMode';
 import { tauriHandleToggleFullScreen } from '@/utils/window';
 import { LAUNCH_TTS_ENABLED, LAUNCH_TRANSLATION_ENABLED } from '@/services/launchFeatures';
 import MenuItem from '@/components/MenuItem';
@@ -52,11 +57,16 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
   const viewSettings = getViewSettings(bookKey)!;
   const viewState = getViewState(bookKey);
 
+  const readerModeContext = {
+    platform: { isMobile: !!appService?.isMobile },
+    book: {
+      isFixedLayout: bookData.isFixedLayout,
+      renditionLayout: bookData.bookDoc?.rendition?.layout,
+    },
+  };
+  const readerMode = getReaderMode(viewSettings, readerModeContext);
+
   const { themeMode, isDarkMode, setThemeMode } = useThemeStore();
-  const [isScrolledMode, setScrolledMode] = useState(viewSettings!.scrolled);
-  const [isParagraphMode, setParagraphMode] = useState(
-    viewSettings?.paragraphMode?.enabled ?? false,
-  );
   const [zoomLevel, setZoomLevel] = useState(viewSettings!.zoomLevel!);
   const [zoomMode, setZoomMode] = useState(viewSettings!.zoomMode!);
   const [spreadMode, setSpreadMode] = useState(viewSettings!.spreadMode!);
@@ -68,9 +78,20 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
   const zoomIn = () => setZoomLevel((prev) => Math.min(prev + ZOOM_STEP, MAX_ZOOM_LEVEL));
   const zoomOut = () => setZoomLevel((prev) => Math.max(prev - ZOOM_STEP, MIN_ZOOM_LEVEL));
   const resetZoom = () => setZoomLevel(100);
-  const toggleScrolledMode = () => setScrolledMode(!isScrolledMode);
+  const toggleScrolledMode = async () => {
+    await persistReaderMode({
+      envConfig,
+      bookKey,
+      current: viewSettings,
+      next: setScrolledMode(viewSettings, readerModeContext, !readerMode.scrolled),
+      context: readerModeContext,
+      renderer: getView(bookKey)?.renderer,
+      setViewSettings,
+      saveViewSettings,
+    });
+    setIsDropdownOpen?.(false);
+  };
   const toggleParagraphMode = () => {
-    setParagraphMode(!isParagraphMode);
     eventDispatcher.dispatch('toggle-paragraph-mode', { bookKey });
     setIsDropdownOpen?.(false);
   };
@@ -99,19 +120,6 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
       eventDispatcher.dispatch('sync-book-progress', { bookKey });
     }
   };
-
-  useEffect(() => {
-    if (isScrolledMode === viewSettings!.scrolled) return;
-    viewSettings!.scrolled = isScrolledMode;
-    getView(bookKey)?.renderer.setAttribute('flow', isScrolledMode ? 'scrolled' : 'paginated');
-    getView(bookKey)?.renderer.setAttribute(
-      'max-inline-size',
-      `${getMaxInlineSize(viewSettings)}px`,
-    );
-    getView(bookKey)?.renderer.setStyles?.(getStyles(viewSettings!));
-    setViewSettings(bookKey, viewSettings!);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isScrolledMode]);
 
   useEffect(() => {
     saveViewSettings(envConfig, bookKey, 'zoomLevel', zoomLevel, true, true);
@@ -271,21 +279,25 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
         <MenuItem label={_('Font & Layout')} shortcut='Shift+F' onClick={openFontLayoutMenu} />
       )}
 
-      <MenuItem
-        label={_('Scrolled Mode')}
-        shortcut='Shift+J'
-        Icon={isScrolledMode ? MdCheck : undefined}
-        onClick={toggleScrolledMode}
-        disabled={bookData.isFixedLayout}
-      />
+      {!appService?.isMobile && (
+        <MenuItem
+          label={_('Scrolled Mode')}
+          shortcut='Shift+J'
+          Icon={readerMode.scrolled ? MdCheck : undefined}
+          onClick={toggleScrolledMode}
+          disabled={!canUseScrolledMode(readerModeContext)}
+        />
+      )}
 
-      <MenuItem
-        label={_('Paragraph Mode')}
-        shortcut='Shift+P'
-        Icon={isParagraphMode ? MdCheck : undefined}
-        onClick={toggleParagraphMode}
-        disabled={bookData.isFixedLayout}
-      />
+      {!appService?.isMobile && (
+        <MenuItem
+          label={_('Paragraph Mode')}
+          shortcut='Shift+P'
+          Icon={readerMode.paragraphMode ? MdCheck : undefined}
+          onClick={toggleParagraphMode}
+          disabled={!canUseParagraphMode(viewSettings, readerModeContext)}
+        />
+      )}
 
       <hr aria-hidden='true' className='border-base-300 my-1' />
 

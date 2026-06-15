@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useReaderStore } from '@/store/readerStore';
+import { useBookDataStore } from '@/store/bookDataStore';
 import { useEnv } from '@/context/EnvContext';
 import { FoliateView } from '@/types/view';
 import { eventDispatcher } from '@/utils/event';
 import { saveViewSettings } from '@/helpers/settings';
 import { ParagraphIterator } from '@/utils/paragraph';
 import { DEFAULT_PARAGRAPH_MODE_CONFIG } from '@/services/constants';
+import {
+  persistReaderMode,
+  setParagraphMode as setReaderParagraphMode,
+} from '@/app/reader/utils/readerMode';
 import { createLogger } from '@/utils/logger';
 
 const logger = createLogger('paragraph-mode');
@@ -24,8 +29,9 @@ export interface ParagraphState {
 }
 
 export const useParagraphMode = ({ bookKey, viewRef }: UseParagraphModeProps) => {
-  const { envConfig } = useEnv();
+  const { envConfig, appService } = useEnv();
   const { getViewSettings, setViewSettings, getProgress } = useReaderStore();
+  const { getBookData } = useBookDataStore();
 
   const iteratorRef = useRef<ParagraphIterator | null>(null);
   const currentDocIndexRef = useRef<number | undefined>(undefined);
@@ -356,20 +362,33 @@ export const useParagraphMode = ({ bookKey, viewRef }: UseParagraphModeProps) =>
     try {
       const currentConfig = settings.paragraphMode ?? DEFAULT_PARAGRAPH_MODE_CONFIG;
       const newEnabled = !currentConfig.enabled;
-      const newConfig = { ...currentConfig, enabled: newEnabled };
+      const bookData = getBookData(bookKeyRef.current);
+      const context = {
+        platform: { isMobile: !!appService?.isMobile },
+        book: {
+          isFixedLayout: bookData?.isFixedLayout,
+          renditionLayout: bookData?.bookDoc?.rendition?.layout,
+        },
+      };
+      const nextSettings = await persistReaderMode({
+        envConfig,
+        bookKey: bookKeyRef.current,
+        current: settings,
+        next: setReaderParagraphMode(settings, context, newEnabled),
+        context,
+        renderer: viewRef.current?.renderer,
+        setViewSettings,
+        saveViewSettings,
+        skipGlobal: true,
+      });
+      const enabled = !!nextSettings.paragraphMode?.enabled;
 
-      if (newEnabled) {
-        setViewSettings(bookKeyRef.current, { ...settings, paragraphMode: newConfig });
-        saveViewSettings(envConfig, bookKeyRef.current, 'paragraphMode', newConfig, true, false);
-
+      if (enabled) {
         const success = await initIterator();
         if (success) {
           await focusCurrentParagraph();
         }
       } else {
-        setViewSettings(bookKeyRef.current, { ...settings, paragraphMode: newConfig });
-        saveViewSettings(envConfig, bookKeyRef.current, 'paragraphMode', newConfig, true, false);
-
         const view = viewRef.current;
         const iterator = iteratorRef.current;
         if (view && iterator) {
@@ -399,7 +418,9 @@ export const useParagraphMode = ({ bookKey, viewRef }: UseParagraphModeProps) =>
     getViewSettings,
     setViewSettings,
     getProgress,
+    getBookData,
     envConfig,
+    appService?.isMobile,
     initIterator,
     focusCurrentParagraph,
     viewRef,

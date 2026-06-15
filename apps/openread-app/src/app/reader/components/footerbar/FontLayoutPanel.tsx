@@ -4,8 +4,10 @@ import { TbBoxMargin } from 'react-icons/tb';
 import { RxLineHeight } from 'react-icons/rx';
 import { useEnv } from '@/context/EnvContext';
 import { useReaderStore } from '@/store/readerStore';
+import { useBookDataStore } from '@/store/bookDataStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { saveViewSettings } from '@/helpers/settings';
+import { applyReaderModeToRenderer } from '../../utils/readerMode';
 import Slider from '@/components/Slider';
 
 const FONT_SIZE_LIMITS = {
@@ -41,10 +43,12 @@ export const FontLayoutPanel: React.FC<FontLayoutPanelProps> = ({
   marginIconSize,
 }) => {
   const _ = useTranslation();
-  const { envConfig } = useEnv();
+  const { envConfig, appService } = useEnv();
   const { getView, getViewSettings } = useReaderStore();
+  const { getBookData } = useBookDataStore();
   const viewSettings = getViewSettings(bookKey);
   const view = getView(bookKey);
+  const bookData = getBookData(bookKey);
 
   const handleFontSizeChange = useCallback(
     (value: number) => {
@@ -71,11 +75,15 @@ export const FontLayoutPanel: React.FC<FontLayoutPanelProps> = ({
       view?.renderer.setAttribute('margin', `${marginPx}px`);
       view?.renderer.setAttribute('gap', `${gapPercent}%`);
 
-      if (currentViewSettings?.scrolled) {
-        view?.renderer.setAttribute('flow', 'scrolled');
-      }
+      applyReaderModeToRenderer(view?.renderer, currentViewSettings, {
+        platform: { isMobile: !!appService?.isMobile },
+        book: {
+          isFixedLayout: bookData?.isFixedLayout,
+          renditionLayout: bookData?.bookDoc?.rendition?.layout,
+        },
+      });
     },
-    [envConfig, bookKey, view, getViewSettings],
+    [envConfig, bookKey, view, getViewSettings, appService?.isMobile, bookData],
   );
 
   const handleLineHeightChange = useCallback(

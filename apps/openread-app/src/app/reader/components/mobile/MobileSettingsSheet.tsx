@@ -13,6 +13,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { saveSysSettings, saveViewSettings } from '@/helpers/settings';
 import { themes } from '@/styles/themes';
 import { debounce } from '@/utils/debounce';
+import { applyReaderModeToRenderer } from '../../utils/readerMode';
 import Slider from '@/components/Slider';
 const FONT_SIZE_LIMITS = { MIN: 8, MAX: 30, DEFAULT: 16 } as const;
 const LINE_HEIGHT_LIMITS = { MIN: 8, MAX: 24, MULTIPLIER: 10 } as const;
@@ -98,11 +99,15 @@ function MobileSettingsInner({ bookKey }: { bookKey: string }) {
       view?.renderer.setAttribute('margin', `${marginPx}px`);
       view?.renderer.setAttribute('gap', `${gapPercent}%`);
 
-      if (currentViewSettings?.scrolled) {
-        view?.renderer.setAttribute('flow', 'scrolled');
-      }
+      applyReaderModeToRenderer(view?.renderer, currentViewSettings, {
+        platform: { isMobile: !!appService?.isMobile },
+        book: {
+          isFixedLayout,
+          renditionLayout: bookData?.bookDoc?.rendition?.layout,
+        },
+      });
     },
-    [envConfig, bookKey, view, getViewSettings],
+    [envConfig, bookKey, view, getViewSettings, appService?.isMobile, isFixedLayout, bookData],
   );
 
   const handleLineHeightChange = useCallback(

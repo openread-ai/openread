@@ -10,6 +10,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { getGridTemplate, getInsetEdges } from '@/utils/grid';
 import { getViewInsets } from '@/utils/insets';
 import { viewPagination } from '../hooks/usePagination';
+import { getReaderMode } from '../utils/readerMode';
 import { debounce } from '@/utils/debounce';
 import { computeProgress } from './footerbar/progressUtils';
 import SearchResultsNav from './sidebar/SearchResultsNav';
@@ -167,7 +168,14 @@ const BooksGrid: React.FC<BooksGridProps> = ({ bookKeys, onCloseBook }) => {
           bottom: gridInsets.bottom + viewInsets.bottom,
           left: gridInsets.left + viewInsets.left,
         };
-        const scrolled = viewSettings.scrolled;
+        const readerMode = getReaderMode(viewSettings, {
+          platform: { isMobile: !!appService?.isMobile },
+          book: {
+            isFixedLayout: bookData?.isFixedLayout,
+            renditionLayout: bookData?.bookDoc?.rendition?.layout,
+          },
+        });
+        const scrolled = readerMode.scrolled;
         const showBarsOnScroll = viewSettings.showBarsOnScroll;
         const showHeader = viewSettings.showHeader && (scrolled ? showBarsOnScroll : true);
         const showFooter = viewSettings.showFooter && (scrolled ? showBarsOnScroll : true);
@@ -214,7 +222,7 @@ const BooksGrid: React.FC<BooksGridProps> = ({ bookKeys, onCloseBook }) => {
               gridInsets={gridInsets}
               contentInsets={contentInsets}
             />
-            {viewSettings.vertical && viewSettings.scrolled && (
+            {viewSettings.vertical && scrolled && (
               <>
                 {(showFooter || viewSettings.doubleBorder) && (
                   <div
@@ -248,7 +256,7 @@ const BooksGrid: React.FC<BooksGridProps> = ({ bookKeys, onCloseBook }) => {
                 bookKey={bookKey}
                 section={sectionLabel}
                 showDoubleBorder={viewSettings.vertical && viewSettings.doubleBorder}
-                isScrolled={viewSettings.scrolled}
+                isScrolled={scrolled}
                 isVertical={viewSettings.vertical}
                 isEink={viewSettings.isEink}
                 horizontalGap={horizontalGapPercent}
@@ -259,7 +267,7 @@ const BooksGrid: React.FC<BooksGridProps> = ({ bookKeys, onCloseBook }) => {
             <HintInfo
               bookKey={bookKey}
               showDoubleBorder={viewSettings.vertical && viewSettings.doubleBorder}
-              isScrolled={viewSettings.scrolled}
+              isScrolled={scrolled}
               isVertical={viewSettings.vertical}
               isEink={viewSettings.isEink}
               horizontalGap={horizontalGapPercent}

@@ -1,14 +1,16 @@
 /**
  * @module services/sync/syncWorker
- * P9.22: Background sync worker that drains the offline queue.
+ * P9.22: Background sync worker that drains legacy queue items and the canonical durable outbox.
  *
- * - Runs every 10 seconds when online
+ * - Runs on demand and through fallback polling when Realtime is unavailable
  * - Pauses when offline, resumes on reconnection
- * - Uses SyncClient to push queued changes
+ * - Uses the canonical SyncEngine for book/config/note outbox mutations
  * - Single source of truth for all sync operations and watermarks
  */
 
 import { offlineQueue, type QueueItem } from './offlineQueue';
+import { SyncEngine, type SyncDrainResult } from './engine';
+import { createLegacySyncTransport } from './legacyTransport';
 import { SyncClient, type SyncType } from '@/libs/sync';
 import { supabase } from '@/utils/supabase';
 import {
@@ -33,6 +35,7 @@ import type { AIConversation, AIMessage } from '@/services/ai/types';
 import { aiStore } from '@/services/ai/storage/aiStore';
 import { useAIChatStore } from '@/store/aiChatStore';
 import { isSyncableLibraryBookHash } from '@/utils/bookHash';
+import { getDeviceId } from '@/services/deviceService';
 
 /** Supabase row shape for ai_conversations table */
 interface SupabaseAIConversation {
@@ -225,6 +228,7 @@ export class SyncWorker {
   private reconcileRun: Promise<void> | null = null;
   private reconcileRerunRequested = false;
   private syncClient = new SyncClient();
+  private canonicalEngine: SyncEngine | null = null;
   private realtimeChannel: RealtimeChannel | null = null;
   private userId: string | null = null;
   /** When true, all new sync operations are suppressed (set by stop()). */
@@ -283,6 +287,13 @@ export class SyncWorker {
 
     this.stopped = false;
     this.userId = nextUserId;
+    this.canonicalEngine = nextUserId
+      ? new SyncEngine({
+          userId: nextUserId,
+          deviceId: getDeviceId(),
+          transport: createLegacySyncTransport(this.syncClient),
+        })
+      : null;
     offlineQueue.setScope(nextUserId);
 
     // Listen to online/offline events
@@ -347,6 +358,7 @@ export class SyncWorker {
       this.realtimeChannel = null;
     }
     this.userId = null;
+    this.canonicalEngine = null;
     offlineQueue.setScope(null);
     this.cachedSupabase = null;
     this.drainGuard.reset();
@@ -375,6 +387,10 @@ export class SyncWorker {
    */
   get status(): SyncWorkerStatus {
     return { ...this._status };
+  }
+
+  get currentUserId(): string | null {
+    return this.userId;
   }
 
   /**
@@ -535,11 +551,12 @@ export class SyncWorker {
   };
 
   /**
-   * Process all pending queue items.
+   * Process all pending legacy queue items and canonical outbox mutations.
    */
   private async drainQueue(): Promise<void> {
     if (isOffline()) {
-      this.updateStatus({ pending: offlineQueue.pendingCount });
+      const canonicalPending = await this.canonicalPendingCount();
+      this.updateStatus({ pending: offlineQueue.pendingCount + canonicalPending });
       return;
     }
 
@@ -547,7 +564,15 @@ export class SyncWorker {
     this.updateStatus({ syncing: true, error: null });
 
     try {
-      const result = await offlineQueue.drain((item) => this.processItem(item));
+      const legacyResult = await offlineQueue.drain((item) => this.processItem(item));
+      const canonicalResult = await this.drainCanonicalOutbox();
+      const canonicalFailed = canonicalResult.failed + canonicalResult.conflicted;
+      const result = {
+        synced: legacyResult.synced + canonicalResult.accepted,
+        failed: legacyResult.failed + canonicalFailed,
+        remaining: legacyResult.remaining + canonicalResult.remaining,
+      };
+
       this.updateStatus({
         syncing: false,
         pending: result.remaining,
@@ -555,6 +580,11 @@ export class SyncWorker {
         lastSyncAt: result.failed === 0 ? Date.now() : this._status.lastSyncAt,
         error: result.failed > 0 ? `${result.failed} items failed to sync` : null,
       });
+      if (canonicalResult.accepted > 0 || canonicalResult.conflicted > 0) {
+        this.broadcast(SYNC_EVENTS.BOOKS);
+        this.broadcast(SYNC_EVENTS.CONFIGS);
+        this.broadcast(SYNC_EVENTS.NOTES);
+      }
       // After pushing changes, reconcile to pick up cross-device updates
       if (result.synced > 0) {
         this.reconcileBooks();
@@ -568,6 +598,23 @@ export class SyncWorker {
       if (this.drainGuard.exit()) {
         this.drainQueue();
       }
+    }
+  }
+
+  private async drainCanonicalOutbox(): Promise<SyncDrainResult> {
+    if (!this.canonicalEngine) {
+      return { attempted: 0, accepted: 0, conflicted: 0, failed: 0, remaining: 0 };
+    }
+    return this.canonicalEngine.drainOnce();
+  }
+
+  private async canonicalPendingCount(): Promise<number> {
+    if (!this.canonicalEngine) return 0;
+    try {
+      return await this.canonicalEngine.pendingCount();
+    } catch (error) {
+      console.warn('[SyncWorker] Failed to read canonical outbox pending count:', error);
+      return 0;
     }
   }
 

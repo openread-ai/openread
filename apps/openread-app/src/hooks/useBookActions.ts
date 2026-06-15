@@ -5,12 +5,9 @@ import { useLibraryStore } from '@/store/libraryStore';
 import { usePlatformSidebarStore } from '@/store/platformSidebarStore';
 import { useLibraryViewStore } from '@/store/libraryViewStore';
 import { eventDispatcher } from '@/utils/event';
-import envConfig, { getAPIBaseUrl } from '@/services/environment';
-import { fetchWithTimeout } from '@/utils/fetch';
+import envConfig from '@/services/environment';
 import { enqueueAndSync, enqueueBatchAndSync } from '@/services/sync/helpers';
-import { syncWorker, SYNC_EVENTS } from '@/services/sync/syncWorker';
 import { useBookDataStore } from '@/store/bookDataStore';
-import { getAccessToken } from '@/utils/access';
 import type { Book, ReadingStatus } from '@/types/book';
 import { createLogger } from '@/utils/logger';
 
@@ -57,24 +54,6 @@ async function cleanupDeletedBook(book: Book, remainingLibrary: Book[]): Promise
         }
       })
       .catch(() => {});
-
-    // Best-effort hard cleanup. Correctness does not depend on this request:
-    // the caller first persists a local tombstone and enqueues a soft-delete
-    // sync record so reload/offline/reconcile cannot resurrect the book.
-    const token = await getAccessToken();
-    if (token) {
-      const url = `${getAPIBaseUrl()}/sync?book_hash=${encodeURIComponent(book.hash)}`;
-      const res = await fetchWithTimeout(url, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        syncWorker.broadcast(SYNC_EVENTS.BOOKS);
-      } else {
-        const body = await res.text().catch(() => '');
-        logger.warn(`Server delete returned ${res.status}`, body.slice(0, 500));
-      }
-    }
   } catch (error) {
     logger.error('Background cleanup failed:', error);
   }

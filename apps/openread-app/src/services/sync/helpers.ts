@@ -2,24 +2,38 @@
  * Sync helper utilities to reduce boilerplate across consumers.
  */
 
-import { offlineQueue, type QueueItem } from './offlineQueue';
+import { getDeviceId } from '@/services/deviceService';
+
+import { buildSyncMutationsFromQueueItems } from './adapters';
+import type { QueueItem } from './offlineQueue';
+import { syncOutbox } from './outbox';
 import { syncWorker } from './syncWorker';
 
-/**
- * Enqueue a single item and trigger an immediate sync drain.
- * Shorthand for the offlineQueue.enqueue + syncWorker.syncNow pattern.
- */
-export function enqueueAndSync(item: Pick<QueueItem, 'type' | 'action' | 'payload'>): void {
-  offlineQueue.enqueue(item);
-  syncWorker.syncNow();
+export async function enqueueCanonicalSyncItems(
+  items: Pick<QueueItem, 'type' | 'action' | 'payload'>[],
+): Promise<void> {
+  if (items.length === 0) return;
+  const userId = syncWorker.currentUserId;
+  if (!userId) return;
+
+  const mutations = buildSyncMutationsFromQueueItems(items, {
+    userId,
+    deviceId: getDeviceId(),
+  });
+  await syncOutbox.enqueueBatch(mutations);
+  await syncWorker.syncNow();
 }
 
 /**
- * Enqueue multiple items in one batch and trigger a single sync drain.
- * Uses enqueueBatch to avoid O(N^2) localStorage thrashing.
+ * Enqueue a single item as a canonical SyncMutation and trigger an immediate sync drain.
+ */
+export function enqueueAndSync(item: Pick<QueueItem, 'type' | 'action' | 'payload'>): void {
+  void enqueueCanonicalSyncItems([item]);
+}
+
+/**
+ * Enqueue multiple canonical SyncMutations in one batch and trigger a single sync drain.
  */
 export function enqueueBatchAndSync(items: Pick<QueueItem, 'type' | 'action' | 'payload'>[]): void {
-  if (items.length === 0) return;
-  offlineQueue.enqueueBatch(items);
-  syncWorker.syncNow();
+  void enqueueCanonicalSyncItems(items);
 }

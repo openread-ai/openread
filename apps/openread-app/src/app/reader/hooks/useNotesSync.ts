@@ -6,7 +6,6 @@ import { useBookDataStore } from '@/store/bookDataStore';
 import { SYNC_NOTES_INTERVAL_SEC } from '@/services/constants';
 import { throttle } from '@/utils/throttle';
 import { enqueueBatchAndSync } from '@/services/sync/helpers';
-import { syncWorker, SYNC_EVENTS } from '@/services/sync/syncWorker';
 
 export const useNotesSync = (bookKey: string) => {
   const { user } = useAuth();
@@ -42,7 +41,6 @@ export const useNotesSync = (bookKey: string) => {
         const newNotes = getNewNotes();
         if (!newNotes.notes?.length) return;
         await syncNotes(newNotes.notes, book?.hash, book?.metaHash, 'both');
-        syncWorker.broadcast(SYNC_EVENTS.NOTES);
       },
       SYNC_NOTES_INTERVAL_SEC * 1000,
       { emitLast: true },

@@ -6,7 +6,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { useTransferStore, TransferType } from '@/store/transferStore';
 import { transferManager } from '@/services/transferManager';
 import { Book } from '@/types/book';
-import { isUserCloudUploadEligible } from '@/utils/book';
+import { hasUserBookUploadSource } from '@/utils/book';
 
 export function useTransferQueue(libraryLoaded = true, delayInit = 0) {
   const { envConfig, appService } = useEnv();
@@ -33,8 +33,16 @@ export function useTransferQueue(libraryLoaded = true, delayInit = 0) {
         // once the manager initializes so fresh sessions can recover the book and cover from R2.
         const settings = useSettingsStore.getState().settings;
         if (settings.autoUpload !== false) {
-          const pendingUploadBooks = getLibrary().filter(isUserCloudUploadEligible);
-          transferManager.queueBatchUploads(pendingUploadBooks, 1);
+          const sourceResults = await Promise.all(
+            getLibrary().map(async (book) => ({
+              book,
+              canUpload: await hasUserBookUploadSource(book, appService),
+            })),
+          );
+          const pendingUploadBooks = sourceResults
+            .filter(({ canUpload }) => canUpload)
+            .map(({ book }) => book);
+          transferManager.queueBatchUploads(pendingUploadBooks, 1, true);
         }
       }
     };
@@ -48,10 +56,31 @@ export function useTransferQueue(libraryLoaded = true, delayInit = 0) {
   }, [appService, envConfig, libraryLoaded, delayInit, _]);
 
   useEffect(() => {
-    if (!libraryLoaded || autoUpload === false || !transferManager.isReady()) return;
-    const pendingUploadBooks = library.filter(isUserCloudUploadEligible);
-    transferManager.queueBatchUploads(pendingUploadBooks, 1);
-  }, [autoUpload, library, libraryLoaded]);
+    if (!libraryLoaded || autoUpload === false || !transferManager.isReady() || !appService) return;
+
+    let cancelled = false;
+
+    const queueRecoverableUploads = async () => {
+      const sourceResults = await Promise.all(
+        library.map(async (book) => ({
+          book,
+          canUpload: await hasUserBookUploadSource(book, appService),
+        })),
+      );
+      if (cancelled) return;
+
+      const pendingUploadBooks = sourceResults
+        .filter(({ canUpload }) => canUpload)
+        .map(({ book }) => book);
+      transferManager.queueBatchUploads(pendingUploadBooks, 1, true);
+    };
+
+    queueRecoverableUploads();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [appService, autoUpload, library, libraryLoaded]);
 
   const queueUpload = useCallback((book: Book, priority?: number) => {
     return transferManager.queueUpload(book, priority);

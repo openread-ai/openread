@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { transferManager } from '@/services/transferManager';
+import { classifyTransferError, transferManager } from '@/services/transferManager';
 import { useTransferStore } from '@/store/transferStore';
 import type { Book } from '@/types/book';
 
@@ -51,5 +51,31 @@ describe('TransferManager upload eligibility', () => {
 
     expect(ids).toHaveLength(1);
     expect(useTransferStore.getState().getPendingTransfers()).toHaveLength(1);
+  });
+
+  it('marks startup batch uploads as background when requested', () => {
+    const ids = transferManager.queueBatchUploads([baseBook()], 1, true);
+
+    expect(ids).toHaveLength(1);
+    expect(useTransferStore.getState().transfers[ids[0]!]!.isBackground).toBe(true);
+  });
+
+  it('classifies non-retryable upload contract failures', () => {
+    expect(classifyTransferError('STORAGE_LIMIT_REACHED')).toEqual({
+      reason: 'storage-limit-reached',
+      retryable: false,
+    });
+    expect(classifyTransferError('LIBRARY_LIMIT_REACHED')).toEqual({
+      reason: 'library-limit-reached',
+      retryable: false,
+    });
+    expect(classifyTransferError('Book file not uploaded')).toEqual({
+      reason: 'local-file-missing',
+      retryable: false,
+    });
+    expect(classifyTransferError('Network timeout')).toEqual({
+      reason: 'unknown',
+      retryable: true,
+    });
   });
 });

@@ -21,13 +21,16 @@ export interface QueueItem {
 const STORAGE_KEY = 'openread_sync_queue';
 const DEFAULT_MAX_RETRIES = 5;
 
+const scopedStorageKey = (scopeUserId: string | null): string =>
+  scopeUserId ? `${STORAGE_KEY}:${scopeUserId}` : STORAGE_KEY;
+
 /**
  * Read the queue from localStorage.
  */
-function readQueue(): QueueItem[] {
+function readQueue(scopeUserId: string | null): QueueItem[] {
   if (typeof localStorage === 'undefined') return [];
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(scopedStorageKey(scopeUserId));
     return raw ? JSON.parse(raw) : [];
   } catch (err) {
     console.error(
@@ -35,8 +38,9 @@ function readQueue(): QueueItem[] {
       err instanceof Error ? err.message : String(err),
     );
     try {
-      const corrupt = localStorage.getItem(STORAGE_KEY);
-      if (corrupt) localStorage.setItem(STORAGE_KEY + '_corrupt_backup', corrupt);
+      const key = scopedStorageKey(scopeUserId);
+      const corrupt = localStorage.getItem(key);
+      if (corrupt) localStorage.setItem(`${key}_corrupt_backup`, corrupt);
     } catch {
       /* best effort backup */
     }
@@ -47,9 +51,9 @@ function readQueue(): QueueItem[] {
 /**
  * Write the queue to localStorage.
  */
-function writeQueue(items: QueueItem[]): void {
+function writeQueue(scopeUserId: string | null, items: QueueItem[]): void {
   if (typeof localStorage === 'undefined') return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  localStorage.setItem(scopedStorageKey(scopeUserId), JSON.stringify(items));
 }
 
 /**
@@ -57,11 +61,17 @@ function writeQueue(items: QueueItem[]): void {
  * Items survive app restarts via localStorage.
  */
 export class OfflineQueue {
+  private scopeUserId: string | null = null;
+
+  setScope(userId: string | null): void {
+    this.scopeUserId = userId;
+  }
+
   /**
    * Add an item to the queue.
    */
   enqueue(item: Pick<QueueItem, 'type' | 'action' | 'payload'>): void {
-    const queue = readQueue();
+    const queue = readQueue(this.scopeUserId);
     queue.push({
       ...item,
       id: typeof crypto !== 'undefined' ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
@@ -70,7 +80,7 @@ export class OfflineQueue {
       maxRetries: DEFAULT_MAX_RETRIES,
       status: 'pending',
     });
-    writeQueue(queue);
+    writeQueue(this.scopeUserId, queue);
   }
 
   /**
@@ -79,7 +89,7 @@ export class OfflineQueue {
    */
   enqueueBatch(items: Pick<QueueItem, 'type' | 'action' | 'payload'>[]): void {
     if (items.length === 0) return;
-    const queue = readQueue();
+    const queue = readQueue(this.scopeUserId);
     const now = Date.now();
     for (const item of items) {
       queue.push({
@@ -91,7 +101,7 @@ export class OfflineQueue {
         status: 'pending',
       });
     }
-    writeQueue(queue);
+    writeQueue(this.scopeUserId, queue);
   }
 
   /**
@@ -105,7 +115,7 @@ export class OfflineQueue {
   async drain(
     handler: (item: QueueItem) => Promise<boolean>,
   ): Promise<{ synced: number; failed: number; remaining: number }> {
-    const queue = readQueue();
+    const queue = readQueue(this.scopeUserId);
     const pending = queue.filter((item) => item.status === 'pending');
 
     if (pending.length === 0) {
@@ -149,7 +159,7 @@ export class OfflineQueue {
       }
     }
 
-    writeQueue([...remaining, ...alreadyFailed]);
+    writeQueue(this.scopeUserId, [...remaining, ...alreadyFailed]);
 
     return { synced, failed, remaining: remaining.length + alreadyFailed.length };
   }
@@ -158,14 +168,14 @@ export class OfflineQueue {
    * Get all pending items (not yet failed).
    */
   getPending(): QueueItem[] {
-    return readQueue().filter((item) => item.status === 'pending');
+    return readQueue(this.scopeUserId).filter((item) => item.status === 'pending');
   }
 
   /**
    * Get all items (pending + failed).
    */
   getAll(): QueueItem[] {
-    return readQueue();
+    return readQueue(this.scopeUserId);
   }
 
   /**
@@ -179,15 +189,15 @@ export class OfflineQueue {
    * Clear all items from the queue.
    */
   clear(): void {
-    writeQueue([]);
+    writeQueue(this.scopeUserId, []);
   }
 
   /**
    * Clear only failed items (allow retry or discard).
    */
   clearFailed(): void {
-    const queue = readQueue().filter((item) => item.status !== 'failed');
-    writeQueue(queue);
+    const queue = readQueue(this.scopeUserId).filter((item) => item.status !== 'failed');
+    writeQueue(this.scopeUserId, queue);
   }
 }
 

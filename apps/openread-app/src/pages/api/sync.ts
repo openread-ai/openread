@@ -311,7 +311,10 @@ export async function GET(req: NextRequest) {
           console.error('[sync] settings pull error:', settingsError.message);
         }
         if (settingsRow && new Date(settingsRow.updated_at).getTime() > since.getTime()) {
-          (results as Record<string, unknown>).settings = settingsRow.settings;
+          (results as Record<string, unknown>).settings = {
+            ...((settingsRow.settings as Record<string, unknown>) ?? {}),
+            _updatedAt: settingsRow.updated_at,
+          };
         }
       } catch (err) {
         console.error('[sync] settings pull failed:', err);

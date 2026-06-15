@@ -12,6 +12,41 @@ const logger = createLogger('transfer');
 const TRANSFER_QUEUE_KEY = 'openread_transfer_queue';
 const RETRY_DELAY_BASE_MS = 2000;
 
+export type TransferErrorReason =
+  | 'not-authenticated'
+  | 'storage-limit-reached'
+  | 'storage-not-available'
+  | 'library-limit-reached'
+  | 'local-file-missing'
+  | 'unknown';
+
+export function classifyTransferError(errorMessage: string): {
+  reason: TransferErrorReason;
+  retryable: boolean;
+} {
+  if (errorMessage.includes('Not authenticated')) {
+    return { reason: 'not-authenticated', retryable: false };
+  }
+  if (
+    errorMessage.includes('STORAGE_LIMIT_REACHED') ||
+    errorMessage.includes('Insufficient storage quota') ||
+    errorMessage.includes('Storage limit reached')
+  ) {
+    return { reason: 'storage-limit-reached', retryable: false };
+  }
+  if (errorMessage.includes('STORAGE_NOT_AVAILABLE')) {
+    return { reason: 'storage-not-available', retryable: false };
+  }
+  if (errorMessage.includes('LIBRARY_LIMIT_REACHED') || errorMessage.includes('Library limit')) {
+    return { reason: 'library-limit-reached', retryable: false };
+  }
+  if (errorMessage.includes('Book file not uploaded')) {
+    return { reason: 'local-file-missing', retryable: false };
+  }
+
+  return { reason: 'unknown', retryable: true };
+}
+
 interface PersistedQueueData {
   transfers: Record<string, TransferItem>;
   isQueuePaused: boolean;
@@ -59,7 +94,7 @@ class TransferManager {
     return this.isInitialized && this.appService !== null;
   }
 
-  queueUpload(book: Book, priority: number = 10): string | null {
+  queueUpload(book: Book, priority: number = 10, isBackground: boolean = false): string | null {
     if (!isUserCloudUploadEligible(book)) return null;
 
     const store = useTransferStore.getState();
@@ -70,7 +105,7 @@ class TransferManager {
       return existing.id;
     }
 
-    const transferId = store.addTransfer(book.hash, book.title, 'upload', priority);
+    const transferId = store.addTransfer(book.hash, book.title, 'upload', priority, isBackground);
     this.persistQueue();
     this.processQueue();
     return transferId;
@@ -104,10 +139,10 @@ class TransferManager {
     return transferId;
   }
 
-  queueBatchUploads(books: Book[], priority: number = 10): string[] {
+  queueBatchUploads(books: Book[], priority: number = 10, isBackground: boolean = false): string[] {
     return books
       .filter(isUserCloudUploadEligible)
-      .map((book) => this.queueUpload(book, priority))
+      .map((book) => this.queueUpload(book, priority, isBackground))
       .filter((id): id is string => id !== null);
   }
 
@@ -273,7 +308,13 @@ class TransferManager {
       const currentStore = useTransferStore.getState();
       const currentTransfer = currentStore.transfers[transfer.id];
 
-      if (currentTransfer && currentTransfer.retryCount < currentTransfer.maxRetries) {
+      const errorClassification = classifyTransferError(errorMessage);
+
+      if (
+        errorClassification.retryable &&
+        currentTransfer &&
+        currentTransfer.retryCount < currentTransfer.maxRetries
+      ) {
         // Schedule retry with exponential backoff
         const delay = RETRY_DELAY_BASE_MS * Math.pow(2, currentTransfer.retryCount);
         currentStore.incrementRetryCount(transfer.id);
@@ -287,28 +328,28 @@ class TransferManager {
           this.processQueue();
         }, delay);
       } else {
-        if (errorMessage.includes('Not authenticated')) {
-          eventDispatcher.dispatch('toast', {
-            type: 'error',
-            message: _('Please log in to continue'),
-          });
-        } else if (errorMessage.includes('Insufficient storage quota')) {
-          eventDispatcher.dispatch('toast', {
-            type: 'error',
-            message: _('Insufficient storage quota'),
-          });
-        } else {
+        if (!transfer.isBackground) {
           const errorMessages = {
-            upload: _('Failed to upload book: {{title}}', { title: transfer.bookTitle }),
-            download: _('Failed to download book: {{title}}', { title: transfer.bookTitle }),
-            delete: _('Failed to delete cloud backup of the book: {{title}}', {
-              title: transfer.bookTitle,
-            }),
+            'not-authenticated': _('Please log in to continue'),
+            'storage-limit-reached': _('Storage limit reached. Upgrade your plan or remove files.'),
+            'storage-not-available': _('Cloud storage is not available on your current plan.'),
+            'library-limit-reached': _('Library limit reached. Upgrade for unlimited library.'),
+            'local-file-missing': _(
+              'Book file is not available on this device. Re-download or re-import it before cloud upload.',
+            ),
+            unknown:
+              transfer.type === 'upload'
+                ? _('Failed to upload book: {{title}}', { title: transfer.bookTitle })
+                : transfer.type === 'download'
+                  ? _('Failed to download book: {{title}}', { title: transfer.bookTitle })
+                  : _('Failed to delete cloud backup of the book: {{title}}', {
+                      title: transfer.bookTitle,
+                    }),
           };
 
           eventDispatcher.dispatch('toast', {
             type: 'error',
-            message: errorMessages[transfer.type],
+            message: errorMessages[errorClassification.reason],
           });
         }
 

@@ -33,6 +33,11 @@ function rawQueue(): QueueItem[] {
   return raw ? JSON.parse(raw) : [];
 }
 
+function rawScopedQueue(userId: string): QueueItem[] {
+  const raw = mockStorage.get(`${STORAGE_KEY}:${userId}`);
+  return raw ? JSON.parse(raw) : [];
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -85,6 +90,36 @@ describe('OfflineQueue', () => {
       expect(items[0].type).toBe('book');
       expect(items[1].type).toBe('note');
       expect(items[2].type).toBe('config');
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // account scoping
+  // -----------------------------------------------------------------------
+
+  describe('account scoping', () => {
+    it('isolates queued writes by user scope', async () => {
+      queue.setScope('user-a');
+      queue.enqueue({ type: 'book', action: 'upsert', payload: { id: 'a-book' } });
+
+      queue.setScope('user-b');
+      queue.enqueue({ type: 'book', action: 'upsert', payload: { id: 'b-book' } });
+
+      expect(rawQueue()).toHaveLength(0);
+      expect(rawScopedQueue('user-a')).toHaveLength(1);
+      expect(rawScopedQueue('user-b')).toHaveLength(1);
+      expect(queue.getPending()).toHaveLength(1);
+      expect(queue.getPending()[0].payload).toEqual({ id: 'b-book' });
+
+      const handled: QueueItem[] = [];
+      await queue.drain(async (item) => {
+        handled.push(item);
+        return true;
+      });
+
+      expect(handled.map((item) => item.payload)).toEqual([{ id: 'b-book' }]);
+      expect(rawScopedQueue('user-a')).toHaveLength(1);
+      expect(rawScopedQueue('user-b')).toHaveLength(0);
     });
   });
 

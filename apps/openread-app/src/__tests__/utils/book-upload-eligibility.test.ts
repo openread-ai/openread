@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { isCatalogBackedBook, isUserCloudUploadEligible } from '@/utils/book';
+import {
+  hasUserBookUploadSource,
+  isCatalogBackedBook,
+  isUserCloudUploadEligible,
+} from '@/utils/book';
 import type { Book } from '@/types/book';
 
 const baseBook = (overrides: Partial<Book> = {}): Book => ({
@@ -42,5 +46,22 @@ describe('book upload eligibility', () => {
 
     expect(isCatalogBackedBook(book)).toBe(true);
     expect(isUserCloudUploadEligible(book)).toBe(false);
+  });
+
+  it('requires a local file or recoverable source URL for background upload', async () => {
+    const appService = {
+      exists: async (path: string) => path === '0123456789abcdef0123456789abcdef/Manual Book.epub',
+    };
+
+    await expect(hasUserBookUploadSource(baseBook(), appService)).resolves.toBe(true);
+    await expect(
+      hasUserBookUploadSource(baseBook({ title: 'Missing Book' }), appService),
+    ).resolves.toBe(false);
+    await expect(
+      hasUserBookUploadSource(
+        baseBook({ title: 'Missing Book', url: 'https://example.com/book.epub' }),
+        appService,
+      ),
+    ).resolves.toBe(true);
   });
 });

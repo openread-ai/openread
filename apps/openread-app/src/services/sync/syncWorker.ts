@@ -283,6 +283,7 @@ export class SyncWorker {
 
     this.stopped = false;
     this.userId = nextUserId;
+    offlineQueue.setScope(nextUserId);
 
     // Listen to online/offline events
     if (typeof window !== 'undefined') {
@@ -346,6 +347,7 @@ export class SyncWorker {
       this.realtimeChannel = null;
     }
     this.userId = null;
+    offlineQueue.setScope(null);
     this.cachedSupabase = null;
     this.drainGuard.reset();
     this.reconcileRun = null;
@@ -797,11 +799,14 @@ export class SyncWorker {
         progress: BookConfig['progress'];
         updatedAt: number;
       }> = [];
+      const acceptedConfigRecords: BookDataRecord[] = [];
 
-      for (const config of configs) {
+      for (let index = 0; index < configs.length; index += 1) {
+        const config = configs[index]!;
         if (!config.bookHash) continue;
         const book = bookByHash.get(config.bookHash);
         if (!book) continue;
+        acceptedConfigRecords.push(dbConfigs[index] as unknown as BookDataRecord);
         const bookKey = `${book.hash}-${book.format}`;
         const existing = bookDataStore.getConfig(bookKey);
         if (!existing || (config.updatedAt ?? 0) >= (existing.updatedAt ?? 0)) {
@@ -842,7 +847,7 @@ export class SyncWorker {
         useLibraryStore.getState().setLibrary(updatedLibrary);
       }
 
-      const maxTime = computeMaxTimestamp(dbConfigs as unknown as BookDataRecord[]);
+      const maxTime = computeMaxTimestamp(acceptedConfigRecords);
       if (maxTime > 0) {
         await saveWatermarks({ lastSyncedAtConfigs: maxTime });
       }
@@ -882,7 +887,7 @@ export class SyncWorker {
       const library = useLibraryStore.getState().library;
       const bookByHash = new Map(library.map((b) => [b.hash, b]));
 
-      let processedCount = 0;
+      const appliedNoteKeys = new Set<string>();
       for (const [bookHash, bookNotes] of notesByBook) {
         const book = bookByHash.get(bookHash);
         if (!book) continue;
@@ -911,13 +916,16 @@ export class SyncWorker {
         }
 
         bookDataStore.setConfig(bookKey, { booknotes: mergedNotes });
-        processedCount += bookNotes.length;
+        bookNotes.forEach((note) => appliedNoteKeys.add(`${note.bookHash}:${note.id}`));
       }
 
-      // Only advance watermark if notes were actually stored — prevents
-      // silently skipping notes on fresh installs where booksData is empty
-      const maxTime = computeMaxTimestamp(dbNotes as unknown as BookDataRecord[]);
-      if (maxTime > 0 && processedCount > 0) {
+      // Only advance the watermark for records actually stored — prevents
+      // silently skipping notes on fresh installs where booksData is empty.
+      const appliedNoteRecords = (dbNotes as unknown as BookDataRecord[]).filter((note) =>
+        appliedNoteKeys.has(`${String(note.book_hash)}:${String(note.id)}`),
+      );
+      const maxTime = computeMaxTimestamp(appliedNoteRecords);
+      if (maxTime > 0) {
         await saveWatermarks({ lastSyncedAtNotes: maxTime });
       }
     } catch (error) {
@@ -941,7 +949,11 @@ export class SyncWorker {
 
       const freshSettings = { ...useSettingsStore.getState().settings };
       const merged = applyRoamingSettings(freshSettings, remoteSettings);
-      merged.lastSyncedAtSettings = Date.now();
+      const remoteUpdatedAt =
+        typeof remoteSettings._updatedAt === 'string'
+          ? new Date(remoteSettings._updatedAt).getTime()
+          : Date.now();
+      merged.lastSyncedAtSettings = Number.isFinite(remoteUpdatedAt) ? remoteUpdatedAt : Date.now();
       useSettingsStore.getState().setSettings(merged);
       const appService = await envConfig.getAppService();
       await appService.saveSettings(merged);

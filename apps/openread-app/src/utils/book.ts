@@ -1,7 +1,8 @@
 import { BookMetadata, EXTS } from '@/libs/document';
 import { Book, BookConfig, BookProgress, WritingMode } from '@/types/book';
 import { SUPPORTED_LANGS } from '@/services/constants';
-import { getUserLang, makeSafeFilename } from './misc';
+import type { AppService } from '@/types/system';
+import { getUserLang, isValidURL, makeSafeFilename } from './misc';
 import { getStorageType } from './storage';
 import { getDirFromLanguage } from './rtl';
 import { code6392to6391, isValidLang, normalizedLangCode } from './lang';
@@ -51,6 +52,26 @@ export const isUserCloudUploadEligible = (
   book: Pick<Book, 'catalogBookId' | 'deletedAt' | 'hash' | 'storagePath' | 'uploadedAt'>,
 ): boolean => {
   return !book.deletedAt && !book.uploadedAt && !isCatalogBackedBook(book);
+};
+
+export const hasUserBookUploadSource = async (
+  book: Pick<
+    Book,
+    | 'catalogBookId'
+    | 'deletedAt'
+    | 'format'
+    | 'hash'
+    | 'sourceTitle'
+    | 'storagePath'
+    | 'title'
+    | 'uploadedAt'
+    | 'url'
+  >,
+  appService: Pick<AppService, 'exists'>,
+): Promise<boolean> => {
+  if (!isUserCloudUploadEligible(book)) return false;
+  if (book.url && isValidURL(book.url)) return true;
+  return appService.exists(getLocalBookFilename(book as Book), 'Books');
 };
 
 export const isBookFile = (filename: string) => {

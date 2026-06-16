@@ -33,6 +33,11 @@ export interface RegionalPricingEntry {
   pro: number;
 }
 
+export interface PublicPricingResponse {
+  country: string;
+  pricing: RegionalPricingEntry;
+}
+
 export interface StorageAddon {
   gb: number;
   price_cents: number;

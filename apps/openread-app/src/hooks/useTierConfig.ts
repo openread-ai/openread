@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import type { TierConfig } from '@/lib/tier-types';
-import { getAPIBaseUrl } from '@/services/environment';
-const TIER_CONFIG_URL = `${getAPIBaseUrl()}/tier-config`;
+import { platform } from '@/services/platform/client';
 
 export interface UseTierConfigReturn {
   config: TierConfig | null;
@@ -21,13 +20,7 @@ export function useTierConfig(): UseTierConfigReturn {
 
     async function fetchTierConfig() {
       try {
-        const response = await fetch(TIER_CONFIG_URL);
-        const body = (await response.json()) as TierConfig | { error?: string };
-        if (!response.ok) {
-          const message = 'error' in body && body.error ? body.error : 'Tier config request failed';
-          throw new Error(`${message} (${response.status})`);
-        }
-        const nextConfig = body as TierConfig;
+        const nextConfig = await platform.runtime.getTierConfig();
         if (!cancelled) {
           setConfig(nextConfig);
           setError(null);

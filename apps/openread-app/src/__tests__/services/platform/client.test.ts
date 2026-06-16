@@ -11,6 +11,10 @@ vi.mock('@openread/sdk', () => ({
       getUser: vi.fn(),
       hasToken: vi.fn(),
     };
+    runtime = {
+      getTierConfig: vi.fn(),
+      getPricing: vi.fn(),
+    };
     books = {
       exists: vi.fn(),
       get: vi.fn(),
@@ -43,20 +47,24 @@ vi.mock('@/services/platform/auth', () => ({
 }));
 
 describe('platform client', () => {
-  const originalPlatformUrl = process.env.NEXT_PUBLIC_PLATFORM_URL;
+  const originalNodeBaseUrl = process.env.NEXT_PUBLIC_NODE_BASE_URL;
 
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   afterEach(async () => {
-    process.env.NEXT_PUBLIC_PLATFORM_URL = originalPlatformUrl;
+    if (originalNodeBaseUrl === undefined) {
+      delete process.env.NEXT_PUBLIC_NODE_BASE_URL;
+    } else {
+      process.env.NEXT_PUBLIC_NODE_BASE_URL = originalNodeBaseUrl;
+    }
     const { resetPlatformClient } = await import('@/services/platform/client');
     resetPlatformClient();
   });
 
-  it('uses the canonical OpenRead API domain when NEXT_PUBLIC_PLATFORM_URL is unset', async () => {
-    delete process.env.NEXT_PUBLIC_PLATFORM_URL;
+  it('uses the canonical OpenRead API domain when NEXT_PUBLIC_NODE_BASE_URL is unset', async () => {
+    delete process.env.NEXT_PUBLIC_NODE_BASE_URL;
     const { getPlatformClient } = await import('@/services/platform/client');
 
     getPlatformClient();
@@ -66,8 +74,8 @@ describe('platform client', () => {
     );
   });
 
-  it('uses NEXT_PUBLIC_PLATFORM_URL when configured', async () => {
-    process.env.NEXT_PUBLIC_PLATFORM_URL = 'https://custom.example.test';
+  it('uses NEXT_PUBLIC_NODE_BASE_URL when configured', async () => {
+    process.env.NEXT_PUBLIC_NODE_BASE_URL = 'https://custom.example.test';
     const { getPlatformClient } = await import('@/services/platform/client');
 
     getPlatformClient();

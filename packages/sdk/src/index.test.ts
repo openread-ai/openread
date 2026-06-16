@@ -22,6 +22,7 @@ describe('Openread SDK', () => {
 
       expect(sdk).toBeDefined();
       expect(sdk.auth).toBeDefined();
+      expect(sdk.runtime).toBeDefined();
       expect(sdk.books).toBeDefined();
       expect(sdk.ingest).toBeDefined();
     });
@@ -846,6 +847,53 @@ describe('BooksClient', () => {
       });
 
       await expect(sdk.books.getByHash('hash')).rejects.toThrow(OpenreadError);
+    });
+  });
+
+  describe('runtime', () => {
+    it('fetches canonical tier config through apps/api without requiring an auth token', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ tiers: { free: {}, reader: {}, pro: {} } }),
+      });
+
+      const sdk = new Openread({
+        baseUrl: 'https://api.example.com',
+        getAccessToken: async () => null,
+      });
+
+      const config = await sdk.runtime.getTierConfig();
+
+      expect(config).toEqual({ tiers: { free: {}, reader: {}, pro: {} } });
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://api.example.com/api/tier-config',
+        expect.objectContaining({
+          headers: expect.not.objectContaining({ Authorization: expect.any(String) }),
+        })
+      );
+    });
+
+    it('fetches canonical public pricing through apps/api', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          country: 'US',
+          pricing: { currency: 'USD', symbol: '$', reader: 9.99, pro: 19.99 },
+        }),
+      });
+
+      const result = await sdk.runtime.getPricing();
+
+      expect(result).toEqual({
+        country: 'US',
+        pricing: { currency: 'USD', symbol: '$', reader: 9.99, pro: 19.99 },
+      });
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://api.example.com/api/pricing',
+        expect.anything()
+      );
     });
   });
 

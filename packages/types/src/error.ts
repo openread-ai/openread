@@ -14,6 +14,7 @@
  * - `VALIDATION_ERROR`: Request body or parameters failed validation (400/422)
  * - `CONFLICT`: Resource already exists or state conflict (409)
  * - `INTERNAL_ERROR`: Unexpected server error (500)
+ * - `TIER_CONFIG_UNAVAILABLE`: Runtime tier/pricing contract is unavailable (503)
  * - `FILE_TOO_LARGE`: Uploaded file exceeds size limit (400)
  * - `DUPLICATE_BOOK`: User already has this book in their library (409)
  * - `RATE_LIMITED`: Too many requests (429)
@@ -34,6 +35,7 @@ export type ApiErrorCode =
   | 'VALIDATION_ERROR'
   | 'CONFLICT'
   | 'INTERNAL_ERROR'
+  | 'TIER_CONFIG_UNAVAILABLE'
   | 'FILE_TOO_LARGE'
   | 'DUPLICATE_BOOK'
   | 'RATE_LIMITED'

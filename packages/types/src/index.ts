@@ -63,6 +63,7 @@ export type {
   BoostOption,
   CostRates,
   LibraryLimitDecision,
+  PublicPricingResponse,
   RegionalPricingEntry,
   StorageAddon,
   TierConfig,

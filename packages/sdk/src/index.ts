@@ -26,6 +26,8 @@ import type {
   ApiErrorCode,
   Book,
   ListBooksResponse,
+  PublicPricingResponse,
+  TierConfig,
   UserProfile,
 } from '@openread/types';
 import type { OpenreadConfig } from './types.js';
@@ -136,6 +138,29 @@ class AuthClient {
       // Re-throw unexpected errors - the callback may be broken
       throw err;
     }
+  }
+}
+
+class RuntimeClient {
+  /** @internal */
+  readonly _sdk: Openread;
+
+  constructor(sdk: Openread) {
+    this._sdk = sdk;
+  }
+
+  /**
+   * Get the public runtime tier configuration contract.
+   */
+  async getTierConfig(): Promise<TierConfig> {
+    return this._sdk.fetch<TierConfig>('/api/tier-config');
+  }
+
+  /**
+   * Get public pricing resolved by the backend from request context.
+   */
+  async getPricing(): Promise<PublicPricingResponse> {
+    return this._sdk.fetch<PublicPricingResponse>('/api/pricing');
   }
 }
 
@@ -319,6 +344,11 @@ export class Openread {
   readonly auth: AuthClient;
 
   /**
+   * Runtime public configuration client.
+   */
+  readonly runtime: RuntimeClient;
+
+  /**
    * Books client for library management.
    */
   readonly books: BooksClient;
@@ -336,6 +366,7 @@ export class Openread {
   constructor(config: OpenreadConfig) {
     this.config = config;
     this.auth = new AuthClient(this);
+    this.runtime = new RuntimeClient(this);
     this.books = new BooksClient(this);
     this.ingest = new IngestClient(this);
   }

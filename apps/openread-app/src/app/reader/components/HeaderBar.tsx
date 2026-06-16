@@ -120,7 +120,7 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
     );
   }, []);
 
-  const isHeaderVisible = appService?.isMobile || hoveredBookKey === bookKey || isDropdownOpen;
+  const isHeaderVisible = hoveredBookKey === bookKey || isDropdownOpen;
   const trafficLightInHeader =
     appService?.hasTrafficLight && !trafficLightInFullscreen && !isSideBarVisible && isTopLeft;
 
@@ -162,7 +162,9 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
           appService?.hasRoundedWindow && 'rounded-window-top-right',
           !isSideBarVisible && appService?.hasRoundedWindow && 'rounded-window-top-left',
           isHoveredAnim && 'hover-bar-anim',
-          isHeaderVisible ? 'pointer-events-auto visible' : 'pointer-events-none opacity-0',
+          isHeaderVisible
+            ? 'pointer-events-auto visible opacity-100'
+            : 'pointer-events-none invisible opacity-0',
           isDropdownOpen && 'header-bar-pinned',
         )}
         style={{

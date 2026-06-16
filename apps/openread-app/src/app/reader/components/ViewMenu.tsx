@@ -283,21 +283,25 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
         <MenuItem label={_('Font & Layout')} shortcut='Shift+F' onClick={openFontLayoutMenu} />
       )}
 
-      <MenuItem
-        label={_('Scrolled Mode')}
-        shortcut={isMobileReader ? undefined : 'Shift+J'}
-        Icon={readerMode.scrolled ? MdCheck : undefined}
-        onClick={isMobileReader ? undefined : toggleScrolledMode}
-        disabled={isMobileReader || !canUseScrolledMode(readerModeContext)}
-      />
+      {!isMobileReader && (
+        <>
+          <MenuItem
+            label={_('Scrolled Mode')}
+            shortcut='Shift+J'
+            Icon={readerMode.scrolled ? MdCheck : undefined}
+            onClick={toggleScrolledMode}
+            disabled={!canUseScrolledMode(readerModeContext)}
+          />
 
-      <MenuItem
-        label={_('Paragraph Mode')}
-        shortcut={isMobileReader ? undefined : 'Shift+P'}
-        Icon={readerMode.paragraphMode ? MdCheck : undefined}
-        onClick={isMobileReader ? undefined : toggleParagraphMode}
-        disabled={isMobileReader || !canUseParagraphMode(viewSettings, readerModeContext)}
-      />
+          <MenuItem
+            label={_('Paragraph Mode')}
+            shortcut='Shift+P'
+            Icon={readerMode.paragraphMode ? MdCheck : undefined}
+            onClick={toggleParagraphMode}
+            disabled={!canUseParagraphMode(viewSettings, readerModeContext)}
+          />
+        </>
+      )}
 
       <hr aria-hidden='true' className='border-base-300 my-1' />
 

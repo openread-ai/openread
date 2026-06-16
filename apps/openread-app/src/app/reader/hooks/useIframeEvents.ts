@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useEnv } from '@/context/EnvContext';
 import { useReaderStore } from '@/store/readerStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useNotebookStore } from '@/store/notebookStore';
@@ -6,6 +7,7 @@ import { useSidebarStore } from '@/store/sidebarStore';
 import { debounce } from '@/utils/debounce';
 import { ScrollSource } from './usePagination';
 import { eventDispatcher } from '@/utils/event';
+import { shouldUseMobileWebTouchScroll } from '../utils/mobileScroll';
 
 export const useMouseEvent = (
   bookKey: string,
@@ -75,20 +77,65 @@ export const useTouchEvent = (
   handlePageFlip: (msg: CustomEvent) => void,
   handleContinuousScroll: (source: ScrollSource, delta: number, threshold: number) => void,
 ) => {
+  const { appService } = useEnv();
   const { getBookData } = useBookDataStore();
-  const { hoveredBookKey, setHoveredBookKey, getViewSettings } = useReaderStore();
+  const { hoveredBookKey, setHoveredBookKey, getView, getViewSettings } = useReaderStore();
 
   const touchStartRef = useRef<IframeTouch | null>(null);
   const touchEndRef = useRef<IframeTouch | null>(null);
+  const lastTouchRef = useRef<IframeTouch | null>(null);
   const touchStartTimeRef = useRef<number | null>(null);
   const touchEndTimeRef = useRef<number | null>(null);
   const touchMovedRef = useRef(false);
+
+  const applyMobileWebTouchScroll = (touch: IframeTouch) => {
+    if (!shouldUseMobileWebTouchScroll(appService)) return;
+
+    const viewSettings = getViewSettings(bookKey);
+    const bookData = getBookData(bookKey);
+    if (!viewSettings?.scrolled || !viewSettings.continuousScroll || bookData?.isFixedLayout) {
+      return;
+    }
+
+    const previousTouch = lastTouchRef.current ?? touchStartRef.current;
+    if (!previousTouch) return;
+
+    const renderer = getView(bookKey)?.renderer as
+      | (HTMLElement & { scrollProp?: 'scrollTop' | 'scrollLeft' })
+      | undefined;
+    const scrollContainer = renderer?.shadowRoot?.getElementById('container');
+    if (!scrollContainer) return;
+
+    const scrollProp = renderer?.scrollProp ?? (viewSettings.vertical ? 'scrollLeft' : 'scrollTop');
+    const deltaX = previousTouch.screenX - touch.screenX;
+    const deltaY = previousTouch.screenY - touch.screenY;
+    const primaryDelta = scrollProp === 'scrollLeft' ? deltaX : deltaY;
+    const crossDelta = scrollProp === 'scrollLeft' ? deltaY : deltaX;
+    if (Math.abs(primaryDelta) < 1 || Math.abs(primaryDelta) < Math.abs(crossDelta)) return;
+
+    const previousPosition = scrollContainer[scrollProp];
+    scrollContainer[scrollProp] = previousPosition + primaryDelta;
+    if (scrollContainer[scrollProp] !== previousPosition) {
+      scrollContainer.dispatchEvent(new Event('scroll'));
+    }
+  };
+
+  const resetTouchState = () => {
+    touchStartRef.current = null;
+    touchEndRef.current = null;
+    lastTouchRef.current = null;
+    touchStartTimeRef.current = null;
+    touchEndTimeRef.current = null;
+    touchMovedRef.current = false;
+  };
 
   const onTouchStart = (e: IframeTouchEvent | React.TouchEvent<HTMLDivElement>) => {
     const touch = e.targetTouches[0];
     if (!touch) return;
     touchStartRef.current = touch;
+    lastTouchRef.current = touch;
     touchStartTimeRef.current = 'timeStamp' in e ? e.timeStamp : Date.now();
+    touchMovedRef.current = false;
   };
 
   const onTouchMove = (e: IframeTouchEvent | React.TouchEvent<HTMLDivElement>) => {
@@ -96,7 +143,9 @@ export const useTouchEvent = (
     const touch = e.targetTouches[0];
     if (touch) {
       touchMovedRef.current = true;
+      applyMobileWebTouchScroll(touch);
       touchEndRef.current = touch;
+      lastTouchRef.current = touch;
       touchEndTimeRef.current = 'timeStamp' in e ? e.timeStamp : Date.now();
     }
     const { current: touchStart } = touchStartRef;
@@ -144,9 +193,7 @@ export const useTouchEvent = (
       const deltaX = touchEnd.screenX - touchStart.screenX;
       const hasMoved = touchMovedRef.current || Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2;
       if (!hasMoved) {
-        touchStartRef.current = null;
-        touchEndRef.current = null;
-        touchMovedRef.current = false;
+        resetTouchState();
         return;
       }
 
@@ -193,9 +240,7 @@ export const useTouchEvent = (
       handleContinuousScroll('touch', deltaY, 30);
     }
 
-    touchStartRef.current = null;
-    touchEndRef.current = null;
-    touchMovedRef.current = false;
+    resetTouchState();
   };
 
   const handleTouch = (msg: MessageEvent) => {
@@ -204,7 +249,7 @@ export const useTouchEvent = (
         onTouchStart(msg.data);
       } else if (msg.data.type === 'iframe-touchmove') {
         onTouchMove(msg.data);
-      } else if (msg.data.type === 'iframe-touchend') {
+      } else if (msg.data.type === 'iframe-touchend' || msg.data.type === 'iframe-touchcancel') {
         onTouchEnd(msg.data);
       }
     }

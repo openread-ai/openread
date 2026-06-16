@@ -1,0 +1,83 @@
+OpenRead mobile web reflowable long fixture
+
+This authenticated fixture validates mobile web reader touch scrolling on a phone viewport.
+
+Chapter 1
+
+The reader content is intentionally long enough to overflow the mobile viewport. A touch drag upward should advance the parent scrolled renderer without needing desktop chrome or hidden mobile mode controls. Boundary continuation should move the reader location when the scroll container reaches its edge.
+
+Chapter 2
+
+The reader content is intentionally long enough to overflow the mobile viewport. A touch drag upward should advance the parent scrolled renderer without needing desktop chrome or hidden mobile mode controls. Boundary continuation should move the reader location when the scroll container reaches its edge.
+
+Chapter 3
+
+The reader content is intentionally long enough to overflow the mobile viewport. A touch drag upward should advance the parent scrolled renderer without needing desktop chrome or hidden mobile mode controls. Boundary continuation should move the reader location when the scroll container reaches its edge.
+
+Chapter 4
+
+The reader content is intentionally long enough to overflow the mobile viewport. A touch drag upward should advance the parent scrolled renderer without needing desktop chrome or hidden mobile mode controls. Boundary continuation should move the reader location when the scroll container reaches its edge.
+
+Chapter 5
+
+The reader content is intentionally long enough to overflow the mobile viewport. A touch drag upward should advance the parent scrolled renderer without needing desktop chrome or hidden mobile mode controls. Boundary continuation should move the reader location when the scroll container reaches its edge.
+
+Chapter 6
+
+The reader content is intentionally long enough to overflow the mobile viewport. A touch drag upward should advance the parent scrolled renderer without needing desktop chrome or hidden mobile mode controls. Boundary continuation should move the reader location when the scroll container reaches its edge.
+
+Chapter 7
+
+The reader content is intentionally long enough to overflow the mobile viewport. A touch drag upward should advance the parent scrolled renderer without needing desktop chrome or hidden mobile mode controls. Boundary continuation should move the reader location when the scroll container reaches its edge.
+
+Chapter 8
+
+The reader content is intentionally long enough to overflow the mobile viewport. A touch drag upward should advance the parent scrolled renderer without needing desktop chrome or hidden mobile mode controls. Boundary continuation should move the reader location when the scroll container reaches its edge.
+
+Chapter 9
+
+The reader content is intentionally long enough to overflow the mobile viewport. A touch drag upward should advance the parent scrolled renderer without needing desktop chrome or hidden mobile mode controls. Boundary continuation should move the reader location when the scroll container reaches its edge.
+
+Chapter 10
+
+The reader content is intentionally long enough to overflow the mobile viewport. A touch drag upward should advance the parent scrolled renderer without needing desktop chrome or hidden mobile mode controls. Boundary continuation should move the reader location when the scroll container reaches its edge.
+
+Chapter 11
+
+The reader content is intentionally long enough to overflow the mobile viewport. A touch drag upward should advance the parent scrolled renderer without needing desktop chrome or hidden mobile mode controls. Boundary continuation should move the reader location when the scroll container reaches its edge.
+
+Chapter 12
+
+The reader content is intentionally long enough to overflow the mobile viewport. A touch drag upward should advance the parent scrolled renderer without needing desktop chrome or hidden mobile mode controls. Boundary continuation should move the reader location when the scroll container reaches its edge.
+
+Chapter 13
+
+The reader content is intentionally long enough to overflow the mobile viewport. A touch drag upward should advance the parent scrolled renderer without needing desktop chrome or hidden mobile mode controls. Boundary continuation should move the reader location when the scroll container reaches its edge.
+
+Chapter 14
+
+The reader content is intentionally long enough to overflow the mobile viewport. A touch drag upward should advance the parent scrolled renderer without needing desktop chrome or hidden mobile mode controls. Boundary continuation should move the reader location when the scroll container reaches its edge.
+
+Chapter 15
+
+The reader content is intentionally long enough to overflow the mobile viewport. A touch drag upward should advance the parent scrolled renderer without needing desktop chrome or hidden mobile mode controls. Boundary continuation should move the reader location when the scroll container reaches its edge.
+
+Chapter 16
+
+The reader content is intentionally long enough to overflow the mobile viewport. A touch drag upward should advance the parent scrolled renderer without needing desktop chrome or hidden mobile mode controls. Boundary continuation should move the reader location when the scroll container reaches its edge.
+
+Chapter 17
+
+The reader content is intentionally long enough to overflow the mobile viewport. A touch drag upward should advance the parent scrolled renderer without needing desktop chrome or hidden mobile mode controls. Boundary continuation should move the reader location when the scroll container reaches its edge.
+
+Chapter 18
+
+The reader content is intentionally long enough to overflow the mobile viewport. A touch drag upward should advance the parent scrolled renderer without needing desktop chrome or hidden mobile mode controls. Boundary continuation should move the reader location when the scroll container reaches its edge.
+
+Chapter 19
+
+The reader content is intentionally long enough to overflow the mobile viewport. A touch drag upward should advance the parent scrolled renderer without needing desktop chrome or hidden mobile mode controls. Boundary continuation should move the reader location when the scroll container reaches its edge.
+
+Chapter 20
+
+End of fixture.

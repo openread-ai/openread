@@ -32,9 +32,17 @@ const BookCover: React.FC<BookCoverProps> = memo<BookCoverProps>(
     // Track which coverSrc failed so error resets when source changes
     const [failedSrc, setFailedSrc] = useState<string | null>(null);
 
-    const rawCoverSrc = book.coverImageUrl || book.metadata?.coverImageUrl || null;
+    const catalogCoverSrc = book.catalogBookId ? book.metadata?.coverImageUrl : null;
+    const rawCoverSrc =
+      catalogCoverSrc || book.coverImageUrl || book.metadata?.coverImageUrl || null;
     const coverSrc = rawCoverSrc === '_blank' ? null : rawCoverSrc;
     const imageError = coverSrc !== null && failedSrc === coverSrc;
+    const isGeneratedPdfCover =
+      coverFit === 'crop' &&
+      book.format?.toLowerCase() === 'pdf' &&
+      Boolean(book.coverImageUrl) &&
+      coverSrc === book.coverImageUrl;
+    const effectiveCoverFit = isGeneratedPdfCover ? 'contain' : coverFit;
     const shouldShowSpine = showSpine && imageLoaded && !imageError;
 
     // Determine fallback state:
@@ -50,7 +58,7 @@ const BookCover: React.FC<BookCoverProps> = memo<BookCoverProps>(
       >
         {/* Cover image */}
         {coverSrc &&
-          (coverFit === 'crop' ? (
+          (effectiveCoverFit === 'crop' ? (
             <Image
               src={coverSrc}
               alt={book.title}
@@ -105,7 +113,7 @@ const BookCover: React.FC<BookCoverProps> = memo<BookCoverProps>(
           ))}
 
         {/* Spine overlay for crop mode */}
-        {coverFit === 'crop' && (
+        {effectiveCoverFit === 'crop' && (
           <div
             className={`book-spine absolute inset-0 ${shouldShowSpine ? 'visible' : 'invisible'}`}
           />
@@ -151,6 +159,8 @@ const BookCover: React.FC<BookCoverProps> = memo<BookCoverProps>(
     return (
       prevProps.book.coverImageUrl === nextProps.book.coverImageUrl &&
       prevProps.book.metadata?.coverImageUrl === nextProps.book.metadata?.coverImageUrl &&
+      prevProps.book.catalogBookId === nextProps.book.catalogBookId &&
+      prevProps.book.format === nextProps.book.format &&
       prevProps.book.updatedAt === nextProps.book.updatedAt &&
       prevProps.mode === nextProps.mode &&
       prevProps.coverFit === nextProps.coverFit &&

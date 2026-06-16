@@ -42,4 +42,33 @@ describe('BookCover', () => {
     expect(screen.getByText('No Cover Book')).toBeTruthy();
     expect(screen.getByText('Fallback Author')).toBeTruthy();
   });
+
+  it('prefers canonical catalog cover metadata over generated local covers', () => {
+    render(
+      <BookCover
+        book={book({
+          catalogBookId: 'catalog-1',
+          coverImageUrl: 'blob:generated-first-page',
+          metadata: {
+            title: 'No Cover Book',
+            author: 'Fallback Author',
+            language: 'en',
+            coverImageUrl: '/api/catalog-covers/catalog/covers/book/thumb.jpg',
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByRole('img', { name: 'No Cover Book' }).getAttribute('src')).toBe(
+      '/api/catalog-covers/catalog/covers/book/thumb.jpg',
+    );
+  });
+
+  it('contains generated PDF page covers instead of cropping them', () => {
+    render(<BookCover book={book({ format: 'pdf', coverImageUrl: 'blob:pdf-first-page' })} />);
+
+    const image = screen.getByRole('img', { name: 'No Cover Book' });
+    expect(image.className).toContain('fit-cover-img');
+    expect(image.className).not.toContain('crop-cover-img');
+  });
 });

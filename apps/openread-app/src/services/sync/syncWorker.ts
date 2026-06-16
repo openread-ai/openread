@@ -13,6 +13,7 @@ import type { SyncMutation, SyncTombstone } from '@openread/sync';
 import { createBackendSyncTransport } from './backendTransport';
 import { SyncEngine, type SyncDrainResult } from './engine';
 import { SyncClient, type CollectionRecord, type SyncType } from '@/libs/sync';
+import { listFiles } from '@/libs/storage';
 import { supabase } from '@/utils/supabase';
 import {
   transformBookFromDB,
@@ -769,17 +770,34 @@ export class SyncWorker {
   }
 
   /**
-   * Download covers for books that have uploadedAt but no local cover file.
-   * Checks ALL library books, not just upserted ones, because uploadedAt
-   * may arrive in a later reconciliation cycle after the book was first synced.
+   * Download covers for books that have canonical files metadata but no local cover file.
+   * `files` is the object-lifecycle source of truth; `uploadedAt` remains a fallback for
+   * older book rows whose file metadata has not been reconciled locally yet.
    */
   private async downloadMissingCovers(): Promise<void> {
     try {
       const appService = await envConfig.getAppService();
       const { getCoverFilename } = await import('@/utils/book');
 
+      const coverFileBookHashes = new Set<string>();
+      try {
+        const { files } = await listFiles();
+        for (const file of files) {
+          if (file.book_hash && file.file_type === 'cover') {
+            coverFileBookHashes.add(file.book_hash);
+          }
+        }
+      } catch (metadataErr) {
+        console.warn('[SyncWorker] Failed to read cover file metadata:', metadataErr);
+      }
+
       const library = useLibraryStore.getState().library;
-      const candidates = library.filter((b) => !b.deletedAt && b.uploadedAt && !b.coverImageUrl);
+      const candidates = library.filter(
+        (book) =>
+          !book.deletedAt &&
+          !book.coverImageUrl &&
+          (Boolean(book.uploadedAt) || coverFileBookHashes.has(book.hash)),
+      );
       const existResults = await Promise.all(
         candidates.map((book) => appService.exists(getCoverFilename(book), 'Books')),
       );

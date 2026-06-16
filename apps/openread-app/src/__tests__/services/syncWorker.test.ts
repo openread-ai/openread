@@ -1,6 +1,16 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { Book, BookConfig } from '@/types/book';
 
+type TestFileRecord = {
+  id?: string;
+  file_key: string;
+  file_size: number;
+  file_type: string;
+  book_hash: string | null;
+  created_at: string;
+  updated_at: string | null;
+};
+
 const mocks = vi.hoisted(() => {
   const libraryBook = {
     hash: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
@@ -61,6 +71,8 @@ const mocks = vi.hoisted(() => {
 
   const appService = {
     exists: vi.fn(async () => true),
+    downloadBookCovers: vi.fn(async () => undefined),
+    generateCoverImageUrl: vi.fn(async () => null as string | null),
     saveLibraryBooks: vi.fn(),
     saveSettings: vi.fn(),
   };
@@ -74,6 +86,13 @@ const mocks = vi.hoisted(() => {
     appService,
     pushChanges: vi.fn(),
     pullChanges: vi.fn(),
+    listFiles: vi.fn(async () => ({
+      files: [] as TestFileRecord[],
+      total: 0,
+      page: 1,
+      pageSize: 0,
+      totalPages: 1,
+    })),
     getAppService: vi.fn(async () => appService),
   };
 });
@@ -85,6 +104,10 @@ vi.mock('@/libs/sync', () => ({
       pullChanges: mocks.pullChanges,
     };
   }),
+}));
+
+vi.mock('@/libs/storage', () => ({
+  listFiles: mocks.listFiles,
 }));
 
 vi.mock('@/utils/supabase', () => ({
@@ -164,8 +187,57 @@ describe('SyncWorker book reconcile queue', () => {
     mocks.settingsState.setSettings.mockClear();
     mocks.platformSidebarState.collections = [];
     mocks.platformSidebarState.setState.mockClear();
+    mocks.appService.exists.mockResolvedValue(true);
+    mocks.appService.downloadBookCovers.mockClear();
+    mocks.appService.generateCoverImageUrl.mockReset();
+    mocks.appService.generateCoverImageUrl.mockResolvedValue(null);
+    mocks.appService.saveLibraryBooks.mockClear();
     mocks.appService.saveSettings.mockClear();
+    mocks.listFiles.mockReset();
+    mocks.listFiles.mockResolvedValue({
+      files: [] as TestFileRecord[],
+      total: 0,
+      page: 1,
+      pageSize: 0,
+      totalPages: 1,
+    });
     mocks.pullChanges.mockResolvedValue({ books: [] });
+  });
+
+  it('recovers a cover from canonical files metadata when book uploadedAt is missing', async () => {
+    const { SyncWorker } = await import('@/services/sync/syncWorker');
+    const worker = new SyncWorker();
+    (worker as unknown as { stopped: boolean; userId: string }).stopped = false;
+    (worker as unknown as { stopped: boolean; userId: string }).userId = 'user-1';
+
+    mocks.appService.exists.mockResolvedValue(false);
+    mocks.appService.generateCoverImageUrl.mockResolvedValue('blob:cover');
+    mocks.listFiles.mockResolvedValueOnce({
+      files: [
+        {
+          id: 'cover-file-1',
+          file_key: `user-1/Openread/Books/${mocks.libraryBook.hash}/cover.png`,
+          file_size: 1234,
+          file_type: 'cover',
+          book_hash: mocks.libraryBook.hash,
+          created_at: '2026-06-16T00:00:00.000Z',
+          updated_at: '2026-06-16T00:00:00.000Z',
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 1,
+      totalPages: 1,
+    });
+    mocks.pushChanges.mockResolvedValueOnce({ reconcile: { upsert: [], remove: [] } });
+
+    await worker.pullNow('books');
+
+    expect(mocks.listFiles).toHaveBeenCalled();
+    expect(mocks.appService.downloadBookCovers).toHaveBeenCalledWith([mocks.libraryBook]);
+    expect(mocks.appService.generateCoverImageUrl).toHaveBeenCalledWith(mocks.libraryBook);
+    expect(mocks.libraryState.library[0]).toMatchObject({ coverImageUrl: 'blob:cover' });
+    expect(mocks.appService.saveLibraryBooks).toHaveBeenCalledWith(mocks.libraryState.library);
   });
 
   it('keeps pullNow(books) pending until an active and queued reconcile settle', async () => {

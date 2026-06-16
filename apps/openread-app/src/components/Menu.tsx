@@ -19,7 +19,7 @@ const Menu: React.FC<MenuProps> = ({ children, className, style, onCancel }) => 
       ref={menuRef}
       role='none'
       className={clsx(
-        'menu-container max-h-[calc(100vh-96px)] overflow-y-auto border-0',
+        'menu-container max-h-[calc(100vh-96px)] overflow-y-auto overflow-x-hidden border-0',
         className,
       )}
       style={style}

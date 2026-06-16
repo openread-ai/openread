@@ -106,14 +106,19 @@ async function expectControlToggleDisabled(panel: Locator, label: string, disabl
 }
 
 test.describe('Reader fixed-layout vs reflowable contract', () => {
-  test('keeps reflowable reader controls enabled and fixed-layout controls absent', async ({
+  test('keeps reflowable reader mode state visible and fixed-layout controls absent', async ({
     authenticatedPage: page,
   }, testInfo) => {
     await openFixtureInReader(page, FIXTURES.reflowable);
 
     const viewMenu = await openViewMenu(page, testInfo);
-    await expectMenuItemEnabled(viewMenu, 'Scrolled Mode');
-    await expectMenuItemEnabled(viewMenu, 'Paragraph Mode');
+    if (isMobileProject(testInfo)) {
+      await expectMenuItemDisabled(viewMenu, 'Scrolled Mode');
+      await expectMenuItemDisabled(viewMenu, 'Paragraph Mode');
+    } else {
+      await expectMenuItemEnabled(viewMenu, 'Scrolled Mode');
+      await expectMenuItemEnabled(viewMenu, 'Paragraph Mode');
+    }
     await expectMenuItemEnabled(viewMenu, 'Speed Reading Mode');
     await expect(viewMenu.locator('[title="Fit Page"]')).toBeHidden();
     await expect(viewMenu.locator('[title="Fit Width"]')).toBeHidden();

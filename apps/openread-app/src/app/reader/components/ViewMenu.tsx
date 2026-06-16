@@ -56,9 +56,10 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
   const bookData = getBookData(bookKey)!;
   const viewSettings = getViewSettings(bookKey)!;
   const viewState = getViewState(bookKey);
+  const isMobileReader = !!appService?.isMobile;
 
   const readerModeContext = {
-    platform: { isMobile: !!appService?.isMobile },
+    platform: { isMobile: isMobileReader },
     book: {
       isFixedLayout: bookData.isFixedLayout,
       renditionLayout: bookData.bookDoc?.rendition?.layout,
@@ -170,12 +171,15 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
   return (
     <Menu
       className={clsx(
-        'view-menu dropdown-content dropdown-right no-triangle z-20 mt-1 border',
+        'view-menu dropdown-content no-triangle z-20 mt-1 border',
+        isMobileReader ? 'dropdown-end' : 'dropdown-right',
         'bgcolor-base-200 shadow-2xl',
       )}
       style={{
-        maxWidth: `${window.innerWidth - 40}px`,
-        marginRight: window.innerWidth < 640 ? '-36px' : '0px',
+        width: isMobileReader ? 'calc(100vw - 32px)' : undefined,
+        maxWidth: isMobileReader ? 'calc(100vw - 32px)' : `${window.innerWidth - 40}px`,
+        marginRight: isMobileReader ? '0px' : window.innerWidth < 640 ? '-36px' : '0px',
+        right: isMobileReader ? 0 : undefined,
       }}
       onCancel={() => setIsDropdownOpen?.(false)}
     >
@@ -275,29 +279,25 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
         </>
       )}
 
-      {!appService?.isMobile && (
+      {!isMobileReader && (
         <MenuItem label={_('Font & Layout')} shortcut='Shift+F' onClick={openFontLayoutMenu} />
       )}
 
-      {!appService?.isMobile && (
-        <MenuItem
-          label={_('Scrolled Mode')}
-          shortcut='Shift+J'
-          Icon={readerMode.scrolled ? MdCheck : undefined}
-          onClick={toggleScrolledMode}
-          disabled={!canUseScrolledMode(readerModeContext)}
-        />
-      )}
+      <MenuItem
+        label={_('Scrolled Mode')}
+        shortcut={isMobileReader ? undefined : 'Shift+J'}
+        Icon={readerMode.scrolled ? MdCheck : undefined}
+        onClick={isMobileReader ? undefined : toggleScrolledMode}
+        disabled={isMobileReader || !canUseScrolledMode(readerModeContext)}
+      />
 
-      {!appService?.isMobile && (
-        <MenuItem
-          label={_('Paragraph Mode')}
-          shortcut='Shift+P'
-          Icon={readerMode.paragraphMode ? MdCheck : undefined}
-          onClick={toggleParagraphMode}
-          disabled={!canUseParagraphMode(viewSettings, readerModeContext)}
-        />
-      )}
+      <MenuItem
+        label={_('Paragraph Mode')}
+        shortcut={isMobileReader ? undefined : 'Shift+P'}
+        Icon={readerMode.paragraphMode ? MdCheck : undefined}
+        onClick={isMobileReader ? undefined : toggleParagraphMode}
+        disabled={isMobileReader || !canUseParagraphMode(viewSettings, readerModeContext)}
+      />
 
       <hr aria-hidden='true' className='border-base-300 my-1' />
 

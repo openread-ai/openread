@@ -226,7 +226,7 @@ describe('canonical sync mutation adapters', () => {
     });
   });
 
-  it('maps legacy queue-shaped inputs to canonical mutations for PR3 entities', () => {
+  it('maps sync input items to canonical mutations for PR3 entities', () => {
     const mutations = buildSyncMutationsFromQueueItems(
       [
         { type: 'book', action: 'upsert', payload: book() as unknown as Record<string, unknown> },

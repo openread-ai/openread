@@ -1,6 +1,6 @@
 /**
  * @module services/sync/syncWorker
- * P9.22: Background sync worker that drains legacy queue items and the canonical durable outbox.
+ * P9.22: Background sync worker that drains the canonical durable outbox.
  *
  * - Runs on demand and through fallback polling when Realtime is unavailable
  * - Pauses when offline, resumes on reconnection
@@ -8,12 +8,11 @@
  * - Single source of truth for all sync operations and watermarks
  */
 
-import { offlineQueue, type QueueItem } from './offlineQueue';
-import type { SyncMutation } from '@openread/sync';
+import type { SyncMutation, SyncTombstone } from '@openread/sync';
 
+import { createBackendSyncTransport } from './backendTransport';
 import { SyncEngine, type SyncDrainResult } from './engine';
-import { createLegacySyncTransport } from './legacyTransport';
-import { SyncClient, type SyncType } from '@/libs/sync';
+import { SyncClient, type CollectionRecord, type SyncType } from '@/libs/sync';
 import { supabase } from '@/utils/supabase';
 import {
   transformBookFromDB,
@@ -100,6 +99,38 @@ function computeMaxTimestamp(records: BookDataRecord[]): number {
   return maxTime;
 }
 
+function tombstoneTimestamp(tombstone: SyncTombstone): number {
+  return Math.max(tombstone.serverUpdatedAt, tombstone.deletedAt);
+}
+
+function computeMaxTombstoneTimestamp(tombstones: SyncTombstone[]): number {
+  return tombstones.reduce(
+    (maxTime, tombstone) => Math.max(maxTime, tombstoneTimestamp(tombstone)),
+    0,
+  );
+}
+
+function parseBookNoteEntityId(entityId: string): { bookHash: string; noteId: string } | null {
+  const separatorIndex = entityId.indexOf(':');
+  if (separatorIndex <= 0 || separatorIndex === entityId.length - 1) return null;
+  return {
+    bookHash: entityId.slice(0, separatorIndex),
+    noteId: entityId.slice(separatorIndex + 1),
+  };
+}
+
+function configDeletePatch(bookHash: string, deletedAt: number): Partial<BookConfig> {
+  return {
+    bookHash,
+    progress: undefined,
+    location: undefined,
+    xpointer: undefined,
+    searchConfig: undefined,
+    viewSettings: undefined,
+    updatedAt: deletedAt,
+  };
+}
+
 /**
  * Persist watermark updates to the settings store.
  * Creates a new object (immutable) and saves locally without triggering a push.
@@ -149,14 +180,7 @@ function waitForLibraryLoaded(timeoutMs = 5_000): Promise<boolean> {
   });
 }
 
-interface SyncableCollection {
-  id: string;
-  name?: string;
-  bookHashes?: string[];
-  createdAt?: string;
-  updatedAt?: number;
-  deletedAt?: number | null;
-}
+type SyncableCollection = CollectionRecord;
 
 /**
  * Merge local and remote collections using per-collection LWW.
@@ -298,11 +322,9 @@ export class SyncWorker {
       ? new SyncEngine({
           userId: nextUserId,
           deviceId: getDeviceId(),
-          transport: createLegacySyncTransport(this.syncClient),
+          transport: createBackendSyncTransport(),
         })
       : null;
-    offlineQueue.setScope(nextUserId);
-
     // Listen to online/offline events
     if (typeof window !== 'undefined') {
       window.addEventListener('online', this.handleOnline);
@@ -366,7 +388,6 @@ export class SyncWorker {
     }
     this.userId = null;
     this.canonicalEngine = null;
-    offlineQueue.setScope(null);
     this.cachedSupabase = null;
     this.drainGuard.reset();
     this.reconcileRun = null;
@@ -435,7 +456,7 @@ export class SyncWorker {
   }
 
   /**
-   * Backward-compatible settings entrypoint. New callers should enqueue via sync/helpers.
+   * Enqueue the current settings through the canonical outbox.
    */
   async pushSettings(): Promise<void> {
     if (!this.userId) return;
@@ -451,7 +472,7 @@ export class SyncWorker {
   }
 
   /**
-   * Backward-compatible collections entrypoint. New callers should enqueue via sync/helpers.
+   * Enqueue current collections through the canonical outbox.
    */
   async pushCollections(): Promise<void> {
     if (!this.userId) return;
@@ -486,7 +507,7 @@ export class SyncWorker {
   }
 
   /**
-   * Backward-compatible AI conversation entrypoint. New callers should enqueue via sync/helpers.
+   * Enqueue an AI conversation mutation through the canonical outbox.
    */
   async pushAIConversation(conversation: AIConversation): Promise<void> {
     if (!this.userId) return;
@@ -501,7 +522,7 @@ export class SyncWorker {
   }
 
   /**
-   * Backward-compatible AI message entrypoint. New callers should enqueue via sync/helpers.
+   * Enqueue an AI message mutation through the canonical outbox.
    */
   async pushAIMessage(message: AIMessage): Promise<void> {
     if (!this.userId) return;
@@ -534,12 +555,12 @@ export class SyncWorker {
   };
 
   /**
-   * Process all pending legacy queue items and canonical outbox mutations.
+   * Process all pending canonical outbox mutations.
    */
   private async drainQueue(): Promise<void> {
     if (isOffline()) {
       const canonicalPending = await this.canonicalPendingCount();
-      this.updateStatus({ pending: offlineQueue.pendingCount + canonicalPending });
+      this.updateStatus({ pending: canonicalPending });
       return;
     }
 
@@ -547,13 +568,12 @@ export class SyncWorker {
     this.updateStatus({ syncing: true, error: null });
 
     try {
-      const legacyResult = await offlineQueue.drain((item) => this.processItem(item));
       const canonicalResult = await this.drainCanonicalOutbox();
       const canonicalFailed = canonicalResult.failed + canonicalResult.conflicted;
       const result = {
-        synced: legacyResult.synced + canonicalResult.accepted,
-        failed: legacyResult.failed + canonicalFailed,
-        remaining: legacyResult.remaining + canonicalResult.remaining,
+        synced: canonicalResult.accepted,
+        failed: canonicalFailed,
+        remaining: canonicalResult.remaining,
       };
 
       this.updateStatus({
@@ -604,9 +624,9 @@ export class SyncWorker {
   }
 
   /**
-   * Periodic sync: drain queue, reconcile books, pull configs/notes/settings/AI.
+   * Periodic sync: drain canonical outbox, reconcile books, pull configs/notes/settings/AI.
    * Books always use reconciliation (watermark can't detect deletions).
-   * Configs/notes/settings use fast watermark GET.
+   * Configs/notes/settings use canonical backend pull watermarks.
    * AI conversations pulled directly from Supabase (no-op if no book is active).
    */
   private async runSyncCycle(): Promise<void> {
@@ -625,7 +645,7 @@ export class SyncWorker {
    * Pull the complete remote book set when the visible local Library is empty.
    *
    * This gives a fresh browser or webview a fast hydration path before the slower
-   * hash-reconcile POST path has to push local inventory or drain stale queue items.
+   * hash-reconcile POST path has to push local inventory or drain pending mutations.
    */
   private async pullAllRemoteBooksIfVisibleLibraryEmpty(reconcileUserId: string | null) {
     if (useLibraryStore.getState().getVisibleLibrary().length > 0) return;
@@ -817,8 +837,10 @@ export class SyncWorker {
       const since = (settings.lastSyncedAtConfigs ?? 0) + 1;
 
       const result = await this.syncClient.pullChanges(since, 'configs');
-      const dbConfigs = result.configs;
-      if (!dbConfigs?.length) return;
+      const dbConfigs = result.configs ?? [];
+      const configTombstones =
+        result.tombstones?.filter((tombstone) => tombstone.entity === 'bookConfig') ?? [];
+      if (!dbConfigs.length && !configTombstones.length) return;
 
       const configs = dbConfigs.map((c) => transformBookConfigFromDB(c as unknown as DBBookConfig));
       const bookDataStore = useBookDataStore.getState();
@@ -832,6 +854,7 @@ export class SyncWorker {
         updatedAt: number;
       }> = [];
       const acceptedConfigRecords: BookDataRecord[] = [];
+      const acceptedConfigTombstones: SyncTombstone[] = [];
 
       for (let index = 0; index < configs.length; index += 1) {
         const config = configs[index]!;
@@ -864,6 +887,21 @@ export class SyncWorker {
         }
       }
 
+      for (const tombstone of configTombstones) {
+        const bookHash = tombstone.entityId;
+        const book = bookByHash.get(bookHash);
+        if (!book) continue;
+        const deletedAt = tombstoneTimestamp(tombstone);
+        const bookKey = `${book.hash}-${book.format}`;
+        const existing = bookDataStore.getConfig(bookKey);
+        if (!existing || deletedAt >= (existing.updatedAt ?? 0)) {
+          const patch = configDeletePatch(bookHash, deletedAt);
+          bookDataStore.setConfig(bookKey, patch);
+          bookDataStore.setPreSyncedConfig(bookHash, patch);
+        }
+        acceptedConfigTombstones.push(tombstone);
+      }
+
       // Batch-update library books with synced progress only.
       // Merge only the changed fields (progress, updatedAt) into current state —
       // never spread a stale full-book snapshot which would clobber fields set
@@ -879,7 +917,10 @@ export class SyncWorker {
         useLibraryStore.getState().setLibrary(updatedLibrary);
       }
 
-      const maxTime = computeMaxTimestamp(acceptedConfigRecords);
+      const maxTime = Math.max(
+        computeMaxTimestamp(acceptedConfigRecords),
+        computeMaxTombstoneTimestamp(acceptedConfigTombstones),
+      );
       if (maxTime > 0) {
         await saveWatermarks({ lastSyncedAtConfigs: maxTime });
       }
@@ -900,8 +941,10 @@ export class SyncWorker {
       const since = (settings.lastSyncedAtNotes ?? 0) + 1;
 
       const result = await this.syncClient.pullChanges(since, 'notes');
-      const dbNotes = result.notes;
-      if (!dbNotes?.length) return;
+      const dbNotes = result.notes ?? [];
+      const noteTombstones =
+        result.tombstones?.filter((tombstone) => tombstone.entity === 'bookNote') ?? [];
+      if (!dbNotes.length && !noteTombstones.length) return;
 
       const notes = dbNotes.map((n) => transformBookNoteFromDB(n as unknown as DBBookNote));
       const bookDataStore = useBookDataStore.getState();
@@ -920,6 +963,7 @@ export class SyncWorker {
       const bookByHash = new Map(library.map((b) => [b.hash, b]));
 
       const appliedNoteKeys = new Set<string>();
+      const appliedNoteTombstones: SyncTombstone[] = [];
       for (const [bookHash, bookNotes] of notesByBook) {
         const book = bookByHash.get(bookHash);
         if (!book) continue;
@@ -951,12 +995,42 @@ export class SyncWorker {
         bookNotes.forEach((note) => appliedNoteKeys.add(`${note.bookHash}:${note.id}`));
       }
 
-      // Only advance the watermark for records actually stored — prevents
+      for (const tombstone of noteTombstones) {
+        const parsed = parseBookNoteEntityId(tombstone.entityId);
+        if (!parsed) continue;
+        const book = bookByHash.get(parsed.bookHash);
+        if (!book) continue;
+        const bookKey = `${book.hash}-${book.format}`;
+        const config = bookDataStore.getConfig(bookKey);
+        if (!config) continue;
+
+        const oldNotes = config.booknotes ?? [];
+        const idx = oldNotes.findIndex((note) => note.id === parsed.noteId);
+        if (idx !== -1) {
+          const remoteTime = tombstoneTimestamp(tombstone);
+          const localTime = Math.max(oldNotes[idx]!.updatedAt ?? 0, oldNotes[idx]!.deletedAt ?? 0);
+          if (remoteTime > localTime) {
+            const mergedNotes = [...oldNotes];
+            mergedNotes[idx] = {
+              ...mergedNotes[idx]!,
+              updatedAt: remoteTime,
+              deletedAt: tombstone.deletedAt,
+            };
+            bookDataStore.setConfig(bookKey, { booknotes: mergedNotes });
+          }
+        }
+        appliedNoteTombstones.push(tombstone);
+      }
+
+      // Only advance the watermark for records/tombstones actually applied — prevents
       // silently skipping notes on fresh installs where booksData is empty.
       const appliedNoteRecords = (dbNotes as unknown as BookDataRecord[]).filter((note) =>
         appliedNoteKeys.has(`${String(note.book_hash)}:${String(note.id)}`),
       );
-      const maxTime = computeMaxTimestamp(appliedNoteRecords);
+      const maxTime = Math.max(
+        computeMaxTimestamp(appliedNoteRecords),
+        computeMaxTombstoneTimestamp(appliedNoteTombstones),
+      );
       if (maxTime > 0) {
         await saveWatermarks({ lastSyncedAtNotes: maxTime });
       }
@@ -977,27 +1051,42 @@ export class SyncWorker {
 
       const result = await this.syncClient.pullChanges(since, 'settings');
       const remoteSettings = result.settings;
-      if (!remoteSettings || Object.keys(remoteSettings).length === 0) return;
+      const remoteCollections = result.collections ?? [];
+      const collectionTombstones =
+        result.tombstones?.filter((tombstone) => tombstone.entity === 'collection') ?? [];
+      if (
+        (!remoteSettings || Object.keys(remoteSettings).length === 0) &&
+        remoteCollections.length === 0 &&
+        collectionTombstones.length === 0
+      ) {
+        return;
+      }
 
+      const nextWatermark = result.settingsUpdatedAt ?? Date.now();
       const freshSettings = { ...useSettingsStore.getState().settings };
-      const merged = applyRoamingSettings(freshSettings, remoteSettings);
-      const remoteUpdatedAt =
-        typeof remoteSettings._updatedAt === 'string'
-          ? new Date(remoteSettings._updatedAt).getTime()
-          : Date.now();
-      merged.lastSyncedAtSettings = Number.isFinite(remoteUpdatedAt) ? remoteUpdatedAt : Date.now();
-      useSettingsStore.getState().setSettings(merged);
+      const mergedSettings = remoteSettings
+        ? applyRoamingSettings(freshSettings, remoteSettings)
+        : freshSettings;
+      mergedSettings.lastSyncedAtSettings = nextWatermark;
+      useSettingsStore.getState().setSettings(mergedSettings);
       const appService = await envConfig.getAppService();
-      await appService.saveSettings(merged);
+      await appService.saveSettings(mergedSettings);
 
-      // Merge remote collections if present
-      if (remoteSettings._collections && Array.isArray(remoteSettings._collections)) {
+      if (remoteCollections.length > 0 || collectionTombstones.length > 0) {
         const { usePlatformSidebarStore } = await import('@/store/platformSidebarStore');
         const localCollections = usePlatformSidebarStore.getState().collections;
-        const mergedCollections = mergeCollections(
-          localCollections,
-          remoteSettings._collections as SyncableCollection[],
-        );
+        const tombstoneCollections = collectionTombstones.map((tombstone) => ({
+          id: tombstone.entityId,
+          name: '',
+          bookHashes: [],
+          createdAt: new Date(tombstone.deletedAt).toISOString(),
+          updatedAt: tombstoneTimestamp(tombstone),
+          deletedAt: tombstone.deletedAt,
+        }));
+        const mergedCollections = mergeCollections(localCollections, [
+          ...remoteCollections,
+          ...tombstoneCollections,
+        ]);
         usePlatformSidebarStore.setState({
           collections: mergedCollections as typeof localCollections,
         });
@@ -1142,34 +1231,6 @@ export class SyncWorker {
       if (this.aiPullGuard.exit()) {
         this.pullRemoteAIConversations();
       }
-    }
-  }
-
-  /**
-   * Process a single queue item via SyncClient.
-   */
-  private async processItem(item: QueueItem): Promise<boolean> {
-    try {
-      switch (item.type) {
-        case 'book':
-          await this.syncClient.pushChanges({ books: [item.payload] });
-          this.broadcast(SYNC_EVENTS.BOOKS);
-          return true;
-        case 'config':
-          await this.syncClient.pushChanges({ configs: [item.payload] });
-          this.broadcast(SYNC_EVENTS.CONFIGS);
-          return true;
-        case 'note':
-          await this.syncClient.pushChanges({ notes: [item.payload] });
-          this.broadcast(SYNC_EVENTS.NOTES);
-          return true;
-        default:
-          console.warn(`[SyncWorker] Unknown queue item type: ${item.type}`);
-          return false;
-      }
-    } catch (error) {
-      console.error(`[SyncWorker] Failed to process item ${item.id}:`, error);
-      return false;
     }
   }
 

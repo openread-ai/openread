@@ -6,9 +6,11 @@ import type { Book, BookConfig, BookNote } from '@/types/book';
 import type { SystemSettings } from '@/types/settings';
 import { getCoverFilename, getRemoteBookFilename } from '@/utils/book';
 import { extractRoamingSettings } from '@/utils/transform';
-import type { QueueItem } from './offlineQueue';
-
-export type SyncQueueInput = Pick<QueueItem, 'type' | 'action' | 'payload'>;
+export interface SyncQueueInput {
+  type: 'book' | 'config' | 'note';
+  action: 'upsert' | 'delete';
+  payload: Record<string, unknown>;
+}
 
 export interface SyncMutationContext {
   userId: UserId;

@@ -18,8 +18,8 @@ import {
   buildSyncMutationsFromQueueItems,
   type CollectionSyncInput,
   type SyncMutationContext,
+  type SyncQueueInput,
 } from './adapters';
-import type { QueueItem } from './offlineQueue';
 import { syncOutbox } from './outbox';
 import { syncWorker } from './syncWorker';
 
@@ -35,9 +35,7 @@ export async function enqueueCanonicalSyncMutations(mutations: SyncMutation[]): 
   await syncWorker.syncNow();
 }
 
-export async function enqueueCanonicalSyncItems(
-  items: Pick<QueueItem, 'type' | 'action' | 'payload'>[],
-): Promise<void> {
+export async function enqueueCanonicalSyncItems(items: SyncQueueInput[]): Promise<void> {
   if (items.length === 0) return;
   const context = getSyncMutationContext();
   if (!context) return;
@@ -79,13 +77,13 @@ export async function enqueueFileMetadataForBookUpload(book: Book): Promise<void
 /**
  * Enqueue a single item as a canonical SyncMutation and trigger an immediate sync drain.
  */
-export function enqueueAndSync(item: Pick<QueueItem, 'type' | 'action' | 'payload'>): void {
+export function enqueueAndSync(item: SyncQueueInput): void {
   void enqueueCanonicalSyncItems([item]);
 }
 
 /**
  * Enqueue multiple canonical SyncMutations in one batch and trigger a single sync drain.
  */
-export function enqueueBatchAndSync(items: Pick<QueueItem, 'type' | 'action' | 'payload'>[]): void {
+export function enqueueBatchAndSync(items: SyncQueueInput[]): void {
   void enqueueCanonicalSyncItems(items);
 }

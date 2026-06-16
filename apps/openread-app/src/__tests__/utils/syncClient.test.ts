@@ -1,9 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SyncClient, SYNC_TIMEOUT_MS } from '@/libs/sync';
 
-// Mock dependencies
 vi.mock('@/services/environment', () => ({
-  getAPIBaseUrl: () => 'http://localhost:3000/api',
+  getNodeBaseUrl: () => 'http://localhost:3001',
 }));
 
 vi.mock('@/utils/access', () => ({
@@ -23,212 +22,186 @@ import { getAccessToken } from '@/utils/access';
 
 const mockFetchWithTimeout = vi.mocked(fetchWithTimeout);
 const mockGetAccessToken = vi.mocked(getAccessToken);
+const token = [
+  'header',
+  Buffer.from(JSON.stringify({ sub: 'user-1' })).toString('base64url'),
+  'signature',
+].join('.');
 
-describe('SyncClient', () => {
+describe('SyncClient canonical backend transport', () => {
   let client: SyncClient;
 
   beforeEach(() => {
     vi.clearAllMocks();
     client = new SyncClient();
-    mockGetAccessToken.mockResolvedValue('mock-token');
+    mockGetAccessToken.mockResolvedValue(token);
   });
 
-  describe('SYNC_TIMEOUT_MS', () => {
-    it('should be 60000ms (60 seconds) for large libraries', () => {
-      expect(SYNC_TIMEOUT_MS).toBe(60000);
-    });
+  it('keeps the 60s timeout for large libraries', () => {
+    expect(SYNC_TIMEOUT_MS).toBe(60000);
   });
 
-  describe('pullChanges', () => {
-    it('should call fetchWithTimeout with SYNC_TIMEOUT_MS', async () => {
-      const mockResult = { books: [], configs: [], notes: [] };
-      mockFetchWithTimeout.mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve(mockResult),
-      } as Response);
-
-      await client.pullChanges(1000);
-
-      expect(mockFetchWithTimeout).toHaveBeenCalledWith(
-        expect.stringContaining('/sync?since='),
-        expect.objectContaining({
-          headers: {
-            Authorization: 'Bearer mock-token',
-            'X-Sync-Protocol': '1',
-          },
+  it('pulls canonical book records from backend /sync/pull', async () => {
+    mockFetchWithTimeout.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          records: [
+            {
+              entity: 'book',
+              entityId: 'book-1',
+              payload: { hash: 'book-1', title: 'Book One', updatedAt: 1000 },
+              serverRevision: 'rev-1',
+              serverUpdatedAt: 1000,
+            },
+          ],
+          tombstones: [],
+          cursorByEntity: { book: '1000' },
+          hasMore: false,
         }),
-        SYNC_TIMEOUT_MS,
-      );
+    } as Response);
+
+    const result = await client.pullChanges(1000, 'books');
+
+    expect(mockFetchWithTimeout).toHaveBeenCalledWith(
+      'http://localhost:3001/api/sync/pull',
+      expect.objectContaining({
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          'X-Sync-Protocol': '1',
+        },
+      }),
+      SYNC_TIMEOUT_MS,
+    );
+    const body = JSON.parse((mockFetchWithTimeout.mock.calls[0]![1] as RequestInit).body as string);
+    expect(body).toMatchObject({
+      protocolVersion: 1,
+      userId: 'user-1',
+      deviceId: 'test-device-id',
+      cursors: { book: '1000' },
+      entities: ['book'],
     });
-
-    it('should use 60000ms timeout for large libraries', async () => {
-      const mockResult = { books: [], configs: [], notes: [] };
-      mockFetchWithTimeout.mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve(mockResult),
-      } as Response);
-
-      await client.pullChanges(0);
-
-      const timeoutArg = mockFetchWithTimeout.mock.calls[0]![2];
-      expect(timeoutArg).toBe(60000);
-      expect(timeoutArg).toBeGreaterThan(8000);
-    });
-
-    it('should throw on non-ok response', async () => {
-      mockFetchWithTimeout.mockResolvedValue({
-        ok: false,
-        statusText: 'Internal Server Error',
-        json: () => Promise.resolve({ error: 'DB connection failed' }),
-      } as unknown as Response);
-
-      await expect(client.pullChanges(1000)).rejects.toThrow(
-        'Failed to pull changes: DB connection failed',
-      );
-    });
-
-    it('should throw when not authenticated', async () => {
-      mockGetAccessToken.mockResolvedValue(null as unknown as string);
-
-      await expect(client.pullChanges(1000)).rejects.toThrow('Not authenticated');
-      expect(mockFetchWithTimeout).not.toHaveBeenCalled();
-    });
-
-    it('should throw upgrade message on 426 response with JSON body', async () => {
-      mockFetchWithTimeout.mockResolvedValue({
-        ok: false,
-        status: 426,
-        json: () => Promise.resolve({ message: 'Upgrade to v2.0 to continue syncing.' }),
-      } as unknown as Response);
-
-      await expect(client.pullChanges(1000)).rejects.toThrow(
-        'Upgrade to v2.0 to continue syncing.',
-      );
-    });
-
-    it('should fall back to statusText when error body is not JSON', async () => {
-      mockFetchWithTimeout.mockResolvedValue({
-        ok: false,
-        status: 502,
-        statusText: 'Bad Gateway',
-        json: () => Promise.reject(new SyntaxError('Unexpected token <')),
-      } as unknown as Response);
-
-      await expect(client.pullChanges(1000)).rejects.toThrow('Failed to pull changes: Bad Gateway');
-    });
-
-    it('should pass type, book, and metaHash params in URL', async () => {
-      const mockResult = { books: [], configs: [], notes: [] };
-      mockFetchWithTimeout.mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve(mockResult),
-      } as Response);
-
-      await client.pullChanges(5000, 'books', 'book-hash-123', 'meta-hash-456');
-
-      const url = mockFetchWithTimeout.mock.calls[0]![0] as string;
-      expect(url).toContain('type=books');
-      expect(url).toContain('book=book-hash-123');
-      expect(url).toContain('meta_hash=meta-hash-456');
-    });
+    expect(result.books).toMatchObject([{ hash: 'book-1', book_hash: 'book-1' }]);
   });
 
-  describe('pushChanges', () => {
-    it('should call fetchWithTimeout with SYNC_TIMEOUT_MS', async () => {
-      const mockResult = { books: [], configs: [], notes: [] };
-      mockFetchWithTimeout.mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve(mockResult),
-      } as Response);
-
-      await client.pushChanges({ books: [] });
-
-      expect(mockFetchWithTimeout).toHaveBeenCalledWith(
-        expect.stringContaining('/sync'),
-        expect.objectContaining({
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: 'Bearer mock-token',
-            'X-Sync-Protocol': '1',
-          },
+  it('carries canonical pull tombstones through to callers', async () => {
+    mockFetchWithTimeout.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          records: [],
+          tombstones: [
+            {
+              entity: 'bookNote',
+              entityId: 'book-1:note-1',
+              serverRevision: 'rev-delete',
+              serverUpdatedAt: 2000,
+              deletedAt: 2000,
+            },
+          ],
+          cursorByEntity: { bookNote: '2000' },
+          hasMore: false,
         }),
-        SYNC_TIMEOUT_MS,
-      );
+    } as Response);
+
+    const result = await client.pullChanges(1000, 'notes', 'book-1');
+
+    expect(result.tombstones).toEqual([
+      {
+        entity: 'bookNote',
+        entityId: 'book-1:note-1',
+        serverRevision: 'rev-delete',
+        serverUpdatedAt: 2000,
+        deletedAt: 2000,
+      },
+    ]);
+  });
+
+  it('returns canonical settings and collections as separate pull outputs', async () => {
+    mockFetchWithTimeout.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          records: [
+            {
+              entity: 'settings',
+              entityId: 'settings',
+              payload: { id: 'settings', settings: { libraryViewMode: 'grid' }, updatedAt: 1000 },
+              serverRevision: 'rev-settings',
+              serverUpdatedAt: 1000,
+            },
+            {
+              entity: 'collection',
+              entityId: 'collection-1',
+              payload: { id: 'collection-1', name: 'Favorites', bookHashes: [], updatedAt: 2000 },
+              serverRevision: 'rev-collection',
+              serverUpdatedAt: 2000,
+            },
+          ],
+          tombstones: [],
+          cursorByEntity: { settings: '1000', collection: '2000' },
+          hasMore: false,
+        }),
+    } as Response);
+
+    const result = await client.pullChanges(0, 'settings');
+
+    expect(result.settings).toEqual({ libraryViewMode: 'grid' });
+    expect(result.collections).toMatchObject([
+      { id: 'collection-1', name: 'Favorites', bookHashes: [] },
+    ]);
+    expect(result.settingsUpdatedAt).toBe(2000);
+  });
+
+  it('reconciles book inventory through backend /sync/reconcile', async () => {
+    mockFetchWithTimeout.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          upsert: [],
+          remove: [
+            {
+              entity: 'book',
+              entityId: 'missing-book',
+              serverRevision: '1',
+              serverUpdatedAt: 1,
+              deletedAt: 1,
+            },
+          ],
+          cursorByEntity: { book: '1' },
+        }),
+    } as Response);
+
+    const result = await client.pushChanges({ reconcile: { books: { 'book-1': 1000 } } });
+
+    expect(mockFetchWithTimeout).toHaveBeenCalledWith(
+      'http://localhost:3001/api/sync/reconcile',
+      expect.objectContaining({ method: 'POST' }),
+      SYNC_TIMEOUT_MS,
+    );
+    const body = JSON.parse((mockFetchWithTimeout.mock.calls[0]![1] as RequestInit).body as string);
+    expect(body).toMatchObject({
+      protocolVersion: 1,
+      userId: 'user-1',
+      deviceId: 'test-device-id',
+      inventory: { book: { 'book-1': '1970-01-01T00:00:01.000Z' } },
     });
+    expect(result.reconcile?.remove).toEqual(['missing-book']);
+  });
 
-    it('should use 60000ms timeout for large libraries', async () => {
-      const mockResult = { books: [], configs: [], notes: [] };
-      mockFetchWithTimeout.mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve(mockResult),
-      } as Response);
+  it('rejects direct entity pushes so callers use the canonical outbox', async () => {
+    await expect(client.pushChanges({ books: [] })).rejects.toThrow(
+      'Direct entity pushes were removed',
+    );
+    expect(mockFetchWithTimeout).not.toHaveBeenCalled();
+  });
 
-      await client.pushChanges({ books: [] });
+  it('throws when not authenticated', async () => {
+    mockGetAccessToken.mockResolvedValue(null as unknown as string);
 
-      const timeoutArg = mockFetchWithTimeout.mock.calls[0]![2];
-      expect(timeoutArg).toBe(60000);
-      expect(timeoutArg).toBeGreaterThan(8000);
-    });
-
-    it('should throw on non-ok response', async () => {
-      mockFetchWithTimeout.mockResolvedValue({
-        ok: false,
-        statusText: 'Internal Server Error',
-        json: () => Promise.resolve({ error: 'Payload too large' }),
-      } as unknown as Response);
-
-      await expect(client.pushChanges({ books: [] })).rejects.toThrow(
-        'Failed to push changes: Payload too large',
-      );
-    });
-
-    it('should throw when not authenticated', async () => {
-      mockGetAccessToken.mockResolvedValue(null as unknown as string);
-
-      await expect(client.pushChanges({ books: [] })).rejects.toThrow('Not authenticated');
-      expect(mockFetchWithTimeout).not.toHaveBeenCalled();
-    });
-
-    it('should throw upgrade message on 426 response with JSON body', async () => {
-      mockFetchWithTimeout.mockResolvedValue({
-        ok: false,
-        status: 426,
-        json: () => Promise.resolve({ message: 'Upgrade to v2.0 to continue syncing.' }),
-      } as unknown as Response);
-
-      await expect(client.pushChanges({ books: [] })).rejects.toThrow(
-        'Upgrade to v2.0 to continue syncing.',
-      );
-    });
-
-    it('should fall back to statusText when error body is not JSON', async () => {
-      mockFetchWithTimeout.mockResolvedValue({
-        ok: false,
-        status: 502,
-        statusText: 'Bad Gateway',
-        json: () => Promise.reject(new SyntaxError('Unexpected token <')),
-      } as unknown as Response);
-
-      await expect(client.pushChanges({ books: [] })).rejects.toThrow(
-        'Failed to push changes: Bad Gateway',
-      );
-    });
-
-    it('should send payload as JSON body with deviceId', async () => {
-      const mockResult = { books: [], configs: [], notes: [] };
-      mockFetchWithTimeout.mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve(mockResult),
-      } as Response);
-
-      const payload = { books: [{ hash: 'test', title: 'Test' }] };
-      await client.pushChanges(payload);
-
-      const requestOptions = mockFetchWithTimeout.mock.calls[0]![1] as RequestInit;
-      const parsedBody = JSON.parse(requestOptions.body as string);
-      expect(parsedBody.books).toEqual(payload.books);
-      expect(parsedBody.deviceId).toBe('test-device-id');
-    });
+    await expect(client.pullChanges(1000)).rejects.toThrow('Not authenticated');
+    expect(mockFetchWithTimeout).not.toHaveBeenCalled();
   });
 });

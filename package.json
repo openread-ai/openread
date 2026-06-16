@@ -6,6 +6,8 @@
     "billing:verify-contract": "node scripts/billing/verify-contract.mjs",
     "db:migrations:validate": "node scripts/db/validate-supabase-migrations.mjs",
     "ops:runtime:check": "bash scripts/ops/check-runtime-config.sh",
+    "api:ownership:check": "node scripts/ops/check-api-route-ownership.mjs",
+    "api:ownership:self-test": "node scripts/ops/check-api-route-ownership.mjs --self-test",
     "tauri": "pnpm --filter @openread/openread-app tauri",
     "dev-web": "pnpm --filter @openread/openread-app dev-web",
     "format": "prettier --write \"**/*.{js,jsx,ts,tsx,css,json,md,html,yml}\"",

@@ -3,7 +3,8 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { corsAllMethods, runMiddleware } from '@/utils/cors';
 import { createSupabaseAdminClient } from '@/utils/supabase';
 import { validateUserAndToken } from '@/utils/access';
-import { deleteObject } from '@/utils/object';
+import { deleteObjectByKey } from '@openread/storage/server';
+import { assertDeletableByUser, type FileKind } from '@openread/storage';
 import { createLogger } from '@/utils/logger';
 import { getErrorMessage } from '@/utils/error';
 import { getStripe } from '@/libs/payment/stripe/server';
@@ -14,6 +15,22 @@ const logger = createLogger('user');
 const STRIPE_TIMEOUT_MS = 10_000;
 /** Timeout for R2 object deletions during account deletion */
 const R2_TIMEOUT_MS = 30_000;
+
+type FileCleanupRecord = {
+  file_key: string | null;
+  file_type: string | null;
+};
+
+const fileTypeToPolicyKind = (fileType: string | null): FileKind => {
+  switch (fileType) {
+    case 'cover':
+      return 'user_book_cover';
+    case 'temp':
+      return 'temp_public_asset';
+    default:
+      return 'user_book_file';
+  }
+};
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   await runMiddleware(req, res, corsAllMethods);
@@ -97,7 +114,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     try {
       const { data: fileRecords, error: filesError } = await supabaseAdmin
         .from('files')
-        .select('file_key')
+        .select('file_key, file_type')
         .eq('user_id', user.id);
 
       if (filesError) {
@@ -107,9 +124,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         });
       }
 
-      const fileKeys = (fileRecords || [])
-        .map((r) => r.file_key)
-        .filter((key): key is string => typeof key === 'string' && key.length > 0);
+      const fileKeys = ((fileRecords || []) as FileCleanupRecord[])
+        .map((record) => {
+          const key = record.file_key;
+          if (typeof key !== 'string' || key.length === 0) return null;
+          try {
+            assertDeletableByUser({ kind: fileTypeToPolicyKind(record.file_type), objectKey: key });
+            return key;
+          } catch (error) {
+            logger.warn('Skipping non-user-owned object during account deletion', {
+              userId: user.id,
+              key,
+              error: getErrorMessage(error),
+            });
+            return null;
+          }
+        })
+        .filter((key): key is string => key !== null);
 
       if (fileKeys.length > 0) {
         logger.info('Deleting R2 objects for user', {
@@ -121,7 +152,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           setTimeout(() => reject(new Error('R2 deletion timed out')), R2_TIMEOUT_MS),
         );
         const r2Results = await Promise.race([
-          Promise.allSettled(fileKeys.map((key) => deleteObject(key))),
+          Promise.allSettled(fileKeys.map((key) => deleteObjectByKey(key))),
           r2Timeout,
         ]);
 

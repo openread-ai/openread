@@ -15,6 +15,7 @@ import { getCFIFromXPointer, getXPointerFromCFI, normalizeProgressXPointer } fro
 import { createLogger } from '@/utils/logger';
 import { enqueueAndSync } from '@/services/sync/helpers';
 import { getBookIdFromKey } from '@/utils/readerBookKey';
+import { parseSyncableBookRef } from '@openread/types';
 
 const logger = createLogger('progress-sync');
 
@@ -33,7 +34,8 @@ export const useProgressSync = (bookKey: string) => {
   const pushConfig = async (bookKey: string, config: BookConfig | null) => {
     const book = getBookData(bookKey)?.book;
     if (!config || !book || !user) return;
-    const bookHash = getBookIdFromKey(bookKey);
+    const bookHash = parseSyncableBookRef(getBookIdFromKey(bookKey));
+    if (!bookHash) return;
     const metaHash = book.metaHash;
     const newConfig = { ...config, bookHash, metaHash };
     const compressedConfig = JSON.parse(
@@ -46,7 +48,8 @@ export const useProgressSync = (bookKey: string) => {
   const pullConfig = async (bookKey: string) => {
     const book = getBookData(bookKey)?.book;
     if (!user || !book) return;
-    const bookHash = getBookIdFromKey(bookKey);
+    const bookHash = parseSyncableBookRef(getBookIdFromKey(bookKey));
+    if (!bookHash) return;
     const metaHash = book.metaHash;
     await syncConfigs([], bookHash, metaHash, 'pull');
   };
@@ -99,7 +102,8 @@ export const useProgressSync = (bookKey: string) => {
       const book = getBookData(bookKey)?.book;
       if (!config || !book || !user) return;
 
-      const bookHash = getBookIdFromKey(bookKey);
+      const bookHash = parseSyncableBookRef(getBookIdFromKey(bookKey));
+      if (!bookHash) return;
       const lastSynced = config.lastSyncedAtConfig ?? 0;
       if (config.updatedAt && config.updatedAt > lastSynced) {
         enqueueAndSync({
@@ -143,7 +147,8 @@ export const useProgressSync = (bookKey: string) => {
     const book = getBookData(bookKey)?.book;
     if (!syncedConfigs || syncedConfigs.length === 0 || !config || !book) return;
 
-    const bookHash = getBookIdFromKey(bookKey);
+    const bookHash = parseSyncableBookRef(getBookIdFromKey(bookKey));
+    if (!bookHash) return;
     const metaHash = book.metaHash;
     const syncedConfig = syncedConfigs.filter(
       (c) => c.bookHash === bookHash || c.metaHash === metaHash,

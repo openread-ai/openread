@@ -14,6 +14,33 @@ import type { BookMetadata } from '@/libs/document';
 import type { SystemSettings } from '@/types/settings';
 import { DBBookConfig, DBBook, DBBookNote } from '@/types/records';
 import { sanitizeString } from './sanitize';
+import {
+  parseMetaHash,
+  parseOpenReadBookReference,
+  parseSyncableBookRef,
+  type MetaHash,
+  type OpenReadBookReference,
+  type SyncableBookRef,
+} from '@openread/types';
+
+const requireOpenReadBookReference = (value: unknown, field: string): OpenReadBookReference => {
+  const parsed = parseOpenReadBookReference(value);
+  if (!parsed) throw new Error(`Invalid OpenRead book reference for ${field}`);
+  return parsed;
+};
+
+const requireSyncableBookRef = (value: unknown, field: string): SyncableBookRef => {
+  const parsed = parseSyncableBookRef(value);
+  if (!parsed) throw new Error(`Invalid syncable book reference for ${field}`);
+  return parsed;
+};
+
+const optionalMetaHash = (value: unknown, field: string): MetaHash | null => {
+  if (value == null || value === '') return null;
+  const parsed = parseMetaHash(value);
+  if (!parsed) throw new Error(`Invalid metaHash for ${field}`);
+  return parsed;
+};
 
 /**
  * Safely parse a JSON string, returning undefined on failure.
@@ -43,7 +70,7 @@ export const transformBookConfigToDB = (bookConfig: unknown, userId: string): DB
   return {
     user_id: userId,
     book_hash: bookHash!,
-    meta_hash: metaHash,
+    meta_hash: metaHash ?? undefined,
     location: location,
     xpointer: xpointer,
     progress: progress ?? null,
@@ -65,8 +92,8 @@ export const transformBookConfigFromDB = (dbBookConfig: DBBookConfig): BookConfi
     updated_at,
   } = dbBookConfig;
   return {
-    bookHash: book_hash,
-    metaHash: meta_hash,
+    bookHash: requireSyncableBookRef(book_hash, 'bookConfig.book_hash'),
+    metaHash: optionalMetaHash(meta_hash, 'bookConfig.meta_hash'),
     location,
     xpointer,
     progress:
@@ -110,7 +137,7 @@ export const transformBookToDB = (book: unknown, userId: string): DBBook => {
   return {
     user_id: userId,
     book_hash: hash,
-    meta_hash: metaHash,
+    meta_hash: metaHash ?? undefined,
     format,
     title: sanitizeString(title)!,
     author: sanitizeString(author)!,
@@ -154,8 +181,8 @@ export const transformBookFromDB = (dbBook: DBBook): Book => {
   const fallbackMs = Date.now();
 
   return {
-    hash: book_hash,
-    metaHash: meta_hash,
+    hash: requireOpenReadBookReference(book_hash, 'book.book_hash'),
+    metaHash: optionalMetaHash(meta_hash, 'book.meta_hash'),
     format: (format?.toLowerCase() ?? 'epub') as BookFormat,
     title,
     author,
@@ -197,7 +224,7 @@ export const transformBookNoteToDB = (bookNote: unknown, userId: string): DBBook
   return {
     user_id: userId,
     book_hash: bookHash!,
-    meta_hash: metaHash,
+    meta_hash: metaHash ?? undefined,
     id,
     type,
     cfi,
@@ -230,8 +257,8 @@ export const transformBookNoteFromDB = (dbBookNote: DBBookNote): BookNote => {
   const fallbackMs = Date.now();
 
   return {
-    bookHash: book_hash,
-    metaHash: meta_hash,
+    bookHash: requireSyncableBookRef(book_hash, 'bookNote.book_hash'),
+    metaHash: optionalMetaHash(meta_hash, 'bookNote.meta_hash'),
     id,
     type: type as BookNoteType,
     cfi,

@@ -1,3 +1,4 @@
+import { testSyncableBookRef } from '../../utils/bookIdentityFixtures';
 import { describe, expect, it, vi } from 'vitest';
 import type {
   SyncPushRequest,
@@ -17,14 +18,14 @@ const bookMutation = (
 ): SyncUpsertMutation<'book'> => ({
   id: 'mutation-1',
   entity: 'book',
-  entityId: 'book-1',
+  entityId: 'd41d8cd98f00b204e9800998ecf8427e',
   op: 'upsert',
   baseRevision: 'rev-1',
   userId: 'user-1',
   deviceId: 'device-1',
   clientUpdatedAt: 100,
   payload: {
-    hash: 'book-1',
+    hash: testSyncableBookRef('d41d8cd98f00b204e9800998ecf8427e'),
     title: 'Book 1',
     updatedAt: 100,
   },
@@ -117,7 +118,7 @@ describe('canonical SyncEngine skeleton', () => {
         {
           mutationId: 'mutation-1',
           entity: 'book',
-          entityId: 'book-1',
+          entityId: 'd41d8cd98f00b204e9800998ecf8427e',
           serverRevision: 'rev-2',
           serverUpdatedAt: 200,
         },
@@ -152,7 +153,7 @@ describe('canonical SyncEngine skeleton', () => {
           {
             mutationId: 'mutation-1',
             entity: 'book',
-            entityId: 'book-1',
+            entityId: 'd41d8cd98f00b204e9800998ecf8427e',
             serverRevision: 'rev-2',
             serverUpdatedAt: 200,
           },
@@ -187,14 +188,14 @@ describe('canonical SyncEngine skeleton', () => {
           {
             mutationId: 'mutation-1',
             entity: 'book',
-            entityId: 'book-1',
+            entityId: 'd41d8cd98f00b204e9800998ecf8427e',
             serverRevision: 'server-rev-2',
             serverUpdatedAt: 200,
           },
           {
             mutationId: 'mutation-2',
             entity: 'book',
-            entityId: 'book-2',
+            entityId: '0123456789abcdef0123456789abcdef',
             serverRevision: 'server-rev-2',
             serverUpdatedAt: 200,
           },
@@ -215,8 +216,12 @@ describe('canonical SyncEngine skeleton', () => {
       {
         ...bookMutation({
           id: 'mutation-2',
-          entityId: 'book-2',
-          payload: { hash: 'book-2', title: 'Book 2', updatedAt: 100 },
+          entityId: '0123456789abcdef0123456789abcdef',
+          payload: {
+            hash: testSyncableBookRef('0123456789abcdef0123456789abcdef'),
+            title: 'Book 2',
+            updatedAt: 100,
+          },
         }),
         status: 'pending',
         retryCount: 1,
@@ -286,7 +291,7 @@ describe('canonical SyncEngine skeleton', () => {
         {
           mutationId: 'mutation-1',
           entity: 'book',
-          entityId: 'book-1',
+          entityId: 'd41d8cd98f00b204e9800998ecf8427e',
           serverRevision: 'rev-2',
           serverUpdatedAt: 200,
         },
@@ -316,7 +321,7 @@ describe('canonical SyncEngine skeleton', () => {
         {
           mutationId: 'mutation-1',
           entity: 'book',
-          entityId: 'book-1',
+          entityId: 'd41d8cd98f00b204e9800998ecf8427e',
           serverRevision: 'rev-3',
           serverUpdatedAt: 300,
         },
@@ -402,7 +407,7 @@ describe('canonical SyncEngine skeleton', () => {
         {
           mutationId: 'mutation-1',
           entity: 'book',
-          entityId: 'book-1',
+          entityId: 'd41d8cd98f00b204e9800998ecf8427e',
           serverRevision: 'rev-2',
           serverUpdatedAt: 200,
         },
@@ -484,7 +489,7 @@ describe('canonical SyncEngine skeleton', () => {
         {
           mutationId: 'mutation-1',
           entity: 'book',
-          entityId: 'book-1',
+          entityId: 'd41d8cd98f00b204e9800998ecf8427e',
           serverRevision: 'rev-2',
           serverUpdatedAt: 200,
         },

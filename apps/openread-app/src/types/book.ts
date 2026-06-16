@@ -2,7 +2,13 @@ import { BookMetadata } from '@/libs/document';
 import { TTSHighlightOptions } from '@/services/tts/types';
 import { AnnotationToolType } from './annotator';
 
-import type { BookFormat as _BookFormat, BookCore } from '@openread/types';
+import type {
+  BookFormat as _BookFormat,
+  BookCore,
+  MetaHash,
+  PlatformBookHash,
+  SyncableBookRef,
+} from '@openread/types';
 export type { BookFormat, BookCore } from '@openread/types';
 export type BookNoteType = 'bookmark' | 'annotation' | 'excerpt';
 export type ReadingStatus = 'unread' | 'reading' | 'finished';
@@ -22,9 +28,9 @@ export interface Book extends BookCore {
   // if Book is a remote book we just lazy load the book content via url
   url?: string;
   // Metadata md5 hash, used to aggregate different versions of the same book
-  metaHash?: string;
+  metaHash?: MetaHash | null;
   // Full-file SHA-256 hash matching the platform API's computeHash(), used for book identification
-  platformHash?: string;
+  platformHash?: PlatformBookHash;
   sourceTitle?: string; // parsed when the book is imported and used to locate the file
   author: string;
   group?: string; // deprecated in favor of groupId and groupName
@@ -71,8 +77,8 @@ export interface TimeInfo {
 }
 
 export interface BookNote {
-  bookHash?: string;
-  metaHash?: string;
+  bookHash?: SyncableBookRef;
+  metaHash?: MetaHash | null;
   id: string;
   type: BookNoteType;
   cfi: string;
@@ -329,8 +335,8 @@ export interface BookSearchResult {
 }
 
 export interface BookConfig {
-  bookHash?: string;
-  metaHash?: string;
+  bookHash?: SyncableBookRef;
+  metaHash?: MetaHash | null;
   progress?: [number, number]; // [current pagenum, total pagenum], 1-based page number
   location?: string; // CFI of the current location
   xpointer?: string; // XPointer of the current location (for Koreader interoperability)

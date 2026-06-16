@@ -1,3 +1,4 @@
+import { testOpenReadBookRef } from './bookIdentityFixtures';
 import { describe, it, expect, vi } from 'vitest';
 import {
   parseAuthors,
@@ -41,7 +42,7 @@ vi.mock('@/utils/book', () => ({
 
 function makeBook(overrides: Partial<Book> = {}): Book {
   return {
-    hash: `hash_${Math.random().toString(36).slice(2)}`,
+    hash: testOpenReadBookRef(`hash_${Math.random().toString(36).slice(2)}`),
     format: 'epub',
     title: 'Test Book',
     author: 'Test Author',

@@ -33,6 +33,7 @@ import {
 } from '@/utils/book';
 import { md5, partialMD5 } from '@/utils/md5';
 import { computeFileHash } from '@/services/platform/storage';
+import { parseLocalBookHash, parsePlatformBookHash } from '@/utils/bookHash';
 import { getBaseFilename, getFilename } from '@/utils/path';
 import { BookDoc, DocumentLoader, EXTS } from '@/libs/document';
 import {
@@ -412,10 +413,12 @@ export abstract class BaseAppService implements AppService {
         throw new Error(`Failed to open the book: ${(error as Error).message || error}`);
       }
 
-      const hash = await partialMD5(fileobj);
+      const hash = parseLocalBookHash(await partialMD5(fileobj));
+      if (!hash) throw new Error('Failed to compute canonical local book hash');
 
       // Compute full-file SHA-256 for book identification
-      const platformHash = await computeFileHash(fileobj);
+      const platformHash = parsePlatformBookHash(await computeFileHash(fileobj));
+      if (!platformHash) throw new Error('Failed to compute canonical platform book hash');
 
       const existingBook = books.filter((b) => b.hash === hash)[0];
       if (existingBook) {

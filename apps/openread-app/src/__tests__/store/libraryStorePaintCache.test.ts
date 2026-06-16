@@ -1,9 +1,10 @@
+import { testOpenReadBookRef } from '../utils/bookIdentityFixtures';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Book } from '@/types/book';
 
 function cachedBook(overrides: Partial<Book> = {}): Book {
   return {
-    hash: 'cached-book',
+    hash: testOpenReadBookRef('cached-book'),
     title: 'Cached Book',
     author: 'Author',
     format: 'epub',
@@ -65,13 +66,13 @@ describe('libraryStore durable paint cache', () => {
 
     const { useLibraryStore } = await import('@/store/libraryStore');
     useLibraryStore.getState().setLibraryOwnerUserId('user-1');
-    useLibraryStore.getState().setLibrary([cachedBook({ hash: 'new-cache' })]);
+    useLibraryStore.getState().setLibrary([cachedBook({ hash: testOpenReadBookRef('new-cache') })]);
 
     expect(JSON.parse(localStorage.getItem('openread_library_paint_cache_v1') ?? '{}')).toEqual(
       expect.objectContaining({
         version: 1,
         ownerUserId: 'user-1',
-        books: [expect.objectContaining({ hash: 'new-cache' })],
+        books: [expect.objectContaining({ hash: testOpenReadBookRef('new-cache') })],
       }),
     );
   });

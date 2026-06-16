@@ -1,3 +1,4 @@
+import { testOpenReadBookRef } from '../../utils/bookIdentityFixtures';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent, act } from '@testing-library/react';
 import React from 'react';
@@ -66,7 +67,7 @@ vi.mock('@/components/primitives/input', async () => {
 // Sample books for testing
 const mockBooks: Book[] = [
   {
-    hash: 'hash-1',
+    hash: testOpenReadBookRef('hash-1'),
     title: 'The Great Gatsby',
     author: 'F. Scott Fitzgerald',
     format: 'epub',
@@ -74,7 +75,7 @@ const mockBooks: Book[] = [
     updatedAt: Date.now(),
   },
   {
-    hash: 'hash-2',
+    hash: testOpenReadBookRef('hash-2'),
     title: 'To Kill a Mockingbird',
     author: 'Harper Lee',
     format: 'pdf',
@@ -82,7 +83,7 @@ const mockBooks: Book[] = [
     updatedAt: Date.now(),
   },
   {
-    hash: 'hash-3',
+    hash: testOpenReadBookRef('hash-3'),
     title: '1984',
     author: 'George Orwell',
     format: 'epub',
@@ -90,7 +91,7 @@ const mockBooks: Book[] = [
     updatedAt: Date.now(),
   },
   {
-    hash: 'hash-4',
+    hash: testOpenReadBookRef('hash-4'),
     title: 'Pride and Prejudice',
     author: 'Jane Austen',
     format: 'mobi',
@@ -98,7 +99,7 @@ const mockBooks: Book[] = [
     updatedAt: Date.now(),
   },
   {
-    hash: 'hash-5',
+    hash: testOpenReadBookRef('hash-5'),
     title: 'The Catcher in the Rye',
     author: 'J.D. Salinger',
     format: 'epub',
@@ -106,7 +107,7 @@ const mockBooks: Book[] = [
     updatedAt: Date.now(),
   },
   {
-    hash: 'hash-6',
+    hash: testOpenReadBookRef('hash-6'),
     title: 'Lord of the Flies',
     author: 'William Golding',
     format: 'pdf',
@@ -114,7 +115,7 @@ const mockBooks: Book[] = [
     updatedAt: Date.now(),
   },
   {
-    hash: 'hash-7',
+    hash: testOpenReadBookRef('hash-7'),
     title: 'Animal Farm',
     author: 'George Orwell',
     format: 'epub',
@@ -122,7 +123,7 @@ const mockBooks: Book[] = [
     updatedAt: Date.now(),
   },
   {
-    hash: 'hash-8',
+    hash: testOpenReadBookRef('hash-8'),
     title: 'Brave New World',
     author: 'Aldous Huxley',
     format: 'pdf',
@@ -130,7 +131,7 @@ const mockBooks: Book[] = [
     updatedAt: Date.now(),
   },
   {
-    hash: 'hash-9',
+    hash: testOpenReadBookRef('hash-9'),
     title: 'The Hobbit',
     author: 'J.R.R. Tolkien',
     format: 'epub',
@@ -138,7 +139,7 @@ const mockBooks: Book[] = [
     updatedAt: Date.now(),
   },
   {
-    hash: 'hash-10',
+    hash: testOpenReadBookRef('hash-10'),
     title: 'Fahrenheit 451',
     author: 'Ray Bradbury',
     format: 'mobi',

@@ -3,6 +3,8 @@
  * Book entity and related types for the OpenRead platform.
  */
 
+import type { BookId, MetaHash, OpenReadBookReference } from './book-identity.js';
+
 /**
  * Supported ebook file formats.
  *
@@ -39,10 +41,11 @@ export type FileType = 'book' | 'cover' | 'other';
  */
 export interface BookCore {
   /**
-   * Partial MD5 hash of the file content, used as content identifier.
-   * Computed by hashing multiple 1KB samples at exponentially increasing offsets.
+   * Canonical OpenRead book reference used by library rows.
+   * Uploaded platform rows may use a full SHA-256 hash, local-only rows use the
+   * historical 32-char local hash, and catalog imports use catalog:<uuid>.
    */
-  hash: string;
+  hash: OpenReadBookReference;
   /** Book title. */
   title: string;
   /** File format of the book. */
@@ -64,7 +67,7 @@ export interface Book extends BookCore {
    * Unique identifier (UUID v4).
    * @example "550e8400-e29b-41d4-a716-446655440000"
    */
-  id: string;
+  id: BookId;
 
   /**
    * MD5 hash of extracted metadata (title, authors, identifiers).
@@ -72,7 +75,7 @@ export interface Book extends BookCore {
    * Null for sync-only books where metadata hash hasn't been computed.
    * @example "d41d8cd98f00b204e9800998ecf8427e"
    */
-  metaHash: string | null;
+  metaHash: MetaHash | null;
 
   /**
    * Author name(s) extracted from metadata.

@@ -1,3 +1,4 @@
+import { testOpenReadBookRef } from '../utils/bookIdentityFixtures';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Use vi.hoisted so these are available inside hoisted vi.mock factories
@@ -46,11 +47,11 @@ vi.mock('@/libs/document', () => ({
 
 vi.mock('@/utils/md5', () => ({
   md5: vi.fn(() => 'mock-md5'),
-  partialMD5: vi.fn(() => 'mock-hash'),
+  partialMD5: vi.fn(() => 'd41d8cd98f00b204e9800998ecf8427e'),
 }));
 
 vi.mock('@/services/platform/storage', () => ({
-  computeFileHash: vi.fn(() => 'mock-platform-hash'),
+  computeFileHash: vi.fn(() => 'b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9'),
 }));
 
 vi.mock('@/utils/book', () => ({
@@ -200,7 +201,7 @@ class TestAppService extends BaseAppService {
 
 function createMockBook(overrides: Partial<Book> = {}): Book {
   return {
-    hash: 'test-hash-123',
+    hash: testOpenReadBookRef('test-hash-123'),
     format: 'epub' as BookFormat,
     title: 'Test Book',
     sourceTitle: 'Test Book',
@@ -245,7 +246,7 @@ describe('appService importBook auto-upload', () => {
     expect(mockQueueUpload).toHaveBeenCalledTimes(1);
     expect(mockQueueUpload).toHaveBeenCalledWith(
       expect.objectContaining({
-        hash: 'mock-hash',
+        hash: testOpenReadBookRef('d41d8cd98f00b204e9800998ecf8427e'),
         title: 'Test Book',
       }),
       1,
@@ -255,7 +256,7 @@ describe('appService importBook auto-upload', () => {
   it('should NOT queue upload when book already has uploadedAt', async () => {
     const mockFile = new File(['test content'], 'test.epub');
     const existingBook = createMockBook({
-      hash: 'mock-hash',
+      hash: testOpenReadBookRef('d41d8cd98f00b204e9800998ecf8427e'),
       uploadedAt: Date.now(),
     });
     const books: Book[] = [existingBook];

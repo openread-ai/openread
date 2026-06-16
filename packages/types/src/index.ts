@@ -20,6 +20,41 @@
  * ```
  */
 
+// Canonical book identity contract
+export {
+  createCatalogBookRef,
+  createReaderBookKey,
+  getBookIdFromCatalogBookRef,
+  getBookRefFromReaderBookKey,
+  getBookReferenceKind,
+  isBookId,
+  isCatalogBookRef,
+  isLocalBookHash,
+  isMetaHash,
+  isOpenReadBookReference,
+  isPlatformBookHash,
+  isSyncableBookRef,
+  normalizeBookReference,
+  parseBookId,
+  parseCatalogBookRef,
+  parseLocalBookHash,
+  parseMetaHash,
+  parseOpenReadBookReference,
+  parsePlatformBookHash,
+  parseSyncableBookRef,
+} from './book-identity.js';
+export type {
+  BookId,
+  BookReferenceKind,
+  CatalogBookRef,
+  LocalBookHash,
+  MetaHash,
+  OpenReadBookReference,
+  PlatformBookHash,
+  ReaderBookKey,
+  SyncableBookRef,
+} from './book-identity.js';
+
 // Book entity types
 export type { Book, BookCore, BookFormat, FileType } from './book.js';
 

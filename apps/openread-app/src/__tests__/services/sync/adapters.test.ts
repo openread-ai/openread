@@ -1,3 +1,4 @@
+import { testSyncableBookRef, testMetaHash } from '../../utils/bookIdentityFixtures';
 import { describe, expect, it } from 'vitest';
 import type { SyncUpsertMutation } from '@openread/sync';
 import { validateSyncMutation } from '@openread/sync/validation';
@@ -20,7 +21,7 @@ import type { SystemSettings } from '@/types/settings';
 const context = { userId: 'user-1', deviceId: 'device-1', now: 1_000 };
 
 const book = (overrides: Partial<Book> = {}): Book => ({
-  hash: 'book-hash-1',
+  hash: testSyncableBookRef('d41d8cd98f00b204e9800998ecf8427e'),
   title: 'Book 1',
   author: 'Author 1',
   format: 'epub',
@@ -31,8 +32,8 @@ const book = (overrides: Partial<Book> = {}): Book => ({
 });
 
 const config = (overrides: Partial<BookConfig> = {}): BookConfig => ({
-  bookHash: 'book-hash-1',
-  metaHash: 'meta-hash-1',
+  bookHash: testSyncableBookRef('d41d8cd98f00b204e9800998ecf8427e'),
+  metaHash: testMetaHash('b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9'),
   progress: [2, 10],
   location: 'epubcfi(/6/2)',
   searchConfig: {
@@ -51,8 +52,8 @@ const config = (overrides: Partial<BookConfig> = {}): BookConfig => ({
 
 const note = (overrides: Partial<BookNote> = {}): BookNote => ({
   id: 'note-1',
-  bookHash: 'book-hash-1',
-  metaHash: 'meta-hash-1',
+  bookHash: testSyncableBookRef('d41d8cd98f00b204e9800998ecf8427e'),
+  metaHash: testMetaHash('b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9'),
   type: 'annotation',
   cfi: 'epubcfi(/6/4)',
   text: 'Highlighted text',
@@ -71,14 +72,14 @@ describe('canonical sync mutation adapters', () => {
     expect(validateSyncMutation(mutation).ok).toBe(true);
     expect(mutation).toMatchObject({
       entity: 'book',
-      entityId: 'book-hash-1',
+      entityId: 'd41d8cd98f00b204e9800998ecf8427e',
       op: 'upsert',
       baseRevision: null,
       userId: 'user-1',
       deviceId: 'device-1',
       clientUpdatedAt: 1_000,
       payload: {
-        hash: 'book-hash-1',
+        hash: testSyncableBookRef('d41d8cd98f00b204e9800998ecf8427e'),
         title: 'Book 1',
         readingStatus: 'reading',
       },
@@ -90,10 +91,10 @@ describe('canonical sync mutation adapters', () => {
 
     expect(validateSyncMutation(mutation).ok).toBe(true);
     expect(mutation.entity).toBe('bookConfig');
-    expect(mutation.entityId).toBe('book-hash-1');
+    expect(mutation.entityId).toBe('d41d8cd98f00b204e9800998ecf8427e');
     expect(mutation.payload).toMatchObject({
-      bookHash: 'book-hash-1',
-      metaHash: 'meta-hash-1',
+      bookHash: testSyncableBookRef('d41d8cd98f00b204e9800998ecf8427e'),
+      metaHash: testMetaHash('b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9'),
       location: 'epubcfi(/6/2)',
       progress: [2, 10],
       updatedAt: 2_000,
@@ -111,11 +112,11 @@ describe('canonical sync mutation adapters', () => {
     expect(validateSyncMutation(mutation).ok).toBe(true);
     expect(mutation).toMatchObject({
       entity: 'bookNote',
-      entityId: 'book-hash-1:note-1',
+      entityId: 'd41d8cd98f00b204e9800998ecf8427e:note-1',
       clientUpdatedAt: 3_000,
       payload: {
         id: 'note-1',
-        bookHash: 'book-hash-1',
+        bookHash: testSyncableBookRef('d41d8cd98f00b204e9800998ecf8427e'),
         type: 'annotation',
         cfi: 'epubcfi(/6/4)',
         deletedAt: 3_000,
@@ -157,7 +158,7 @@ describe('canonical sync mutation adapters', () => {
         {
           id: 'collection-1',
           name: 'Favorites',
-          bookHashes: ['book-hash-1'],
+          bookHashes: ['d41d8cd98f00b204e9800998ecf8427e'],
           createdAt: '2026-01-01T00:00:00.000Z',
           updatedAt: 2_000,
         },
@@ -173,7 +174,7 @@ describe('canonical sync mutation adapters', () => {
       payload: {
         id: 'collection-1',
         name: 'Favorites',
-        bookHashes: ['book-hash-1'],
+        bookHashes: ['d41d8cd98f00b204e9800998ecf8427e'],
         updatedAt: 2_000,
       },
     });
@@ -182,11 +183,11 @@ describe('canonical sync mutation adapters', () => {
   it('builds valid AI conversation and message mutations with canonical entity ids', () => {
     const conversation: AIConversation = {
       id: 'conversation-1',
-      bookHash: 'book-hash-1',
+      bookHash: testSyncableBookRef('d41d8cd98f00b204e9800998ecf8427e'),
       title: 'Question thread',
       createdAt: 1_000,
       updatedAt: 2_000,
-      parallelBookHashes: ['book-hash-2'],
+      parallelBookHashes: ['0123456789abcdef0123456789abcdef'],
     };
     const message: AIMessage = {
       id: 'message-1',
@@ -202,7 +203,9 @@ describe('canonical sync mutation adapters', () => {
 
     expect(validateSyncMutation(conversationMutation).ok).toBe(true);
     expect(validateSyncMutation(messageMutation).ok).toBe(true);
-    expect(conversationMutation.payload!.parallelBookHashes).toEqual(['book-hash-2']);
+    expect(conversationMutation.payload!.parallelBookHashes).toEqual([
+      '0123456789abcdef0123456789abcdef',
+    ]);
     expect(messageMutation).toMatchObject({
       entity: 'aiMessage',
       entityId: 'conversation-1:message-1',
@@ -222,7 +225,10 @@ describe('canonical sync mutation adapters', () => {
     expect(mutations[0]!.payload).not.toHaveProperty('bytes');
     expect(mutations[0]).toMatchObject({
       entity: 'fileMetadata',
-      payload: { bookHash: 'book-hash-1', status: 'uploaded' },
+      payload: {
+        bookHash: testSyncableBookRef('d41d8cd98f00b204e9800998ecf8427e'),
+        status: 'uploaded',
+      },
     });
   });
 

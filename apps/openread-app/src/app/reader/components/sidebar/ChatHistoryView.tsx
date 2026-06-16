@@ -143,8 +143,8 @@ const ChatHistoryView: React.FC<ChatHistoryViewProps> = ({ bookKey, onConversati
 
       // Restore parallel read session if this conversation had parallel books
       if (conversation.parallelBookHashes?.length) {
-        const openHashes = new Set(bookKeys.map((key) => getBookIdFromKey(key)));
-        const ownedHashes = new Set(library.map((b) => b.hash));
+        const openHashes = new Set<string>(bookKeys.map((key) => getBookIdFromKey(key)));
+        const ownedHashes = new Set<string>(library.map((b) => b.hash));
         const missingHashes = conversation.parallelBookHashes
           .filter((h) => !openHashes.has(h) && ownedHashes.has(h))
           .slice(0, 8);

@@ -1,3 +1,4 @@
+import { testSyncableBookRef } from '../../utils/bookIdentityFixtures';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SyncPushRequest } from '@openread/sync';
 
@@ -31,7 +32,7 @@ const request: SyncPushRequest = {
       userId: 'user-1',
       deviceId: 'device-1',
       clientUpdatedAt: 1,
-      payload: { hash: 'book-1', title: 'Book One', updatedAt: 1 },
+      payload: { hash: testSyncableBookRef('book-1'), title: 'Book One', updatedAt: 1 },
     },
   ],
 };

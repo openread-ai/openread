@@ -8,6 +8,7 @@
     "ops:runtime:check": "bash scripts/ops/check-runtime-config.sh",
     "api:ownership:check": "node scripts/ops/check-api-route-ownership.mjs",
     "api:ownership:self-test": "node scripts/ops/check-api-route-ownership.mjs --self-test",
+    "book-identity:check": "node scripts/ops/check-book-identity-ownership.mjs",
     "tauri": "pnpm --filter @openread/openread-app tauri",
     "dev-web": "pnpm --filter @openread/openread-app dev-web",
     "format": "prettier --write \"**/*.{js,jsx,ts,tsx,css,json,md,html,yml}\"",

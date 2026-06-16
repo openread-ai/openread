@@ -1,3 +1,4 @@
+import { testOpenReadBookRef } from '../utils/bookIdentityFixtures';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useBookActions } from '@/hooks/useBookActions';
@@ -102,7 +103,7 @@ vi.mock('@/utils/logger', () => ({
 }));
 
 const createMockBook = (overrides: Partial<Book> = {}): Book => ({
-  hash: `hash-${Math.random().toString(36).substring(7)}`,
+  hash: testOpenReadBookRef(`hash-${Math.random().toString(36).substring(7)}`),
   title: 'Test Book',
   author: 'Test Author',
   format: 'epub',
@@ -125,7 +126,7 @@ describe('useBookActions', () => {
 
   describe('setReadingStatus', () => {
     it('updates book reading status', async () => {
-      const mockBook = createMockBook({ hash: 'book-123' });
+      const mockBook = createMockBook({ hash: testOpenReadBookRef('book-123') });
       const { result } = renderHook(() => useBookActions());
 
       await act(async () => {
@@ -140,7 +141,10 @@ describe('useBookActions', () => {
     });
 
     it('updates book reading status to unread', async () => {
-      const mockBook = createMockBook({ hash: 'book-456', readingStatus: 'finished' });
+      const mockBook = createMockBook({
+        hash: testOpenReadBookRef('book-456'),
+        readingStatus: 'finished',
+      });
       const { result } = renderHook(() => useBookActions());
 
       await act(async () => {
@@ -152,7 +156,7 @@ describe('useBookActions', () => {
     });
 
     it('updates book reading status to reading', async () => {
-      const mockBook = createMockBook({ hash: 'book-789' });
+      const mockBook = createMockBook({ hash: testOpenReadBookRef('book-789') });
       const { result } = renderHook(() => useBookActions());
 
       await act(async () => {
@@ -166,7 +170,10 @@ describe('useBookActions', () => {
 
   describe('renameBook', () => {
     it('updates book title', async () => {
-      const mockBook = createMockBook({ hash: 'book-123', title: 'Old Title' });
+      const mockBook = createMockBook({
+        hash: testOpenReadBookRef('book-123'),
+        title: 'Old Title',
+      });
       const { result } = renderHook(() => useBookActions());
 
       await act(async () => {
@@ -179,7 +186,7 @@ describe('useBookActions', () => {
     });
 
     it('trims whitespace from title', async () => {
-      const mockBook = createMockBook({ hash: 'book-123' });
+      const mockBook = createMockBook({ hash: testOpenReadBookRef('book-123') });
       const { result } = renderHook(() => useBookActions());
 
       await act(async () => {
@@ -191,7 +198,7 @@ describe('useBookActions', () => {
     });
 
     it('does not update if title is empty', async () => {
-      const mockBook = createMockBook({ hash: 'book-123' });
+      const mockBook = createMockBook({ hash: testOpenReadBookRef('book-123') });
       const { result } = renderHook(() => useBookActions());
 
       await act(async () => {
@@ -202,7 +209,7 @@ describe('useBookActions', () => {
     });
 
     it('does not update if title is empty string', async () => {
-      const mockBook = createMockBook({ hash: 'book-123' });
+      const mockBook = createMockBook({ hash: testOpenReadBookRef('book-123') });
       const { result } = renderHook(() => useBookActions());
 
       await act(async () => {
@@ -216,9 +223,9 @@ describe('useBookActions', () => {
   describe('bulkSetReadingStatus', () => {
     it('updates multiple books and exits select mode', async () => {
       const books = [
-        createMockBook({ hash: 'book-1' }),
-        createMockBook({ hash: 'book-2' }),
-        createMockBook({ hash: 'book-3' }),
+        createMockBook({ hash: testOpenReadBookRef('book-1') }),
+        createMockBook({ hash: testOpenReadBookRef('book-2') }),
+        createMockBook({ hash: testOpenReadBookRef('book-3') }),
       ];
       mockLibraryStoreState.library = books;
       const hashes = ['book-1', 'book-2', 'book-3'];
@@ -234,7 +241,10 @@ describe('useBookActions', () => {
     });
 
     it('sets correct reading status for each book', async () => {
-      const books = [createMockBook({ hash: 'book-1' }), createMockBook({ hash: 'book-2' })];
+      const books = [
+        createMockBook({ hash: testOpenReadBookRef('book-1') }),
+        createMockBook({ hash: testOpenReadBookRef('book-2') }),
+      ];
       mockLibraryStoreState.library = books;
       const { result } = renderHook(() => useBookActions());
 
@@ -249,7 +259,7 @@ describe('useBookActions', () => {
     });
 
     it('skips books that are not found in library', async () => {
-      const books = [createMockBook({ hash: 'book-1' })];
+      const books = [createMockBook({ hash: testOpenReadBookRef('book-1') })];
       mockLibraryStoreState.library = books;
       const { result } = renderHook(() => useBookActions());
 
@@ -264,7 +274,10 @@ describe('useBookActions', () => {
 
   describe('bulkRemove', () => {
     it('clears selection and exits select mode', async () => {
-      const books = [createMockBook({ hash: 'book-1' }), createMockBook({ hash: 'book-2' })];
+      const books = [
+        createMockBook({ hash: testOpenReadBookRef('book-1') }),
+        createMockBook({ hash: testOpenReadBookRef('book-2') }),
+      ];
       mockLibraryStoreState.library = books;
       const { result } = renderHook(() => useBookActions());
 
@@ -277,7 +290,7 @@ describe('useBookActions', () => {
     });
 
     it('skips books that are not found in library', async () => {
-      const books = [createMockBook({ hash: 'book-1' })];
+      const books = [createMockBook({ hash: testOpenReadBookRef('book-1') })];
       mockLibraryStoreState.library = books;
       const { result } = renderHook(() => useBookActions());
 

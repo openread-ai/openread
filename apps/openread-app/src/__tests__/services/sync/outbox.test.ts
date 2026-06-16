@@ -1,3 +1,4 @@
+import { testSyncableBookRef } from '../../utils/bookIdentityFixtures';
 import { describe, expect, it } from 'vitest';
 import type { SyncMutation, SyncUpsertMutation } from '@openread/sync/protocol';
 
@@ -13,14 +14,14 @@ const bookMutation = (
 ): SyncUpsertMutation<'book'> => ({
   id: 'mutation-1',
   entity: 'book',
-  entityId: 'book-1',
+  entityId: 'd41d8cd98f00b204e9800998ecf8427e',
   op: 'upsert',
   baseRevision: 'rev-1',
   userId: 'user-1',
   deviceId: 'device-1',
   clientUpdatedAt: 100,
   payload: {
-    hash: 'book-1',
+    hash: testSyncableBookRef('d41d8cd98f00b204e9800998ecf8427e'),
     title: 'Book 1',
     updatedAt: 100,
   },
@@ -163,7 +164,7 @@ describe('canonical SyncOutbox', () => {
     await outbox.enqueue({
       id: 'delete-1',
       entity: 'book',
-      entityId: 'book-1',
+      entityId: 'd41d8cd98f00b204e9800998ecf8427e',
       op: 'delete',
       baseRevision: 'rev-1',
       userId: 'user-1',

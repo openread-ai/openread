@@ -1,3 +1,4 @@
+import { testOpenReadBookRef } from '../utils/bookIdentityFixtures';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CloudSyncService } from '@/services/cloudSync';
@@ -14,7 +15,7 @@ vi.mock('@/libs/storage', () => ({
 }));
 
 const baseBook = (overrides: Partial<Book> = {}): Book => ({
-  hash: '0123456789abcdef0123456789abcdef',
+  hash: testOpenReadBookRef('0123456789abcdef0123456789abcdef'),
   title: 'Manual Book',
   author: 'Author',
   format: 'epub',

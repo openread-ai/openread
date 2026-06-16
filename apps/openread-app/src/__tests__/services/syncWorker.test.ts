@@ -289,7 +289,7 @@ describe('SyncWorker book reconcile queue', () => {
     (worker as unknown as { stopped: boolean; userId: string }).stopped = false;
     (worker as unknown as { stopped: boolean; userId: string }).userId = 'user-1';
 
-    const bookKey = `${mocks.libraryBook.hash}-epub`;
+    const bookKey = mocks.libraryBook.hash;
     mocks.settingsState.settings = { lastSyncedAtConfigs: 999 };
     mocks.bookDataState.configs.set(bookKey, {
       bookHash: mocks.libraryBook.hash,
@@ -340,7 +340,7 @@ describe('SyncWorker book reconcile queue', () => {
     (worker as unknown as { stopped: boolean; userId: string }).stopped = false;
     (worker as unknown as { stopped: boolean; userId: string }).userId = 'user-1';
 
-    const bookKey = `${mocks.libraryBook.hash}-epub`;
+    const bookKey = mocks.libraryBook.hash;
     mocks.settingsState.settings = { lastSyncedAtNotes: 999 };
     mocks.bookDataState.configs.set(bookKey, {
       bookHash: mocks.libraryBook.hash,

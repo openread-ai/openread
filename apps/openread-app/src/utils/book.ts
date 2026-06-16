@@ -8,6 +8,8 @@ import { getDirFromLanguage } from './rtl';
 import { code6392to6391, isValidLang, normalizedLangCode } from './lang';
 import { md5 } from './md5';
 import { createLogger } from '@/utils/logger';
+import { isCatalogBookRef } from '@/utils/bookHash';
+import { parseMetaHash, type MetaHash } from '@openread/types';
 
 const logger = createLogger('book');
 
@@ -43,9 +45,7 @@ export const getConfigFilename = (book: Book) => {
 export const isCatalogBackedBook = (
   book: Pick<Book, 'catalogBookId' | 'hash' | 'storagePath'>,
 ): boolean => {
-  return Boolean(
-    book.catalogBookId || book.storagePath || book.hash.toLowerCase().startsWith('catalog:'),
-  );
+  return Boolean(book.catalogBookId || book.storagePath || isCatalogBookRef(book.hash));
 };
 
 export const isUserCloudUploadEligible = (
@@ -334,13 +334,14 @@ const getIdentifiersList = (
       : [identifiers.value];
 };
 
-export const getMetadataHash = (metadata: BookMetadata) => {
+export const getMetadataHash = (metadata: BookMetadata): MetaHash | undefined => {
   try {
     const title = getTitleForHash(metadata.title);
     const authors = getAuthorsList(metadata.author).join(',');
     const identifiers = getIdentifiersList(metadata.altIdentifier || metadata.identifier).join(',');
     const hashSource = `${title}|${authors}|${identifiers}`;
-    const metaHash = md5(hashSource.normalize('NFC'));
+    const metaHash = parseMetaHash(md5(hashSource.normalize('NFC')));
+    if (!metaHash) throw new Error('Generated invalid metadata hash');
     return metaHash;
   } catch (error) {
     logger.error('Error generating metadata hash:', error);

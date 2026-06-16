@@ -6,6 +6,7 @@ import { useBookDataStore } from '@/store/bookDataStore';
 import { SYNC_NOTES_INTERVAL_SEC } from '@/services/constants';
 import { throttle } from '@/utils/throttle';
 import { enqueueBatchAndSync } from '@/services/sync/helpers';
+import { parseSyncableBookRef } from '@openread/types';
 
 export const useNotesSync = (bookKey: string) => {
   const { user } = useAuth();
@@ -19,12 +20,15 @@ export const useNotesSync = (bookKey: string) => {
     const book = getBookData(bookKey)?.book;
     if (!config?.location || !book || !user) return {};
 
+    const syncBookRef = parseSyncableBookRef(book.hash);
+    if (!syncBookRef) return {};
+
     const bookNotes = config.booknotes ?? [];
     const newNotes = bookNotes.filter(
       (note) => lastSyncedAtNotes < note.updatedAt || lastSyncedAtNotes < (note.deletedAt ?? 0),
     );
     newNotes.forEach((note) => {
-      note.bookHash = book.hash;
+      note.bookHash = syncBookRef;
       note.metaHash = book.metaHash;
     });
     return {
@@ -40,7 +44,8 @@ export const useNotesSync = (bookKey: string) => {
         const book = getBookData(bookKey)?.book;
         const newNotes = getNewNotes();
         if (!newNotes.notes?.length) return;
-        await syncNotes(newNotes.notes, book?.hash, book?.metaHash, 'both');
+        const syncBookRef = parseSyncableBookRef(book?.hash);
+        await syncNotes(newNotes.notes, syncBookRef ?? undefined, book?.metaHash, 'both');
       },
       SYNC_NOTES_INTERVAL_SEC * 1000,
       { emitLast: true },
@@ -54,7 +59,8 @@ export const useNotesSync = (bookKey: string) => {
     if (!config?.location || !user || hasPulledNotesOnce.current) return;
     hasPulledNotesOnce.current = true;
     const book = getBookData(bookKey)?.book;
-    syncNotes([], book?.hash, book?.metaHash, 'pull');
+    const syncBookRef = parseSyncableBookRef(book?.hash);
+    syncNotes([], syncBookRef ?? undefined, book?.metaHash, 'pull');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config?.location, user]);
 

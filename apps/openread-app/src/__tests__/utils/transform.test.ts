@@ -54,7 +54,7 @@ describe('safeJsonParse', () => {
 describe('transformBookConfigFromDB - JSONB guards', () => {
   const baseConfig: DBBookConfig = {
     user_id: 'user-1',
-    book_hash: 'hash-1',
+    book_hash: 'd41d8cd98f00b204e9800998ecf8427e',
     updated_at: '2024-01-01T00:00:00.000Z',
   };
 
@@ -177,7 +177,7 @@ describe('transformBookConfigFromDB - JSONB guards', () => {
 describe('transformBookFromDB - metadata JSONB guard', () => {
   const baseDBBook: DBBook = {
     user_id: 'user-1',
-    book_hash: 'hash-abc',
+    book_hash: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     format: 'epub',
     title: 'Test Book',
     author: 'Test Author',
@@ -245,8 +245,8 @@ describe('transformBookToDB / transformBookFromDB round-trip', () => {
 
   it('should preserve data through a toDB -> fromDB round-trip', () => {
     const book = {
-      hash: 'hash-rt',
-      metaHash: 'meta-rt',
+      hash: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      metaHash: 'cccccccccccccccccccccccccccccccc',
       format: 'epub',
       title: 'Round Trip Book',
       author: 'RT Author',
@@ -268,7 +268,7 @@ describe('transformBookToDB / transformBookFromDB round-trip', () => {
     const dbBook = transformBookToDB(book, userId);
 
     expect(dbBook.user_id).toBe(userId);
-    expect(dbBook.book_hash).toBe('hash-rt');
+    expect(dbBook.book_hash).toBe('bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');
     expect(dbBook.format).toBe('epub');
     expect(dbBook.title).toBe('Round Trip Book');
     expect(dbBook.author).toBe('RT Author');
@@ -300,7 +300,7 @@ describe('transformBookToDB / transformBookFromDB round-trip', () => {
 
   it('should handle minimal book with no optional fields', () => {
     const book = {
-      hash: 'hash-min',
+      hash: 'dddddddddddddddddddddddddddddddd',
       format: 'pdf',
       title: 'Minimal',
       author: 'Nobody',
@@ -311,7 +311,7 @@ describe('transformBookToDB / transformBookFromDB round-trip', () => {
     const dbBook = transformBookToDB(book, userId);
     const result = transformBookFromDB(dbBook);
 
-    expect(result.hash).toBe('hash-min');
+    expect(result.hash).toBe('dddddddddddddddddddddddddddddddd');
     expect(result.format).toBe('pdf');
     expect(result.title).toBe('Minimal');
     expect(result.author).toBe('Nobody');
@@ -324,16 +324,18 @@ describe('transformBookToDB / transformBookFromDB round-trip', () => {
 describe('transformBookConfigToDB', () => {
   it('should transform a book config to DB format', () => {
     const config = {
-      bookHash: 'hash-1',
-      metaHash: 'meta-1',
+      bookHash: 'd41d8cd98f00b204e9800998ecf8427e',
+      metaHash: 'b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9',
       progress: [5, 100] as [number, number],
       location: '/chapter/1',
       updatedAt: 1704067200000, // 2024-01-01T00:00:00.000Z
     };
     const result = transformBookConfigToDB(config, 'user-1');
     expect(result.user_id).toBe('user-1');
-    expect(result.book_hash).toBe('hash-1');
-    expect(result.meta_hash).toBe('meta-1');
+    expect(result.book_hash).toBe('d41d8cd98f00b204e9800998ecf8427e');
+    expect(result.meta_hash).toBe(
+      'b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9',
+    );
     expect(result.progress).toEqual([5, 100]);
     expect(result.location).toBe('/chapter/1');
     expect(result.updated_at).toBe('2024-01-01T00:00:00.000Z');

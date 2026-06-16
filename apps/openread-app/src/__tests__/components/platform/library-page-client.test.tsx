@@ -1,3 +1,4 @@
+import { testOpenReadBookRef } from '../../utils/bookIdentityFixtures';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
 import React from 'react';
@@ -13,7 +14,9 @@ const { mockSetLibrary } = vi.hoisted(() => ({
 // Mock functions
 const mockSyncBooks = vi.fn().mockResolvedValue(undefined);
 const mockSelectFiles = vi.fn().mockResolvedValue({ files: [] });
-const mockImportBook = vi.fn().mockResolvedValue({ hash: 'new-book', title: 'New Book' });
+const mockImportBook = vi
+  .fn()
+  .mockResolvedValue({ hash: testOpenReadBookRef('new-book'), title: 'New Book' });
 const mockSaveLibraryBooks = vi.fn().mockResolvedValue(undefined);
 const mockSetSelectMode = vi.fn();
 const mockSelectAll = vi.fn();
@@ -38,7 +41,7 @@ const mockLibraryViewState = {
 // Mock books
 const mockBooks: Book[] = [
   {
-    hash: 'book-1',
+    hash: testOpenReadBookRef('book-1'),
     title: 'Alpha Book',
     author: 'Author A',
     format: 'epub',
@@ -47,7 +50,7 @@ const mockBooks: Book[] = [
     coverImageUrl: null,
   },
   {
-    hash: 'book-2',
+    hash: testOpenReadBookRef('book-2'),
     title: 'Beta Book',
     author: 'Author B',
     format: 'pdf',
@@ -56,7 +59,7 @@ const mockBooks: Book[] = [
     coverImageUrl: null,
   },
   {
-    hash: 'book-3',
+    hash: testOpenReadBookRef('book-3'),
     title: 'Gamma Book',
     author: 'Author A',
     format: 'epub',
@@ -305,7 +308,7 @@ describe('LibraryPageClient', () => {
     mockLibraryViewState.selectedBooks = [];
 
     // Reset importBook to default success behavior
-    mockImportBook.mockResolvedValue({ hash: 'new-book', title: 'New Book' });
+    mockImportBook.mockResolvedValue({ hash: testOpenReadBookRef('new-book'), title: 'New Book' });
 
     vi.mocked(useLibraryBooks).mockReturnValue({
       books: mockBooks,
@@ -747,7 +750,10 @@ describe('LibraryPageClient', () => {
       mockSelectFiles.mockResolvedValueOnce({
         files: [{ file: goodFile }, { file: badFile }],
       });
-      mockImportBook.mockResolvedValueOnce({ hash: 'good', title: 'Good Book' });
+      mockImportBook.mockResolvedValueOnce({
+        hash: testOpenReadBookRef('good'),
+        title: 'Good Book',
+      });
       mockImportBook.mockRejectedValueOnce(new Error('Parse error'));
 
       render(<LibraryPageClient filter='all' title='All Books' />);

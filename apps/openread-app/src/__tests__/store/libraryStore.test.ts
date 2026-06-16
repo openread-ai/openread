@@ -1,3 +1,4 @@
+import { testOpenReadBookRef } from '../utils/bookIdentityFixtures';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useLibraryStore } from '@/store/libraryStore';
 import type { Book } from '@/types/book';
@@ -20,7 +21,7 @@ function metadata(overrides: Partial<BookMetadata>): BookMetadata {
 
 function book(overrides: Partial<Book>): Book {
   return {
-    hash: 'book-1',
+    hash: testOpenReadBookRef('book-1'),
     title: 'Pride and Prejudice',
     author: 'Jane Austen',
     format: 'epub',
@@ -45,7 +46,7 @@ describe('libraryStore.updateBooks', () => {
   it('merges incoming catalog cover metadata when the local book is newer', async () => {
     useLibraryStore.getState().setLibrary([
       book({
-        hash: 'catalog:7231ff9a-24b9-4074-9369-bc7f88ffb179',
+        hash: testOpenReadBookRef('catalog:7231ff9a-24b9-4074-9369-bc7f88ffb179'),
         updatedAt: 200,
         metadata: metadata({ publisher: 'Local Publisher' }),
       }),
@@ -53,7 +54,7 @@ describe('libraryStore.updateBooks', () => {
 
     await useLibraryStore.getState().updateBooks(envConfig, [
       book({
-        hash: 'catalog:7231ff9a-24b9-4074-9369-bc7f88ffb179',
+        hash: testOpenReadBookRef('catalog:7231ff9a-24b9-4074-9369-bc7f88ffb179'),
         updatedAt: 100,
         metadata: metadata({
           coverImageUrl: '/api/catalog-covers/catalog/covers/standard-ebooks/pride/abc/thumb.jpg',

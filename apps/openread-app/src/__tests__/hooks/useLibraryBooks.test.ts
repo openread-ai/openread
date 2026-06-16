@@ -1,3 +1,4 @@
+import { testOpenReadBookRef } from '../utils/bookIdentityFixtures';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { useLibraryBooks, getBookProgressPercentage } from '@/hooks/useLibraryBooks';
@@ -25,7 +26,7 @@ vi.mock('@/store/libraryStore', () => ({
 }));
 
 const createMockBook = (overrides: Partial<Book> = {}): Book => ({
-  hash: `hash-${Math.random().toString(36).substring(7)}`,
+  hash: testOpenReadBookRef(`hash-${Math.random().toString(36).substring(7)}`),
   title: 'Test Book',
   author: 'Test Author',
   format: 'epub',
@@ -54,7 +55,7 @@ describe('useLibraryBooks', () => {
     });
 
     it('should return isLoading true and withhold books when library not loaded', () => {
-      mockStoreState.library = [createMockBook({ hash: 'stale-book' })];
+      mockStoreState.library = [createMockBook({ hash: testOpenReadBookRef('stale-book') })];
       mockStoreState.libraryLoaded = false;
       const { result } = renderHook(() => useLibraryBooks());
       expect(result.current.isLoading).toBe(true);
@@ -62,7 +63,7 @@ describe('useLibraryBooks', () => {
     });
 
     it('should return isLoading true and withhold books when the loaded library belongs to another account', () => {
-      mockStoreState.library = [createMockBook({ hash: 'stale-book' })];
+      mockStoreState.library = [createMockBook({ hash: testOpenReadBookRef('stale-book') })];
       mockStoreState.libraryLoaded = true;
       mockStoreState.libraryOwnerUserId = 'user-previous';
       mockStoreState.isReconciling = true;
@@ -72,7 +73,7 @@ describe('useLibraryBooks', () => {
     });
 
     it('should return account-scoped cached books while background reconcile is in progress', () => {
-      mockStoreState.library = [createMockBook({ hash: 'cached-book' })];
+      mockStoreState.library = [createMockBook({ hash: testOpenReadBookRef('cached-book') })];
       mockStoreState.libraryLoaded = true;
       mockStoreState.libraryOwnerUserId = 'user-1';
       mockStoreState.isReconciling = true;
@@ -82,7 +83,10 @@ describe('useLibraryBooks', () => {
     });
 
     it('should return all visible books by default', () => {
-      const books = [createMockBook({ hash: 'book-1' }), createMockBook({ hash: 'book-2' })];
+      const books = [
+        createMockBook({ hash: testOpenReadBookRef('book-1') }),
+        createMockBook({ hash: testOpenReadBookRef('book-2') }),
+      ];
       mockStoreState.library = books;
       const { result } = renderHook(() => useLibraryBooks());
       expect(result.current.books).toHaveLength(2);
@@ -90,9 +94,9 @@ describe('useLibraryBooks', () => {
 
     it('should return all books in library', () => {
       const books = [
-        createMockBook({ hash: 'book-1' }),
-        createMockBook({ hash: 'book-2' }),
-        createMockBook({ hash: 'book-3' }),
+        createMockBook({ hash: testOpenReadBookRef('book-1') }),
+        createMockBook({ hash: testOpenReadBookRef('book-2') }),
+        createMockBook({ hash: testOpenReadBookRef('book-3') }),
       ];
       mockStoreState.library = books;
       const { result } = renderHook(() => useLibraryBooks());
@@ -101,8 +105,12 @@ describe('useLibraryBooks', () => {
 
     it('should hide locally tombstoned deleted books from user-facing library queries', () => {
       mockStoreState.library = [
-        createMockBook({ hash: 'active-book', createdAt: 2000 }),
-        createMockBook({ hash: 'deleted-book', deletedAt: 1000, createdAt: 3000 }),
+        createMockBook({ hash: testOpenReadBookRef('active-book'), createdAt: 2000 }),
+        createMockBook({
+          hash: testOpenReadBookRef('deleted-book'),
+          deletedAt: 1000,
+          createdAt: 3000,
+        }),
       ];
 
       const { result } = renderHook(() => useLibraryBooks());
@@ -114,10 +122,10 @@ describe('useLibraryBooks', () => {
   describe('Reading filter', () => {
     it('should filter books with progress > 0 and < 100', () => {
       const books = [
-        createMockBook({ hash: 'reading', progress: [50, 100] }),
-        createMockBook({ hash: 'not-started', progress: [0, 100] }),
-        createMockBook({ hash: 'finished', progress: [100, 100] }),
-        createMockBook({ hash: 'no-progress' }),
+        createMockBook({ hash: testOpenReadBookRef('reading'), progress: [50, 100] }),
+        createMockBook({ hash: testOpenReadBookRef('not-started'), progress: [0, 100] }),
+        createMockBook({ hash: testOpenReadBookRef('finished'), progress: [100, 100] }),
+        createMockBook({ hash: testOpenReadBookRef('no-progress') }),
       ];
       mockStoreState.library = books;
       const { result } = renderHook(() => useLibraryBooks({ filter: 'reading' }));
@@ -127,8 +135,8 @@ describe('useLibraryBooks', () => {
 
     it('should include books with readingStatus reading', () => {
       const books = [
-        createMockBook({ hash: 'reading-status', readingStatus: 'reading' }),
-        createMockBook({ hash: 'unread-status', readingStatus: 'unread' }),
+        createMockBook({ hash: testOpenReadBookRef('reading-status'), readingStatus: 'reading' }),
+        createMockBook({ hash: testOpenReadBookRef('unread-status'), readingStatus: 'unread' }),
       ];
       mockStoreState.library = books;
       const { result } = renderHook(() => useLibraryBooks({ filter: 'reading' }));
@@ -140,9 +148,9 @@ describe('useLibraryBooks', () => {
   describe('Recent filter', () => {
     it('should sort by createdAt descending', () => {
       const books = [
-        createMockBook({ hash: 'old', createdAt: 1000 }),
-        createMockBook({ hash: 'new', createdAt: 3000 }),
-        createMockBook({ hash: 'mid', createdAt: 2000 }),
+        createMockBook({ hash: testOpenReadBookRef('old'), createdAt: 1000 }),
+        createMockBook({ hash: testOpenReadBookRef('new'), createdAt: 3000 }),
+        createMockBook({ hash: testOpenReadBookRef('mid'), createdAt: 2000 }),
       ];
       mockStoreState.library = books;
       const { result } = renderHook(() => useLibraryBooks({ filter: 'recent' }));
@@ -155,9 +163,9 @@ describe('useLibraryBooks', () => {
   describe('Want to read filter', () => {
     it('should filter books with readingStatus unread', () => {
       const books = [
-        createMockBook({ hash: 'unread', readingStatus: 'unread' }),
-        createMockBook({ hash: 'reading', readingStatus: 'reading' }),
-        createMockBook({ hash: 'finished', readingStatus: 'finished' }),
+        createMockBook({ hash: testOpenReadBookRef('unread'), readingStatus: 'unread' }),
+        createMockBook({ hash: testOpenReadBookRef('reading'), readingStatus: 'reading' }),
+        createMockBook({ hash: testOpenReadBookRef('finished'), readingStatus: 'finished' }),
       ];
       mockStoreState.library = books;
       const { result } = renderHook(() => useLibraryBooks({ filter: 'want-to-read' }));
@@ -167,8 +175,8 @@ describe('useLibraryBooks', () => {
 
     it('should include books with no progress and no status', () => {
       const books = [
-        createMockBook({ hash: 'no-progress' }),
-        createMockBook({ hash: 'with-progress', progress: [10, 100] }),
+        createMockBook({ hash: testOpenReadBookRef('no-progress') }),
+        createMockBook({ hash: testOpenReadBookRef('with-progress'), progress: [10, 100] }),
       ];
       mockStoreState.library = books;
       const { result } = renderHook(() => useLibraryBooks({ filter: 'want-to-read' }));
@@ -180,8 +188,8 @@ describe('useLibraryBooks', () => {
   describe('Finished filter', () => {
     it('should filter books with progress 100%', () => {
       const books = [
-        createMockBook({ hash: 'finished', progress: [100, 100] }),
-        createMockBook({ hash: 'not-finished', progress: [50, 100] }),
+        createMockBook({ hash: testOpenReadBookRef('finished'), progress: [100, 100] }),
+        createMockBook({ hash: testOpenReadBookRef('not-finished'), progress: [50, 100] }),
       ];
       mockStoreState.library = books;
       const { result } = renderHook(() => useLibraryBooks({ filter: 'finished' }));
@@ -191,8 +199,8 @@ describe('useLibraryBooks', () => {
 
     it('should include books with readingStatus finished', () => {
       const books = [
-        createMockBook({ hash: 'finished-status', readingStatus: 'finished' }),
-        createMockBook({ hash: 'reading-status', readingStatus: 'reading' }),
+        createMockBook({ hash: testOpenReadBookRef('finished-status'), readingStatus: 'finished' }),
+        createMockBook({ hash: testOpenReadBookRef('reading-status'), readingStatus: 'reading' }),
       ];
       mockStoreState.library = books;
       const { result } = renderHook(() => useLibraryBooks({ filter: 'finished' }));
@@ -204,11 +212,11 @@ describe('useLibraryBooks', () => {
   describe('Format filters', () => {
     it('should filter EPUB and Kindle format books', () => {
       const books = [
-        createMockBook({ hash: 'epub', format: 'epub' }),
-        createMockBook({ hash: 'pdf', format: 'pdf' }),
-        createMockBook({ hash: 'mobi', format: 'mobi' }),
-        createMockBook({ hash: 'azw', format: 'azw' }),
-        createMockBook({ hash: 'azw3', format: 'azw3' }),
+        createMockBook({ hash: testOpenReadBookRef('epub'), format: 'epub' }),
+        createMockBook({ hash: testOpenReadBookRef('pdf'), format: 'pdf' }),
+        createMockBook({ hash: testOpenReadBookRef('mobi'), format: 'mobi' }),
+        createMockBook({ hash: testOpenReadBookRef('azw'), format: 'azw' }),
+        createMockBook({ hash: testOpenReadBookRef('azw3'), format: 'azw3' }),
       ];
       mockStoreState.library = books;
       const { result } = renderHook(() => useLibraryBooks({ filter: 'books' }));
@@ -221,8 +229,8 @@ describe('useLibraryBooks', () => {
 
     it('should filter PDF books', () => {
       const books = [
-        createMockBook({ hash: 'epub', format: 'epub' }),
-        createMockBook({ hash: 'pdf', format: 'pdf' }),
+        createMockBook({ hash: testOpenReadBookRef('epub'), format: 'epub' }),
+        createMockBook({ hash: testOpenReadBookRef('pdf'), format: 'pdf' }),
       ];
       mockStoreState.library = books;
       const { result } = renderHook(() => useLibraryBooks({ filter: 'pdfs' }));
@@ -234,7 +242,7 @@ describe('useLibraryBooks', () => {
   describe('Limit', () => {
     it('should limit results when limit is specified', () => {
       const books = Array.from({ length: 10 }, (_, i) =>
-        createMockBook({ hash: `book-${i}`, createdAt: i * 1000 }),
+        createMockBook({ hash: testOpenReadBookRef(`book-${i}`), createdAt: i * 1000 }),
       );
       mockStoreState.library = books;
       const { result } = renderHook(() => useLibraryBooks({ limit: 5 }));
@@ -242,7 +250,10 @@ describe('useLibraryBooks', () => {
     });
 
     it('should return all books when limit is greater than count', () => {
-      const books = [createMockBook({ hash: 'book-1' }), createMockBook({ hash: 'book-2' })];
+      const books = [
+        createMockBook({ hash: testOpenReadBookRef('book-1') }),
+        createMockBook({ hash: testOpenReadBookRef('book-2') }),
+      ];
       mockStoreState.library = books;
       const { result } = renderHook(() => useLibraryBooks({ limit: 10 }));
       expect(result.current.books).toHaveLength(2);

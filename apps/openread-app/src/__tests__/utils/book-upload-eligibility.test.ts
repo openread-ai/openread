@@ -1,3 +1,4 @@
+import { testOpenReadBookRef } from './bookIdentityFixtures';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -8,7 +9,7 @@ import {
 import type { Book } from '@/types/book';
 
 const baseBook = (overrides: Partial<Book> = {}): Book => ({
-  hash: '0123456789abcdef0123456789abcdef',
+  hash: testOpenReadBookRef('0123456789abcdef0123456789abcdef'),
   title: 'Manual Book',
   author: 'Author',
   format: 'epub',
@@ -35,7 +36,9 @@ describe('book upload eligibility', () => {
   });
 
   it('treats catalog hashes as catalog-backed even before catalog metadata is hydrated', () => {
-    const book = baseBook({ hash: 'catalog:65119855-9d37-4caf-a7a4-4a5f9c9572d5' });
+    const book = baseBook({
+      hash: testOpenReadBookRef('catalog:65119855-9d37-4caf-a7a4-4a5f9c9572d5'),
+    });
 
     expect(isCatalogBackedBook(book)).toBe(true);
     expect(isUserCloudUploadEligible(book)).toBe(false);

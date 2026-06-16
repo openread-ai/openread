@@ -4,6 +4,7 @@
  */
 
 import type { Book, BookFormat } from './book.js';
+import type { BookId, MetaHash, PlatformBookHash } from './book-identity.js';
 
 /**
  * Query parameters for GET /api/books.
@@ -82,12 +83,12 @@ export interface UploadUrlRequest {
    * SHA-256 hash of the file content.
    * Used for deduplication check before upload.
    */
-  hash: string;
+  hash: PlatformBookHash;
 
   /**
-   * SHA-256 hash of the extracted metadata.
+   * Canonical metadata grouping hash.
    */
-  metaHash: string;
+  metaHash: MetaHash;
 
   /**
    * Book title extracted from metadata.
@@ -122,7 +123,7 @@ export interface UploadUrlResponse {
    * Generated book ID to use in the confirm call.
    * This ID is pre-allocated before upload completes.
    */
-  bookId: string;
+  bookId: BookId;
 }
 
 /**
@@ -134,7 +135,7 @@ export interface ConfirmUploadRequest {
   /**
    * Book ID from the upload URL response.
    */
-  bookId: string;
+  bookId: BookId;
 
   /**
    * Override extracted title (optional).

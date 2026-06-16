@@ -1,3 +1,4 @@
+import { testOpenReadBookRef } from '../../utils/bookIdentityFixtures';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { RenameBookDialog } from '@/components/platform/rename-book-dialog';
@@ -13,7 +14,7 @@ vi.mock('@/hooks/useBookActions', () => ({
 
 // Create a minimal mock book for testing
 const createMockBook = (overrides?: Partial<Book>): Book => ({
-  hash: 'book-123',
+  hash: testOpenReadBookRef('book-123'),
   title: 'Original Title',
   author: 'Test Author',
   format: 'epub',
@@ -258,7 +259,7 @@ describe('RenameBookDialog', () => {
 
     it('should update title when dialog opens with different book', () => {
       const anotherBook = createMockBook({
-        hash: 'book-456',
+        hash: testOpenReadBookRef('book-456'),
         title: 'Another Book Title',
       });
 

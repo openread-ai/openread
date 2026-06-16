@@ -1,3 +1,4 @@
+import { testOpenReadBookRef } from '../../utils/bookIdentityFixtures';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import React from 'react';
@@ -179,7 +180,7 @@ vi.mock('@/store/libraryViewStore', () => ({
 import { useLibraryViewStore } from '@/store/libraryViewStore';
 
 const createMockBook = (overrides: Partial<Book> = {}): Book => ({
-  hash: 'test-hash-123',
+  hash: testOpenReadBookRef('test-hash-123'),
   title: 'Test Book Title',
   author: 'Test Author',
   format: 'epub',
@@ -227,7 +228,7 @@ describe('BookCard', () => {
     });
 
     it('should link to reader with correct href in normal mode', () => {
-      const book = createMockBook({ hash: 'book-hash-abc' });
+      const book = createMockBook({ hash: testOpenReadBookRef('book-hash-abc') });
       render(<BookCard book={book} />);
       const link = screen.getByRole('link');
       expect(link.getAttribute('href')).toBe('/reader?ids=book-hash-abc');
@@ -329,7 +330,7 @@ describe('BookCard', () => {
         setSelectMode: mockSetSelectMode,
       } as ReturnType<typeof useLibraryViewStore>);
 
-      const book = createMockBook({ hash: 'test-hash-123' });
+      const book = createMockBook({ hash: testOpenReadBookRef('test-hash-123') });
       render(<BookCard book={book} enableSelectionActions />);
       const container = document.querySelector('.ring-primary');
       expect(container).toBeTruthy();
@@ -357,13 +358,13 @@ describe('BookCard', () => {
     });
 
     it('should hide Select Multiple by default when the surface has no bulk toolbar', () => {
-      const book = createMockBook({ hash: 'book-123' });
+      const book = createMockBook({ hash: testOpenReadBookRef('book-123') });
       render(<BookCard book={book} />);
       expect(screen.queryByText('Select Multiple')).toBeNull();
     });
 
     it('should trigger select mode when Select Multiple is enabled and clicked', () => {
-      const book = createMockBook({ hash: 'book-123' });
+      const book = createMockBook({ hash: testOpenReadBookRef('book-123') });
       render(<BookCard book={book} enableSelectionActions />);
       fireEvent.click(screen.getByText('Select Multiple'));
       expect(mockSetSelectMode).toHaveBeenCalledWith(true);
@@ -414,7 +415,7 @@ describe('BookCard', () => {
     });
 
     it('should toggle selection on card click in select mode', () => {
-      const book = createMockBook({ hash: 'book-456' });
+      const book = createMockBook({ hash: testOpenReadBookRef('book-456') });
       render(<BookCard book={book} enableSelectionActions />);
       // Click on the title (part of the card content)
       fireEvent.click(screen.getByText('Test Book Title'));
@@ -422,7 +423,7 @@ describe('BookCard', () => {
     });
 
     it('should toggle selection on checkbox change', () => {
-      const book = createMockBook({ hash: 'book-789' });
+      const book = createMockBook({ hash: testOpenReadBookRef('book-789') });
       render(<BookCard book={book} enableSelectionActions />);
       fireEvent.click(screen.getByTestId('checkbox'));
       expect(mockToggleBookSelection).toHaveBeenCalledWith('book-789');
@@ -436,7 +437,7 @@ describe('BookCard', () => {
         setSelectMode: mockSetSelectMode,
       } as ReturnType<typeof useLibraryViewStore>);
 
-      const book = createMockBook({ hash: 'selected-book' });
+      const book = createMockBook({ hash: testOpenReadBookRef('selected-book') });
       render(<BookCard book={book} enableSelectionActions />);
       const checkbox = screen.getByTestId('checkbox') as HTMLInputElement;
       expect(checkbox.checked).toBe(true);

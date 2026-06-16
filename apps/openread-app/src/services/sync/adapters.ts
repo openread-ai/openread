@@ -1,4 +1,10 @@
 import type { DeviceId, SyncMutation, SyncPayloadByEntity, UserId } from '@openread/sync';
+import {
+  parseMetaHash,
+  parseSyncableBookRef,
+  type MetaHash,
+  type SyncableBookRef,
+} from '@openread/types';
 
 import { CLOUD_BOOKS_SUBDIR } from '@/services/constants';
 import type { AIConversation, AIMessage } from '@/services/ai/types';
@@ -55,6 +61,23 @@ const jsonClone = <T>(value: T): T | undefined => {
 const optionalString = (value: unknown): string | null =>
   typeof value === 'string' && value.length > 0 ? value : null;
 
+const requireSyncableBookRef = (value: unknown, field: string): SyncableBookRef => {
+  const parsed = parseSyncableBookRef(value);
+  if (!parsed) throw new Error(`Invalid syncable book reference for ${field}`);
+  return parsed;
+};
+
+const optionalMetaHash = (value: unknown, field: string): MetaHash | null => {
+  const raw = optionalString(value);
+  if (!raw) return null;
+  const parsed = parseMetaHash(raw);
+  if (!parsed) throw new Error(`Invalid metaHash for ${field}`);
+  return parsed;
+};
+
+const syncableBookRefs = (values: string[] | undefined, field: string): SyncableBookRef[] =>
+  Array.isArray(values) ? values.map((value) => requireSyncableBookRef(value, field)) : [];
+
 const optionalSerializableRecord = (value: unknown): SerializableRecord | null => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const cloned = jsonClone(value) as unknown;
@@ -87,12 +110,13 @@ const withBase = <E extends SyncMutation['entity']>(
 export function buildBookMutation(book: Book, context: SyncMutationContext): SyncMutation<'book'> {
   const now = context.now ?? Date.now();
   const updatedAt = latestTimestamp(book.updatedAt ?? book.lastUpdated, book.deletedAt, now);
+  const bookHash = requireSyncableBookRef(book.hash, 'book.hash');
   const payload: SyncPayloadByEntity['book'] = {
-    hash: book.hash,
+    hash: bookHash,
     title: book.title || 'Untitled',
     author: optionalString(book.author),
     format: optionalString(book.format),
-    metaHash: optionalString(book.metaHash),
+    metaHash: optionalMetaHash(book.metaHash, 'book.metaHash'),
     sourceTitle: optionalString(book.sourceTitle),
     groupId: optionalString(book.groupId),
     groupName: optionalString(book.groupName),
@@ -109,7 +133,7 @@ export function buildBookMutation(book: Book, context: SyncMutationContext): Syn
   };
 
   return {
-    ...withBase('book', book.hash, context, updatedAt),
+    ...withBase('book', bookHash, context, updatedAt),
     payload,
   };
 }
@@ -120,10 +144,10 @@ export function buildBookConfigMutation(
 ): SyncMutation<'bookConfig'> {
   const now = context.now ?? Date.now();
   const updatedAt = toTimestamp(config.updatedAt, now);
-  const bookHash = config.bookHash ?? '';
+  const bookHash = requireSyncableBookRef(config.bookHash, 'bookConfig.bookHash');
   const payload: SyncPayloadByEntity['bookConfig'] = {
     bookHash,
-    metaHash: optionalString(config.metaHash),
+    metaHash: optionalMetaHash(config.metaHash, 'bookConfig.metaHash'),
     location: optionalString(config.location),
     xpointer: optionalString(config.xpointer),
     progress: optionalSerializableValue(config.progress),
@@ -144,12 +168,12 @@ export function buildBookNoteMutation(
 ): SyncMutation<'bookNote'> {
   const now = context.now ?? Date.now();
   const updatedAt = latestTimestamp(note.updatedAt, note.deletedAt, now);
-  const bookHash = note.bookHash ?? '';
+  const bookHash = requireSyncableBookRef(note.bookHash, 'bookNote.bookHash');
   const entityId = `${bookHash}:${note.id}`;
   const payload: SyncPayloadByEntity['bookNote'] = {
     id: note.id,
     bookHash,
-    metaHash: optionalString(note.metaHash),
+    metaHash: optionalMetaHash(note.metaHash, 'bookNote.metaHash'),
     type: note.type,
     cfi: note.cfi,
     text: optionalString(note.text),
@@ -204,7 +228,7 @@ export function buildCollectionMutation(
   const payload: SyncPayloadByEntity['collection'] = {
     id: collection.id,
     name: collection.name || 'Untitled collection',
-    bookHashes: Array.isArray(collection.bookHashes) ? [...collection.bookHashes] : [],
+    bookHashes: syncableBookRefs(collection.bookHashes, 'collection.bookHashes'),
     createdAt: toTimestamp(collection.createdAt, updatedAt),
     updatedAt,
     deletedAt: typeof collection.deletedAt === 'number' ? collection.deletedAt : null,
@@ -229,15 +253,20 @@ export function buildAIConversationMutation(
 ): SyncMutation<'aiConversation'> {
   const now = context.now ?? Date.now();
   const updatedAt = latestTimestamp(conversation.updatedAt, conversation.deletedAt, now);
-  const payload: SyncPayloadByEntity['aiConversation'] & { parallelBookHashes?: string[] } = {
+  const payload: SyncPayloadByEntity['aiConversation'] = {
     id: conversation.id,
-    bookHash: conversation.bookHash,
+    bookHash: requireSyncableBookRef(conversation.bookHash, 'aiConversation.bookHash'),
     title: conversation.title || 'New conversation',
     createdAt: toTimestamp(conversation.createdAt, updatedAt),
     updatedAt,
     deletedAt: typeof conversation.deletedAt === 'number' ? conversation.deletedAt : null,
     ...(conversation.parallelBookHashes?.length
-      ? { parallelBookHashes: [...conversation.parallelBookHashes] }
+      ? {
+          parallelBookHashes: syncableBookRefs(
+            conversation.parallelBookHashes,
+            'aiConversation.parallelBookHashes',
+          ),
+        }
       : {}),
   };
 
@@ -280,7 +309,7 @@ export function buildFileMetadataMutation(
   const storageKey = `${context.userId}/${CLOUD_BOOKS_SUBDIR}/${getRemoteBookFilename(book)}`;
   const payload: SyncPayloadByEntity['fileMetadata'] = {
     id: storageKey,
-    bookHash: book.hash,
+    bookHash: requireSyncableBookRef(book.hash, 'fileMetadata.bookHash'),
     fileType: 'book',
     storageKey,
     status: 'uploaded',
@@ -310,7 +339,7 @@ export function buildFileMetadataMutationsFromBook(
       ...withBase('fileMetadata', coverStorageKey, context, coverUploadedAt),
       payload: {
         id: coverStorageKey,
-        bookHash: book.hash,
+        bookHash: requireSyncableBookRef(book.hash, 'fileMetadata.bookHash'),
         fileType: 'cover',
         storageKey: coverStorageKey,
         status: 'uploaded',

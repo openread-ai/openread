@@ -133,7 +133,7 @@ describe('ProofreadRulesManager', () => {
 
     (useReaderStore.setState as unknown as (state: unknown) => void)({
       viewStates: {
-        book1: {
+        d41d8cd98f00b204e9800998ecf8427e: {
           viewSettings: {
             proofreadRules: [],
           },
@@ -141,7 +141,7 @@ describe('ProofreadRulesManager', () => {
       },
     });
 
-    useSidebarStore.setState({ sideBarBookKey: 'book1' });
+    useSidebarStore.setState({ sideBarBookKey: 'd41d8cd98f00b204e9800998ecf8427e' });
 
     // Act: render and open dialog
     renderWithProviders(<ProofreadRulesManager />);
@@ -197,7 +197,7 @@ describe('ProofreadRulesManager', () => {
 
     (useReaderStore.setState as unknown as (state: unknown) => void)({
       viewStates: {
-        book1: {
+        d41d8cd98f00b204e9800998ecf8427e: {
           viewSettings: {
             proofreadRules: [selectionRule, bookRule],
           },
@@ -207,8 +207,8 @@ describe('ProofreadRulesManager', () => {
 
     (useBookDataStore.setState as unknown as (state: unknown) => void)({
       booksData: {
-        book1: {
-          id: 'book1',
+        d41d8cd98f00b204e9800998ecf8427e: {
+          id: 'd41d8cd98f00b204e9800998ecf8427e',
           book: null,
           file: null,
           config: {
@@ -222,7 +222,7 @@ describe('ProofreadRulesManager', () => {
       },
     });
 
-    useSidebarStore.setState({ sideBarBookKey: 'book1' });
+    useSidebarStore.setState({ sideBarBookKey: 'd41d8cd98f00b204e9800998ecf8427e' });
 
     // Act: render and open dialog
     renderWithProviders(<ProofreadRulesManager />);
@@ -293,7 +293,7 @@ describe('ProofreadRulesManager', () => {
 
     (useReaderStore.setState as unknown as (state: unknown) => void)({
       viewStates: {
-        book1: {
+        d41d8cd98f00b204e9800998ecf8427e: {
           viewSettings: {
             proofreadRules: [selectionRule, bookRule],
           },
@@ -303,8 +303,8 @@ describe('ProofreadRulesManager', () => {
 
     (useBookDataStore.setState as unknown as (state: unknown) => void)({
       booksData: {
-        book1: {
-          id: 'book1',
+        d41d8cd98f00b204e9800998ecf8427e: {
+          id: 'd41d8cd98f00b204e9800998ecf8427e',
           book: null,
           file: null,
           config: {
@@ -318,7 +318,7 @@ describe('ProofreadRulesManager', () => {
       },
     });
 
-    useSidebarStore.setState({ sideBarBookKey: 'book1' });
+    useSidebarStore.setState({ sideBarBookKey: 'd41d8cd98f00b204e9800998ecf8427e' });
 
     renderWithProviders(<ProofreadRulesManager />);
     await Promise.resolve();
@@ -371,7 +371,7 @@ describe('ProofreadRulesManager', () => {
 
     (useReaderStore.setState as unknown as (state: unknown) => void)({
       viewStates: {
-        book1: {
+        d41d8cd98f00b204e9800998ecf8427e: {
           viewSettings: {
             proofreadRules: [caseSensitiveRule, caseInsensitiveRule],
           },
@@ -381,8 +381,8 @@ describe('ProofreadRulesManager', () => {
 
     (useBookDataStore.setState as unknown as (state: unknown) => void)({
       booksData: {
-        book1: {
-          id: 'book1',
+        d41d8cd98f00b204e9800998ecf8427e: {
+          id: 'd41d8cd98f00b204e9800998ecf8427e',
           book: null,
           file: null,
           config: {
@@ -396,7 +396,7 @@ describe('ProofreadRulesManager', () => {
       },
     });
 
-    useSidebarStore.setState({ sideBarBookKey: 'book1' });
+    useSidebarStore.setState({ sideBarBookKey: 'd41d8cd98f00b204e9800998ecf8427e' });
 
     renderWithProviders(<ProofreadRulesManager />);
     await Promise.resolve();
@@ -424,10 +424,10 @@ describe('ProofreadRulesManager', () => {
     });
     (useReaderStore.setState as unknown as (state: unknown) => void)({
       viewStates: {
-        book1: { viewSettings: { proofreadRules: [] } },
+        d41d8cd98f00b204e9800998ecf8427e: { viewSettings: { proofreadRules: [] } },
       },
     });
-    useSidebarStore.setState({ sideBarBookKey: 'book1' });
+    useSidebarStore.setState({ sideBarBookKey: 'd41d8cd98f00b204e9800998ecf8427e' });
 
     // Render both menu and window
     renderWithProviders(
@@ -460,7 +460,7 @@ describe('ProofreadRulesManager', () => {
 
     (useReaderStore.setState as unknown as (state: unknown) => void)({
       viewStates: {
-        book1: {
+        d41d8cd98f00b204e9800998ecf8427e: {
           viewSettings: {
             proofreadRules: [],
           },
@@ -468,7 +468,7 @@ describe('ProofreadRulesManager', () => {
       },
     });
 
-    useSidebarStore.setState({ sideBarBookKey: 'book1' });
+    useSidebarStore.setState({ sideBarBookKey: 'd41d8cd98f00b204e9800998ecf8427e' });
 
     renderWithProviders(<ProofreadRulesManager />);
     await Promise.resolve();
@@ -518,7 +518,7 @@ describe('ProofreadRulesManager', () => {
 
     (useReaderStore.setState as unknown as (state: unknown) => void)({
       viewStates: {
-        book1: {
+        d41d8cd98f00b204e9800998ecf8427e: {
           viewSettings: {
             proofreadRules: [bookRule],
           },
@@ -528,8 +528,8 @@ describe('ProofreadRulesManager', () => {
 
     (useBookDataStore.setState as unknown as (state: unknown) => void)({
       booksData: {
-        book1: {
-          id: 'book1',
+        d41d8cd98f00b204e9800998ecf8427e: {
+          id: 'd41d8cd98f00b204e9800998ecf8427e',
           book: null,
           file: null,
           config: {
@@ -543,7 +543,7 @@ describe('ProofreadRulesManager', () => {
       },
     });
 
-    useSidebarStore.setState({ sideBarBookKey: 'book1' });
+    useSidebarStore.setState({ sideBarBookKey: 'd41d8cd98f00b204e9800998ecf8427e' });
 
     renderWithProviders(<ProofreadRulesManager />);
     await Promise.resolve();

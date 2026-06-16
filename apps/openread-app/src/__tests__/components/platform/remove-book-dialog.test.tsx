@@ -1,3 +1,4 @@
+import { testOpenReadBookRef } from '../../utils/bookIdentityFixtures';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import React from 'react';
@@ -81,7 +82,7 @@ vi.mock('@/components/primitives/button', () => ({
 }));
 
 const createMockBook = (overrides: Partial<Book> = {}): Book => ({
-  hash: 'book-123',
+  hash: testOpenReadBookRef('book-123'),
   title: 'Test Book',
   author: 'Test Author',
   format: 'epub',

@@ -9,6 +9,7 @@
  */
 
 import type { SyncMutation, SyncTombstone } from '@openread/sync';
+import type { SyncableBookRef } from '@openread/types';
 
 import { createBackendSyncTransport } from './backendTransport';
 import { SyncEngine, type SyncDrainResult } from './engine';
@@ -35,7 +36,7 @@ import { getPlatformFetch } from '@/utils/fetch';
 import type { AIConversation, AIMessage } from '@/services/ai/types';
 import { aiStore } from '@/services/ai/storage/aiStore';
 import { useAIChatStore } from '@/store/aiChatStore';
-import { isSyncableLibraryBookHash } from '@/utils/bookHash';
+import { isSyncableLibraryBookHash, parseSyncableBookRef } from '@/utils/bookHash';
 import { getDeviceId } from '@/services/deviceService';
 import {
   buildAIConversationMutation,
@@ -111,16 +112,20 @@ function computeMaxTombstoneTimestamp(tombstones: SyncTombstone[]): number {
   );
 }
 
-function parseBookNoteEntityId(entityId: string): { bookHash: string; noteId: string } | null {
-  const separatorIndex = entityId.indexOf(':');
+function parseBookNoteEntityId(
+  entityId: string,
+): { bookHash: SyncableBookRef; noteId: string } | null {
+  const separatorIndex = entityId.lastIndexOf(':');
   if (separatorIndex <= 0 || separatorIndex === entityId.length - 1) return null;
+  const bookHash = parseSyncableBookRef(entityId.slice(0, separatorIndex));
+  if (!bookHash) return null;
   return {
-    bookHash: entityId.slice(0, separatorIndex),
+    bookHash,
     noteId: entityId.slice(separatorIndex + 1),
   };
 }
 
-function configDeletePatch(bookHash: string, deletedAt: number): Partial<BookConfig> {
+function configDeletePatch(bookHash: SyncableBookRef, deletedAt: number): Partial<BookConfig> {
   return {
     bookHash,
     progress: undefined,
@@ -864,7 +869,7 @@ export class SyncWorker {
       const bookDataStore = useBookDataStore.getState();
       // Build lookup map of active (non-deleted) books to skip orphaned configs
       const library = useLibraryStore.getState().library;
-      const bookByHash = new Map(library.map((b) => [b.hash, b]));
+      const bookByHash = new Map<string, (typeof library)[number]>(library.map((b) => [b.hash, b]));
 
       const booksToUpdate: Array<{
         hash: string;
@@ -880,7 +885,7 @@ export class SyncWorker {
         const book = bookByHash.get(config.bookHash);
         if (!book) continue;
         acceptedConfigRecords.push(dbConfigs[index] as unknown as BookDataRecord);
-        const bookKey = `${book.hash}-${book.format}`;
+        const bookKey = book.hash;
         const existing = bookDataStore.getConfig(bookKey);
         if (!existing || (config.updatedAt ?? 0) >= (existing.updatedAt ?? 0)) {
           const merged = { ...existing, ...config };
@@ -906,11 +911,12 @@ export class SyncWorker {
       }
 
       for (const tombstone of configTombstones) {
-        const bookHash = tombstone.entityId;
+        const bookHash = parseSyncableBookRef(tombstone.entityId);
+        if (!bookHash) continue;
         const book = bookByHash.get(bookHash);
         if (!book) continue;
         const deletedAt = tombstoneTimestamp(tombstone);
-        const bookKey = `${book.hash}-${book.format}`;
+        const bookKey = book.hash;
         const existing = bookDataStore.getConfig(bookKey);
         if (!existing || deletedAt >= (existing.updatedAt ?? 0)) {
           const patch = configDeletePatch(bookHash, deletedAt);
@@ -978,14 +984,14 @@ export class SyncWorker {
 
       // Build lookup map of active (non-deleted) books to skip orphaned notes
       const library = useLibraryStore.getState().library;
-      const bookByHash = new Map(library.map((b) => [b.hash, b]));
+      const bookByHash = new Map<string, (typeof library)[number]>(library.map((b) => [b.hash, b]));
 
       const appliedNoteKeys = new Set<string>();
       const appliedNoteTombstones: SyncTombstone[] = [];
       for (const [bookHash, bookNotes] of notesByBook) {
         const book = bookByHash.get(bookHash);
         if (!book) continue;
-        const bookKey = `${book.hash}-${book.format}`;
+        const bookKey = book.hash;
         const config = bookDataStore.getConfig(bookKey);
         if (!config) continue;
 
@@ -1018,7 +1024,7 @@ export class SyncWorker {
         if (!parsed) continue;
         const book = bookByHash.get(parsed.bookHash);
         if (!book) continue;
-        const bookKey = `${book.hash}-${book.format}`;
+        const bookKey = book.hash;
         const config = bookDataStore.getConfig(bookKey);
         if (!config) continue;
 

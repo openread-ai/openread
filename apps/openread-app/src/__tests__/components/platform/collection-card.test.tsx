@@ -1,3 +1,4 @@
+import { testOpenReadBookRef } from '../../utils/bookIdentityFixtures';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import React from 'react';
@@ -38,7 +39,7 @@ vi.mock('@/components/BookCover', () => ({
 // Mock the stores
 const mockLibrary: Book[] = [
   {
-    hash: 'book-1',
+    hash: testOpenReadBookRef('book-1'),
     title: 'Book One',
     author: 'Author One',
     format: 'epub',
@@ -47,7 +48,7 @@ const mockLibrary: Book[] = [
     coverImageUrl: 'https://example.com/cover1.jpg',
   },
   {
-    hash: 'book-2',
+    hash: testOpenReadBookRef('book-2'),
     title: 'Book Two',
     author: 'Author Two',
     format: 'pdf',

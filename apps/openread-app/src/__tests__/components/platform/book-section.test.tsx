@@ -1,3 +1,4 @@
+import { testOpenReadBookRef } from '../../utils/bookIdentityFixtures';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 import React from 'react';
@@ -39,7 +40,7 @@ vi.mock('@/components/primitives/skeleton', () => ({
 }));
 
 const createMockBook = (overrides: Partial<Book> = {}): Book => ({
-  hash: `hash-${Math.random().toString(36).substring(7)}`,
+  hash: testOpenReadBookRef(`hash-${Math.random().toString(36).substring(7)}`),
   title: 'Test Book',
   author: 'Test Author',
   format: 'epub',
@@ -66,9 +67,9 @@ describe('BookSection', () => {
 
     it('should render all book cards', () => {
       const books = [
-        createMockBook({ hash: 'book-1', title: 'Book One' }),
-        createMockBook({ hash: 'book-2', title: 'Book Two' }),
-        createMockBook({ hash: 'book-3', title: 'Book Three' }),
+        createMockBook({ hash: testOpenReadBookRef('book-1'), title: 'Book One' }),
+        createMockBook({ hash: testOpenReadBookRef('book-2'), title: 'Book Two' }),
+        createMockBook({ hash: testOpenReadBookRef('book-3'), title: 'Book Three' }),
       ];
       render(<BookSection title='Library' books={books} />);
 
@@ -78,7 +79,7 @@ describe('BookSection', () => {
     });
 
     it('should pass showProgress prop to BookCard', () => {
-      const books = [createMockBook({ hash: 'book-1' })];
+      const books = [createMockBook({ hash: testOpenReadBookRef('book-1') })];
       render(<BookSection title='Reading' books={books} showProgress />);
 
       const card = screen.getByTestId('book-card-book-1');
@@ -136,7 +137,7 @@ describe('BookSection', () => {
     });
 
     it('should not render book cards when loading', () => {
-      const books = [createMockBook({ hash: 'book-1' })];
+      const books = [createMockBook({ hash: testOpenReadBookRef('book-1') })];
       render(<BookSection title='Loading Section' books={books} isLoading />);
       expect(screen.queryByTestId('book-card-book-1')).toBeNull();
     });
@@ -151,7 +152,7 @@ describe('BookSection', () => {
     });
 
     it('should preserve top padding in horizontal rails so selected card rings are not clipped', () => {
-      const books = [createMockBook({ hash: 'book-1' })];
+      const books = [createMockBook({ hash: testOpenReadBookRef('book-1') })];
       const { container } = render(<BookSection title='Library' books={books} />);
 
       const rail = container.querySelector('.overflow-x-auto');

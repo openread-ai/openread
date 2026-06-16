@@ -26,8 +26,8 @@ import type {
 } from '../index.js';
 
 describe('BookCore types', () => {
-  it('BookCore.hash should be string', () => {
-    expectTypeOf<BookCore['hash']>().toEqualTypeOf<string>();
+  it('BookCore.hash should be string-compatible canonical identity', () => {
+    expectTypeOf<BookCore['hash']>().toMatchTypeOf<string>();
   });
 
   it('BookCore.createdAt should be number (epoch-ms)', () => {
@@ -68,7 +68,7 @@ describe('Book types', () => {
   });
 
   it('Book nullable fields should accept null', () => {
-    expectTypeOf<Book['metaHash']>().toEqualTypeOf<string | null>();
+    expectTypeOf<Book['metaHash']>().toMatchTypeOf<string | null>();
     expectTypeOf<Book['author']>().toEqualTypeOf<string | null>();
     expectTypeOf<Book['sizeBytes']>().toEqualTypeOf<number | null>();
     expectTypeOf<Book['storagePath']>().toEqualTypeOf<string | null>();

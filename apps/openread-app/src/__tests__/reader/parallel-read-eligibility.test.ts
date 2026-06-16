@@ -1,3 +1,4 @@
+import { testOpenReadBookRef } from '../utils/bookIdentityFixtures';
 import { describe, expect, it } from 'vitest';
 import {
   PARALLEL_READ_MENU_LIMIT,
@@ -8,7 +9,7 @@ import type { Book } from '@/types/book';
 
 function book(overrides: Partial<Book>): Book {
   return {
-    hash: 'book-hash',
+    hash: testOpenReadBookRef('book-hash'),
     title: 'Test Book',
     author: 'Test Author',
     format: 'epub',
@@ -21,7 +22,7 @@ describe('canOfferBookForParallelRead', () => {
     expect(
       canOfferBookForParallelRead(
         book({
-          hash: 'catalog-placeholder',
+          hash: testOpenReadBookRef('catalog-placeholder'),
           catalogBookId: 'catalog-book-id',
           downloadedAt: null,
           storagePath: null,
@@ -35,7 +36,7 @@ describe('canOfferBookForParallelRead', () => {
     expect(
       canOfferBookForParallelRead(
         book({
-          hash: 'uploaded-cloud-book',
+          hash: testOpenReadBookRef('uploaded-cloud-book'),
           downloadedAt: null,
           storagePath: null,
           uploadedAt: Date.now(),
@@ -60,7 +61,7 @@ describe('canOfferBookForParallelRead', () => {
   it('bounds the rendered Parallel Read menu list for large libraries', () => {
     const books = Array.from({ length: 100 }, (_, index) =>
       book({
-        hash: `book-${index.toString().padStart(3, '0')}`,
+        hash: testOpenReadBookRef(`book-${index.toString().padStart(3, '0')}`),
         title: `Book ${index.toString().padStart(3, '0')}`,
         storagePath: `users/u/books/book-${index}.epub`,
       }),
@@ -71,9 +72,9 @@ describe('canOfferBookForParallelRead', () => {
 
   it('sorts the bounded menu deterministically by title', () => {
     const books = [
-      book({ hash: 'z', title: 'Zeta', storagePath: 'z.epub' }),
-      book({ hash: 'b', title: 'Buy Back Your Time', storagePath: 'b.epub' }),
-      book({ hash: 'a', title: 'Alpha', storagePath: 'a.epub' }),
+      book({ hash: testOpenReadBookRef('z'), title: 'Zeta', storagePath: 'z.epub' }),
+      book({ hash: testOpenReadBookRef('b'), title: 'Buy Back Your Time', storagePath: 'b.epub' }),
+      book({ hash: testOpenReadBookRef('a'), title: 'Alpha', storagePath: 'a.epub' }),
     ];
 
     expect(getParallelReadMenuBooks(books).map((item) => item.title)).toEqual([

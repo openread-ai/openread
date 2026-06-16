@@ -15,7 +15,7 @@ vi.mock('@/utils/access', () => ({
 }));
 
 vi.mock('@/services/environment', () => ({
-  getAPIBaseUrl: () => '/api',
+  getNodeAPIBaseUrl: () => '/api',
 }));
 
 vi.mock('@/utils/logger', () => ({
@@ -32,7 +32,16 @@ vi.mock('@/utils/logger', () => ({
 const GB = 1024 * 1024 * 1024;
 
 const MOCK_QUOTA_RESPONSE = {
-  plan: 'reader',
+  totalFiles: 3,
+  totalSize: 3 * GB,
+  usage: 3 * GB,
+  quota: 10 * GB,
+  usagePercentage: 30,
+  byBookHash: [],
+};
+
+const EXPECTED_QUOTA = {
+  plan: 'current',
   base_gb: 10,
   addon_gb: 0,
   total_bytes: 10 * GB,
@@ -73,10 +82,10 @@ describe('useStorageQuota', () => {
       expect(result.current.isLoading).toBe(false);
     });
 
-    expect(result.current.quota).toEqual(MOCK_QUOTA_RESPONSE);
+    expect(result.current.quota).toEqual(EXPECTED_QUOTA);
     expect(result.current.error).toBeNull();
     expect(global.fetch).toHaveBeenCalledWith(
-      '/api/storage/quota',
+      '/api/files/stats',
       expect.objectContaining({
         headers: { Authorization: 'Bearer mock-access-token' },
       }),

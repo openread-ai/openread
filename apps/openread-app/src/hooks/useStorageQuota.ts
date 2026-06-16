@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { getAPIBaseUrl } from '@/services/environment';
+import { getNodeAPIBaseUrl } from '@/services/environment';
 import { getAccessToken } from '@/utils/access';
 import { createLogger } from '@/utils/logger';
 import type { StorageAddon } from '@/lib/tier-config';
@@ -51,7 +51,7 @@ export function useStorageQuota() {
 
     try {
       const accessToken = await getAccessToken();
-      const response = await fetch(`${getAPIBaseUrl()}/storage/quota`, {
+      const response = await fetch(`${getNodeAPIBaseUrl()}/files/stats`, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
@@ -61,8 +61,23 @@ export function useStorageQuota() {
         throw new Error(`Failed to fetch storage quota: ${response.status}`);
       }
 
-      const data: StorageQuotaData = await response.json();
-      setQuota(data);
+      const data = (await response.json()) as {
+        usage: number;
+        quota: number;
+        usagePercentage: number;
+      };
+      setQuota({
+        plan: 'current',
+        base_gb: data.quota / 1024 / 1024 / 1024,
+        addon_gb: 0,
+        total_bytes: data.quota,
+        used_bytes: data.usage,
+        available_bytes: Math.max(0, data.quota - data.usage),
+        percent_used: data.usagePercentage,
+        is_over_limit: data.usage > data.quota,
+        active_addons: [],
+        available_addons: [],
+      });
     } catch (err) {
       const fetchError = err instanceof Error ? err : new Error('Failed to fetch storage quota');
       logger.error('Storage quota fetch failed:', fetchError);

@@ -355,19 +355,15 @@ function tauriQaFetchResponse(url: URL, _init?: RequestInit): Response | null {
   if (path.endsWith('/api/stripe/portal')) {
     return jsonResponse({ url: 'https://billing.stripe.com/openread-tauri-qa' });
   }
-  if (path.endsWith('/api/storage/quota')) {
+  if (path.endsWith('/api/files/stats')) {
     const gb = 1024 * 1024 * 1024;
     return jsonResponse({
-      plan: 'reader',
-      base_gb: 10,
-      addon_gb: 0,
-      total_bytes: 10 * gb,
-      used_bytes: 0,
-      available_bytes: 10 * gb,
-      percent_used: 0,
-      is_over_limit: false,
-      active_addons: [],
-      available_addons: [],
+      totalFiles: 0,
+      totalSize: 0,
+      usage: 0,
+      quota: 10 * gb,
+      usagePercentage: 0,
+      byBookHash: [],
     });
   }
 

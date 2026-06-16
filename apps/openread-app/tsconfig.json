@@ -6,6 +6,8 @@
     "paths": {
       "@/*": ["./src/*"],
       "@/components/ui/*": ["./src/components/primitives/*"],
+      "@openread/storage": ["../../packages/storage/src/index.ts"],
+      "@openread/storage/*": ["../../packages/storage/src/*.ts"],
       "@openread/sync": ["../../packages/sync/src/index.ts"],
       "@openread/sync/*": ["../../packages/sync/src/*.ts"],
       "@pdfjs/*": ["./public/vendor/pdfjs/*"],

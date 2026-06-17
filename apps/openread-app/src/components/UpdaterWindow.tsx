@@ -8,7 +8,7 @@ import { check, Update } from '@tauri-apps/plugin-updater';
 import { relaunch, exit } from '@tauri-apps/plugin-process';
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import { Command } from '@tauri-apps/plugin-shell';
-import { invoke } from '@tauri-apps/api/core';
+import { runNativeCommand } from '@/services/bridge/bridgeService';
 import { desktopDir } from '@tauri-apps/api/path';
 import { isTauriAppPlatform } from '@/services/environment';
 import { useTranslator } from '@/hooks/useTranslator';
@@ -224,7 +224,7 @@ export const UpdaterContent = ({
           OS_ARCH === 'x86_64' ? 'windows-x86_64-portable' : 'windows-aarch64-portable';
         const arch = OS_ARCH === 'x86_64' ? 'x64' : 'arm64';
         const downloadUrl = data.platforms[platformKey]?.url as string;
-        const execDir = await invoke<string>('get_executable_dir');
+        const execDir = await runNativeCommand<string>('get_executable_dir');
         const exeFileName = `Openread_${data.version}_${arch}-portable.exe`;
         const exeFilePath = await join(execDir, exeFileName);
         setUpdate({

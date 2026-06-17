@@ -22,6 +22,7 @@ import { mountAdditionalFonts } from '@/styles/fonts';
 import { isTauriAppPlatform } from '@/services/environment';
 import { getThemeCode } from '@/utils/style';
 import { getSysFontsList, setSystemUIVisibility } from '@/utils/bridge';
+import { bridge } from '@/services/bridge/bridgeService';
 import { AboutWindow } from '@/components/AboutWindow';
 import { UpdaterWindow } from '@/components/UpdaterWindow';
 import { KOSyncSettingsWindow } from './KOSyncSettings';
@@ -88,16 +89,12 @@ const Reader: React.FC<{ ids?: string }> = ({ ids }) => {
       setTimeout(getSysFontsList, 3000);
       // Disable the native drag overlay so reader toolbar buttons are clickable.
       // The platform layout uses its own data-tauri-drag-region spacer div.
-      import('@tauri-apps/api/core').then(({ invoke }) => {
-        invoke('set_native_drag_region', { enabled: false }).catch(() => {});
-      });
+      bridge.send('setNativeDragRegion', { enabled: false }).catch(() => {});
     }
     initDayjs(getLocale());
     return () => {
       if (isTauriAppPlatform()) {
-        import('@tauri-apps/api/core').then(({ invoke }) => {
-          invoke('set_native_drag_region', { enabled: true }).catch(() => {});
-        });
+        bridge.send('setNativeDragRegion', { enabled: true }).catch(() => {});
       }
     };
   }, []);
@@ -123,8 +120,8 @@ const Reader: React.FC<{ ids?: string }> = ({ ids }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appService]);
 
-  const handleKeyDown = (event: CustomEvent) => {
-    if (event.detail.keyName === 'Back') {
+  const handleKeyDown = (event: { keyName: string }) => {
+    if (event.keyName === 'Back') {
       if (isSideBarVisible && !isSideBarPinned) {
         setSideBarVisible(false);
       } else if (isNotebookVisible && !isNotebookPinned) {
@@ -149,11 +146,11 @@ const Reader: React.FC<{ ids?: string }> = ({ ids }) => {
 
   useEffect(() => {
     if (appService?.isAndroidApp) {
-      eventDispatcher.onSync('native-key-down', handleKeyDown);
+      bridge.onSync('nativeKeyDown', handleKeyDown);
     }
     return () => {
       if (appService?.isAndroidApp) {
-        eventDispatcher.offSync('native-key-down', handleKeyDown);
+        bridge.offSync('nativeKeyDown', handleKeyDown);
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

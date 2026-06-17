@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { invoke } from '@tauri-apps/api/core';
+import { bridge } from '@/services/bridge/bridgeService';
 import { AppService } from '@/types/system';
 
 const WINDOW_CONTROL_PAD_X = 10.0;
@@ -42,8 +42,8 @@ export const useTrafficLightStore = create<TrafficLightState>((set, get) => {
         shouldShowTrafficLight: visible,
         trafficLightInFullscreen: isFullscreen,
       });
-      invoke('set_traffic_lights', {
-        visible: visible,
+      bridge.send('setTrafficLights', {
+        visible,
         x: position?.x ?? WINDOW_CONTROL_PAD_X,
         y: position?.y ?? WINDOW_CONTROL_PAD_Y,
       });

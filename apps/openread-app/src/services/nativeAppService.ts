@@ -13,7 +13,8 @@ import {
   WriteFileOptions,
   DirEntry,
 } from '@tauri-apps/plugin-fs';
-import { invoke, convertFileSrc } from '@tauri-apps/api/core';
+import { convertFileSrc } from '@tauri-apps/api/core';
+import { runNativeCommand } from '@/services/bridge/bridgeService';
 import { open as openDialog, save as saveDialog, ask } from '@tauri-apps/plugin-dialog';
 import {
   join,
@@ -322,7 +323,7 @@ export const nativeFileSystem: FileSystem = {
     // Use Rust WalkDir for massive performance gain on absolute paths
     if (!baseDir || baseDir === 0) {
       try {
-        const files = await invoke<{ path: string; size: number }[]>('read_dir', {
+        const files = await runNativeCommand<{ path: string; size: number }[]>('read_dir', {
           path: fp,
           recursive: true,
           extensions: ['*'],
@@ -432,7 +433,7 @@ export class NativeAppService extends BaseAppService {
   private execDir?: string = undefined;
 
   override async init() {
-    const execDir = await invoke<string>('get_executable_dir');
+    const execDir = await runNativeCommand<string>('get_executable_dir');
     this.execDir = execDir;
     if (
       process.env['NEXT_PUBLIC_PORTABLE_APP'] ||

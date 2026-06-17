@@ -1,3 +1,4 @@
+import { bridge } from '@/services/bridge/bridgeService';
 import { eventDispatcher } from '@/utils/event';
 import type { AnnotationActionEvent } from './menuConfig';
 import {
@@ -8,40 +9,6 @@ import {
 } from './menuConfig';
 import type { HighlightColor, HighlightStyle } from '@/types/book';
 
-declare global {
-  interface Window {
-    __nativeTextSelectionAction?: (action: string, color?: string, style?: string) => void;
-    __nativeFooterAction?: (action: string) => void;
-    webkit?: {
-      messageHandlers?: {
-        openreadColorPicker?: { postMessage: (data: unknown) => void };
-        openreadColorPickerHide?: { postMessage: (data: unknown) => void };
-        openreadFooterVisible?: { postMessage: (data: unknown) => void };
-        openreadToolbarVisible?: { postMessage: (data: unknown) => void };
-        openreadSidebarVisible?: { postMessage: (data: unknown) => void };
-        openreadSelectionToolbar?: { postMessage: (data: unknown) => void };
-        openreadRenameBook?: { postMessage: (data: unknown) => void };
-        openreadCollectionPicker?: { postMessage: (data: unknown) => void };
-        openreadCollectionToolbar?: { postMessage: (data: unknown) => void };
-        openreadTextInput?: { postMessage: (data: unknown) => void };
-        openreadChapterPull?: { postMessage: (data: unknown) => void };
-        openreadChatComposer?: { postMessage: (data: unknown) => void };
-      };
-    };
-  }
-}
-
-/**
- * Global callback invoked by native code (iOS Swift / Android Kotlin)
- * when a user taps a custom item in the native text selection menu.
- *
- * iOS:  evaluateJavaScript("window.__nativeTextSelectionAction('highlight', 'yellow', 'highlight')")
- * Android: evaluateJavascript("window.__nativeTextSelectionAction('highlight', 'yellow', 'highlight')", null)
- *
- * This bridges the native → JS boundary. The event is then handled by
- * the Annotator component via eventDispatcher, which already has the
- * current text selection state.
- */
 /** Runtime validation sets — derived from menuConfig to stay in sync automatically. */
 const VALID_ACTIONS: Set<string> = new Set(
   MENU_GROUPS.flatMap((g) => g.items.map((i) => i.action)),
@@ -65,7 +32,7 @@ function handleNativeAction(action: string, color?: string, style?: string): voi
 }
 
 /**
- * Register the global callback on window so native code can call it.
+ * Register the typed native text-selection bridge listener.
  * Safe to call multiple times — only registers once.
  */
 let registered = false;
@@ -74,12 +41,8 @@ export function registerNativeMenuBridge(): void {
   if (registered || typeof window === 'undefined') return;
   registered = true;
 
-  // Expose to native code via non-configurable property to prevent
-  // EPUB iframe scripts from overriding with a malicious handler
-  Object.defineProperty(window, '__nativeTextSelectionAction', {
-    value: handleNativeAction,
-    writable: false,
-    configurable: false,
+  bridge.on('textSelectionAction', ({ action, color, style }) => {
+    handleNativeAction(action, color, style);
   });
 }
 
@@ -115,20 +78,15 @@ export function showNativeColorPicker(
   selectedColor: string,
   showDelete: boolean,
 ): void {
-  window.webkit?.messageHandlers?.openreadColorPicker?.postMessage({
-    x,
-    y,
-    selectedColor,
-    showDelete,
-  });
+  void bridge.send('openColorPicker', { x, y, selectedColor, showDelete });
 }
 
-/** Check if native webkit message handlers are available (iOS). */
+/** Check if native bridge message handlers are available. */
 export function isNativeAvailable(): boolean {
-  return !!window.webkit?.messageHandlers?.openreadFooterVisible;
+  return bridge.can('setFooterVisible');
 }
 
-/** Show native iOS text input alert. Result sent to window.__nativeTextInputResult. */
+/** Show native iOS text input alert. Result sent through bridge.on('nativeTextInputResult'). */
 export function showNativeTextInputAlert(
   title: string,
   message: string,
@@ -136,7 +94,7 @@ export function showNativeTextInputAlert(
   defaultValue: string,
   callbackId: string,
 ): void {
-  window.webkit?.messageHandlers?.openreadTextInput?.postMessage({
+  void bridge.send('openTextInput', {
     title,
     message,
     placeholder,
@@ -147,26 +105,23 @@ export function showNativeTextInputAlert(
 
 /** Hide the native iOS UIKit color picker. */
 export function hideNativeColorPicker(): void {
-  window.webkit?.messageHandlers?.openreadColorPickerHide?.postMessage({});
+  void bridge.send('hideColorPicker', {});
 }
 
 /** Show/hide the native iOS UIKit footer bar. */
 export function setNativeFooterVisible(visible: boolean): void {
-  window.webkit?.messageHandlers?.openreadFooterVisible?.postMessage({ visible });
+  void bridge.send('setFooterVisible', { visible });
 }
 
 /** Update the active tab highlight on the native iOS footer bar. */
 export function setNativeFooterActiveTab(tab: string | null): void {
-  window.webkit?.messageHandlers?.openreadFooterVisible?.postMessage({
-    visible: true,
-    activeTab: tab,
-  });
+  void bridge.send('setFooterVisible', { visible: true, activeTab: tab });
 }
 
 export type ChatComposerAction = 'show' | 'hide' | 'running' | 'disabled';
 
 export function postChatComposer(action: ChatComposerAction, value?: boolean): void {
-  window.webkit?.messageHandlers?.openreadChatComposer?.postMessage({ action, value });
+  void bridge.send('postChatComposer', { action, value });
 }
 
 export type ChapterPullDirection = 'next' | 'prev' | 'reset';
@@ -176,5 +131,5 @@ export function postChapterPull(data: {
   progress?: number;
   committed?: boolean;
 }): void {
-  window.webkit?.messageHandlers?.openreadChapterPull?.postMessage(data);
+  void bridge.send('postChapterPull', data);
 }

@@ -121,6 +121,7 @@
     "@opennextjs/cloudflare": "^1.15.1",
     "@openread/ai-control": "workspace:*",
     "@openread/auth": "workspace:*",
+    "@openread/bridge": "workspace:*",
     "@openread/entitlements": "workspace:*",
     "@openread/sdk": "workspace:*",
     "@openread/settings": "workspace:*",

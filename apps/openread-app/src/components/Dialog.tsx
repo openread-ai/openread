@@ -9,7 +9,7 @@ import { useDeviceControlStore } from '@/store/deviceStore';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import { impactFeedback } from '@tauri-apps/plugin-haptics';
 import { getDirFromUILanguage } from '@/utils/rtl';
-import { eventDispatcher } from '@/utils/event';
+import { bridge } from '@/services/bridge/bridgeService';
 import { Overlay } from './Overlay';
 
 const VELOCITY_THRESHOLD = 0.5;
@@ -53,17 +53,18 @@ const Dialog: React.FC<DialogProps> = ({
   const iconSize22 = useResponsiveSize(22);
   const isMobile = window.innerWidth < 640 || window.innerHeight < 640;
 
-  const handleKeyDown = (event: KeyboardEvent | CustomEvent) => {
-    if (event instanceof CustomEvent) {
-      if (event.detail.keyName === 'Back') {
-        onClose();
-        return true;
-      }
-    } else {
-      if (event.key === 'Escape') {
-        onClose();
-      }
-      event.stopPropagation();
+  const handleKeyDown = (event: KeyboardEvent) => {
+    if (event.key === 'Escape') {
+      onClose();
+    }
+    event.stopPropagation();
+    return false;
+  };
+
+  const handleNativeKeyDown = (event: { keyName: string }) => {
+    if (event.keyName === 'Back') {
+      onClose();
+      return true;
     }
     return false;
   };
@@ -86,7 +87,7 @@ const Dialog: React.FC<DialogProps> = ({
     }
     if (appService?.isAndroidApp) {
       acquireBackKeyInterception();
-      eventDispatcher.onSync('native-key-down', handleKeyDown);
+      bridge.onSync('nativeKeyDown', handleNativeKeyDown);
     }
 
     const timer = setTimeout(() => {
@@ -99,7 +100,7 @@ const Dialog: React.FC<DialogProps> = ({
       window.removeEventListener('keydown', handleKeyDown);
       if (appService?.isAndroidApp) {
         releaseBackKeyInterception();
-        eventDispatcher.offSync('native-key-down', handleKeyDown);
+        bridge.offSync('nativeKeyDown', handleNativeKeyDown);
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

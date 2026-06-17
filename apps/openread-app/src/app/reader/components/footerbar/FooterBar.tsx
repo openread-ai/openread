@@ -8,6 +8,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useDeviceControlStore } from '@/store/deviceStore';
 import { eventDispatcher } from '@/utils/event';
+import { bridge } from '@/services/bridge/bridgeService';
 import { FooterBarProps, NavigationHandlers, FooterBarChildProps } from './types';
 import { computeProgress } from './progressUtils';
 import { debounce } from '@/utils/debounce';
@@ -163,17 +164,10 @@ const FooterBar: React.FC<FooterBarProps> = ({
   );
 
   const handleKeyDown = useCallback(
-    (event: KeyboardEvent | CustomEvent) => {
-      if (event instanceof CustomEvent) {
-        if (event.detail.keyName === 'Back') {
-          setHoveredBookKey('');
-          return true;
-        }
-      } else {
-        if (event.key === 'Escape') {
-          setHoveredBookKey('');
-        }
-        event.stopPropagation();
+    (event: { keyName: string }) => {
+      if (event.keyName === 'Back') {
+        setHoveredBookKey('');
+        return true;
       }
       return false;
     },
@@ -185,12 +179,12 @@ const FooterBar: React.FC<FooterBarProps> = ({
 
     if (hoveredBookKey) {
       acquireBackKeyInterception();
-      eventDispatcher.onSync('native-key-down', handleKeyDown);
+      bridge.onSync('nativeKeyDown', handleKeyDown);
     }
     return () => {
       if (hoveredBookKey) {
         releaseBackKeyInterception();
-        eventDispatcher.offSync('native-key-down', handleKeyDown);
+        bridge.offSync('nativeKeyDown', handleKeyDown);
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

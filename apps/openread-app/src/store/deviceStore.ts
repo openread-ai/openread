@@ -1,24 +1,5 @@
 import { create } from 'zustand';
 import { interceptKeys, getScreenBrightness, setScreenBrightness } from '@/utils/bridge';
-import { eventDispatcher } from '@/utils/event';
-import { NativeTouchEventType } from '@/types/system';
-
-declare global {
-  interface Window {
-    onNativeKeyDown?: (keyName: string) => void;
-    onNativeTouch?: (event: NativeTouchEventType) => void;
-  }
-}
-
-const handleNativeKeyDown = (keyName: string) => {
-  if (keyName === 'VolumeUp' || keyName === 'VolumeDown') {
-    return eventDispatcher.dispatch('native-key-down', { keyName });
-  }
-  if (keyName === 'Back') {
-    return eventDispatcher.dispatchSync('native-key-down', { keyName });
-  }
-  return false;
-};
 
 type DeviceControlState = {
   volumeKeysIntercepted: boolean;
@@ -43,7 +24,6 @@ export const useDeviceControlStore = create<DeviceControlState>((set, get) => ({
   acquireVolumeKeyInterception: () => {
     const { volumeKeysInterceptionCount } = get();
     if (volumeKeysInterceptionCount == 0) {
-      window.onNativeKeyDown = handleNativeKeyDown;
       interceptKeys({ volumeKeys: true });
       set({ volumeKeysIntercepted: true });
     }
@@ -63,7 +43,6 @@ export const useDeviceControlStore = create<DeviceControlState>((set, get) => ({
   acquireBackKeyInterception: () => {
     const { backKeyInterceptionCount } = get();
     if (backKeyInterceptionCount == 0) {
-      window.onNativeKeyDown = handleNativeKeyDown;
       interceptKeys({ backKey: true });
       set({ backKeyIntercepted: true });
     }
@@ -81,9 +60,7 @@ export const useDeviceControlStore = create<DeviceControlState>((set, get) => ({
   },
 
   listenToNativeTouchEvents: () => {
-    window.onNativeTouch = (event: NativeTouchEventType) => {
-      return eventDispatcher.dispatch('native-touch', event);
-    };
+    // Native touch callbacks are registered once by NativeBridgeRegistrar and emitted via bridge.on('nativeTouch').
   },
 
   getScreenBrightness: async () => {

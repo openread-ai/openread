@@ -1,7 +1,7 @@
 import { RefObject, useEffect, useRef } from 'react';
 import { useEnv } from '@/context/EnvContext';
 import { useDeviceControlStore } from '@/store/deviceStore';
-import { eventDispatcher } from '@/utils/event';
+import { bridge } from '@/services/bridge/bridgeService';
 
 interface UseKeyDownOptions {
   onCancel?: () => void;
@@ -24,19 +24,20 @@ export const useKeyDownActions = ({
   useEffect(() => {
     if (!enabled) return;
 
-    const handleKeyDown = (event: KeyboardEvent | CustomEvent) => {
-      if (event instanceof CustomEvent) {
-        if (event.detail.keyName === 'Back') {
-          onCancel?.();
-          return true;
-        }
-      } else {
-        if (event.key === 'Escape') {
-          onCancel?.();
-        } else if (event.key === 'Enter') {
-          onConfirm?.();
-        }
-        event.stopPropagation();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onCancel?.();
+      } else if (event.key === 'Enter') {
+        onConfirm?.();
+      }
+      event.stopPropagation();
+      return false;
+    };
+
+    const handleNativeKeyDown = (event: { keyName: string }) => {
+      if (event.keyName === 'Back') {
+        onCancel?.();
+        return true;
       }
       return false;
     };
@@ -49,7 +50,7 @@ export const useKeyDownActions = ({
 
     if (appService?.isAndroidApp) {
       acquireBackKeyInterception?.();
-      eventDispatcher.onSync('native-key-down', handleKeyDown);
+      bridge.onSync('nativeKeyDown', handleNativeKeyDown);
     }
 
     return () => {
@@ -57,7 +58,7 @@ export const useKeyDownActions = ({
 
       if (appService?.isAndroidApp) {
         releaseBackKeyInterception?.();
-        eventDispatcher.offSync('native-key-down', handleKeyDown);
+        bridge.offSync('nativeKeyDown', handleNativeKeyDown);
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

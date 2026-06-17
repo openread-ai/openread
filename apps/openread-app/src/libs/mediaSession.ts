@@ -1,7 +1,7 @@
 import { isTauriAppPlatform } from '@/services/environment';
 import { getOSPlatform } from '@/utils/misc';
-import { invoke } from '@tauri-apps/api/core';
 import { addPluginListener, PluginListener, PermissionState } from '@tauri-apps/api/core';
+import { runNativeCommand } from '@/services/bridge/bridgeService';
 import { createLogger } from '@/utils/logger';
 
 const logger = createLogger('mediaSession');
@@ -38,9 +38,9 @@ export class TauriMediaSession {
   private eventListeners: PluginListener[] = [];
 
   private async requestPostNotificationPermission() {
-    const permission = await invoke<Permissions>('plugin:native-tts|checkPermissions');
+    const permission = await runNativeCommand<Permissions>('plugin:native-tts|checkPermissions');
     if (permission.postNotification.startsWith('prompt')) {
-      await invoke<Permissions>('plugin:native-tts|requestPermissions', {
+      await runNativeCommand<Permissions>('plugin:native-tts|requestPermissions', {
         permissions: ['postNotification'],
       });
     }
@@ -101,7 +101,9 @@ export class TauriMediaSession {
 
   async updateMetadata(metadata: MediaMetadata) {
     try {
-      await invoke('plugin:native-tts|update_media_session_metadata', { payload: metadata });
+      await runNativeCommand('plugin:native-tts|update_media_session_metadata', {
+        payload: metadata,
+      });
     } catch (error) {
       logger.error('Failed to update media metadata:', error);
     }
@@ -109,7 +111,7 @@ export class TauriMediaSession {
 
   async updatePlaybackState(state: PlaybackState) {
     try {
-      await invoke('plugin:native-tts|update_media_session_state', { payload: state });
+      await runNativeCommand('plugin:native-tts|update_media_session_state', { payload: state });
     } catch (error) {
       logger.error('Failed to update playback state:', error);
     }
@@ -125,7 +127,7 @@ export class TauriMediaSession {
       } else {
         await this.cleanupListeners();
       }
-      await invoke('plugin:native-tts|set_media_session_active', {
+      await runNativeCommand('plugin:native-tts|set_media_session_active', {
         payload: sessionState,
       });
     } catch (error) {

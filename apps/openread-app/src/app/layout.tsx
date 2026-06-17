@@ -2,6 +2,7 @@ import * as React from 'react';
 import type { Metadata, Viewport } from 'next';
 import { EnvProvider } from '@/context/EnvContext';
 import Providers from '@/components/Providers';
+import { NativeBridgeRegistrar } from '@/components/bridge/NativeBridgeRegistrar';
 
 import '../styles/globals.css';
 
@@ -114,6 +115,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <EnvProvider>
+          <NativeBridgeRegistrar />
           <Providers>{children}</Providers>
         </EnvProvider>
       </body>

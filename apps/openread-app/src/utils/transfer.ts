@@ -1,4 +1,5 @@
-import { invoke, Channel } from '@tauri-apps/api/core';
+import { Channel } from '@tauri-apps/api/core';
+import { runNativeCommand } from '@/services/bridge/bridgeService';
 
 export type UploadMethod = 'POST' | 'PUT';
 
@@ -107,7 +108,7 @@ export const tauriUpload = async (
     onProgress.onmessage = progressHandler;
   }
 
-  return await invoke('upload_file', {
+  return await runNativeCommand('upload_file', {
     id,
     url,
     filePath,
@@ -135,7 +136,7 @@ export const tauriDownload = async (
     onProgress.onmessage = progressHandler;
   }
 
-  const responseHeaders = await invoke<Record<string, string>>('download_file', {
+  const responseHeaders = await runNativeCommand<Record<string, string>>('download_file', {
     id,
     url,
     filePath,

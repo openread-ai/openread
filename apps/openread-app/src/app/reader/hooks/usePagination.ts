@@ -6,6 +6,7 @@ import { useReaderStore } from '@/store/readerStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useDeviceControlStore } from '@/store/deviceStore';
 import { eventDispatcher } from '@/utils/event';
+import { bridge } from '@/services/bridge/bridgeService';
 import { isTauriAppPlatform } from '@/services/environment';
 import { tauriGetWindowLogicalPosition } from '@/utils/window';
 
@@ -207,15 +208,7 @@ export const usePagination = (
       }
     } else if (msg instanceof CustomEvent) {
       const viewSettings = getViewSettings(bookKey);
-      if (msg.type === 'native-key-down' && viewSettings?.volumeKeysToFlip) {
-        const { keyName } = msg.detail;
-        setHoveredBookKey('');
-        if (keyName === 'VolumeUp') {
-          viewPagination(viewRef.current, viewSettings, 'up');
-        } else if (keyName === 'VolumeDown') {
-          viewPagination(viewRef.current, viewSettings, 'down');
-        }
-      } else if (
+      if (
         msg.type === 'touch-swipe' &&
         bookData.isFixedLayout &&
         !isPanningView(viewRef.current, viewSettings)
@@ -285,6 +278,17 @@ export const usePagination = (
     }
   };
 
+  const handleNativePageFlip = ({ keyName }: { keyName: string }) => {
+    const viewSettings = getViewSettings(bookKey);
+    if (!viewSettings?.volumeKeysToFlip) return;
+    setHoveredBookKey('');
+    if (keyName === 'VolumeUp') {
+      viewPagination(viewRef.current, viewSettings, 'up');
+    } else if (keyName === 'VolumeDown') {
+      viewPagination(viewRef.current, viewSettings, 'down');
+    }
+  };
+
   useEffect(() => {
     if (!appService?.isMobileApp) return;
 
@@ -295,10 +299,10 @@ export const usePagination = (
       releaseVolumeKeyInterception();
     }
 
-    eventDispatcher.on('native-key-down', handlePageFlip);
+    const offNativeKeyDown = bridge.on('nativeKeyDown', handleNativePageFlip);
     return () => {
       releaseVolumeKeyInterception();
-      eventDispatcher.off('native-key-down', handlePageFlip);
+      offNativeKeyDown();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

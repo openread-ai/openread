@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { bridge } from '@/services/bridge/bridgeService';
 
 export interface CopyURIRequest {
   uri: string;
@@ -99,45 +99,27 @@ export interface GetStorefrontRegionCodeResponse {
 }
 
 export async function copyURIToPath(request: CopyURIRequest): Promise<CopyURIResponse> {
-  const result = await invoke<CopyURIResponse>('plugin:native-bridge|copy_uri_to_path', {
-    payload: request,
-  });
-
-  return result;
+  return bridge.send('copyURIToPath', request);
 }
 
 export async function invokeUseBackgroundAudio(request: UseBackgroundAudioRequest): Promise<void> {
-  await invoke('plugin:native-bridge|use_background_audio', {
-    payload: request,
-  });
+  await bridge.send('useBackgroundAudio', request);
 }
 
 export async function installPackage(
   request: InstallPackageRequest,
 ): Promise<InstallPackageResponse> {
-  const result = await invoke<InstallPackageResponse>('plugin:native-bridge|install_package', {
-    payload: request,
-  });
-  return result;
+  return bridge.send('installPackage', request);
 }
 
 export async function setSystemUIVisibility(
   request: SetSystemUIVisibilityRequest,
 ): Promise<SetSystemUIVisibilityResponse> {
-  const result = await invoke<SetSystemUIVisibilityResponse>(
-    'plugin:native-bridge|set_system_ui_visibility',
-    {
-      payload: request,
-    },
-  );
-  return result;
+  return bridge.send('setSystemUIVisibility', request);
 }
 
 export async function getStatusBarHeight(): Promise<GetStatusBarHeightResponse> {
-  const result = await invoke<GetStatusBarHeightResponse>(
-    'plugin:native-bridge|get_status_bar_height',
-  );
-  return result;
+  return bridge.send('getStatusBarHeight', {});
 }
 
 let cachedSysFontsResult: GetSystemFontsListResponse | null = null;
@@ -146,73 +128,45 @@ export async function getSysFontsList(): Promise<GetSystemFontsListResponse> {
   if (cachedSysFontsResult) {
     return cachedSysFontsResult;
   }
-  const result = await invoke<GetSystemFontsListResponse>(
-    'plugin:native-bridge|get_sys_fonts_list',
-  );
+  const result = await bridge.send('getSysFontsList', {});
   cachedSysFontsResult = result;
   return result;
 }
 
 export async function interceptKeys(request: InterceptKeysRequest): Promise<void> {
-  await invoke('plugin:native-bridge|intercept_keys', {
-    payload: request,
-  });
+  await bridge.send('interceptKeys', request);
 }
 
 export async function lockScreenOrientation(request: LockScreenRequest): Promise<void> {
-  await invoke('plugin:native-bridge|lock_screen_orientation', {
-    payload: request,
-  });
+  await bridge.send('lockScreenOrientation', request);
 }
 
 export async function getSystemColorScheme(): Promise<GetSystemColorSchemeResponse> {
-  const result = await invoke<GetSystemColorSchemeResponse>(
-    'plugin:native-bridge|get_system_color_scheme',
-  );
-  return result;
+  return bridge.send('getSystemColorScheme', {});
 }
 
 export async function getSafeAreaInsets(): Promise<GetSafeAreaInsetsResponse> {
-  const result = await invoke<GetSafeAreaInsetsResponse>(
-    'plugin:native-bridge|get_safe_area_insets',
-  );
-  return result;
+  return bridge.send('getSafeAreaInsets', {});
 }
 
 export async function getScreenBrightness(): Promise<GetScreenBrightnessResponse> {
-  const result = await invoke<GetScreenBrightnessResponse>(
-    'plugin:native-bridge|get_screen_brightness',
-  );
-  return result;
+  return bridge.send('getScreenBrightness', {});
 }
 
 export async function setScreenBrightness(
   request: SetScreenBrightnessRequest,
 ): Promise<SetScreenBrightnessResponse> {
-  const result = await invoke<SetScreenBrightnessResponse>(
-    'plugin:native-bridge|set_screen_brightness',
-    {
-      payload: request,
-    },
-  );
-  return result;
+  return bridge.send('setScreenBrightness', request);
 }
 
 export async function getExternalSDCardPath(): Promise<GetExternalSDCardPathResponse> {
-  const result = await invoke<GetExternalSDCardPathResponse>(
-    'plugin:native-bridge|get_external_sdcard_path',
-  );
-  return result;
+  return bridge.send('getExternalSDCardPath', {});
 }
 
 export async function selectDirectory(): Promise<SelectDirectoryResponse> {
-  const result = await invoke<SelectDirectoryResponse>('plugin:native-bridge|select_directory');
-  return result;
+  return bridge.send('selectDirectory', {});
 }
 
 export async function getStorefrontRegionCode(): Promise<GetStorefrontRegionCodeResponse> {
-  const result = await invoke<GetStorefrontRegionCodeResponse>(
-    'plugin:native-bridge|get_storefront_region_code',
-  );
-  return result;
+  return bridge.send('getStorefrontRegionCode', {});
 }

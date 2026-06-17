@@ -9,6 +9,7 @@ import { useThemeStore } from '@/store/themeStore';
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
 import { setNativeFooterActiveTab } from '@/services/annotation/nativeMenuBridge';
+import { bridge } from '@/services/bridge/bridgeService';
 import HalfSheet from './HalfSheet';
 import { MobileTOCContent } from './MobileTOCSheet';
 import { MobileChatContent } from './MobileChatSheet';
@@ -52,14 +53,12 @@ function MobileFooterBarV2({ bookKey }: MobileFooterBarV2Props) {
   // Register native footer action handler for iOS
   useEffect(() => {
     if (!useNativeBar) return;
-    window.__nativeFooterAction = (action: string) => {
+    const offNativeFooterAction = bridge.on('nativeFooterAction', ({ action }) => {
       if (action === 'toc' || action === 'chat' || action === 'settings') {
         handleOpenSheet(action);
       }
-    };
-    return () => {
-      window.__nativeFooterAction = undefined;
-    };
+    });
+    return offNativeFooterAction;
   }, [useNativeBar, handleOpenSheet]);
 
   // Sync active tab highlight to native footer bar

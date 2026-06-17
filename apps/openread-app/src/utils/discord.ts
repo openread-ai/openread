@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { runNativeCommand } from '@/services/bridge/bridgeService';
 import { Book } from '@/types/book';
 import { AppService } from '@/types/system';
 import { getCoverFilename } from './book';
@@ -122,7 +122,7 @@ export const updateDiscordPresence = async (
       sessionStart,
     };
 
-    await invoke('update_book_presence', { presence: bookPresence });
+    await runNativeCommand('update_book_presence', { presence: bookPresence });
   } catch (error) {
     logger.warn('Failed to update Discord presence:', error);
   }
@@ -135,7 +135,7 @@ export const clearDiscordPresence = async (appService: AppService): Promise<void
   if (!appService?.isDesktopApp) return;
 
   try {
-    await invoke('clear_book_presence');
+    await runNativeCommand('clear_book_presence');
   } catch (error) {
     logger.warn('Failed to clear Discord presence:', error);
   }

@@ -32,6 +32,7 @@ import { TransformContext } from '@/services/transformers/types';
 import { transformContent } from '@/services/transformService';
 import { getHighlightColorHex } from '../../utils/annotatorUtil';
 import { registerNativeMenuBridge } from '@/services/annotation/nativeMenuBridge';
+import { bridge } from '@/services/bridge/bridgeService';
 import { ANNOTATION_ACTION_EVENT } from '@/services/annotation/menuConfig';
 import { getBookIdFromKey } from '@/utils/readerBookKey';
 import type { AnnotationActionEvent } from '@/services/annotation/menuConfig';
@@ -257,8 +258,7 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
       handleTouchMove(ev);
     };
 
-    const handleNativeTouch = (event: CustomEvent) => {
-      const ev = event.detail as NativeTouchEventType;
+    const handleNativeTouch = (ev: NativeTouchEventType) => {
       if (ev.type === 'touchstart') {
         androidTouchEndRef.current = false;
         handleTouchStart();
@@ -271,7 +271,7 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
 
     if (appService?.isAndroidApp) {
       listenToNativeTouchEvents();
-      eventDispatcher.on('native-touch', handleNativeTouch);
+      bridge.on('nativeTouch', (event) => handleNativeTouch(event as NativeTouchEventType));
     }
 
     // Attach generic selection listeners for all formats, including PDF.
@@ -435,7 +435,7 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Register native menu bridge so iOS/Android can call window.__nativeTextSelectionAction()
+  // Register native menu bridge so iOS/Android text-selection actions reach the typed bridge.
   useEffect(() => {
     registerNativeMenuBridge();
   }, []);

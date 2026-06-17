@@ -1,5 +1,5 @@
-import { invoke } from '@tauri-apps/api/core';
 import { addPluginListener, PluginListener } from '@tauri-apps/api/core';
+import { runNativeCommand } from '@/services/bridge/bridgeService';
 import { getUserLocale } from '@/utils/misc';
 import { parseSSMLMarks } from '@/utils/ssml';
 import { stubTranslation as _ } from '@/utils/misc';
@@ -95,7 +95,7 @@ export class NativeTTSClient implements TTSClient {
   }
 
   async init(): Promise<boolean> {
-    const result = await invoke<{ success: boolean }>('plugin:native-tts|init');
+    const result = await runNativeCommand<{ success: boolean }>('plugin:native-tts|init');
     this.initialized = result.success;
     if (this.initialized) {
       this.setupEventListener();
@@ -114,7 +114,7 @@ export class NativeTTSClient implements TTSClient {
     this.#speakingLang = voiceLang;
     await this.setVoice(voiceId);
     try {
-      const result = await invoke<{ utteranceId: string }>('plugin:native-tts|speak', {
+      const result = await runNativeCommand<{ utteranceId: string }>('plugin:native-tts|speak', {
         payload: { text: mark.text, preload },
       });
 
@@ -205,35 +205,35 @@ export class NativeTTSClient implements TTSClient {
   }
 
   async pause() {
-    await invoke('plugin:native-tts|pause');
+    await runNativeCommand('plugin:native-tts|pause');
     return false;
   }
 
   async resume() {
     // No-op for Android TextToSpeech
-    await invoke('plugin:native-tts|resume');
+    await runNativeCommand('plugin:native-tts|resume');
     return false;
   }
 
   async stop() {
-    await invoke('plugin:native-tts|stop');
+    await runNativeCommand('plugin:native-tts|stop');
     this.#activeUtterances.clear();
   }
 
   async setRate(rate: number) {
     // Power the rate to match the EdgeTTS behavior
     this.#rate = parseFloat(Math.pow(rate, 2.5).toFixed(2));
-    await invoke('plugin:native-tts|set_rate', { payload: { rate: this.#rate } });
+    await runNativeCommand('plugin:native-tts|set_rate', { payload: { rate: this.#rate } });
   }
 
   async setPitch(pitch: number) {
     this.#pitch = pitch;
-    await invoke('plugin:native-tts|set_pitch', { payload: { pitch: this.#pitch } });
+    await runNativeCommand('plugin:native-tts|set_pitch', { payload: { pitch: this.#pitch } });
   }
 
   async setVoice(voice: string) {
     this.#currentVoiceId = voice;
-    await invoke('plugin:native-tts|set_voice', { payload: { voice } });
+    await runNativeCommand('plugin:native-tts|set_voice', { payload: { voice } });
   }
 
   async getAllVoices() {
@@ -241,7 +241,9 @@ export class NativeTTSClient implements TTSClient {
       return this.#voices;
     }
     try {
-      const result = await invoke<{ voices: TTSVoice[] }>('plugin:native-tts|get_all_voices');
+      const result = await runNativeCommand<{ voices: TTSVoice[] }>(
+        'plugin:native-tts|get_all_voices',
+      );
       this.#voices = result.voices;
       return this.#voices;
     } catch (error) {

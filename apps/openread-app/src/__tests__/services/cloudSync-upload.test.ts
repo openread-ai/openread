@@ -4,7 +4,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CloudSyncService } from '@/services/cloudSync';
 import type { Book } from '@/types/book';
 import type { FileSystem } from '@/types/system';
-import { uploadFile } from '@/libs/storage';
+import { deleteFile, uploadFile } from '@/libs/storage';
+import { CLOUD_BOOKS_SUBDIR } from '@/services/constants';
+import { getCoverFilename, getRemoteBookFilename } from '@/utils/book';
 
 vi.mock('@/libs/storage', () => ({
   createProgressHandler: () => () => {},
@@ -31,7 +33,7 @@ const createFs = (existingPaths: Set<string>): FileSystem =>
     writeFile: vi.fn(async () => {}),
   }) as unknown as FileSystem;
 
-describe('CloudSyncService uploadBook', () => {
+describe('CloudSyncService storage lifecycle', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -57,5 +59,50 @@ describe('CloudSyncService uploadBook', () => {
     expect(uploadFile).toHaveBeenCalledTimes(1);
     expect(book.uploadedAt).toEqual(expect.any(Number));
     expect(book.downloadedAt).toEqual(expect.any(Number));
+  });
+
+  it('does not delete cloud files when the book is not uploaded', async () => {
+    const book = baseBook({ uploadedAt: null });
+    const service = new CloudSyncService(
+      createFs(new Set()),
+      '/books',
+      async (path) => `/books/${path}`,
+    );
+
+    await service.deleteBookFromCloud(book);
+
+    expect(deleteFile).not.toHaveBeenCalled();
+    expect(book.uploadedAt).toBeNull();
+  });
+
+  it('deletes both remote book and cover files and clears uploadedAt', async () => {
+    const book = baseBook({ uploadedAt: 123 });
+    const service = new CloudSyncService(
+      createFs(new Set()),
+      '/books',
+      async (path) => `/books/${path}`,
+    );
+
+    await service.deleteBookFromCloud(book);
+
+    expect(deleteFile).toHaveBeenCalledWith(`${CLOUD_BOOKS_SUBDIR}/${getRemoteBookFilename(book)}`);
+    expect(deleteFile).toHaveBeenCalledWith(`${CLOUD_BOOKS_SUBDIR}/${getCoverFilename(book)}`);
+    expect(deleteFile).toHaveBeenCalledTimes(2);
+    expect(book.uploadedAt).toBeNull();
+  });
+
+  it('continues deleting cloud files when one remote delete fails', async () => {
+    vi.mocked(deleteFile).mockRejectedValueOnce(new Error('remote delete failed'));
+    const book = baseBook({ uploadedAt: 123 });
+    const service = new CloudSyncService(
+      createFs(new Set()),
+      '/books',
+      async (path) => `/books/${path}`,
+    );
+
+    await expect(service.deleteBookFromCloud(book)).resolves.toBeUndefined();
+
+    expect(deleteFile).toHaveBeenCalledTimes(2);
+    expect(book.uploadedAt).toBeNull();
   });
 });

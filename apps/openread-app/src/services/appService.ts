@@ -21,7 +21,6 @@ import {
 import {
   getDir,
   getLocalBookFilename,
-  getRemoteBookFilename,
   getCoverFilename,
   getConfigFilename,
   getLibraryFilename,
@@ -46,7 +45,6 @@ import {
   SYSTEM_SETTINGS_VERSION,
   DEFAULT_BOOK_SEARCH_CONFIG,
   DEFAULT_TTS_CONFIG,
-  CLOUD_BOOKS_SUBDIR,
   DEFAULT_MOBILE_VIEW_SETTINGS,
   DEFAULT_SYSTEM_SETTINGS,
   DEFAULT_CJK_VIEW_SETTINGS,
@@ -70,7 +68,7 @@ import {
   makeSafeFilename,
 } from '@/utils/misc';
 import { deserializeConfig, serializeConfig } from '@/utils/serializer';
-import { deleteFile, downloadFile } from '@/libs/storage';
+import { downloadFile } from '@/libs/storage';
 import { ClosableFile } from '@/utils/file';
 import { ProgressHandler } from '@/utils/transfer';
 import { TxtToEpubConverter } from '@/utils/txt';
@@ -549,18 +547,8 @@ export abstract class BaseAppService implements AppService {
         book.coverDownloadedAt = null;
       }
     }
-    if ((deleteAction === 'cloud' || deleteAction === 'both') && book.uploadedAt) {
-      const fps = [getRemoteBookFilename(book), getCoverFilename(book)];
-      for (const fp of fps) {
-        logger.info('Deleting uploaded file:', fp);
-        const cfp = `${CLOUD_BOOKS_SUBDIR}/${fp}`;
-        try {
-          await deleteFile(cfp);
-        } catch (error) {
-          logger.warn('Failed to delete uploaded file:', error);
-        }
-      }
-      book.uploadedAt = null;
+    if (deleteAction === 'cloud' || deleteAction === 'both') {
+      await this.cloudSync.deleteBookFromCloud(book);
     }
   }
 

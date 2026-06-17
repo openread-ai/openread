@@ -5,7 +5,7 @@
   "license": "AGPL-3.0-only",
   "scripts": {
     "dev": "dotenv -e .env.tauri -v NEXT_PUBLIC_APP_PLATFORM=tauri -- next dev",
-    "build-shared-packages": "pnpm --filter @openread/auth build && pnpm --filter @openread/entitlements build && pnpm --filter @openread/ai-control build && pnpm --filter @openread/settings build && pnpm --filter @openread/bridge build",
+    "build-shared-packages": "pnpm --filter @openread/types build && pnpm --filter @openread/auth build && pnpm --filter @openread/entitlements build && pnpm --filter @openread/ai-control build && pnpm --filter @openread/settings build && pnpm --filter @openread/bridge build",
     "build": "pnpm build-shared-packages && dotenv -e .env.tauri -v NEXT_PUBLIC_APP_PLATFORM=tauri -- next build",
     "start": "dotenv -e .env.tauri -v NEXT_PUBLIC_APP_PLATFORM=tauri -- next start",
     "dev-web": "dotenv -e .env.web -v NEXT_PUBLIC_APP_PLATFORM=web -- next dev",
@@ -15,7 +15,7 @@
     "i18n:extract": "i18next-scanner",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "dotenv -e .env -e .env.test.local -v NEXT_PUBLIC_APP_PLATFORM=web -- vitest",
+    "test": "pnpm build-shared-packages && dotenv -e .env -e .env.test.local -v NEXT_PUBLIC_APP_PLATFORM=web -- vitest",
     "activity:init": "node scripts/activity/init.mjs",
     "activity:run": "node scripts/activity/run.mjs",
     "start-dev:agent": "node scripts/activity/start-dev-agent.mjs",

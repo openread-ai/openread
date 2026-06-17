@@ -3,6 +3,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useEnv } from '@/context/EnvContext';
 import { useLibraryStore } from '@/store/libraryStore';
 import { PLATFORM_BOOKS_MANIFEST, PLATFORM_BOOKS_SEEDED_KEY } from '@/services/platformBooks';
+import { getProductAPIBaseUrl } from '@/services/environment';
 import { createLogger } from '@/utils/logger';
 
 const logger = createLogger('platform-books');
@@ -35,7 +36,7 @@ export function usePlatformBooks() {
 
     const seed = async () => {
       try {
-        const res = await fetch('/api/platform-books');
+        const res = await fetch(`${getProductAPIBaseUrl()}/platform-books`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const { books } = await res.json();
 

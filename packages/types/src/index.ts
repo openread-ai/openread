@@ -71,6 +71,17 @@ export type {
   UserProfile,
 } from './api.js';
 
+// Platform sample book contract
+export {
+  PLATFORM_BOOKS_MANIFEST,
+  PLATFORM_BOOKS_SEEDED_KEY,
+} from './platform-books.js';
+export type {
+  PlatformBookDownload,
+  PlatformBookEntry,
+  PlatformBooksResponse,
+} from './platform-books.js';
+
 // Catalog API contracts
 export type {
   CatalogBook,

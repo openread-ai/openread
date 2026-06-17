@@ -42,6 +42,10 @@ export const getAPIBaseUrl = () => (isWebDevMode() ? '/api' : `${getBaseUrl()}/a
 // For Node.js API that currently not supported in some edge runtimes
 export const getNodeAPIBaseUrl = () => (isWebDevMode() ? '/api' : `${getNodeBaseUrl()}/api`);
 
+// Canonical product backend API owned by apps/api. Use this for routes migrated out of Next
+// so web development does not accidentally fall back to a deleted same-origin /api handler.
+export const getProductAPIBaseUrl = () => `${getNodeBaseUrl()}/api`;
+
 export interface EnvConfigType {
   getAppService: () => Promise<AppService>;
 }

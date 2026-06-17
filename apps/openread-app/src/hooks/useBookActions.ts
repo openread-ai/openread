@@ -6,17 +6,12 @@ import { usePlatformSidebarStore } from '@/store/platformSidebarStore';
 import { useLibraryViewStore } from '@/store/libraryViewStore';
 import { eventDispatcher } from '@/utils/event';
 import envConfig from '@/services/environment';
-import { enqueueAndSync, enqueueBatchAndSync } from '@/services/sync/helpers';
+import { enqueueBookForSync, enqueueBooksForSync } from '@/services/sync/helpers';
 import { useBookDataStore } from '@/store/bookDataStore';
 import type { Book, ReadingStatus } from '@/types/book';
 import { createLogger } from '@/utils/logger';
 
 const logger = createLogger('bookActions');
-
-/** Cast a Book to the queue payload format. */
-function bookPayload(book: Book): Record<string, unknown> {
-  return book as unknown as Record<string, unknown>;
-}
 
 /**
  * Background cleanup for a permanently deleted book.
@@ -94,7 +89,7 @@ export function useBookActions() {
           updatedAt: Date.now(),
         };
         await updateBook(envConfig, updatedBook);
-        enqueueAndSync({ type: 'book', action: 'upsert', payload: bookPayload(updatedBook) });
+        void enqueueBookForSync(updatedBook);
       } catch (error) {
         logger.error('Failed to update reading status:', error);
         eventDispatcher.dispatch('toast', {
@@ -123,7 +118,7 @@ export function useBookActions() {
           updatedAt: Date.now(),
         };
         await updateBook(envConfig, updatedBook);
-        enqueueAndSync({ type: 'book', action: 'upsert', payload: bookPayload(updatedBook) });
+        void enqueueBookForSync(updatedBook);
       } catch (error) {
         logger.error('Failed to rename book:', error);
         eventDispatcher.dispatch('toast', {
@@ -164,13 +159,7 @@ export function useBookActions() {
 
         await Promise.all(updatePromises);
 
-        enqueueBatchAndSync(
-          updatedBooks.map((b) => ({
-            type: 'book' as const,
-            action: 'upsert' as const,
-            payload: bookPayload(b),
-          })),
-        );
+        void enqueueBooksForSync(updatedBooks);
 
         clearSelection();
         setSelectMode(false);
@@ -221,7 +210,7 @@ export function useBookActions() {
     );
     setLibrary(nextLibrary);
 
-    enqueueAndSync({ type: 'book', action: 'upsert', payload: bookPayload(deletedBook) });
+    void enqueueBookForSync(deletedBook);
 
     const appService = await envConfig.getAppService();
     await appService.saveLibraryBooks(nextLibrary);
@@ -261,13 +250,7 @@ export function useBookActions() {
       const nextLibrary = library.map((book) => deletedByHash.get(book.hash) ?? book);
       setLibrary(nextLibrary);
 
-      enqueueBatchAndSync(
-        Array.from(deletedByHash.values()).map((deletedBook) => ({
-          type: 'book' as const,
-          action: 'upsert' as const,
-          payload: bookPayload(deletedBook),
-        })),
-      );
+      void enqueueBooksForSync(Array.from(deletedByHash.values()));
 
       const appService = await envConfig.getAppService();
       await appService.saveLibraryBooks(nextLibrary);

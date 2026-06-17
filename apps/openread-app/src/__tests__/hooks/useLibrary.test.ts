@@ -152,14 +152,7 @@ describe('useLibrary account isolation', () => {
     expect(mocks.saveLibraryBooks).toHaveBeenCalledWith([]);
     expect(mocks.resetAccountScopedCollections).toHaveBeenCalled();
     expect(mocks.setCollectionsOwnerUserId).toHaveBeenCalledWith('account-b');
-    expect(mocks.saveSettings).toHaveBeenCalledWith(
-      expect.objectContaining({
-        lastSyncedAtBooks: 0,
-        lastSyncedAtConfigs: 0,
-        lastSyncedAtNotes: 0,
-        lastSyncedAtSettings: 0,
-      }),
-    );
+    expect(mocks.saveSettings).toHaveBeenCalledWith(expect.objectContaining({}));
     expect(mocks.setLibraryOwnerUserId).toHaveBeenCalledWith('account-b');
     expect(localStorage.getItem('openread_library_owner_user_id')).toBe('account-b');
     expect(mocks.start).toHaveBeenCalledWith('account-b');

@@ -8,12 +8,17 @@
  * - Single source of truth for all sync operations and watermarks
  */
 
-import type { SyncMutation, SyncTombstone } from '@openread/sync';
-import type { SyncableBookRef } from '@openread/types';
+import type { SyncTombstone } from '@openread/sync';
+import type { MetaHash, SyncableBookRef } from '@openread/types';
 
 import { createBackendSyncTransport } from './backendTransport';
 import { SyncEngine, type SyncDrainResult } from './engine';
-import { SyncClient, type CollectionRecord, type SyncType } from '@/libs/sync';
+import {
+  pullCanonicalSyncChanges,
+  reconcileCanonicalBooks,
+  type CollectionRecord,
+  type SyncType,
+} from './client';
 import { listFiles } from '@/libs/storage';
 import { supabase } from '@/utils/supabase';
 import {
@@ -26,46 +31,19 @@ import { useLibraryStore } from '@/store/libraryStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import envConfig from '@/services/environment';
-import type { BookConfig, BookDataRecord } from '@/types/book';
+import type { BookConfig, BookDataRecord, BookNote } from '@/types/book';
 import type { DBBook, DBBookConfig, DBBookNote } from '@/types/records';
-import type { SystemSettings } from '@/types/settings';
-import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js';
-import { createSupabaseClient } from '@/utils/supabase';
-import { getAccessToken } from '@/utils/access';
-import { getPlatformFetch } from '@/utils/fetch';
-import type { AIConversation, AIMessage } from '@/services/ai/types';
+import type { RealtimeChannel } from '@supabase/supabase-js';
+import type { AIMessage } from '@/services/ai/types';
 import { aiStore } from '@/services/ai/storage/aiStore';
 import { useAIChatStore } from '@/store/aiChatStore';
 import { isSyncableLibraryBookHash, parseSyncableBookRef } from '@/utils/bookHash';
 import { getDeviceId } from '@/services/deviceService';
 import {
-  buildAIConversationMutation,
-  buildAIMessageMutation,
-  buildCollectionMutations,
-  buildSettingsMutation,
-} from './adapters';
-
-/** Supabase row shape for ai_conversations table */
-interface SupabaseAIConversation {
-  id: string;
-  user_id: string;
-  book_hash: string;
-  title: string;
-  deleted_at: string | null;
-  created_at: string;
-  updated_at: string;
-  // TODO: parallel_book_hashes?: string[] | null; — add once Supabase column exists
-}
-
-/** Supabase row shape for ai_messages table */
-interface SupabaseAIMessage {
-  id: string;
-  conversation_id: string;
-  user_id: string;
-  role: string;
-  content: string;
-  created_at: string;
-}
+  getCanonicalSyncCursor,
+  resetCanonicalSyncCursors,
+  setCanonicalSyncCursor,
+} from './cursors';
 
 const LIBRARY_OWNER_STORAGE_KEY = 'openread_library_owner_user_id';
 const RECONCILE_RETRY_DELAYS_MS = [500, 1_500] as const;
@@ -137,29 +115,27 @@ function configDeletePatch(bookHash: SyncableBookRef, deletedAt: number): Partia
   };
 }
 
+const scopedBookCursor = (
+  bookHash?: SyncableBookRef,
+  metaHash?: MetaHash | null,
+): string | undefined => (bookHash ? `${bookHash}:${metaHash ?? 'all'}` : undefined);
+
+const maxAIConversationTimestamp = (
+  conversations: Array<{ updatedAt?: number; deletedAt?: number }>,
+): number =>
+  conversations.reduce(
+    (maxTime, conversation) =>
+      Math.max(maxTime, conversation.updatedAt ?? 0, conversation.deletedAt ?? 0),
+    0,
+  );
+
+const maxAIMessageTimestamp = (messages: Array<{ createdAt?: number }>): number =>
+  messages.reduce((maxTime, message) => Math.max(maxTime, message.createdAt ?? 0), 0);
+
 /**
  * Persist watermark updates to the settings store.
  * Creates a new object (immutable) and saves locally without triggering a push.
  */
-function resetAccountScopedWatermarks(settings: SystemSettings): SystemSettings {
-  return {
-    ...settings,
-    lastSyncedAtBooks: 0,
-    lastSyncedAtConfigs: 0,
-    lastSyncedAtNotes: 0,
-    lastSyncedAtSettings: 0,
-  };
-}
-
-async function saveWatermarks(updates: Partial<SystemSettings>): Promise<void> {
-  const settings = { ...useSettingsStore.getState().settings, ...updates };
-  useSettingsStore.getState().setSettings(settings);
-  // Save locally only — no push to avoid recursion and redundant network calls.
-  // Watermarks are per-device and excluded from roaming settings.
-  const appService = await envConfig.getAppService();
-  await appService.saveSettings(settings);
-}
-
 function isTransientSyncError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return /Failed to fetch|AbortError|timeout|network/i.test(message);
@@ -264,14 +240,11 @@ export class SyncWorker {
   private aiPullGuard = createCoalescingGuard();
   private reconcileRun: Promise<void> | null = null;
   private reconcileRerunRequested = false;
-  private syncClient = new SyncClient();
   private canonicalEngine: SyncEngine | null = null;
   private realtimeChannel: RealtimeChannel | null = null;
   private userId: string | null = null;
   /** When true, all new sync operations are suppressed (set by stop()). */
   private stopped = true;
-  /** Cached authenticated Supabase client — avoids creating a new GoTrueClient on every call. */
-  private cachedSupabase: { client: SupabaseClient; token: string } | null = null;
   private _status: SyncWorkerStatus = {
     pending: 0,
     syncing: false,
@@ -302,12 +275,9 @@ export class SyncWorker {
         usePlatformSidebarStore.getState().resetAccountScopedCollections();
       });
       const currentSettings = useSettingsStore.getState().settings;
-      const resetSettings = Object.keys(currentSettings).length
-        ? resetAccountScopedWatermarks(currentSettings)
-        : null;
-      if (resetSettings) {
-        useSettingsStore.getState().setSettings(resetSettings);
-      }
+      const resetSettings = Object.keys(currentSettings).length ? { ...currentSettings } : null;
+      resetCanonicalSyncCursors(previousUserId);
+      resetCanonicalSyncCursors(nextUserId);
       if (typeof window !== 'undefined' && nextUserId) {
         localStorage.setItem(LIBRARY_OWNER_STORAGE_KEY, nextUserId);
       }
@@ -394,7 +364,6 @@ export class SyncWorker {
     }
     this.userId = null;
     this.canonicalEngine = null;
-    this.cachedSupabase = null;
     this.drainGuard.reset();
     this.reconcileRun = null;
     this.reconcileRerunRequested = false;
@@ -427,14 +396,6 @@ export class SyncWorker {
     return this.userId;
   }
 
-  private async enqueueCanonicalMutations(mutations: SyncMutation[]): Promise<void> {
-    if (!this.canonicalEngine || !this.userId || mutations.length === 0) return;
-    for (const mutation of mutations) {
-      await this.canonicalEngine.enqueue(mutation);
-    }
-    await this.syncNow();
-  }
-
   /**
    * Subscribe to status changes.
    */
@@ -445,7 +406,7 @@ export class SyncWorker {
   }
 
   /**
-   * Pull on demand. Components call this instead of using SyncClient directly.
+   * Pull on demand through canonical sync services.
    */
   async pullNow(type?: SyncType): Promise<void> {
     if (type === 'books') {
@@ -461,85 +422,15 @@ export class SyncWorker {
     }
   }
 
-  /**
-   * Enqueue the current settings through the canonical outbox.
-   */
-  async pushSettings(): Promise<void> {
-    if (!this.userId) return;
-
-    try {
-      const settings = useSettingsStore.getState().settings;
-      await this.enqueueCanonicalMutations([
-        buildSettingsMutation(settings, { userId: this.userId, deviceId: getDeviceId() }),
-      ]);
-    } catch (error) {
-      console.error('[SyncWorker] Push settings failed:', error);
-    }
+  async pullBookConfigs(
+    bookHash?: SyncableBookRef,
+    metaHash?: MetaHash | null,
+  ): Promise<BookConfig[]> {
+    return this.pullRemoteConfigs(bookHash, metaHash);
   }
 
-  /**
-   * Enqueue current collections through the canonical outbox.
-   */
-  async pushCollections(): Promise<void> {
-    if (!this.userId) return;
-
-    try {
-      const { usePlatformSidebarStore } = await import('@/store/platformSidebarStore');
-      const collections = usePlatformSidebarStore.getState().collections;
-      await this.enqueueCanonicalMutations(
-        buildCollectionMutations(collections, { userId: this.userId, deviceId: getDeviceId() }),
-      );
-    } catch (error) {
-      console.error('[SyncWorker] Push collections failed:', error);
-    }
-  }
-
-  /**
-   * Get an authenticated Supabase client for direct table access.
-   * Caches the client and only recreates if the token changes.
-   */
-  private async getAuthenticatedSupabase(): Promise<SupabaseClient | null> {
-    const token = await getAccessToken();
-    if (!token) return null;
-    if (this.cachedSupabase && this.cachedSupabase.token === token) {
-      return this.cachedSupabase.client;
-    }
-    // Pass platform-aware fetch so Supabase queries work on iOS
-    // (WKWebView blocks cross-origin requests without native HTTP layer).
-    const customFetch = await getPlatformFetch();
-    const client = createSupabaseClient(token, customFetch);
-    this.cachedSupabase = { client, token };
-    return client;
-  }
-
-  /**
-   * Enqueue an AI conversation mutation through the canonical outbox.
-   */
-  async pushAIConversation(conversation: AIConversation): Promise<void> {
-    if (!this.userId) return;
-
-    try {
-      await this.enqueueCanonicalMutations([
-        buildAIConversationMutation(conversation, { userId: this.userId, deviceId: getDeviceId() }),
-      ]);
-    } catch (error) {
-      console.error('[SyncWorker] Push AI conversation error:', error);
-    }
-  }
-
-  /**
-   * Enqueue an AI message mutation through the canonical outbox.
-   */
-  async pushAIMessage(message: AIMessage): Promise<void> {
-    if (!this.userId) return;
-
-    try {
-      await this.enqueueCanonicalMutations([
-        buildAIMessageMutation(message, { userId: this.userId, deviceId: getDeviceId() }),
-      ]);
-    } catch (error) {
-      console.error('[SyncWorker] Push AI message error:', error);
-    }
+  async pullBookNotes(bookHash?: SyncableBookRef, metaHash?: MetaHash | null): Promise<BookNote[]> {
+    return this.pullRemoteNotes(bookHash, metaHash);
   }
 
   /**
@@ -590,11 +481,11 @@ export class SyncWorker {
         error: result.failed > 0 ? `${result.failed} items failed to sync` : null,
       });
       if (canonicalResult.accepted > 0 || canonicalResult.conflicted > 0) {
-        this.broadcast(SYNC_EVENTS.BOOKS);
-        this.broadcast(SYNC_EVENTS.CONFIGS);
-        this.broadcast(SYNC_EVENTS.NOTES);
-        this.broadcast(SYNC_EVENTS.SETTINGS);
-        this.broadcast(SYNC_EVENTS.AI_CONVERSATIONS);
+        this.sendInvalidation(SYNC_EVENTS.BOOKS);
+        this.sendInvalidation(SYNC_EVENTS.CONFIGS);
+        this.sendInvalidation(SYNC_EVENTS.NOTES);
+        this.sendInvalidation(SYNC_EVENTS.SETTINGS);
+        this.sendInvalidation(SYNC_EVENTS.AI_CONVERSATIONS);
       }
       // After pushing changes, reconcile to pick up cross-device updates
       if (result.synced > 0) {
@@ -659,7 +550,7 @@ export class SyncWorker {
     let result = null;
     for (let attempt = 0; attempt <= RECONCILE_RETRY_DELAYS_MS.length; attempt += 1) {
       try {
-        result = await this.syncClient.pullChanges(0, 'books');
+        result = await pullCanonicalSyncChanges(0, 'books');
         break;
       } catch (error) {
         const retryDelay = RECONCILE_RETRY_DELAYS_MS[attempt];
@@ -720,7 +611,7 @@ export class SyncWorker {
       }
 
       if (Object.keys(localHashes).length === 0) {
-        const result = await this.syncClient.pullChanges(0, 'books');
+        const result = await pullCanonicalSyncChanges(0, 'books');
         if (this.stopped || this.userId !== reconcileUserId) return;
         if (result.books?.length) {
           const books = result.books.map((b) => transformBookFromDB(b as unknown as DBBook));
@@ -734,9 +625,7 @@ export class SyncWorker {
       let result = null;
       for (let attempt = 0; attempt <= RECONCILE_RETRY_DELAYS_MS.length; attempt += 1) {
         try {
-          result = await this.syncClient.pushChanges({
-            reconcile: { books: localHashes },
-          });
+          result = await reconcileCanonicalBooks(localHashes);
           break;
         } catch (error) {
           const retryDelay = RECONCILE_RETRY_DELAYS_MS[attempt];
@@ -851,19 +740,35 @@ export class SyncWorker {
   /**
    * Pull remote config changes and merge into bookDataStore.
    */
-  private async pullRemoteConfigs(): Promise<void> {
-    if (isOffline()) return;
-    if (!useLibraryStore.getState().libraryLoaded) return;
+  private async pullRemoteConfigs(
+    bookHash?: SyncableBookRef,
+    metaHash?: MetaHash | null,
+  ): Promise<BookConfig[]> {
+    if (isOffline()) return [];
+    if (!useLibraryStore.getState().libraryLoaded) return [];
 
     try {
-      const settings = useSettingsStore.getState().settings;
-      const since = (settings.lastSyncedAtConfigs ?? 0) + 1;
+      const cursorScope = scopedBookCursor(bookHash, metaHash);
+      const since = getCanonicalSyncCursor(this.userId, 'bookConfig', cursorScope) + 1;
 
-      const result = await this.syncClient.pullChanges(since, 'configs');
+      const result = await pullCanonicalSyncChanges(
+        since,
+        'configs',
+        bookHash,
+        metaHash ?? undefined,
+      );
       const dbConfigs = result.configs ?? [];
       const configTombstones =
         result.tombstones?.filter((tombstone) => tombstone.entity === 'bookConfig') ?? [];
-      if (!dbConfigs.length && !configTombstones.length) return;
+      if (!dbConfigs.length && !configTombstones.length) {
+        setCanonicalSyncCursor(
+          this.userId,
+          'bookConfig',
+          result.cursorByEntity?.bookConfig,
+          cursorScope,
+        );
+        return [];
+      }
 
       const configs = dbConfigs.map((c) => transformBookConfigFromDB(c as unknown as DBBookConfig));
       const bookDataStore = useBookDataStore.getState();
@@ -946,29 +851,52 @@ export class SyncWorker {
         computeMaxTombstoneTimestamp(acceptedConfigTombstones),
       );
       if (maxTime > 0) {
-        await saveWatermarks({ lastSyncedAtConfigs: maxTime });
+        setCanonicalSyncCursor(
+          this.userId,
+          'bookConfig',
+          result.cursorByEntity?.bookConfig ?? maxTime,
+          cursorScope,
+        );
       }
+      return configs;
     } catch (error) {
       console.error('[SyncWorker] Pull remote configs failed:', error);
+      return [];
     }
   }
 
   /**
    * Pull remote note changes and merge into bookDataStore.
    */
-  private async pullRemoteNotes(): Promise<void> {
-    if (isOffline()) return;
-    if (!useLibraryStore.getState().libraryLoaded) return;
+  private async pullRemoteNotes(
+    bookHash?: SyncableBookRef,
+    metaHash?: MetaHash | null,
+  ): Promise<BookNote[]> {
+    if (isOffline()) return [];
+    if (!useLibraryStore.getState().libraryLoaded) return [];
 
     try {
-      const settings = useSettingsStore.getState().settings;
-      const since = (settings.lastSyncedAtNotes ?? 0) + 1;
+      const cursorScope = scopedBookCursor(bookHash, metaHash);
+      const since = getCanonicalSyncCursor(this.userId, 'bookNote', cursorScope) + 1;
 
-      const result = await this.syncClient.pullChanges(since, 'notes');
+      const result = await pullCanonicalSyncChanges(
+        since,
+        'notes',
+        bookHash,
+        metaHash ?? undefined,
+      );
       const dbNotes = result.notes ?? [];
       const noteTombstones =
         result.tombstones?.filter((tombstone) => tombstone.entity === 'bookNote') ?? [];
-      if (!dbNotes.length && !noteTombstones.length) return;
+      if (!dbNotes.length && !noteTombstones.length) {
+        setCanonicalSyncCursor(
+          this.userId,
+          'bookNote',
+          result.cursorByEntity?.bookNote,
+          cursorScope,
+        );
+        return [];
+      }
 
       const notes = dbNotes.map((n) => transformBookNoteFromDB(n as unknown as DBBookNote));
       const bookDataStore = useBookDataStore.getState();
@@ -1056,10 +984,17 @@ export class SyncWorker {
         computeMaxTombstoneTimestamp(appliedNoteTombstones),
       );
       if (maxTime > 0) {
-        await saveWatermarks({ lastSyncedAtNotes: maxTime });
+        setCanonicalSyncCursor(
+          this.userId,
+          'bookNote',
+          result.cursorByEntity?.bookNote ?? maxTime,
+          cursorScope,
+        );
       }
+      return notes;
     } catch (error) {
       console.error('[SyncWorker] Pull remote notes failed:', error);
+      return [];
     }
   }
 
@@ -1070,10 +1005,13 @@ export class SyncWorker {
     if (isOffline()) return;
 
     try {
-      const settings = useSettingsStore.getState().settings;
-      const since = (settings.lastSyncedAtSettings ?? 0) + 1;
+      const since =
+        Math.min(
+          getCanonicalSyncCursor(this.userId, 'settings'),
+          getCanonicalSyncCursor(this.userId, 'collection'),
+        ) + 1;
 
-      const result = await this.syncClient.pullChanges(since, 'settings');
+      const result = await pullCanonicalSyncChanges(since, 'settings');
       const remoteSettings = result.settings;
       const remoteCollections = result.collections ?? [];
       const collectionTombstones =
@@ -1091,8 +1029,17 @@ export class SyncWorker {
       const mergedSettings = remoteSettings
         ? applyRoamingSettings(freshSettings, remoteSettings)
         : freshSettings;
-      mergedSettings.lastSyncedAtSettings = nextWatermark;
       useSettingsStore.getState().setSettings(mergedSettings);
+      setCanonicalSyncCursor(
+        this.userId,
+        'settings',
+        result.cursorByEntity?.settings ?? nextWatermark,
+      );
+      setCanonicalSyncCursor(
+        this.userId,
+        'collection',
+        result.cursorByEntity?.collection ?? nextWatermark,
+      );
       const appService = await envConfig.getAppService();
       await appService.saveSettings(mergedSettings);
 
@@ -1121,105 +1068,88 @@ export class SyncWorker {
   }
 
   /**
-   * Pull AI conversations and messages from Supabase for the active book.
+   * Pull AI conversations and messages through canonical sync pull for the active book.
    * Merges into IndexedDB (LWW by updatedAt), then refreshes Zustand store.
-   * Uses coalescing guard to prevent duplicate pulls from rapid broadcasts.
    */
   async pullRemoteAIConversations(): Promise<void> {
     if (isOffline() || !this.userId) return;
 
-    const bookHash = useAIChatStore.getState().currentBookHash;
+    const bookHash = parseSyncableBookRef(useAIChatStore.getState().currentBookHash);
     if (!bookHash) return;
 
     if (!this.aiPullGuard.tryEnter()) return;
 
     try {
-      const sb = await this.getAuthenticatedSupabase();
-      if (!sb) return;
-
-      // Pull conversations for this book
-      const { data: remoteConversations, error: convError } = await sb
-        .from('ai_conversations')
-        .select('*')
-        .eq('book_hash', bookHash)
-        .eq('user_id', this.userId);
-
-      if (convError) {
-        console.error('[SyncWorker] Pull AI conversations failed:', convError.message);
+      const cursorScope = scopedBookCursor(bookHash);
+      const since =
+        Math.min(
+          getCanonicalSyncCursor(this.userId, 'aiConversation', cursorScope),
+          getCanonicalSyncCursor(this.userId, 'aiMessage', cursorScope),
+        ) + 1;
+      const localConversations = await aiStore.getAllConversations(bookHash);
+      const result = await pullCanonicalSyncChanges(
+        since,
+        'ai',
+        bookHash,
+        undefined,
+        localConversations.map((conversation) => conversation.id),
+      );
+      const remoteConversations = result.aiConversations ?? [];
+      const remoteMessages = result.aiMessages ?? [];
+      if (!remoteConversations.length && !remoteMessages.length) {
+        setCanonicalSyncCursor(
+          this.userId,
+          'aiConversation',
+          result.cursorByEntity?.aiConversation,
+          cursorScope,
+        );
+        setCanonicalSyncCursor(
+          this.userId,
+          'aiMessage',
+          result.cursorByEntity?.aiMessage,
+          cursorScope,
+        );
         return;
       }
 
-      if (!remoteConversations || remoteConversations.length === 0) return;
-
-      // Get local conversations (including soft-deleted) for LWW merge
-      const localConversations = await aiStore.getAllConversations(bookHash);
       const localMap = new Map(localConversations.map((c) => [c.id, c]));
-
-      // Merge: remote wins if updatedAt is newer (LWW)
-      const merged: AIConversation[] = [];
-      for (const remote of remoteConversations as SupabaseAIConversation[]) {
-        const local = localMap.get(remote.id);
-        const remoteConv: AIConversation = {
-          id: remote.id,
-          bookHash: remote.book_hash,
-          title: remote.title,
-          createdAt: new Date(remote.created_at).getTime(),
-          updatedAt: new Date(remote.updated_at).getTime(),
-          deletedAt: remote.deleted_at ? new Date(remote.deleted_at).getTime() : undefined,
-          // TODO: pull parallel_book_hashes once Supabase column is added
-        };
-
-        if (!local || remoteConv.updatedAt > local.updatedAt) {
-          merged.push(remoteConv);
-        }
-      }
+      const merged = remoteConversations.filter((conversation) => {
+        const local = localMap.get(conversation.id);
+        return !local || conversation.updatedAt > local.updatedAt;
+      });
 
       if (merged.length > 0) {
         await aiStore.upsertConversations(merged);
       }
 
-      // Pull messages for all conversations
-      const conversationIds = (remoteConversations as SupabaseAIConversation[]).map((c) => c.id);
       let newMessages: AIMessage[] = [];
-      if (conversationIds.length > 0) {
-        const { data: remoteMessages, error: msgError } = await sb
-          .from('ai_messages')
-          .select('*')
-          .in('conversation_id', conversationIds)
-          .eq('user_id', this.userId)
-          .order('created_at', { ascending: true })
-          .limit(1000);
-
-        if (msgError) {
-          console.error('[SyncWorker] Pull AI messages failed:', msgError.message);
-          return;
-        }
-
-        if (remoteMessages && remoteMessages.length > 0) {
-          const localMessageArrays = await Promise.all(
-            conversationIds.map((id) => aiStore.getMessages(id)),
-          );
-          const localMsgIds = new Set(localMessageArrays.flat().map((m) => m.id));
-
-          newMessages = (remoteMessages as SupabaseAIMessage[])
-            .filter((m) => !localMsgIds.has(m.id))
-            .map((m) => ({
-              id: m.id,
-              conversationId: m.conversation_id,
-              role: m.role as 'user' | 'assistant',
-              content: m.content,
-              createdAt: new Date(m.created_at).getTime(),
-            }));
-
-          if (newMessages.length > 0) {
-            await aiStore.upsertMessages(newMessages);
-          }
+      if (remoteMessages.length > 0) {
+        const conversationIds = [
+          ...new Set(remoteMessages.map((message) => message.conversationId)),
+        ];
+        const localMessageArrays = await Promise.all(
+          conversationIds.map((id) => aiStore.getMessages(id)),
+        );
+        const localMsgIds = new Set(localMessageArrays.flat().map((m) => m.id));
+        newMessages = remoteMessages.filter((message) => !localMsgIds.has(message.id));
+        if (newMessages.length > 0) {
+          await aiStore.upsertMessages(newMessages);
         }
       }
 
-      // Refresh Zustand store only if remote data introduced actual changes.
-      // Skipping no-op updates prevents cascading re-renders that can
-      // trigger pushes → broadcasts → pulls → infinite loop.
+      setCanonicalSyncCursor(
+        this.userId,
+        'aiConversation',
+        result.cursorByEntity?.aiConversation ?? maxAIConversationTimestamp(remoteConversations),
+        cursorScope,
+      );
+      setCanonicalSyncCursor(
+        this.userId,
+        'aiMessage',
+        result.cursorByEntity?.aiMessage ?? maxAIMessageTimestamp(remoteMessages),
+        cursorScope,
+      );
+
       if (merged.length > 0) {
         const { currentBookHash, conversations: existing } = useAIChatStore.getState();
         if (currentBookHash === bookHash) {
@@ -1261,7 +1191,7 @@ export class SyncWorker {
   /**
    * Broadcast a sync event to other devices via Supabase Realtime.
    */
-  broadcast(event: string): void {
+  private sendInvalidation(event: string): void {
     if (!this.realtimeChannel) return;
     this.realtimeChannel.send({
       type: 'broadcast',

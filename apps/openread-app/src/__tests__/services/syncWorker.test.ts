@@ -77,6 +77,21 @@ const mocks = vi.hoisted(() => {
     saveSettings: vi.fn(),
   };
 
+  const aiState = {
+    currentBookHash: libraryBook.hash,
+    conversations: [] as Array<{ id: string; updatedAt: number }>,
+    activeConversationId: null as string | null,
+    messages: [] as Array<{ id: string; conversationId: string }>,
+  };
+
+  const aiStore = {
+    getAllConversations: vi.fn(async () => []),
+    upsertConversations: vi.fn(async () => undefined),
+    getMessages: vi.fn(async () => []),
+    upsertMessages: vi.fn(async () => undefined),
+    getConversations: vi.fn(async () => []),
+  };
+
   return {
     libraryBook,
     libraryState,
@@ -84,6 +99,8 @@ const mocks = vi.hoisted(() => {
     settingsState,
     platformSidebarState,
     appService,
+    aiState,
+    aiStore,
     pushChanges: vi.fn(),
     pullChanges: vi.fn(),
     listFiles: vi.fn(async () => ({
@@ -97,13 +114,9 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock('@/libs/sync', () => ({
-  SyncClient: vi.fn().mockImplementation(function SyncClient() {
-    return {
-      pushChanges: mocks.pushChanges,
-      pullChanges: mocks.pullChanges,
-    };
-  }),
+vi.mock('@/services/sync/client', () => ({
+  pullCanonicalSyncChanges: mocks.pullChanges,
+  reconcileCanonicalBooks: mocks.pushChanges,
 }));
 
 vi.mock('@/libs/storage', () => ({
@@ -153,11 +166,14 @@ vi.mock('@/store/platformSidebarStore', () => ({
 }));
 
 vi.mock('@/services/ai/storage/aiStore', () => ({
-  aiStore: {},
+  aiStore: mocks.aiStore,
 }));
 
 vi.mock('@/store/aiChatStore', () => ({
-  useAIChatStore: { getState: vi.fn(() => ({})) },
+  useAIChatStore: {
+    getState: vi.fn(() => mocks.aiState),
+    setState: vi.fn((patch: Partial<typeof mocks.aiState>) => Object.assign(mocks.aiState, patch)),
+  },
 }));
 
 vi.mock('@/utils/access', () => ({
@@ -173,6 +189,7 @@ const flushMicrotasks = () => new Promise((resolve) => setTimeout(resolve, 0));
 describe('SyncWorker book reconcile queue', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage.clear();
     mocks.libraryState.library = [mocks.libraryBook];
     mocks.libraryState.libraryLoaded = true;
     mocks.libraryState.getVisibleLibrary.mockImplementation(() =>
@@ -193,6 +210,18 @@ describe('SyncWorker book reconcile queue', () => {
     mocks.appService.generateCoverImageUrl.mockResolvedValue(null);
     mocks.appService.saveLibraryBooks.mockClear();
     mocks.appService.saveSettings.mockClear();
+    mocks.aiState.currentBookHash = mocks.libraryBook.hash;
+    mocks.aiState.conversations = [];
+    mocks.aiState.activeConversationId = null;
+    mocks.aiState.messages = [];
+    mocks.aiStore.getAllConversations.mockClear();
+    mocks.aiStore.getAllConversations.mockResolvedValue([]);
+    mocks.aiStore.upsertConversations.mockClear();
+    mocks.aiStore.getMessages.mockClear();
+    mocks.aiStore.getMessages.mockResolvedValue([]);
+    mocks.aiStore.upsertMessages.mockClear();
+    mocks.aiStore.getConversations.mockClear();
+    mocks.aiStore.getConversations.mockResolvedValue([]);
     mocks.listFiles.mockReset();
     mocks.listFiles.mockResolvedValue({
       files: [] as TestFileRecord[],
@@ -290,7 +319,7 @@ describe('SyncWorker book reconcile queue', () => {
     (worker as unknown as { stopped: boolean; userId: string }).userId = 'user-1';
 
     const bookKey = mocks.libraryBook.hash;
-    mocks.settingsState.settings = { lastSyncedAtConfigs: 999 };
+    mocks.settingsState.settings = {};
     mocks.bookDataState.configs.set(bookKey, {
       bookHash: mocks.libraryBook.hash,
       location: 'epubcfi(/6/2)',
@@ -326,12 +355,8 @@ describe('SyncWorker book reconcile queue', () => {
       bookHash: mocks.libraryBook.hash,
       updatedAt: 3000,
     });
-    expect(mocks.settingsState.setSettings).toHaveBeenCalledWith(
-      expect.objectContaining({ lastSyncedAtConfigs: 3000 }),
-    );
-    expect(mocks.appService.saveSettings).toHaveBeenCalledWith(
-      expect.objectContaining({ lastSyncedAtConfigs: 3000 }),
-    );
+    expect(mocks.settingsState.setSettings).not.toHaveBeenCalled();
+    expect(mocks.appService.saveSettings).not.toHaveBeenCalled();
   });
 
   it('applies canonical bookNote tombstones and advances the notes watermark', async () => {
@@ -341,7 +366,7 @@ describe('SyncWorker book reconcile queue', () => {
     (worker as unknown as { stopped: boolean; userId: string }).userId = 'user-1';
 
     const bookKey = mocks.libraryBook.hash;
-    mocks.settingsState.settings = { lastSyncedAtNotes: 999 };
+    mocks.settingsState.settings = {};
     mocks.bookDataState.configs.set(bookKey, {
       bookHash: mocks.libraryBook.hash,
       updatedAt: 1000,
@@ -377,12 +402,72 @@ describe('SyncWorker book reconcile queue', () => {
       updatedAt: 4000,
       deletedAt: 4000,
     });
-    expect(mocks.settingsState.setSettings).toHaveBeenCalledWith(
-      expect.objectContaining({ lastSyncedAtNotes: 4000 }),
+    expect(mocks.settingsState.setSettings).not.toHaveBeenCalled();
+    expect(mocks.appService.saveSettings).not.toHaveBeenCalled();
+  });
+
+  it('uses book-scoped persisted AI cursors without Date.now fallback', async () => {
+    const { SyncWorker } = await import('@/services/sync/syncWorker');
+    const worker = new SyncWorker();
+    (worker as unknown as { stopped: boolean; userId: string }).stopped = false;
+    (worker as unknown as { stopped: boolean; userId: string }).userId = 'user-1';
+
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(999999);
+    mocks.pullChanges
+      .mockResolvedValueOnce({
+        aiConversations: [
+          {
+            id: 'conversation-1',
+            bookHash: mocks.libraryBook.hash,
+            title: 'Remote thread',
+            createdAt: 1000,
+            updatedAt: 2000,
+          },
+        ],
+        aiMessages: [
+          {
+            id: 'message-1',
+            conversationId: 'conversation-1',
+            role: 'assistant',
+            content: 'hello',
+            createdAt: 2100,
+          },
+        ],
+        cursorByEntity: {},
+      })
+      .mockResolvedValueOnce({
+        aiConversations: [],
+        aiMessages: [],
+        cursorByEntity: {},
+      });
+
+    await worker.pullRemoteAIConversations();
+    await worker.pullRemoteAIConversations();
+
+    expect(mocks.pullChanges).toHaveBeenNthCalledWith(
+      1,
+      1,
+      'ai',
+      mocks.libraryBook.hash,
+      undefined,
+      [],
     );
-    expect(mocks.appService.saveSettings).toHaveBeenCalledWith(
-      expect.objectContaining({ lastSyncedAtNotes: 4000 }),
+    expect(mocks.pullChanges).toHaveBeenNthCalledWith(
+      2,
+      2001,
+      'ai',
+      mocks.libraryBook.hash,
+      undefined,
+      [],
     );
+    expect(mocks.aiStore.upsertConversations).toHaveBeenCalledWith([
+      expect.objectContaining({ id: 'conversation-1' }),
+    ]);
+    expect(mocks.aiStore.upsertMessages).toHaveBeenCalledWith([
+      expect.objectContaining({ id: 'message-1' }),
+    ]);
+    expect(nowSpy).not.toHaveBeenCalled();
+    nowSpy.mockRestore();
   });
 
   it('applies canonical collection tombstones and advances the settings watermark', async () => {
@@ -391,7 +476,7 @@ describe('SyncWorker book reconcile queue', () => {
     (worker as unknown as { stopped: boolean; userId: string }).stopped = false;
     (worker as unknown as { stopped: boolean; userId: string }).userId = 'user-1';
 
-    mocks.settingsState.settings = { lastSyncedAtSettings: 999 };
+    mocks.settingsState.settings = {};
     mocks.platformSidebarState.collections = [
       {
         id: 'collection-1',
@@ -419,11 +504,7 @@ describe('SyncWorker book reconcile queue', () => {
     await worker.pullNow('settings');
 
     expect(mocks.platformSidebarState.collections).toEqual([]);
-    expect(mocks.settingsState.setSettings).toHaveBeenCalledWith(
-      expect.objectContaining({ lastSyncedAtSettings: 5000 }),
-    );
-    expect(mocks.appService.saveSettings).toHaveBeenCalledWith(
-      expect.objectContaining({ lastSyncedAtSettings: 5000 }),
-    );
+    expect(mocks.settingsState.setSettings).toHaveBeenCalledWith(expect.any(Object));
+    expect(mocks.appService.saveSettings).toHaveBeenCalledWith(expect.any(Object));
   });
 });

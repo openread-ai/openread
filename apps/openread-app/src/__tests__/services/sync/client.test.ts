@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { SyncClient, SYNC_TIMEOUT_MS } from '@/libs/sync';
+import {
+  pullCanonicalSyncChanges,
+  reconcileCanonicalBooks,
+  SYNC_TIMEOUT_MS,
+} from '@/services/sync/client';
 
 vi.mock('@/services/environment', () => ({
   getNodeBaseUrl: () => 'http://localhost:3001',
@@ -28,12 +32,9 @@ const token = [
   'signature',
 ].join('.');
 
-describe('SyncClient canonical backend transport', () => {
-  let client: SyncClient;
-
+describe('canonical sync backend client', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    client = new SyncClient();
     mockGetAccessToken.mockResolvedValue(token);
   });
 
@@ -61,7 +62,7 @@ describe('SyncClient canonical backend transport', () => {
         }),
     } as Response);
 
-    const result = await client.pullChanges(1000, 'books');
+    const result = await pullCanonicalSyncChanges(1000, 'books');
 
     expect(mockFetchWithTimeout).toHaveBeenCalledWith(
       'http://localhost:3001/api/sync/pull',
@@ -106,7 +107,7 @@ describe('SyncClient canonical backend transport', () => {
         }),
     } as Response);
 
-    const result = await client.pullChanges(1000, 'notes', 'book-1');
+    const result = await pullCanonicalSyncChanges(1000, 'notes', 'book-1');
 
     expect(result.tombstones).toEqual([
       {
@@ -117,6 +118,87 @@ describe('SyncClient canonical backend transport', () => {
         deletedAt: 2000,
       },
     ]);
+  });
+
+  it('does not attach unscoped AI messages to a book-scoped pull', async () => {
+    mockFetchWithTimeout.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          records: [
+            {
+              entity: 'aiConversation',
+              entityId: 'conversation-other',
+              payload: {
+                id: 'conversation-other',
+                bookHash: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+                title: 'Other book',
+                updatedAt: 2000,
+              },
+              serverRevision: 'rev-conversation-other',
+              serverUpdatedAt: 2000,
+            },
+            {
+              entity: 'aiMessage',
+              entityId: 'message-other',
+              payload: {
+                id: 'message-other',
+                conversationId: 'conversation-other',
+                role: 'assistant',
+                content: 'unrelated',
+                createdAt: 2000,
+              },
+              serverRevision: 'rev-message-other',
+              serverUpdatedAt: 2000,
+            },
+          ],
+          tombstones: [],
+          cursorByEntity: { aiConversation: '2000', aiMessage: '2000' },
+          hasMore: false,
+        }),
+    } as Response);
+
+    const result = await pullCanonicalSyncChanges(0, 'ai', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+
+    expect(result.aiConversations).toEqual([]);
+    expect(result.aiMessages).toEqual([]);
+  });
+
+  it('keeps known book conversation messages in a book-scoped AI pull', async () => {
+    mockFetchWithTimeout.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          records: [
+            {
+              entity: 'aiMessage',
+              entityId: 'message-known',
+              payload: {
+                id: 'message-known',
+                conversationId: 'conversation-known',
+                role: 'assistant',
+                content: 'related',
+                createdAt: 3000,
+              },
+              serverRevision: 'rev-message-known',
+              serverUpdatedAt: 3000,
+            },
+          ],
+          tombstones: [],
+          cursorByEntity: { aiMessage: '3000' },
+          hasMore: false,
+        }),
+    } as Response);
+
+    const result = await pullCanonicalSyncChanges(
+      0,
+      'ai',
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      undefined,
+      ['conversation-known'],
+    );
+
+    expect(result.aiMessages).toMatchObject([{ id: 'message-known' }]);
   });
 
   it('returns canonical settings and collections as separate pull outputs', async () => {
@@ -146,7 +228,7 @@ describe('SyncClient canonical backend transport', () => {
         }),
     } as Response);
 
-    const result = await client.pullChanges(0, 'settings');
+    const result = await pullCanonicalSyncChanges(0, 'settings');
 
     expect(result.settings).toEqual({ libraryViewMode: 'grid' });
     expect(result.collections).toMatchObject([
@@ -174,7 +256,7 @@ describe('SyncClient canonical backend transport', () => {
         }),
     } as Response);
 
-    const result = await client.pushChanges({ reconcile: { books: { 'book-1': 1000 } } });
+    const result = await reconcileCanonicalBooks({ 'book-1': 1000 });
 
     expect(mockFetchWithTimeout).toHaveBeenCalledWith(
       'http://localhost:3001/api/sync/reconcile',
@@ -191,17 +273,10 @@ describe('SyncClient canonical backend transport', () => {
     expect(result.reconcile?.remove).toEqual(['missing-book']);
   });
 
-  it('rejects direct entity pushes so callers use the canonical outbox', async () => {
-    await expect(client.pushChanges({ books: [] })).rejects.toThrow(
-      'Direct entity pushes were removed',
-    );
-    expect(mockFetchWithTimeout).not.toHaveBeenCalled();
-  });
-
   it('throws when not authenticated', async () => {
     mockGetAccessToken.mockResolvedValue(null as unknown as string);
 
-    await expect(client.pullChanges(1000)).rejects.toThrow('Not authenticated');
+    await expect(pullCanonicalSyncChanges(1000)).rejects.toThrow('Not authenticated');
     expect(mockFetchWithTimeout).not.toHaveBeenCalled();
   });
 });

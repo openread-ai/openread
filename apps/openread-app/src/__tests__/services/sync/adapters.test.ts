@@ -12,7 +12,6 @@ import {
   buildCollectionMutations,
   buildFileMetadataMutationsFromBook,
   buildSettingsMutation,
-  buildSyncMutationsFromQueueItems,
 } from '@/services/sync/adapters';
 import type { AIConversation, AIMessage } from '@/services/ai/types';
 import type { Book, BookConfig, BookNote } from '@/types/book';
@@ -45,8 +44,6 @@ const config = (overrides: Partial<BookConfig> = {}): BookConfig => ({
   },
   booknotes: [note()],
   updatedAt: 2_000,
-  lastSyncedAtConfig: 1_000,
-  lastSyncedAtNotes: 1_000,
   ...overrides,
 });
 
@@ -100,7 +97,7 @@ describe('canonical sync mutation adapters', () => {
       updatedAt: 2_000,
     });
     expect(mutation.payload).not.toHaveProperty('booknotes');
-    expect(mutation.payload).not.toHaveProperty('lastSyncedAtConfig');
+    expect(mutation.payload).not.toHaveProperty('searchConfig.acceptNode');
     expect((mutation as SyncUpsertMutation<'bookConfig'>).payload.searchConfig).not.toHaveProperty(
       'acceptNode',
     );
@@ -230,27 +227,5 @@ describe('canonical sync mutation adapters', () => {
         status: 'uploaded',
       },
     });
-  });
-
-  it('maps sync input items to canonical mutations for PR3 entities', () => {
-    const mutations = buildSyncMutationsFromQueueItems(
-      [
-        { type: 'book', action: 'upsert', payload: book() as unknown as Record<string, unknown> },
-        {
-          type: 'config',
-          action: 'upsert',
-          payload: config() as unknown as Record<string, unknown>,
-        },
-        { type: 'note', action: 'upsert', payload: note() as unknown as Record<string, unknown> },
-      ],
-      context,
-    );
-
-    expect(mutations.map((mutation) => mutation.entity)).toEqual([
-      'book',
-      'bookConfig',
-      'bookNote',
-    ]);
-    expect(mutations.every((mutation) => validateSyncMutation(mutation).ok)).toBe(true);
   });
 });

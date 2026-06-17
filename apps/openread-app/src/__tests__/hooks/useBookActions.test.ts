@@ -89,8 +89,8 @@ vi.mock('@/utils/access', () => ({
 }));
 
 vi.mock('@/services/sync/helpers', () => ({
-  enqueueAndSync: vi.fn(),
-  enqueueBatchAndSync: vi.fn(),
+  enqueueBookForSync: vi.fn(),
+  enqueueBooksForSync: vi.fn(),
 }));
 
 vi.mock('@/utils/logger', () => ({

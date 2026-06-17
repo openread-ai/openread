@@ -8,21 +8,10 @@ import { usePlatformSidebarStore } from '@/store/platformSidebarStore';
 import { LIBRARY_OWNER_STORAGE_KEY } from '@/services/libraryPaintCache';
 import { createLogger } from '@/utils/logger';
 import type { Book } from '@/types/book';
-import type { SystemSettings } from '@/types/settings';
 
 const logger = createLogger('useLibrary');
 const qaAutomationEnabled = process.env.NEXT_PUBLIC_OPENREAD_QA_AUTOMATION === '1';
 let lastInitializedLibraryKey: string | null = null;
-
-function resetAccountScopedWatermarks(settings: SystemSettings): SystemSettings {
-  return {
-    ...settings,
-    lastSyncedAtBooks: 0,
-    lastSyncedAtConfigs: 0,
-    lastSyncedAtNotes: 0,
-    lastSyncedAtSettings: 0,
-  };
-}
 
 function mergeRegeneratedCoverImageUrls(currentLibrary: Book[], diskBooks: Book[]): Book[] | null {
   const diskBooksByHash = new Map(diskBooks.map((book) => [book.hash, book]));
@@ -105,7 +94,7 @@ export const useLibrary = () => {
         const appService = await envConfig.getAppService();
         const settings = await appService.loadSettings();
         if (cancelled) return;
-        const scopedSettings = ownerMismatch ? resetAccountScopedWatermarks(settings) : settings;
+        const scopedSettings = settings;
         setSettings(scopedSettings);
         if (ownerMismatch) {
           await appService.saveSettings(scopedSettings);

@@ -12,11 +12,6 @@ import type { Book, BookConfig, BookNote } from '@/types/book';
 import type { SystemSettings } from '@/types/settings';
 import { getCoverFilename, getRemoteBookFilename } from '@/utils/book';
 import { extractRoamingSettings } from '@/utils/transform';
-export interface SyncQueueInput {
-  type: 'book' | 'config' | 'note';
-  action: 'upsert' | 'delete';
-  payload: Record<string, unknown>;
-}
 
 export interface SyncMutationContext {
   userId: UserId;
@@ -347,25 +342,4 @@ export function buildFileMetadataMutationsFromBook(
       },
     },
   ];
-}
-
-export function buildSyncMutationFromQueueItem(
-  item: SyncQueueInput,
-  context: SyncMutationContext,
-): SyncMutation<'book' | 'bookConfig' | 'bookNote'> {
-  switch (item.type) {
-    case 'book':
-      return buildBookMutation(item.payload as unknown as Book, context);
-    case 'config':
-      return buildBookConfigMutation(item.payload as unknown as BookConfig, context);
-    case 'note':
-      return buildBookNoteMutation(item.payload as unknown as BookNote, context);
-  }
-}
-
-export function buildSyncMutationsFromQueueItems(
-  items: SyncQueueInput[],
-  context: SyncMutationContext,
-): SyncMutation<'book' | 'bookConfig' | 'bookNote'>[] {
-  return items.map((item) => buildSyncMutationFromQueueItem(item, context));
 }

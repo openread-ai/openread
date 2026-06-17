@@ -94,11 +94,6 @@ export interface SystemSettings {
 
   kosync: KOSyncSettings;
 
-  lastSyncedAtBooks: number;
-  lastSyncedAtConfigs: number;
-  lastSyncedAtNotes: number;
-  lastSyncedAtSettings: number;
-
   migrationVersion: number;
 
   aiSettings: AISettings;

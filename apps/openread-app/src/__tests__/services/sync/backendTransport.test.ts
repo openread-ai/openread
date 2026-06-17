@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SyncPushRequest } from '@openread/sync';
 
 import { BackendSyncTransport } from '@/services/sync/backendTransport';
-import { SYNC_TIMEOUT_MS } from '@/libs/sync';
+import { SYNC_TIMEOUT_MS } from '@/services/sync/client';
 
 const getAccessToken = vi.fn();
 const fetchWithTimeout = vi.fn();

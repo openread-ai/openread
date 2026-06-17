@@ -1,24 +1,21 @@
-/**
- * Sync helper utilities to reduce boilerplate across consumers.
- */
-
 import type { SyncMutation } from '@openread/sync';
 
 import type { AIConversation, AIMessage } from '@/services/ai/types';
 import { getDeviceId } from '@/services/deviceService';
-import type { Book } from '@/types/book';
+import type { Book, BookConfig, BookNote } from '@/types/book';
 import type { SystemSettings } from '@/types/settings';
 
 import {
   buildAIConversationMutation,
   buildAIMessageMutation,
+  buildBookConfigMutation,
+  buildBookMutation,
+  buildBookNoteMutation,
   buildCollectionMutations,
   buildFileMetadataMutationsFromBook,
   buildSettingsMutation,
-  buildSyncMutationsFromQueueItems,
   type CollectionSyncInput,
   type SyncMutationContext,
-  type SyncQueueInput,
 } from './adapters';
 import { syncOutbox } from './outbox';
 import { syncWorker } from './syncWorker';
@@ -35,13 +32,42 @@ export async function enqueueCanonicalSyncMutations(mutations: SyncMutation[]): 
   await syncWorker.syncNow();
 }
 
-export async function enqueueCanonicalSyncItems(items: SyncQueueInput[]): Promise<void> {
-  if (items.length === 0) return;
+export async function enqueueBookForSync(book: Book): Promise<void> {
   const context = getSyncMutationContext();
   if (!context) return;
+  await enqueueCanonicalSyncMutations([buildBookMutation(book, context)]);
+}
 
-  const mutations = buildSyncMutationsFromQueueItems(items, context);
-  await enqueueCanonicalSyncMutations(mutations);
+export async function enqueueBooksForSync(books: Book[]): Promise<void> {
+  const context = getSyncMutationContext();
+  if (!context || books.length === 0) return;
+  await enqueueCanonicalSyncMutations(books.map((book) => buildBookMutation(book, context)));
+}
+
+export async function enqueueBookConfigForSync(config: BookConfig): Promise<void> {
+  const context = getSyncMutationContext();
+  if (!context) return;
+  await enqueueCanonicalSyncMutations([buildBookConfigMutation(config, context)]);
+}
+
+export async function enqueueBookConfigsForSync(configs: BookConfig[]): Promise<void> {
+  const context = getSyncMutationContext();
+  if (!context || configs.length === 0) return;
+  await enqueueCanonicalSyncMutations(
+    configs.map((config) => buildBookConfigMutation(config, context)),
+  );
+}
+
+export async function enqueueBookNoteForSync(note: BookNote): Promise<void> {
+  const context = getSyncMutationContext();
+  if (!context) return;
+  await enqueueCanonicalSyncMutations([buildBookNoteMutation(note, context)]);
+}
+
+export async function enqueueBookNotesForSync(notes: BookNote[]): Promise<void> {
+  const context = getSyncMutationContext();
+  if (!context || notes.length === 0) return;
+  await enqueueCanonicalSyncMutations(notes.map((note) => buildBookNoteMutation(note, context)));
 }
 
 export async function enqueueSettingsForSync(settings: SystemSettings): Promise<void> {
@@ -72,18 +98,4 @@ export async function enqueueFileMetadataForBookUpload(book: Book): Promise<void
   const context = getSyncMutationContext();
   if (!context) return;
   await enqueueCanonicalSyncMutations(buildFileMetadataMutationsFromBook(book, context));
-}
-
-/**
- * Enqueue a single item as a canonical SyncMutation and trigger an immediate sync drain.
- */
-export function enqueueAndSync(item: SyncQueueInput): void {
-  void enqueueCanonicalSyncItems([item]);
-}
-
-/**
- * Enqueue multiple canonical SyncMutations in one batch and trigger a single sync drain.
- */
-export function enqueueBatchAndSync(items: SyncQueueInput[]): void {
-  void enqueueCanonicalSyncItems(items);
 }

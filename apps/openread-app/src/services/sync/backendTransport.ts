@@ -1,6 +1,6 @@
 import type { SyncPushRequest, SyncPushResponse } from '@openread/sync';
 
-import { SYNC_TIMEOUT_MS } from '@/libs/sync';
+import { SYNC_TIMEOUT_MS } from './client';
 import { getNodeBaseUrl } from '@/services/environment';
 import { getAccessToken } from '@/utils/access';
 import { fetchWithTimeout } from '@/utils/fetch';

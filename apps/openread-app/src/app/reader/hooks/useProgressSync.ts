@@ -13,7 +13,7 @@ import { eventDispatcher } from '@/utils/event';
 import { DEFAULT_BOOK_SEARCH_CONFIG, SYNC_PROGRESS_INTERVAL_SEC } from '@/services/constants';
 import { getCFIFromXPointer, getXPointerFromCFI, normalizeProgressXPointer } from '@/utils/xcfi';
 import { createLogger } from '@/utils/logger';
-import { enqueueAndSync } from '@/services/sync/helpers';
+import { enqueueBookConfigForSync } from '@/services/sync/helpers';
 import { getBookIdFromKey } from '@/utils/readerBookKey';
 import { parseSyncableBookRef } from '@openread/types';
 
@@ -104,16 +104,8 @@ export const useProgressSync = (bookKey: string) => {
 
       const bookHash = parseSyncableBookRef(getBookIdFromKey(bookKey));
       if (!bookHash) return;
-      const lastSynced = config.lastSyncedAtConfig ?? 0;
-      if (config.updatedAt && config.updatedAt > lastSynced) {
-        enqueueAndSync({
-          type: 'config',
-          action: 'upsert',
-          payload: { ...config, bookHash, metaHash: book.metaHash } as unknown as Record<
-            string,
-            unknown
-          >,
-        });
+      if (config.updatedAt) {
+        void enqueueBookConfigForSync({ ...config, bookHash, metaHash: book.metaHash });
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

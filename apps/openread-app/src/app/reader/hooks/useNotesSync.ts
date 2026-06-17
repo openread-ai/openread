@@ -5,12 +5,12 @@ import { BookNote } from '@/types/book';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { SYNC_NOTES_INTERVAL_SEC } from '@/services/constants';
 import { throttle } from '@/utils/throttle';
-import { enqueueBatchAndSync } from '@/services/sync/helpers';
+import { enqueueBookNotesForSync } from '@/services/sync/helpers';
 import { parseSyncableBookRef } from '@openread/types';
 
 export const useNotesSync = (bookKey: string) => {
   const { user } = useAuth();
-  const { syncedNotes, syncNotes, lastSyncedAtNotes } = useSync(bookKey);
+  const { syncedNotes, syncNotes, lastNotePullAt } = useSync(bookKey);
   const { getConfig, setConfig, getBookData } = useBookDataStore();
 
   const config = getConfig(bookKey);
@@ -25,7 +25,7 @@ export const useNotesSync = (bookKey: string) => {
 
     const bookNotes = config.booknotes ?? [];
     const newNotes = bookNotes.filter(
-      (note) => lastSyncedAtNotes < note.updatedAt || lastSyncedAtNotes < (note.deletedAt ?? 0),
+      (note) => lastNotePullAt < note.updatedAt || lastNotePullAt < (note.deletedAt ?? 0),
     );
     newNotes.forEach((note) => {
       note.bookHash = syncBookRef;
@@ -33,9 +33,9 @@ export const useNotesSync = (bookKey: string) => {
     });
     return {
       notes: newNotes,
-      lastSyncedAt: lastSyncedAtNotes,
+      lastSyncedAt: lastNotePullAt,
     };
-  }, [user, bookKey, lastSyncedAtNotes, getConfig, getBookData]);
+  }, [user, bookKey, lastNotePullAt, getConfig, getBookData]);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const handleAutoSync = useCallback(
@@ -76,13 +76,7 @@ export const useNotesSync = (bookKey: string) => {
     return () => {
       const { notes } = getNewNotes();
       if (!notes?.length || !user) return;
-      enqueueBatchAndSync(
-        notes.map((note) => ({
-          type: 'note' as const,
-          action: 'upsert' as const,
-          payload: note as unknown as Record<string, unknown>,
-        })),
-      );
+      void enqueueBookNotesForSync(notes);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookKey]);

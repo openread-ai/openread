@@ -43,7 +43,7 @@ export const testCatalogBookRef = (id = '65119855-9d37-4caf-a7a4-4a5f9c9572d5'):
 };
 
 export const testOpenReadBookRef = (seed: string): OpenReadBookReference =>
-  parseOpenReadBookReference(seed) ?? testLocalBookHash(seed);
+  parseOpenReadBookReference(seed) ?? (seed as OpenReadBookReference);
 
 export const testSyncableBookRef = (seed: string): SyncableBookRef =>
   parseSyncableBookRef(seed) ?? testLocalBookHash(seed);

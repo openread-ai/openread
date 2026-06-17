@@ -1,7 +1,4 @@
 import { useRouter } from 'next/router';
-import { AuthProvider } from '@/context/AuthContext';
-import { EnvProvider } from '@/context/EnvContext';
-import { CSPostHogProvider } from '@/context/PHContext';
 import Reader from '@/app/reader/components/Reader';
 
 // For output:'export', dynamic routes need at least one path to generate a shell page.
@@ -16,13 +13,5 @@ export async function getStaticProps() {
 export default function Page() {
   const router = useRouter();
   const ids = router.query['ids'] as string;
-  return (
-    <CSPostHogProvider>
-      <EnvProvider>
-        <AuthProvider>
-          <Reader ids={ids} />
-        </AuthProvider>
-      </EnvProvider>
-    </CSPostHogProvider>
-  );
+  return <Reader ids={ids} />;
 }

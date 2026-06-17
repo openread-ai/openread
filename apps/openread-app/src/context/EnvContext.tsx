@@ -17,15 +17,17 @@ export const EnvProvider = ({ children }: { children: ReactNode }) => {
   const [appService, setAppService] = useState<AppService | null>(null);
 
   React.useEffect(() => {
-    envConfig.getAppService().then((service) => setAppService(service));
-    window.addEventListener('error', (e) => {
-      if (e.message === 'ResizeObserver loop limit exceeded') {
-        e.stopImmediatePropagation();
-        e.preventDefault();
-        return true;
+    const handleResizeObserverLoopError = (event: ErrorEvent) => {
+      if (event.message === 'ResizeObserver loop limit exceeded') {
+        event.stopImmediatePropagation();
+        event.preventDefault();
       }
-      return false;
-    });
+    };
+
+    envConfig.getAppService().then((service) => setAppService(service));
+    window.addEventListener('error', handleResizeObserverLoopError);
+
+    return () => window.removeEventListener('error', handleResizeObserverLoopError);
   }, [envConfig]);
 
   return <EnvContext.Provider value={{ envConfig, appService }}>{children}</EnvContext.Provider>;

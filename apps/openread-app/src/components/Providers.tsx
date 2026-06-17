@@ -64,7 +64,7 @@ const Providers = ({ children }: { children: React.ReactNode }) => {
   }, [envConfig, appService, setSettings, applyUILanguage, applyBackgroundTexture, applyEinkMode]);
 
   // Make sure appService is available in all children components
-  if (!appService) return;
+  if (!appService) return null;
 
   return (
     <CSPostHogProvider>

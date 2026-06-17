@@ -204,6 +204,11 @@ vi.mock('@/hooks/useWelcomeScreen', () => ({
   })),
 }));
 
+// Mock platform book seeding; these tests assert library UI/import behavior, not seed fixtures.
+vi.mock('@/hooks/usePlatformBooks', () => ({
+  usePlatformBooks: vi.fn(),
+}));
+
 // Mock useLibraryViewStore
 vi.mock('@/store/libraryViewStore', () => ({
   useLibraryViewStore: vi.fn((selector?: (state: typeof mockLibraryViewState) => unknown) => {

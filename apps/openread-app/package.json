@@ -118,6 +118,7 @@
     "@choochmeque/tauri-plugin-sharekit-api": "^0.3.0",
     "@fabianlars/tauri-plugin-oauth": "2",
     "@opennextjs/cloudflare": "^1.15.1",
+    "@openread/ai-control": "workspace:*",
     "@openread/auth": "workspace:*",
     "@openread/entitlements": "workspace:*",
     "@openread/sdk": "workspace:*",

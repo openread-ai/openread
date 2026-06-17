@@ -18,10 +18,6 @@ vi.mock('@/store/aiQuotaStore', () => ({
     selector({ fetchInitial: fetchInitialQuota }),
 }));
 
-vi.mock('@/utils/access', () => ({
-  getUserProfilePlan: () => 'reader',
-}));
-
 describe('UsagePage', () => {
   afterEach(() => {
     cleanup();
@@ -35,6 +31,6 @@ describe('UsagePage', () => {
     expect(screen.getByTestId('storage-meter')).toBeTruthy();
     expect(screen.queryByText('Monthly Usage')).toBeNull();
     expect(screen.queryByText(/messages left/i)).toBeNull();
-    expect(fetchInitialQuota).toHaveBeenCalledWith('reader', 'user-123');
+    expect(fetchInitialQuota).toHaveBeenCalledWith('user-123');
   });
 });

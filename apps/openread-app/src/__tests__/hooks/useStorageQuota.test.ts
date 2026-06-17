@@ -37,11 +37,12 @@ const MOCK_QUOTA_RESPONSE = {
   usage: 3 * GB,
   quota: 10 * GB,
   usagePercentage: 30,
+  plan: 'reader',
   byBookHash: [],
 };
 
 const EXPECTED_QUOTA = {
-  plan: 'current',
+  plan: 'reader',
   base_gb: 10,
   addon_gb: 0,
   total_bytes: 10 * GB,

@@ -62,11 +62,11 @@ export function checkLibraryLimit(
  */
 export function useLibraryLimit(): LibraryLimitInfo {
   const { user } = useAuth();
-  const { userProfilePlan } = useQuotaStats();
+  const { userProfilePlan, isLoading: isQuotaLoading } = useQuotaStats();
   const { config, isLoading: isTierConfigLoading } = useTierConfig();
   const library = useLibraryStore((state) => state.library);
 
-  const isLoading = user === undefined || isTierConfigLoading;
+  const isLoading = user === undefined || Boolean(user && isQuotaLoading) || isTierConfigLoading;
 
   const plan: UserPlan = useMemo(() => {
     if (!user) return 'free';

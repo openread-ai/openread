@@ -14,16 +14,13 @@ vi.mock('@/hooks/useTranslation', () => ({
 }));
 
 const mockUserProfilePlan = vi.fn();
+const mockUseQuotaStats = vi.fn();
 vi.mock('@/hooks/useQuotaStats', () => ({
   useQuotaStats: () => ({
     userProfilePlan: mockUserProfilePlan(),
     quotas: [],
+    ...mockUseQuotaStats(),
   }),
-}));
-
-const mockUseStorageQuota = vi.fn();
-vi.mock('@/hooks/useStorageQuota', () => ({
-  useStorageQuota: () => mockUseStorageQuota(),
 }));
 
 vi.mock('@/utils/tailwind', () => ({
@@ -53,8 +50,8 @@ function setupHook(
   isLoading = false,
   error: Error | null = null,
 ) {
-  mockUseStorageQuota.mockReturnValue({
-    quota,
+  mockUseQuotaStats.mockReturnValue({
+    storageQuota: quota,
     isLoading,
     error,
     refetch: vi.fn(),

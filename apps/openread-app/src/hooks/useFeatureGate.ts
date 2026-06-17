@@ -44,10 +44,11 @@ export interface UseFeatureGateReturn extends FeatureGateResult {
  */
 export function useFeatureGate(feature: GatedFeature): UseFeatureGateReturn {
   const { user } = useAuth();
-  const { userProfilePlan } = useQuotaStats();
-  const { config, isLoading: isTierConfigLoading, error } = useTierConfig();
+  const { userProfilePlan, isLoading: isQuotaLoading, error: quotaError } = useQuotaStats();
+  const { config, isLoading: isTierConfigLoading, error: tierConfigError } = useTierConfig();
 
-  const isLoading = user === undefined || isTierConfigLoading;
+  const isLoading = user === undefined || Boolean(user && isQuotaLoading) || isTierConfigLoading;
+  const error = tierConfigError ?? quotaError;
 
   const plan: UserPlan = useMemo(() => {
     if (!user) return 'free';

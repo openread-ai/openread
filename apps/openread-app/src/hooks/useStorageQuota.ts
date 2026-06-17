@@ -5,7 +5,9 @@ import { useAuth } from '@/context/AuthContext';
 import { getNodeAPIBaseUrl } from '@/services/environment';
 import { getAccessToken } from '@/utils/access';
 import { createLogger } from '@/utils/logger';
+import { normalizeUserPlan } from '@/lib/user-plan';
 import type { StorageAddon } from '@/lib/tier-config';
+import type { UserPlan } from '@/types/quota';
 
 const logger = createLogger('storage-quota');
 
@@ -20,7 +22,7 @@ export interface ActiveAddon {
 }
 
 export interface StorageQuotaData {
-  plan: string;
+  plan: UserPlan;
   base_gb: number;
   addon_gb: number;
   total_bytes: number;
@@ -42,6 +44,8 @@ export function useStorageQuota() {
 
   const fetchQuota = useCallback(async () => {
     if (!user || !token) {
+      setQuota(null);
+      setError(null);
       setIsLoading(false);
       return;
     }
@@ -62,12 +66,13 @@ export function useStorageQuota() {
       }
 
       const data = (await response.json()) as {
+        plan?: string | null;
         usage: number;
         quota: number;
         usagePercentage: number;
       };
       setQuota({
-        plan: 'current',
+        plan: normalizeUserPlan(data.plan),
         base_gb: data.quota / 1024 / 1024 / 1024,
         addon_gb: 0,
         total_bytes: data.quota,

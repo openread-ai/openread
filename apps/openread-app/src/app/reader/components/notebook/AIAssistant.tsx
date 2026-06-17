@@ -18,7 +18,6 @@ import { useAIChatStore } from '@/store/aiChatStore';
 import { useAIQuotaStore } from '@/store/aiQuotaStore';
 import { usePrimaryBookHash } from '@/app/reader/hooks/usePrimaryBookHash';
 import { useAuth } from '@/context/AuthContext';
-import { getUserProfilePlan } from '@/utils/access';
 import { eventDispatcher } from '@/utils/event';
 import { createAgenticAdapter } from '@/services/ai';
 import type { AISettings, AIMessage } from '@/services/ai/types';
@@ -400,7 +399,7 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
   const { settings } = useSettingsStore();
   const { getBookData } = useBookDataStore();
   const { getView, getProgress } = useReaderStore();
-  const { token, user } = useAuth();
+  const { user } = useAuth();
   const fetchInitialQuota = useAIQuotaStore((s) => s.fetchInitial);
   const userId = user?.id;
   const bookData = getBookData(bookKey);
@@ -419,11 +418,10 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
 
   // Initialize AI quota on mount
   useEffect(() => {
-    if (token && aiSettings?.enabled && userId) {
-      const plan = getUserProfilePlan(token);
-      fetchInitialQuota(plan, userId);
+    if (aiSettings?.enabled && userId) {
+      fetchInitialQuota(userId);
     }
-  }, [token, userId, aiSettings?.enabled, fetchInitialQuota]);
+  }, [userId, aiSettings?.enabled, fetchInitialQuota]);
 
   // Listen for citation link clicks — navigate the reader to the cited offset.
   // Character offset is converted to a fraction of total book content for goToFraction().

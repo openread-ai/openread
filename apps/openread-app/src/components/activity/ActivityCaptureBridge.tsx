@@ -61,7 +61,7 @@ export default function ActivityCaptureBridge() {
         } else if (target.auth === 'anonymous') {
           await clearQaAuth(logout);
         }
-        installTauriQaFetchRoutes();
+        installTauriQaFetchRoutes(plan);
         setQaEvidence({
           scenarioId: target.qaScenarioId ?? 'SET-000',
           title: target.qaTitle ?? 'Settings contract QA evidence',
@@ -289,11 +289,14 @@ function supabaseStorageKey() {
 declare global {
   interface Window {
     __openreadTauriQaFetchInstalled?: boolean;
+    __openreadTauriQaPlan?: 'free' | 'reader' | 'pro';
   }
 }
 
-function installTauriQaFetchRoutes() {
-  if (typeof window === 'undefined' || window.__openreadTauriQaFetchInstalled) return;
+function installTauriQaFetchRoutes(plan: 'free' | 'reader' | 'pro') {
+  if (typeof window === 'undefined') return;
+  window.__openreadTauriQaPlan = plan;
+  if (window.__openreadTauriQaFetchInstalled) return;
   const originalFetch = window.fetch.bind(window);
 
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -348,11 +351,14 @@ function tauriQaFetchResponse(url: URL, _init?: RequestInit): Response | null {
   }
   if (path.endsWith('/api/files/stats')) {
     const gb = 1024 * 1024 * 1024;
+    const plan = window.__openreadTauriQaPlan ?? 'reader';
+    const quotaGb = plan === 'pro' ? 100 : plan === 'reader' ? 10 : 1;
     return jsonResponse({
+      plan,
       totalFiles: 0,
       totalSize: 0,
       usage: 0,
-      quota: 10 * gb,
+      quota: quotaGb * gb,
       usagePercentage: 0,
       byBookHash: [],
     });

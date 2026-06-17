@@ -104,7 +104,6 @@ vi.mock('@/services/environment', () => ({
 }));
 
 vi.mock('@/utils/access', () => ({
-  getSubscriptionPlan: () => 'reader',
   getAccessToken: vi.fn().mockResolvedValue(null),
 }));
 

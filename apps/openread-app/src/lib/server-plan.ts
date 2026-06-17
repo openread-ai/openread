@@ -1,16 +1,11 @@
 import { createLogger } from '@/utils/logger';
 import { createSupabaseAdminClient } from '@/utils/supabase';
+import { normalizeUserPlan } from '@/lib/user-plan';
 import type { UserPlan } from '@/types/quota';
 
-const logger = createLogger('server-plan');
+export { normalizeUserPlan } from '@/lib/user-plan';
 
-/** Normalize legacy persisted/token plan values to the current canonical plan ids. */
-export function normalizeUserPlan(rawPlan: string | null | undefined): UserPlan {
-  if (rawPlan === 'plus') return 'reader';
-  if (rawPlan === 'purchase') return 'free';
-  if (rawPlan === 'reader' || rawPlan === 'pro') return rawPlan;
-  return 'free';
-}
+const logger = createLogger('server-plan');
 
 /**
  * Resolve the canonical server-side plan for entitlement checks.

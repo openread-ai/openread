@@ -3,7 +3,7 @@
 import { Progress } from '@/components/primitives/progress';
 import { Skeleton } from '@/components/primitives/skeleton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/primitives/card';
-import { useStorageQuota } from '@/hooks/useStorageQuota';
+import { useQuotaStats } from '@/hooks/useQuotaStats';
 import { useTranslation } from '@/hooks/useTranslation';
 import { cn } from '@/utils/tailwind';
 import { HardDrive } from 'lucide-react';
@@ -30,7 +30,7 @@ function getProgressColor(percent: number): string {
 
 export function StorageMeter() {
   const _ = useTranslation();
-  const { quota, isLoading, error } = useStorageQuota();
+  const { storageQuota: quota, isLoading, error } = useQuotaStats();
 
   if (isLoading) {
     return (

@@ -17,9 +17,9 @@ vi.mock('@/utils/tailwind', () => ({
   cn: (...args: unknown[]) => args.filter(Boolean).join(' '),
 }));
 
-const mockUseStorageQuota = vi.fn();
-vi.mock('@/hooks/useStorageQuota', () => ({
-  useStorageQuota: () => mockUseStorageQuota(),
+const mockUseQuotaStats = vi.fn();
+vi.mock('@/hooks/useQuotaStats', () => ({
+  useQuotaStats: () => mockUseQuotaStats(),
 }));
 
 const GB = 1024 * 1024 * 1024;
@@ -50,7 +50,7 @@ describe('StorageMeter', () => {
   });
 
   it('shows loading skeleton when loading', () => {
-    mockUseStorageQuota.mockReturnValue({ quota: null, isLoading: true, error: null });
+    mockUseQuotaStats.mockReturnValue({ storageQuota: null, isLoading: true, error: null });
 
     render(<StorageMeter />);
     const skeletons = document.querySelectorAll('.animate-pulse');
@@ -58,8 +58,8 @@ describe('StorageMeter', () => {
   });
 
   it('shows error state when fetch fails', () => {
-    mockUseStorageQuota.mockReturnValue({
-      quota: null,
+    mockUseQuotaStats.mockReturnValue({
+      storageQuota: null,
       isLoading: false,
       error: new Error('fail'),
     });
@@ -69,8 +69,8 @@ describe('StorageMeter', () => {
   });
 
   it('displays tier-only storage usage', () => {
-    mockUseStorageQuota.mockReturnValue({
-      quota: makeQuota(),
+    mockUseQuotaStats.mockReturnValue({
+      storageQuota: makeQuota(),
       isLoading: false,
       error: null,
     });
@@ -85,8 +85,8 @@ describe('StorageMeter', () => {
   });
 
   it('uses base tier storage even if stale add-on fields are present', () => {
-    mockUseStorageQuota.mockReturnValue({
-      quota: makeQuota({ base_gb: 10, addon_gb: 25, total_bytes: 35 * GB }),
+    mockUseQuotaStats.mockReturnValue({
+      storageQuota: makeQuota({ base_gb: 10, addon_gb: 25, total_bytes: 35 * GB }),
       isLoading: false,
       error: null,
     });
@@ -99,8 +99,8 @@ describe('StorageMeter', () => {
   });
 
   it('shows progress bar', () => {
-    mockUseStorageQuota.mockReturnValue({
-      quota: makeQuota(),
+    mockUseQuotaStats.mockReturnValue({
+      storageQuota: makeQuota(),
       isLoading: false,
       error: null,
     });
@@ -110,8 +110,8 @@ describe('StorageMeter', () => {
   });
 
   it('applies warning color when usage is high', () => {
-    mockUseStorageQuota.mockReturnValue({
-      quota: makeQuota({ percent_used: 85 }),
+    mockUseQuotaStats.mockReturnValue({
+      storageQuota: makeQuota({ percent_used: 85 }),
       isLoading: false,
       error: null,
     });

@@ -135,7 +135,7 @@ describe('useBookActions', () => {
 
       expect(mockLibraryStoreState.updateBook).toHaveBeenCalledTimes(1);
       const [, updatedBook] = mockLibraryStoreState.updateBook.mock.calls[0] as [unknown, Book];
-      expect(updatedBook.hash).toBe('book-123');
+      expect(updatedBook.hash).toBe(mockBook.hash);
       expect(updatedBook.readingStatus).toBe('finished');
       expect(updatedBook.updatedAt).toBeGreaterThan(0);
     });
@@ -228,7 +228,7 @@ describe('useBookActions', () => {
         createMockBook({ hash: testOpenReadBookRef('book-3') }),
       ];
       mockLibraryStoreState.library = books;
-      const hashes = ['book-1', 'book-2', 'book-3'];
+      const hashes = books.map((book) => book.hash);
       const { result } = renderHook(() => useBookActions());
 
       await act(async () => {
@@ -249,7 +249,10 @@ describe('useBookActions', () => {
       const { result } = renderHook(() => useBookActions());
 
       await act(async () => {
-        await result.current.bulkSetReadingStatus(['book-1', 'book-2'], 'unread');
+        await result.current.bulkSetReadingStatus(
+          books.map((book) => book.hash),
+          'unread',
+        );
       });
 
       const calls = mockLibraryStoreState.updateBook.mock.calls as [unknown, Book][];
@@ -264,7 +267,10 @@ describe('useBookActions', () => {
       const { result } = renderHook(() => useBookActions());
 
       await act(async () => {
-        await result.current.bulkSetReadingStatus(['book-1', 'nonexistent'], 'finished');
+        await result.current.bulkSetReadingStatus(
+          [books[0]!.hash, testOpenReadBookRef('missing-book')],
+          'finished',
+        );
       });
 
       // Only the existing book should be updated
@@ -282,7 +288,7 @@ describe('useBookActions', () => {
       const { result } = renderHook(() => useBookActions());
 
       await act(async () => {
-        await result.current.bulkRemove(['book-1', 'book-2']);
+        await result.current.bulkRemove(books.map((book) => book.hash));
       });
 
       expect(mockLibraryViewStoreState.clearSelection).toHaveBeenCalled();
@@ -295,7 +301,7 @@ describe('useBookActions', () => {
       const { result } = renderHook(() => useBookActions());
 
       await act(async () => {
-        await result.current.bulkRemove(['book-1', 'nonexistent']);
+        await result.current.bulkRemove([books[0]!.hash, testOpenReadBookRef('missing-book')]);
       });
 
       // Only one book should be processed
@@ -307,7 +313,7 @@ describe('useBookActions', () => {
       const { result } = renderHook(() => useBookActions());
 
       await act(async () => {
-        await result.current.bulkRemove(['nonexistent']);
+        await result.current.bulkRemove([testOpenReadBookRef('missing-book')]);
       });
 
       expect(mockLibraryViewStoreState.clearSelection).not.toHaveBeenCalled();
@@ -319,17 +325,20 @@ describe('useBookActions', () => {
       const { result } = renderHook(() => useBookActions());
 
       act(() => {
-        result.current.bulkAddToCollection(['book-1', 'book-2'], 'collection-123');
+        result.current.bulkAddToCollection(
+          [testOpenReadBookRef('book-1'), testOpenReadBookRef('book-2')],
+          'collection-123',
+        );
       });
 
       expect(mockPlatformSidebarStoreState.addBookToCollection).toHaveBeenCalledTimes(2);
       expect(mockPlatformSidebarStoreState.addBookToCollection).toHaveBeenCalledWith(
         'collection-123',
-        'book-1',
+        testOpenReadBookRef('book-1'),
       );
       expect(mockPlatformSidebarStoreState.addBookToCollection).toHaveBeenCalledWith(
         'collection-123',
-        'book-2',
+        testOpenReadBookRef('book-2'),
       );
       expect(mockLibraryViewStoreState.clearSelection).toHaveBeenCalled();
       expect(mockLibraryViewStoreState.setSelectMode).toHaveBeenCalledWith(false);
@@ -351,13 +360,13 @@ describe('useBookActions', () => {
       const { result } = renderHook(() => useBookActions());
 
       act(() => {
-        result.current.bulkAddToCollection(['book-1'], 'collection-456');
+        result.current.bulkAddToCollection([testOpenReadBookRef('book-1')], 'collection-456');
       });
 
       expect(mockPlatformSidebarStoreState.addBookToCollection).toHaveBeenCalledTimes(1);
       expect(mockPlatformSidebarStoreState.addBookToCollection).toHaveBeenCalledWith(
         'collection-456',
-        'book-1',
+        testOpenReadBookRef('book-1'),
       );
     });
   });

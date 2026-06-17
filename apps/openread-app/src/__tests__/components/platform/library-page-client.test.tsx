@@ -39,6 +39,8 @@ const mockLibraryViewState = {
 };
 
 // Mock books
+const bookGridTestId = (book: Book): string => `book-${book.hash}`;
+
 const mockBooks: Book[] = [
   {
     hash: testOpenReadBookRef('book-1'),
@@ -347,9 +349,9 @@ describe('LibraryPageClient', () => {
 
     it('should render all books in the grid', () => {
       render(<LibraryPageClient filter='all' title='All Books' />);
-      expect(screen.getByTestId('book-book-1')).toBeTruthy();
-      expect(screen.getByTestId('book-book-2')).toBeTruthy();
-      expect(screen.getByTestId('book-book-3')).toBeTruthy();
+      expect(screen.getByTestId(bookGridTestId(mockBooks[0]!))).toBeTruthy();
+      expect(screen.getByTestId(bookGridTestId(mockBooks[1]!))).toBeTruthy();
+      expect(screen.getByTestId(bookGridTestId(mockBooks[2]!))).toBeTruthy();
     });
 
     it('should not force the legacy onboarding modal when Library is opened', () => {
@@ -375,9 +377,9 @@ describe('LibraryPageClient', () => {
       render(<LibraryPageClient filter='all' title='All Books' />);
       // The book count should be 1 (only Alpha Book matches)
       expect(screen.getByTestId('book-count').textContent).toBe('1');
-      expect(screen.getByTestId('book-book-1')).toBeTruthy();
-      expect(screen.queryByTestId('book-book-2')).toBeNull();
-      expect(screen.queryByTestId('book-book-3')).toBeNull();
+      expect(screen.getByTestId(bookGridTestId(mockBooks[0]!))).toBeTruthy();
+      expect(screen.queryByTestId(bookGridTestId(mockBooks[1]!))).toBeNull();
+      expect(screen.queryByTestId(bookGridTestId(mockBooks[2]!))).toBeNull();
     });
 
     it('should filter books by author (case-insensitive)', () => {
@@ -394,9 +396,9 @@ describe('LibraryPageClient', () => {
       render(<LibraryPageClient filter='all' title='All Books' />);
       // Books 1 and 3 have "Author A"
       expect(screen.getByTestId('book-count').textContent).toBe('2');
-      expect(screen.getByTestId('book-book-1')).toBeTruthy();
-      expect(screen.queryByTestId('book-book-2')).toBeNull();
-      expect(screen.getByTestId('book-book-3')).toBeTruthy();
+      expect(screen.getByTestId(bookGridTestId(mockBooks[0]!))).toBeTruthy();
+      expect(screen.queryByTestId(bookGridTestId(mockBooks[1]!))).toBeNull();
+      expect(screen.getByTestId(bookGridTestId(mockBooks[2]!))).toBeTruthy();
     });
 
     it('should show search-specific empty message when no results', () => {
@@ -428,8 +430,8 @@ describe('LibraryPageClient', () => {
 
       render(<LibraryPageClient filter='all' title='All Books' />);
       // Verify books are filtered without additional API calls
-      expect(screen.getByTestId('book-book-2')).toBeTruthy();
-      expect(screen.queryByTestId('book-book-1')).toBeNull();
+      expect(screen.getByTestId(bookGridTestId(mockBooks[1]!))).toBeTruthy();
+      expect(screen.queryByTestId(bookGridTestId(mockBooks[0]!))).toBeNull();
     });
   });
 
@@ -541,9 +543,9 @@ describe('LibraryPageClient', () => {
       render(<LibraryPageClient filter='all' title='All Books' />);
       const toolbar = screen.getByTestId('selection-toolbar');
       const hashes = toolbar.getAttribute('data-all-hashes');
-      expect(hashes).toContain('book-1');
-      expect(hashes).toContain('book-2');
-      expect(hashes).toContain('book-3');
+      expect(hashes).toContain(mockBooks[0]!.hash);
+      expect(hashes).toContain(mockBooks[1]!.hash);
+      expect(hashes).toContain(mockBooks[2]!.hash);
     });
 
     it('should add bottom padding when toolbar is visible', () => {

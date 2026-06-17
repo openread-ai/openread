@@ -9,6 +9,7 @@
     "api:ownership:check": "node scripts/ops/check-api-route-ownership.mjs",
     "api:ownership:self-test": "node scripts/ops/check-api-route-ownership.mjs --self-test",
     "book-identity:check": "node scripts/ops/check-book-identity-ownership.mjs",
+    "auth:boundary:check": "node scripts/ops/check-canonical-auth-boundary.mjs",
     "tauri": "pnpm --filter @openread/openread-app tauri",
     "dev-web": "pnpm --filter @openread/openread-app dev-web",
     "format": "prettier --write \"**/*.{js,jsx,ts,tsx,css,json,md,html,yml}\"",

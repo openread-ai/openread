@@ -22,6 +22,7 @@
  * ```
  */
 
+import type { AuthTokenProvider } from '@openread/auth';
 import type {
   ApiErrorCode,
   Book,
@@ -337,6 +338,7 @@ export class Openread {
    * @internal
    */
   private tokenRefreshPromise: Promise<string | null> | null = null;
+  private readonly tokenProvider: AuthTokenProvider;
 
   /**
    * Authentication client for user-related operations.
@@ -365,6 +367,22 @@ export class Openread {
    */
   constructor(config: OpenreadConfig) {
     this.config = config;
+    if (config.tokenProvider) {
+      this.tokenProvider = config.tokenProvider;
+    } else if (config.getAccessToken) {
+      this.tokenProvider = {
+        getAccessToken: config.getAccessToken,
+        refreshIfNeeded: async () => {
+          const accessToken = await config.getAccessToken?.();
+          return accessToken
+            ? { accessToken, user: { id: '' }, expiresAt: Date.now() + 60_000 }
+            : null;
+        },
+        clear: async () => undefined,
+      };
+    } else {
+      throw new Error('Openread requires tokenProvider or getAccessToken');
+    }
     this.auth = new AuthClient(this);
     this.runtime = new RuntimeClient(this);
     this.books = new BooksClient(this);
@@ -378,7 +396,7 @@ export class Openread {
    * @returns The access token or null if not available
    */
   async getAccessToken(): Promise<string | null> {
-    return this.config.getAccessToken();
+    return this.tokenProvider.getAccessToken();
   }
 
   /**
@@ -394,7 +412,7 @@ export class Openread {
    * @throws OpenreadError on API errors
    */
   async fetch<T>(path: string, init?: RequestInit): Promise<T> {
-    const token = await this.config.getAccessToken();
+    const token = await this.tokenProvider.getAccessToken();
 
     const url = `${this.config.baseUrl}${path}`;
     const headers: Record<string, string> = {
@@ -475,7 +493,9 @@ export class Openread {
     }
 
     // Start new refresh and store the promise
-    this.tokenRefreshPromise = this.config.getAccessToken();
+    this.tokenRefreshPromise = this.tokenProvider
+      .refreshIfNeeded()
+      .then((session) => session?.accessToken ?? null);
 
     try {
       const token = await this.tokenRefreshPromise;

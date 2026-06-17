@@ -3,6 +3,7 @@
  * IngestClient for uploading books to the OpenRead platform.
  */
 
+import { parseMetaHash, parsePlatformBookHash } from '@openread/types';
 import type {
   Book,
   BookFormat,
@@ -11,6 +12,8 @@ import type {
   ConfirmUploadRequest,
   ConfirmUploadResponse,
   MetadataDetails,
+  MetaHash,
+  PlatformBookHash,
 } from '@openread/types';
 import { OpenreadError } from './error.js';
 import type { Openread } from './index.js';
@@ -409,22 +412,28 @@ export class IngestClient {
    * Compute SHA-256 hash of a file.
    * @internal
    */
-  async computeHash(file: File | Blob): Promise<string> {
+  async computeHash(file: File | Blob): Promise<PlatformBookHash> {
     const buffer = await file.arrayBuffer();
     const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+    const hash = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+    const parsed = parsePlatformBookHash(hash);
+    if (!parsed) throw new OpenreadError('INTERNAL_ERROR', 'Computed file hash is invalid');
+    return parsed;
   }
 
   /**
    * Compute SHA-256 hash of metadata string.
    * @internal
    */
-  private async computeMetaHash(metadata: string): Promise<string> {
+  private async computeMetaHash(metadata: string): Promise<MetaHash> {
     const encoder = new TextEncoder();
     const data = encoder.encode(metadata);
     const hashBuffer = await crypto.subtle.digest('SHA-256', data);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+    const hash = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+    const parsed = parseMetaHash(hash);
+    if (!parsed) throw new OpenreadError('INTERNAL_ERROR', 'Computed metadata hash is invalid');
+    return parsed;
   }
 }

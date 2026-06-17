@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { Session, User } from '@supabase/supabase-js';
+import type { Session } from '@supabase/supabase-js';
 import { useRouter } from 'next/navigation';
 import { getCurrent, onOpenUrl } from '@tauri-apps/plugin-deep-link';
 import { isTauriAppPlatform } from '@/services/environment';
 import { useAuth } from '@/context/AuthContext';
+import { clientAuth } from '@/services/auth/clientAuth';
 import { useEnv } from '@/context/EnvContext';
 import { useLibraryStore } from '@/store/libraryStore';
 import { navigateToReader } from '@/utils/nav';
@@ -35,7 +36,7 @@ type QaEvidence = {
 
 export default function ActivityCaptureBridge() {
   const router = useRouter();
-  const { login, logout } = useAuth();
+  const { logout } = useAuth();
   const { appService } = useEnv();
   const [qaEvidence, setQaEvidence] = useState<QaEvidence | null>(null);
 
@@ -56,7 +57,7 @@ export default function ActivityCaptureBridge() {
 
         const plan = normalizeQaPlan(target.qaPlan);
         if (target.auth === 'authenticated' || target.auth === 'qa') {
-          await installQaAuthFromSessionUrl(login, target.qaSessionUrl);
+          await installQaAuthFromSessionUrl(target.qaSessionUrl);
         } else if (target.auth === 'anonymous') {
           await clearQaAuth(logout);
         }
@@ -150,7 +151,7 @@ export default function ActivityCaptureBridge() {
     return () => {
       unlisten.then((fn) => fn()).catch(() => {});
     };
-  }, [appService, login, logout, router]);
+  }, [appService, logout, router]);
 
   if (!qaEvidence) return null;
 
@@ -175,9 +176,7 @@ export default function ActivityCaptureBridge() {
 }
 
 async function clearQaAuth(logout: () => void) {
-  localStorage.removeItem('token');
-  localStorage.removeItem('refresh_token');
-  localStorage.removeItem('user');
+  clientAuth.forceQaSignedOut();
   const storageKey = supabaseStorageKey();
   if (storageKey) localStorage.removeItem(storageKey);
   await Promise.resolve(logout()).catch((error) => {
@@ -235,10 +234,7 @@ async function waitForQaRoute(route: string) {
   }
 }
 
-async function installQaAuthFromSessionUrl(
-  login: (token: string, user: User) => void,
-  qaSessionUrl: string | null,
-) {
+async function installQaAuthFromSessionUrl(qaSessionUrl: string | null) {
   if (!qaSessionUrl) {
     throw new Error('QA auth requested without a real test-user session URL.');
   }
@@ -258,15 +254,10 @@ async function installQaAuthFromSessionUrl(
     throw new Error('QA test-user session response was incomplete.');
   }
 
-  localStorage.setItem('token', session.access_token);
-  localStorage.setItem('refresh_token', session.refresh_token);
-  localStorage.setItem('user', JSON.stringify(session.user));
+  clientAuth.clearQaForceSignedOut();
   localStorage.setItem('has_seen_welcome', 'true');
 
-  const storageKey = supabaseStorageKey();
-  if (storageKey) localStorage.setItem(storageKey, JSON.stringify(session));
-
-  login(session.access_token, session.user);
+  await clientAuth.installSession(session);
 }
 
 function extractSessionPayload(payload: unknown): Session | null {

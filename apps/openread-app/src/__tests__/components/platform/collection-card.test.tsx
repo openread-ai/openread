@@ -36,10 +36,14 @@ vi.mock('@/components/BookCover', () => ({
   default: ({ book }: { book: Book }) => <div data-testid='book-cover'>{book.title} cover</div>,
 }));
 
+const bookOneHash = testOpenReadBookRef('book-1');
+const bookTwoHash = testOpenReadBookRef('book-2');
+const bookThreeHash = testOpenReadBookRef('book-3');
+
 // Mock the stores
 const mockLibrary: Book[] = [
   {
-    hash: testOpenReadBookRef('book-1'),
+    hash: bookOneHash,
     title: 'Book One',
     author: 'Author One',
     format: 'epub',
@@ -48,7 +52,7 @@ const mockLibrary: Book[] = [
     coverImageUrl: 'https://example.com/cover1.jpg',
   },
   {
-    hash: testOpenReadBookRef('book-2'),
+    hash: bookTwoHash,
     title: 'Book Two',
     author: 'Author Two',
     format: 'pdf',
@@ -180,7 +184,7 @@ vi.mock('@/components/primitives/button', () => ({
 const createMockCollection = (overrides: Partial<Collection> = {}): Collection => ({
   id: 'collection-1',
   name: 'My Collection',
-  bookHashes: ['book-1', 'book-2'],
+  bookHashes: [bookOneHash, bookTwoHash],
   createdAt: new Date().toISOString(),
   ...overrides,
 });
@@ -202,13 +206,13 @@ describe('CollectionCard', () => {
     });
 
     it('should render book count singular', () => {
-      const collection = createMockCollection({ bookHashes: ['book-1'] });
+      const collection = createMockCollection({ bookHashes: [bookOneHash] });
       render(<CollectionCard collection={collection} />);
       expect(screen.getByText('1 book')).toBeTruthy();
     });
 
     it('should render book count plural', () => {
-      const collection = createMockCollection({ bookHashes: ['book-1', 'book-2'] });
+      const collection = createMockCollection({ bookHashes: [bookOneHash, bookTwoHash] });
       render(<CollectionCard collection={collection} />);
       expect(screen.getByText('2 books')).toBeTruthy();
     });
@@ -229,7 +233,7 @@ describe('CollectionCard', () => {
     it('should have accessible aria-label', () => {
       const collection = createMockCollection({
         name: 'Book Club',
-        bookHashes: ['book-1', 'book-2', 'book-3'],
+        bookHashes: [bookOneHash, bookTwoHash, bookThreeHash],
       });
       render(<CollectionCard collection={collection} />);
       const link = screen.getByRole('link');
@@ -239,7 +243,7 @@ describe('CollectionCard', () => {
     it('should have correct aria-label for single book', () => {
       const collection = createMockCollection({
         name: 'Favorites',
-        bookHashes: ['book-1'],
+        bookHashes: [bookOneHash],
       });
       render(<CollectionCard collection={collection} />);
       const link = screen.getByRole('link');
@@ -249,7 +253,7 @@ describe('CollectionCard', () => {
 
   describe('Preview Covers', () => {
     it('should render book covers when collection has books', () => {
-      const collection = createMockCollection({ bookHashes: ['book-1'] });
+      const collection = createMockCollection({ bookHashes: [bookOneHash] });
       render(<CollectionCard collection={collection} />);
       expect(screen.getByTestId('book-cover')).toBeTruthy();
     });

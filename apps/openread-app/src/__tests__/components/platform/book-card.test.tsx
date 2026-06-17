@@ -231,7 +231,7 @@ describe('BookCard', () => {
       const book = createMockBook({ hash: testOpenReadBookRef('book-hash-abc') });
       render(<BookCard book={book} />);
       const link = screen.getByRole('link');
-      expect(link.getAttribute('href')).toBe('/reader?ids=book-hash-abc');
+      expect(link.getAttribute('href')).toBe(`/reader?ids=${book.hash}`);
     });
 
     it('should have accessible aria-label on link', () => {
@@ -323,14 +323,13 @@ describe('BookCard', () => {
     });
 
     it('should show ring highlight when selected', () => {
+      const book = createMockBook({ hash: testOpenReadBookRef('test-hash-123') });
       vi.mocked(useLibraryViewStore).mockReturnValue({
         isSelectMode: true,
-        selectedBooks: ['test-hash-123'],
+        selectedBooks: [book.hash],
         toggleBookSelection: mockToggleBookSelection,
         setSelectMode: mockSetSelectMode,
       } as ReturnType<typeof useLibraryViewStore>);
-
-      const book = createMockBook({ hash: testOpenReadBookRef('test-hash-123') });
       render(<BookCard book={book} enableSelectionActions />);
       const container = document.querySelector('.ring-primary');
       expect(container).toBeTruthy();
@@ -368,7 +367,7 @@ describe('BookCard', () => {
       render(<BookCard book={book} enableSelectionActions />);
       fireEvent.click(screen.getByText('Select Multiple'));
       expect(mockSetSelectMode).toHaveBeenCalledWith(true);
-      expect(mockToggleBookSelection).toHaveBeenCalledWith('book-123');
+      expect(mockToggleBookSelection).toHaveBeenCalledWith(book.hash);
     });
   });
 
@@ -419,25 +418,24 @@ describe('BookCard', () => {
       render(<BookCard book={book} enableSelectionActions />);
       // Click on the title (part of the card content)
       fireEvent.click(screen.getByText('Test Book Title'));
-      expect(mockToggleBookSelection).toHaveBeenCalledWith('book-456');
+      expect(mockToggleBookSelection).toHaveBeenCalledWith(book.hash);
     });
 
     it('should toggle selection on checkbox change', () => {
       const book = createMockBook({ hash: testOpenReadBookRef('book-789') });
       render(<BookCard book={book} enableSelectionActions />);
       fireEvent.click(screen.getByTestId('checkbox'));
-      expect(mockToggleBookSelection).toHaveBeenCalledWith('book-789');
+      expect(mockToggleBookSelection).toHaveBeenCalledWith(book.hash);
     });
 
     it('should show checked checkbox when book is selected', () => {
+      const book = createMockBook({ hash: testOpenReadBookRef('selected-book') });
       vi.mocked(useLibraryViewStore).mockReturnValue({
         isSelectMode: true,
-        selectedBooks: ['selected-book'],
+        selectedBooks: [book.hash],
         toggleBookSelection: mockToggleBookSelection,
         setSelectMode: mockSetSelectMode,
       } as ReturnType<typeof useLibraryViewStore>);
-
-      const book = createMockBook({ hash: testOpenReadBookRef('selected-book') });
       render(<BookCard book={book} enableSelectionActions />);
       const checkbox = screen.getByTestId('checkbox') as HTMLInputElement;
       expect(checkbox.checked).toBe(true);

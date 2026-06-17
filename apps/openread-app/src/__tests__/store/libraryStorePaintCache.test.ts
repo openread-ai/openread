@@ -37,7 +37,9 @@ describe('libraryStore durable paint cache', () => {
 
     expect(useLibraryStore.getState().libraryLoaded).toBe(true);
     expect(useLibraryStore.getState().libraryOwnerUserId).toBe('user-1');
-    expect(useLibraryStore.getState().library.map((book) => book.hash)).toEqual(['cached-book']);
+    expect(useLibraryStore.getState().library.map((book) => book.hash)).toEqual([
+      testOpenReadBookRef('cached-book'),
+    ]);
   });
 
   it('does not hydrate cached books for a different signed-in account', async () => {

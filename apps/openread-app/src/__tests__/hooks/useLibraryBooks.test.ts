@@ -79,7 +79,9 @@ describe('useLibraryBooks', () => {
       mockStoreState.isReconciling = true;
       const { result } = renderHook(() => useLibraryBooks());
       expect(result.current.isLoading).toBe(false);
-      expect(result.current.books.map((book) => book.hash)).toEqual(['cached-book']);
+      expect(result.current.books.map((book) => book.hash)).toEqual([
+        testOpenReadBookRef('cached-book'),
+      ]);
     });
 
     it('should return all visible books by default', () => {
@@ -115,7 +117,9 @@ describe('useLibraryBooks', () => {
 
       const { result } = renderHook(() => useLibraryBooks());
 
-      expect(result.current.books.map((book) => book.hash)).toEqual(['active-book']);
+      expect(result.current.books.map((book) => book.hash)).toEqual([
+        testOpenReadBookRef('active-book'),
+      ]);
     });
   });
 
@@ -130,7 +134,7 @@ describe('useLibraryBooks', () => {
       mockStoreState.library = books;
       const { result } = renderHook(() => useLibraryBooks({ filter: 'reading' }));
       expect(result.current.books).toHaveLength(1);
-      expect(result.current.books[0]?.hash).toBe('reading');
+      expect(result.current.books[0]?.hash).toBe(testOpenReadBookRef('reading'));
     });
 
     it('should include books with readingStatus reading', () => {
@@ -141,7 +145,7 @@ describe('useLibraryBooks', () => {
       mockStoreState.library = books;
       const { result } = renderHook(() => useLibraryBooks({ filter: 'reading' }));
       expect(result.current.books).toHaveLength(1);
-      expect(result.current.books[0]?.hash).toBe('reading-status');
+      expect(result.current.books[0]?.hash).toBe(testOpenReadBookRef('reading-status'));
     });
   });
 
@@ -154,9 +158,9 @@ describe('useLibraryBooks', () => {
       ];
       mockStoreState.library = books;
       const { result } = renderHook(() => useLibraryBooks({ filter: 'recent' }));
-      expect(result.current.books[0]?.hash).toBe('new');
-      expect(result.current.books[1]?.hash).toBe('mid');
-      expect(result.current.books[2]?.hash).toBe('old');
+      expect(result.current.books[0]?.hash).toBe(testOpenReadBookRef('new'));
+      expect(result.current.books[1]?.hash).toBe(testOpenReadBookRef('mid'));
+      expect(result.current.books[2]?.hash).toBe(testOpenReadBookRef('old'));
     });
   });
 
@@ -170,7 +174,7 @@ describe('useLibraryBooks', () => {
       mockStoreState.library = books;
       const { result } = renderHook(() => useLibraryBooks({ filter: 'want-to-read' }));
       expect(result.current.books).toHaveLength(1);
-      expect(result.current.books[0]?.hash).toBe('unread');
+      expect(result.current.books[0]?.hash).toBe(testOpenReadBookRef('unread'));
     });
 
     it('should include books with no progress and no status', () => {
@@ -181,7 +185,7 @@ describe('useLibraryBooks', () => {
       mockStoreState.library = books;
       const { result } = renderHook(() => useLibraryBooks({ filter: 'want-to-read' }));
       expect(result.current.books).toHaveLength(1);
-      expect(result.current.books[0]?.hash).toBe('no-progress');
+      expect(result.current.books[0]?.hash).toBe(testOpenReadBookRef('no-progress'));
     });
   });
 
@@ -194,7 +198,7 @@ describe('useLibraryBooks', () => {
       mockStoreState.library = books;
       const { result } = renderHook(() => useLibraryBooks({ filter: 'finished' }));
       expect(result.current.books).toHaveLength(1);
-      expect(result.current.books[0]?.hash).toBe('finished');
+      expect(result.current.books[0]?.hash).toBe(testOpenReadBookRef('finished'));
     });
 
     it('should include books with readingStatus finished', () => {
@@ -205,7 +209,7 @@ describe('useLibraryBooks', () => {
       mockStoreState.library = books;
       const { result } = renderHook(() => useLibraryBooks({ filter: 'finished' }));
       expect(result.current.books).toHaveLength(1);
-      expect(result.current.books[0]?.hash).toBe('finished-status');
+      expect(result.current.books[0]?.hash).toBe(testOpenReadBookRef('finished-status'));
     });
   });
 
@@ -221,10 +225,10 @@ describe('useLibraryBooks', () => {
       mockStoreState.library = books;
       const { result } = renderHook(() => useLibraryBooks({ filter: 'books' }));
       expect(result.current.books).toHaveLength(4);
-      expect(result.current.books.map((b) => b.hash)).toContain('epub');
-      expect(result.current.books.map((b) => b.hash)).toContain('mobi');
-      expect(result.current.books.map((b) => b.hash)).toContain('azw');
-      expect(result.current.books.map((b) => b.hash)).toContain('azw3');
+      expect(result.current.books.map((b) => b.hash)).toContain(testOpenReadBookRef('epub'));
+      expect(result.current.books.map((b) => b.hash)).toContain(testOpenReadBookRef('mobi'));
+      expect(result.current.books.map((b) => b.hash)).toContain(testOpenReadBookRef('azw'));
+      expect(result.current.books.map((b) => b.hash)).toContain(testOpenReadBookRef('azw3'));
     });
 
     it('should filter PDF books', () => {
@@ -235,7 +239,7 @@ describe('useLibraryBooks', () => {
       mockStoreState.library = books;
       const { result } = renderHook(() => useLibraryBooks({ filter: 'pdfs' }));
       expect(result.current.books).toHaveLength(1);
-      expect(result.current.books[0]?.hash).toBe('pdf');
+      expect(result.current.books[0]?.hash).toBe(testOpenReadBookRef('pdf'));
     });
   });
 

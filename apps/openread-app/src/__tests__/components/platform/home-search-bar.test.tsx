@@ -65,6 +65,8 @@ vi.mock('@/components/primitives/input', async () => {
 });
 
 // Sample books for testing
+const searchResultTestId = (book: Book): string => `home-search-result-${book.hash}`;
+
 const mockBooks: Book[] = [
   {
     hash: testOpenReadBookRef('hash-1'),
@@ -197,7 +199,7 @@ describe('HomeSearchBar', () => {
       });
 
       expect(screen.getByTestId('home-search-results')).toBeTruthy();
-      expect(screen.getByTestId('home-search-result-hash-1')).toBeTruthy();
+      expect(screen.getByTestId(searchResultTestId(mockBooks[0]!))).toBeTruthy();
       expect(screen.getByText('The Great Gatsby')).toBeTruthy();
     });
 
@@ -212,9 +214,9 @@ describe('HomeSearchBar', () => {
       });
 
       // Should match "The Great Gatsby", "The Catcher in the Rye", "The Hobbit"
-      expect(screen.getByTestId('home-search-result-hash-1')).toBeTruthy();
-      expect(screen.getByTestId('home-search-result-hash-5')).toBeTruthy();
-      expect(screen.getByTestId('home-search-result-hash-9')).toBeTruthy();
+      expect(screen.getByTestId(searchResultTestId(mockBooks[0]!))).toBeTruthy();
+      expect(screen.getByTestId(searchResultTestId(mockBooks[4]!))).toBeTruthy();
+      expect(screen.getByTestId(searchResultTestId(mockBooks[8]!))).toBeTruthy();
     });
   });
 
@@ -231,8 +233,8 @@ describe('HomeSearchBar', () => {
 
       expect(screen.getByTestId('home-search-results')).toBeTruthy();
       // Should find "1984" and "Animal Farm" by George Orwell
-      expect(screen.getByTestId('home-search-result-hash-3')).toBeTruthy();
-      expect(screen.getByTestId('home-search-result-hash-7')).toBeTruthy();
+      expect(screen.getByTestId(searchResultTestId(mockBooks[2]!))).toBeTruthy();
+      expect(screen.getByTestId(searchResultTestId(mockBooks[6]!))).toBeTruthy();
     });
   });
 
@@ -331,8 +333,8 @@ describe('HomeSearchBar', () => {
         vi.advanceTimersByTime(300);
       });
 
-      fireEvent.click(screen.getByTestId('home-search-result-hash-1'));
-      expect(mockPush).toHaveBeenCalledWith('/reader?ids=hash-1');
+      fireEvent.click(screen.getByTestId(searchResultTestId(mockBooks[0]!)));
+      expect(mockPush).toHaveBeenCalledWith(`/reader?ids=${mockBooks[0]!.hash}`);
     });
 
     it('should close dropdown after selecting a result', () => {
@@ -345,7 +347,7 @@ describe('HomeSearchBar', () => {
         vi.advanceTimersByTime(300);
       });
 
-      fireEvent.click(screen.getByTestId('home-search-result-hash-1'));
+      fireEvent.click(screen.getByTestId(searchResultTestId(mockBooks[0]!)));
 
       // Dropdown should be closed after navigation
       expect(screen.queryByTestId('home-search-results')).toBeNull();

@@ -1,4 +1,4 @@
-import { supabase } from '@/utils/supabase';
+import { clientAuth } from '@/services/auth/clientAuth';
 import { createLogger } from '@/utils/logger';
 
 const logger = createLogger('auth');
@@ -33,22 +33,13 @@ export function handleAuthCallback({
       return;
     }
 
-    const { error: err } = await supabase.auth.setSession({
+    const session = await clientAuth.installSession({
       access_token: accessToken,
       refresh_token: refreshToken,
     });
 
-    if (err) {
-      logger.error('Error setting session:', err);
-      navigate('/auth/error');
-      return;
-    }
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      logger.error('Error fetching user data');
+    if (!session?.user) {
+      logger.error('Error installing auth session');
       navigate('/auth/error');
       return;
     }

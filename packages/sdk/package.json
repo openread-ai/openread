@@ -25,6 +25,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@openread/auth": "workspace:*",
     "@openread/types": "workspace:*"
   },
   "devDependencies": {

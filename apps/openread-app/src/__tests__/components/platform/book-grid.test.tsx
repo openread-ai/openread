@@ -64,6 +64,8 @@ vi.mock('@/store/libraryViewStore', () => ({
   ),
 }));
 
+const bookCardTestId = (book: Book): string => `book-card-${book.hash}`;
+
 const createMockBook = (overrides: Partial<Book> = {}): Book => ({
   hash: testOpenReadBookRef(`hash-${Math.random().toString(36).substring(7)}`),
   title: 'Test Book',
@@ -94,16 +96,16 @@ describe('BookGrid', () => {
       ];
       render(<BookGrid books={books} />);
 
-      expect(screen.getByTestId('book-card-book-1')).toBeTruthy();
-      expect(screen.getByTestId('book-card-book-2')).toBeTruthy();
-      expect(screen.getByTestId('book-card-book-3')).toBeTruthy();
+      expect(screen.getByTestId(bookCardTestId(books[0]!))).toBeTruthy();
+      expect(screen.getByTestId(bookCardTestId(books[1]!))).toBeTruthy();
+      expect(screen.getByTestId(bookCardTestId(books[2]!))).toBeTruthy();
     });
 
     it('should pass showProgress prop to BookCard', () => {
       const books = [createMockBook({ hash: testOpenReadBookRef('book-1') })];
       render(<BookGrid books={books} />);
 
-      const card = screen.getByTestId('book-card-book-1');
+      const card = screen.getByTestId(bookCardTestId(books[0]!));
       // BookGrid always passes showProgress={true}
       expect(card.getAttribute('data-show-progress')).toBe('true');
     });
@@ -113,7 +115,7 @@ describe('BookGrid', () => {
       render(<BookGrid books={books} />);
 
       expect(
-        screen.getByTestId('book-card-book-1').getAttribute('data-enable-selection-actions'),
+        screen.getByTestId(bookCardTestId(books[0]!)).getAttribute('data-enable-selection-actions'),
       ).toBe('false');
     });
 
@@ -122,7 +124,7 @@ describe('BookGrid', () => {
       render(<BookGrid books={books} enableSelectionActions />);
 
       expect(
-        screen.getByTestId('book-card-book-1').getAttribute('data-enable-selection-actions'),
+        screen.getByTestId(bookCardTestId(books[0]!)).getAttribute('data-enable-selection-actions'),
       ).toBe('true');
     });
 
@@ -180,7 +182,7 @@ describe('BookGrid', () => {
     it('should not render book cards when loading', () => {
       const books = [createMockBook({ hash: testOpenReadBookRef('book-1') })];
       render(<BookGrid books={books} isLoading />);
-      expect(screen.queryByTestId('book-card-book-1')).toBeNull();
+      expect(screen.queryByTestId(bookCardTestId(books[0]!))).toBeNull();
     });
 
     it('should not show empty state when loading', () => {

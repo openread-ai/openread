@@ -3,6 +3,8 @@
  * SDK-specific configuration types.
  */
 
+import type { AuthTokenProvider } from '@openread/auth';
+
 /**
  * Configuration for the Openread SDK client.
  */
@@ -27,5 +29,11 @@ export interface OpenreadConfig {
    * }
    * ```
    */
-  getAccessToken: () => Promise<string | null>;
+  getAccessToken?: () => Promise<string | null>;
+
+  /**
+   * Canonical auth token provider. Preferred over getAccessToken because it
+   * exposes the shared refresh policy used by app/platform clients.
+   */
+  tokenProvider?: AuthTokenProvider;
 }

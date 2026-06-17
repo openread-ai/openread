@@ -75,8 +75,6 @@ export interface TierConfig {
   cost_rates: CostRates;
 }
 
-export const BYTES_PER_GB = 1024 * 1024 * 1024;
-
 export interface LibraryLimitDecision {
   allowed: boolean;
   limit: number | null;

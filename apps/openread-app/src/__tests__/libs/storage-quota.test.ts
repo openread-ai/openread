@@ -1,3 +1,4 @@
+import { BYTES_PER_GB } from '@openread/entitlements';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockSupabase = {
@@ -19,17 +20,16 @@ vi.mock('@/utils/logger', () => ({
 }));
 
 vi.mock('@/lib/tier-config', () => ({
-  getTierDefinition: vi.fn((plan: string) => {
-    const tiers: Record<string, { storage_gb: number }> = {
-      free: { storage_gb: 1 },
-      reader: { storage_gb: 10 },
-      pro: { storage_gb: 50 },
-    };
-    return Promise.resolve(tiers[plan] || tiers.free);
-  }),
+  getTierConfig: vi.fn(() =>
+    Promise.resolve({
+      tiers: {
+        free: { storage_gb: 1 },
+        reader: { storage_gb: 10 },
+        pro: { storage_gb: 50 },
+      },
+    }),
+  ),
 }));
-
-const BYTES_PER_GB = 1024 * 1024 * 1024;
 
 function setupPlanQuery(data: { storage_used_bytes: number } | null, error: unknown = null) {
   const mockSingle = vi.fn().mockResolvedValue({ data, error });

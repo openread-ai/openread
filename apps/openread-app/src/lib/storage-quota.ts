@@ -7,8 +7,9 @@
  * Available to all tiers; Free has 1 GB, Reader has 10 GB, and Pro has 50 GB by default.
  */
 
+import { canUseStorage } from '@openread/entitlements';
 import { createSupabaseAdminClient } from '@/utils/supabase';
-import { getTierDefinition } from '@/lib/tier-config';
+import { getTierConfig } from '@/lib/tier-config';
 import { createLogger } from '@/utils/logger';
 import type { UserPlan } from '@/types/quota';
 
@@ -45,10 +46,6 @@ export interface StorageAddonRecord {
   canceled_at: string | null;
 }
 
-// ─── Constants ───────────────────────────────────────────────────────
-
-const BYTES_PER_GB = 1024 * 1024 * 1024;
-
 // ─── Public API ──────────────────────────────────────────────────────
 
 /**
@@ -56,11 +53,7 @@ const BYTES_PER_GB = 1024 * 1024 * 1024;
  */
 export async function getStorageQuota(userId: string, plan: UserPlan): Promise<StorageQuota> {
   const supabase = createSupabaseAdminClient();
-  const tierDef = await getTierDefinition(plan);
-
-  const baseGb = tierDef.storage_gb;
-  const addonGb = 0;
-  const totalBytes = baseGb * BYTES_PER_GB;
+  const tierConfig = await getTierConfig();
 
   // Get used bytes from plans table
   const { data: planData, error: planError } = await supabase
@@ -74,15 +67,16 @@ export async function getStorageQuota(userId: string, plan: UserPlan): Promise<S
   }
 
   const usedBytes = planData?.storage_used_bytes || 0;
+  const quota = canUseStorage(tierConfig, plan, usedBytes);
 
   return {
-    baseGb,
-    addonGb,
-    totalBytes,
+    baseGb: quota.baseGb,
+    addonGb: quota.addonGb,
+    totalBytes: quota.totalBytes,
     usedBytes,
-    availableBytes: Math.max(0, totalBytes - usedBytes),
-    percentUsed: totalBytes > 0 ? (usedBytes / totalBytes) * 100 : 0,
-    isOverLimit: usedBytes > totalBytes,
+    availableBytes: quota.availableBytes,
+    percentUsed: quota.percentUsed,
+    isOverLimit: quota.isOverLimit,
   };
 }
 

@@ -1,8 +1,4 @@
-import {
-  BYTES_PER_GB,
-  GEN3_V3_FALLBACK_TIER_CONFIG,
-  getGen3V3FallbackTierConfig,
-} from '@openread/types';
+import { GEN3_V3_FALLBACK_TIER_CONFIG, getGen3V3FallbackTierConfig } from '@openread/types';
 import type { TierConfig } from '@/lib/tier-types';
 
 /**
@@ -17,8 +13,6 @@ import type { TierConfig } from '@/lib/tier-types';
  * fixtures share the same launch contract without becoming runtime fallbacks.
  */
 export const FALLBACK_CONFIG: TierConfig = GEN3_V3_FALLBACK_TIER_CONFIG;
-
-export { BYTES_PER_GB };
 
 export function getFallbackConfig(): TierConfig {
   return getGen3V3FallbackTierConfig();

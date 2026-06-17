@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
+import { getLibraryLimitForPlan } from '@openread/entitlements';
 import { getFallbackConfig } from '@/lib/tier-defaults';
 
 const TEST_TIER_CONFIG = getFallbackConfig();
@@ -57,11 +58,7 @@ vi.mock('@/hooks/useTierConfig', async () => {
 
 // ── Import SUT after mocks ─────────────────────────────
 
-import {
-  useLibraryLimit,
-  checkLibraryLimit,
-  getLibraryLimitForPlan,
-} from '@/hooks/useLibraryLimit';
+import { useLibraryLimit, checkLibraryLimit } from '@/hooks/useLibraryLimit';
 
 // ── Helpers ────────────────────────────────────────────
 
@@ -85,28 +82,28 @@ describe('useLibraryLimit', () => {
 
   describe('getLibraryLimitForPlan (pure function)', () => {
     it('returns 10 for free plan', () => {
-      const limit = getLibraryLimitForPlan('free', TEST_TIER_CONFIG);
+      const limit = getLibraryLimitForPlan(TEST_TIER_CONFIG, 'free');
       expect(limit).toBe(10);
     });
 
     it('returns null (unlimited) for reader plan', () => {
-      const limit = getLibraryLimitForPlan('reader', TEST_TIER_CONFIG);
+      const limit = getLibraryLimitForPlan(TEST_TIER_CONFIG, 'reader');
       expect(limit).toBeNull();
     });
 
     it('returns null (unlimited) for pro plan', () => {
-      const limit = getLibraryLimitForPlan('pro', TEST_TIER_CONFIG);
+      const limit = getLibraryLimitForPlan(TEST_TIER_CONFIG, 'pro');
       expect(limit).toBeNull();
     });
 
     it('reads from the provided tier config fixture, not hardcoded values', () => {
-      expect(getLibraryLimitForPlan('free', TEST_TIER_CONFIG)).toBe(
+      expect(getLibraryLimitForPlan(TEST_TIER_CONFIG, 'free')).toBe(
         TEST_TIER_CONFIG.tiers.free.library_limit,
       );
-      expect(getLibraryLimitForPlan('reader', TEST_TIER_CONFIG)).toBe(
+      expect(getLibraryLimitForPlan(TEST_TIER_CONFIG, 'reader')).toBe(
         TEST_TIER_CONFIG.tiers.reader.library_limit,
       );
-      expect(getLibraryLimitForPlan('pro', TEST_TIER_CONFIG)).toBe(
+      expect(getLibraryLimitForPlan(TEST_TIER_CONFIG, 'pro')).toBe(
         TEST_TIER_CONFIG.tiers.pro.library_limit,
       );
     });

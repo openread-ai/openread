@@ -108,16 +108,10 @@ export type { ApiError, ApiErrorCode } from './error.js';
 export { toEpoch, toISO } from './timestamp.js';
 
 // Canonical launch tier config and feature contract defaults
-export {
-  GEN3_V3_FALLBACK_TIER_CONFIG,
-  evaluateLibraryLimit,
-  getGen3V3FallbackTierConfig,
-  getLibraryLimitForPlan,
-} from './tier-config.js';
+export { GEN3_V3_FALLBACK_TIER_CONFIG, getGen3V3FallbackTierConfig } from './tier-config.js';
 export type {
   BoostOption,
   CostRates,
-  LibraryLimitDecision,
   PublicPricingResponse,
   RegionalPricingEntry,
   StorageAddon,

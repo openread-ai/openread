@@ -16,13 +16,21 @@ function cloneSettings(settings: SystemSettings): SystemSettings {
   return structuredClone(settings) as SystemSettings;
 }
 
-function assertKnownSettings(settings: SystemSettings): void {
-  const result = validateSettingsKeys(settings as unknown as Record<string, unknown>);
-  if (!result.ok) {
-    // Keep legacy forward-compatibility: warn instead of hard-failing so older clients
-    // can still open settings written by newer builds while registry additions land.
-    console.warn('[SettingsService] Unknown settings keys:', result.unknownKeys.join(', '));
-  }
+function sanitizeKnownSettings(settings: SystemSettings): {
+  settings: SystemSettings;
+  droppedKeys: string[];
+} {
+  const record = settings as unknown as Record<string, unknown>;
+  const result = validateSettingsKeys(record);
+  if (result.ok) return { settings, droppedKeys: [] };
+
+  const sanitized = { ...record };
+  for (const key of result.unknownKeys) delete sanitized[key];
+  console.warn('[SettingsService] Dropped unknown settings keys:', result.unknownKeys.join(', '));
+  return {
+    settings: sanitized as unknown as SystemSettings,
+    droppedKeys: result.unknownKeys,
+  };
 }
 
 async function enqueueSync(settings: SystemSettings): Promise<void> {
@@ -37,8 +45,9 @@ async function enqueueSync(settings: SystemSettings): Promise<void> {
 export const settingsService = {
   async load(envConfig: EnvConfigType): Promise<SystemSettings> {
     const persistence = createAppServiceSettingsPersistence(envConfig);
-    const settings = await persistence.load();
-    assertKnownSettings(settings);
+    const loaded = await persistence.load();
+    const { settings, droppedKeys } = sanitizeKnownSettings(loaded);
+    if (droppedKeys.length > 0) await persistence.save(settings);
     return settings;
   },
 
@@ -47,11 +56,11 @@ export const settingsService = {
     settings: SystemSettings,
     options: SettingsSaveOptions = {},
   ): Promise<SystemSettings> {
-    assertKnownSettings(settings);
+    const sanitized = sanitizeKnownSettings(settings).settings;
     const persistence = createAppServiceSettingsPersistence(envConfig);
-    await persistence.save(settings);
-    if (options.sync !== false) await enqueueSync(settings);
-    return settings;
+    await persistence.save(sanitized);
+    if (options.sync !== false) await enqueueSync(sanitized);
+    return sanitized;
   },
 
   async update(

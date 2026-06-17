@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -11,6 +11,8 @@ import {
   applySyncableSettings,
   extractSyncableSettings,
 } from '@/services/settings/settingsSyncAdapter';
+import { settingsService } from '@/services/settings/settingsService';
+import type { EnvConfigType } from '@/services/environment';
 import type { SystemSettings } from '@/types/settings';
 
 describe('canonical settings registry', () => {
@@ -20,7 +22,6 @@ describe('canonical settings registry', () => {
     expect(getSettingDefinition('aiSettings')?.scope).toBe('syncable');
     expect(getSettingDefinition('themeMode')?.scope).toBe('local-only');
     expect(getSettingDefinition('kosync')?.scope).toBe('local-only');
-    expect(getSettingDefinition('lastSyncedAtSettings')?.scope).toBe('local-only');
     expect(LOCAL_ONLY_SETTINGS_KEYS).toContain('customFonts');
     expect(LOCAL_ONLY_SETTINGS_KEYS).toContain('customTextures');
   });
@@ -42,7 +43,6 @@ describe('settings sync adapter', () => {
       localBooksDir: '/local/books',
       themeMode: 'dark',
       kosync: { enabled: false },
-      lastSyncedAtSettings: 123,
       customFonts: [{ name: 'Local Font' }],
       globalReadSettings: { theme: 'light' },
       globalViewSettings: { scrolled: true },
@@ -70,6 +70,33 @@ describe('settings sync adapter', () => {
     expect(merged.localBooksDir).toBe('/local/books');
     expect((merged as unknown as { themeMode: string }).themeMode).toBe('dark');
     expect(merged.customFonts).toEqual([{ name: 'Local Font' }]);
+  });
+});
+
+describe('settings service sanitization', () => {
+  it('drops unknown persisted settings and rewrites the sanitized snapshot on load', async () => {
+    const loaded = {
+      keepLogin: true,
+      localOnlyUnknownSetting: 'stale',
+      globalReadSettings: { theme: 'light' },
+    } as unknown as SystemSettings;
+    const appService = {
+      loadSettings: vi.fn().mockResolvedValue(loaded),
+      saveSettings: vi.fn().mockResolvedValue(undefined),
+    };
+    const envConfig = {
+      getAppService: vi.fn().mockResolvedValue(appService),
+    } as unknown as EnvConfigType;
+
+    const settings = await settingsService.load(envConfig);
+
+    expect(
+      (settings as unknown as Record<string, unknown>).localOnlyUnknownSetting,
+    ).toBeUndefined();
+    expect(appService.saveSettings).toHaveBeenCalledWith({
+      keepLogin: true,
+      globalReadSettings: { theme: 'light' },
+    });
   });
 });
 

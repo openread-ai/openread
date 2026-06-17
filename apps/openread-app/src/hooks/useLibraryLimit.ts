@@ -15,10 +15,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useQuotaStats } from '@/hooks/useQuotaStats';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useTierConfig } from '@/hooks/useTierConfig';
-import {
-  evaluateLibraryLimit,
-  getLibraryLimitForPlan as getSharedLibraryLimitForPlan,
-} from '@openread/types';
+import { canAddBook as resolveCanAddBook } from '@openread/entitlements';
 import type { TierConfig } from '@/lib/tier-types';
 import type { UserPlan } from '@/types/quota';
 
@@ -40,14 +37,6 @@ export interface LibraryLimitInfo {
 }
 
 /**
- * Get the library_limit for a given plan from the provided tier config.
- * Returns null for unlimited (paid tiers).
- */
-export function getLibraryLimitForPlan(plan: UserPlan, config: TierConfig): number | null {
-  return getSharedLibraryLimitForPlan(plan, config);
-}
-
-/**
  * Check whether a user with the given plan and book count can add a book.
  * Pure function — no hooks, safe to call anywhere.
  */
@@ -56,7 +45,7 @@ export function checkLibraryLimit(
   plan: UserPlan,
   config: TierConfig,
 ): { allowed: boolean; limit: number | null } {
-  const decision = evaluateLibraryLimit(plan, config, currentBookCount);
+  const decision = resolveCanAddBook(config, plan, currentBookCount);
   return { allowed: decision.allowed, limit: decision.limit };
 }
 

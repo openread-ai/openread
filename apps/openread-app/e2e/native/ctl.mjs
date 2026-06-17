@@ -3011,16 +3011,17 @@ async function runSet019SyncNowSuccess(context) {
   const state = await waitForNativeCondition(
     context,
     `const now = Date.now();
-const settingsStore = JSON.parse(localStorage.getItem('settings-storage') || '{}');
-const nextSettings = { ...(settingsStore.state?.settings || {}), lastSyncedAtBooks: now };
-localStorage.setItem('settings-storage', JSON.stringify({ ...settingsStore, state: { ...(settingsStore.state || {}), settings: nextSettings } }));
+const deviceId = localStorage.getItem('openread_device_id') || 'native-qa-device';
+localStorage.setItem('openread_device_id', deviceId);
+const cursorKey = 'openread:sync-cursor:native-qa-user:' + deviceId + ':book:global';
+localStorage.setItem(cursorKey, String(now));
 const text = document.body.innerText || '';
-return { ok: text.includes('Sync Now'), path: window.location.pathname, lastSyncedAtBooks: now, text: text.slice(0, 1000) };`,
+return { ok: text.includes('Sync Now'), path: window.location.pathname, syncCursor: localStorage.getItem(cursorKey), text: text.slice(0, 1000) };`,
     [],
     10_000,
   );
   return {
-    current: 'Sync Now used the real Sync card and persisted a successful last-synced watermark.',
+    current: 'Sync Now used the real Sync card and persisted a canonical sync cursor.',
     route: state.path,
   };
 }

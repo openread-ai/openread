@@ -1,0 +1,7 @@
+{
+  "default": "openread-icon-master.png",
+  "bg_color": "#ffffff",
+  "android_fg": "openread-icon-foreground.png",
+  "android_fg_scale": 75,
+  "android_monochrome": "openread-icon-monochrome.png"
+}

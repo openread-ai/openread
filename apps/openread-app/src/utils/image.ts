@@ -10,8 +10,8 @@ const logger = createLogger('image');
  */
 export async function processDiscordCover(coverUrl: string, iconUrl: string): Promise<Blob> {
   const SIZE = 512;
-  const ICON_WIDTH = 224;
-  const ICON_HEIGHT = 182;
+  const ICON_MAX_WIDTH = 224;
+  const ICON_MAX_HEIGHT = 182;
   const PADDING = 10;
 
   try {
@@ -67,13 +67,17 @@ export async function processDiscordCover(coverUrl: string, iconUrl: string): Pr
           ctx.imageSmoothingQuality = 'high';
           ctx.drawImage(coverImg, offsetX, offsetY, drawWidth, drawHeight);
 
-          // Draw icon at bottom right
+          // Draw icon at bottom right without distorting the source logo.
+          const iconAspectRatio = iconImg.width / iconImg.height;
+          const iconWidth = Math.min(ICON_MAX_WIDTH, ICON_MAX_HEIGHT * iconAspectRatio);
+          const iconHeight = Math.min(ICON_MAX_HEIGHT, ICON_MAX_WIDTH / iconAspectRatio);
+
           ctx.drawImage(
             iconImg,
-            SIZE - ICON_WIDTH - PADDING,
-            SIZE - ICON_HEIGHT - PADDING,
-            ICON_WIDTH,
-            ICON_HEIGHT,
+            SIZE - iconWidth - PADDING,
+            SIZE - iconHeight - PADDING,
+            iconWidth,
+            iconHeight,
           );
 
           // Convert to JPEG blob

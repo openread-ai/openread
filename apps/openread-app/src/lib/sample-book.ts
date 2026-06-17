@@ -10,7 +10,7 @@
  * sees the welcome screen with an empty library.
  */
 
-import { CATALOG_API_BASE_URL } from '@/services/constants';
+import { platform } from '@/services/platform/client';
 import { createLogger } from '@/utils/logger';
 
 const logger = createLogger('sample-book');
@@ -29,15 +29,6 @@ export const SAMPLE_BOOK_ID = 'alice-in-wonderland';
 /** localStorage key used to prevent retrying after a failed or successful attempt. */
 export const SAMPLE_BOOK_ATTEMPTED_KEY = 'sample_book_attempted';
 
-// ── Types ───────────────────────────────────────────────
-
-interface ImportApiResponse {
-  status: 'ready' | 'preparing';
-  download_url?: string;
-  book_id?: string;
-  book_hash?: string;
-}
-
 // ── Import logic ────────────────────────────────────────
 
 /**
@@ -53,17 +44,9 @@ export async function importSampleBook(token: string): Promise<boolean> {
   localStorage.setItem(SAMPLE_BOOK_ATTEMPTED_KEY, new Date().toISOString());
 
   try {
-    const res = await fetch(`${CATALOG_API_BASE_URL}/api/catalog/books/${SAMPLE_BOOK_ID}/import`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    if (!token) return false;
 
-    if (!res.ok) {
-      logger.warn('Sample book import API returned non-OK', { status: res.status });
-      return false;
-    }
-
-    const data = (await res.json()) as ImportApiResponse;
+    const data = await platform.catalog.importBook(SAMPLE_BOOK_ID);
 
     if (data.status === 'ready') {
       logger.info('Sample book imported successfully', { bookId: data.book_id });

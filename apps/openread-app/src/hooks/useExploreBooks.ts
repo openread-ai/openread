@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { CATALOG_API_BASE_URL } from '@/services/constants';
-import { getPlatformFetch } from '@/utils/fetch';
+import { platform } from '@/services/platform/client';
 import { createLogger } from '@/utils/logger';
 import type { CatalogBook } from '@/types/catalog';
+import type { CatalogBrowseQuery } from '@openread/types';
 
 export type { CatalogBook } from '@/types/catalog';
 
@@ -146,22 +146,20 @@ export function useExploreBooks(params: UseExploreBooksParams = {}): UseExploreB
     ],
   );
 
-  const buildSearchParams = useCallback(
-    (fetchPage: number) => {
-      const searchParams = new URLSearchParams();
-      if (params.q) searchParams.set('q', params.q);
-      if (params.subject) searchParams.set('subject', params.subject);
-      if (params.language) searchParams.set('language', params.language);
-      if (params.languages?.length) searchParams.set('languages', params.languages.join(','));
-      if (params.sources?.length) searchParams.set('sources', params.sources.join(','));
-      if (params.minPages !== undefined) searchParams.set('minPages', String(params.minPages));
-      if (params.maxPages !== undefined) searchParams.set('maxPages', String(params.maxPages));
-      if (params.region) searchParams.set('region', params.region);
-      if (params.sort) searchParams.set('sort', params.sort);
-      searchParams.set('page', String(fetchPage));
-      searchParams.set('limit', String(limit));
-      return searchParams;
-    },
+  const buildCatalogQuery = useCallback(
+    (fetchPage: number): CatalogBrowseQuery => ({
+      q: params.q,
+      subject: params.subject,
+      language: params.language,
+      languages: params.languages,
+      sources: params.sources,
+      minPages: params.minPages,
+      maxPages: params.maxPages,
+      region: params.region,
+      sort: params.sort,
+      page: fetchPage,
+      limit,
+    }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [paramsKey],
   );
@@ -177,21 +175,10 @@ export function useExploreBooks(params: UseExploreBooksParams = {}): UseExploreB
       setIaError(null);
 
       try {
-        const iaParams = new URLSearchParams();
-        iaParams.set('q', query);
-        iaParams.set('page', String(fetchPage));
-        iaParams.set('limit', String(limit));
-
-        const platformFetch = await getPlatformFetch();
-        const res = await platformFetch(`${CATALOG_API_BASE_URL}/catalog/ia/search?${iaParams}`, {
-          signal: controller.signal,
-        });
-
-        if (!res.ok) {
-          throw new Error('ia_unavailable');
-        }
-
-        const data = await res.json();
+        const data = await platform.catalog.searchInternetArchive(
+          { q: query, page: fetchPage, limit },
+          { signal: controller.signal },
+        );
 
         if (!controller.signal.aborted) {
           const rawIaBooks: CatalogBook[] = data.books || [];
@@ -216,7 +203,7 @@ export function useExploreBooks(params: UseExploreBooksParams = {}): UseExploreB
         if (err instanceof Error && err.name === 'AbortError') return;
         // IA errors are non-fatal — local results still show
         logger.error('IA search failed', err);
-        setIaError(err instanceof Error ? err.message : 'ia_unavailable');
+        setIaError('ia_unavailable');
       } finally {
         if (!controller.signal.aborted) {
           setIaLoading(false);
@@ -258,17 +245,9 @@ export function useExploreBooks(params: UseExploreBooksParams = {}): UseExploreB
       setError(null);
 
       try {
-        const searchParams = buildSearchParams(fetchPage);
-        const platformFetch = await getPlatformFetch();
-        const res = await platformFetch(`${CATALOG_API_BASE_URL}/catalog/books?${searchParams}`, {
+        const data = await platform.catalog.listBooks(buildCatalogQuery(fetchPage), {
           signal: controller.signal,
         });
-
-        if (!res.ok) {
-          throw new Error(`API error: ${res.status}`);
-        }
-
-        const data = await res.json();
 
         if (!controller.signal.aborted) {
           const nextBooks = (data.books || []) as CatalogBook[];
@@ -299,7 +278,7 @@ export function useExploreBooks(params: UseExploreBooksParams = {}): UseExploreB
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [paramsKey, buildSearchParams, shouldSearchIA, fetchIA],
+    [paramsKey, buildCatalogQuery, shouldSearchIA, fetchIA],
   );
 
   // Reset and fetch when params change (debounced for search only)

@@ -1,10 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { CATALOG_API_BASE_URL } from '@/services/constants';
-import { getPlatformFetch } from '@/utils/fetch';
+import { platform } from '@/services/platform/client';
 import { createLogger } from '@/utils/logger';
-import type { CatalogBook, CatalogCollection, CollectionWithBooks } from '@/types/catalog';
+import type { CatalogBook, CollectionWithBooks } from '@/types/catalog';
 
 export type { CatalogCollection, CollectionWithBooks } from '@/types/catalog';
 
@@ -82,16 +81,8 @@ async function fetchExploreCollections(
   booksPerCollection: number,
   signal?: AbortSignal,
 ): Promise<CollectionWithBooks[]> {
-  const platformFetch = await getPlatformFetch();
-
   // Step 1: Fetch the list of collections
-  const listRes = await platformFetch(`${CATALOG_API_BASE_URL}/catalog/collections`, { signal });
-
-  if (!listRes.ok) {
-    throw new Error(`API error: ${listRes.status}`);
-  }
-
-  const listData: { collections: CatalogCollection[] } = await listRes.json();
+  const listData = await platform.catalog.listCollections({ signal });
 
   // Filter out empty collections (book_count === 0)
   const nonEmpty = listData.collections.filter((c) => c.book_count > 0);
@@ -100,16 +91,11 @@ async function fetchExploreCollections(
   const withBooks = await Promise.all(
     nonEmpty.map(async (collection) => {
       try {
-        const booksRes = await platformFetch(
-          `${CATALOG_API_BASE_URL}/catalog/collections/${collection.slug}/books?limit=${booksPerCollection}`,
+        const booksData = await platform.catalog.listCollectionBooks(
+          collection.slug,
+          { limit: booksPerCollection },
           { signal },
         );
-
-        if (!booksRes.ok) {
-          return { ...collection, books: [] as CatalogBook[] };
-        }
-
-        const booksData: { books: CatalogBook[] } = await booksRes.json();
         return { ...collection, books: booksData.books };
       } catch {
         // If individual collection fetch fails, return empty books
@@ -181,7 +167,14 @@ export function useExploreCollections(booksPerCollection = 10): UseExploreCollec
         if (err instanceof Error && err.name === 'AbortError') return;
         logger.error('Failed to load collections', { error: err });
         if (!controller.signal.aborted && !hasCachedCollections) {
-          setError(err instanceof Error ? err.message : 'Failed to load collections');
+          const status = typeof err === 'object' && err && 'status' in err ? err.status : null;
+          setError(
+            typeof status === 'number'
+              ? `API error: ${status}`
+              : err instanceof Error
+                ? err.message
+                : 'Failed to load collections',
+          );
         }
       } finally {
         if (!controller.signal.aborted) {

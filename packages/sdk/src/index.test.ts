@@ -71,6 +71,30 @@ describe('Openread SDK', () => {
       expect(callArgs[1].headers).not.toHaveProperty('Authorization');
     });
 
+    it('uses injected fetch transport when configured', async () => {
+      const injectedFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ data: 'test' }),
+      });
+
+      const sdk = new Openread({
+        baseUrl: 'https://api.example.com',
+        getAccessToken: async () => 'token',
+        fetch: injectedFetch as typeof globalThis.fetch,
+      });
+
+      await sdk.fetch('/api/test');
+
+      expect(injectedFetch).toHaveBeenCalledWith(
+        'https://api.example.com/api/test',
+        expect.objectContaining({
+          headers: expect.objectContaining({ Authorization: 'Bearer token' }),
+        }),
+      );
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
     it('includes Content-Type header', async () => {
       mockFetch.mockResolvedValue({
         ok: true,

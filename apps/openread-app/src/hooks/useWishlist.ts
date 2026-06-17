@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { CATALOG_API_BASE_URL } from '@/services/constants';
-import { getPlatformFetch } from '@/utils/fetch';
+import { platform } from '@/services/platform/client';
 import { createLogger } from '@/utils/logger';
 import type { CatalogBook } from '@/types/catalog';
 
@@ -30,12 +29,7 @@ export function useWishlist(): UseWishlistReturn {
     if (!token) return;
     setIsLoading(true);
     try {
-      const platformFetch = await getPlatformFetch();
-      const res = await platformFetch(`${CATALOG_API_BASE_URL}/api/catalog/wishlist`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error(`API error: ${res.status}`);
-      const data = await res.json();
+      const data = await platform.catalog.listWishlist();
       setWishlistBooks(data.books);
       setWishlistedIds(new Set(data.books.map((b: WishlistBook) => b.id)));
     } catch (err) {
@@ -72,15 +66,11 @@ export function useWishlist(): UseWishlistReturn {
       }
 
       try {
-        const platformFetch = await getPlatformFetch();
-        const res = await platformFetch(
-          `${CATALOG_API_BASE_URL}/api/catalog/books/${catalogBookId}/wishlist`,
-          {
-            method,
-            headers: { Authorization: `Bearer ${token}` },
-          },
-        );
-        if (!res.ok) throw new Error(`API error: ${res.status}`);
+        if (method === 'DELETE') {
+          await platform.catalog.removeWishlistBook(catalogBookId);
+        } else {
+          await platform.catalog.addWishlistBook(catalogBookId);
+        }
 
         // Refresh full list after add (to get the new book data)
         if (!wasWishlisted) {

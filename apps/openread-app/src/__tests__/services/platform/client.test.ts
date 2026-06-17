@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { mockOpenreadConstructor } = vi.hoisted(() => ({
+const { mockOpenreadConstructor, mockPlatformFetch, mockGetPlatformFetch } = vi.hoisted(() => ({
   mockOpenreadConstructor: vi.fn(),
+  mockPlatformFetch: vi.fn(),
+  mockGetPlatformFetch: vi.fn(),
 }));
 
 vi.mock('@openread/sdk', () => ({
@@ -46,11 +48,17 @@ vi.mock('@/services/platform/auth', () => ({
   clearTokenCache: vi.fn(),
 }));
 
+vi.mock('@/utils/fetch', () => ({
+  getPlatformFetch: mockGetPlatformFetch,
+}));
+
 describe('platform client', () => {
   const originalNodeBaseUrl = process.env.NEXT_PUBLIC_NODE_BASE_URL;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetPlatformFetch.mockResolvedValue(mockPlatformFetch);
+    mockPlatformFetch.mockResolvedValue(new Response('{}', { status: 200 }));
   });
 
   afterEach(async () => {
@@ -83,5 +91,19 @@ describe('platform client', () => {
     expect(mockOpenreadConstructor).toHaveBeenCalledWith(
       expect.objectContaining({ baseUrl: 'https://custom.example.test' }),
     );
+  });
+
+  it('injects platform fetch so SDK calls preserve native webview transport', async () => {
+    const { getPlatformClient } = await import('@/services/platform/client');
+
+    getPlatformClient();
+
+    const config = mockOpenreadConstructor.mock.calls[0]?.[0] as { fetch: typeof globalThis.fetch };
+    await config.fetch('https://api.openread.ai/catalog/books', { method: 'GET' });
+
+    expect(mockGetPlatformFetch).toHaveBeenCalled();
+    expect(mockPlatformFetch).toHaveBeenCalledWith('https://api.openread.ai/catalog/books', {
+      method: 'GET',
+    });
   });
 });

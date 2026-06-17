@@ -30,6 +30,7 @@ const mockBook: CatalogBookDetail = {
   language: 'en',
   format_type: 'epub',
   cover_image_key: 'covers/think-python',
+  cover_url: 'https://api.openread.ai/catalog/covers/catalog/covers/think-python/thumb.jpg',
   cover_is_generated: false,
   is_cached: true,
   import_count: 42,
@@ -115,11 +116,13 @@ describe('BookDetailSheet', () => {
       renderSheet();
       const img = screen.getByRole('img', { name: 'Think Python' });
       expect(img).toBeTruthy();
-      expect(img.getAttribute('src')).toBe('/api/catalog-covers/covers/think-pythonthumb.jpg');
+      expect(img.getAttribute('src')).toBe(
+        'https://api.openread.ai/catalog/covers/catalog/covers/think-python/thumb.jpg',
+      );
     });
 
     it('should render gradient fallback when no cover image', () => {
-      renderSheet({ book: { ...mockBook, cover_image_key: null } });
+      renderSheet({ book: { ...mockBook, cover_image_key: null, cover_url: null } });
       expect(screen.queryByRole('img')).toBeNull();
     });
 

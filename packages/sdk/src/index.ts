@@ -26,6 +26,16 @@ import type { AuthTokenProvider } from '@openread/auth';
 import type {
   ApiErrorCode,
   Book,
+  CatalogBookDetail,
+  CatalogBrowseQuery,
+  CatalogBrowseResponse,
+  CatalogCollectionBooksResponse,
+  CatalogCollectionDetail,
+  CatalogCollectionsResponse,
+  CatalogDownloadUrlResponse,
+  CatalogImportResponse,
+  CatalogStatusResponse,
+  CatalogWishlistResponse,
   ListBooksResponse,
   PublicPricingResponse,
   TierConfig,
@@ -163,6 +173,107 @@ class RuntimeClient {
   async getPricing(): Promise<PublicPricingResponse> {
     return this._sdk.fetch<PublicPricingResponse>('/api/pricing');
   }
+}
+
+class CatalogClient {
+  /** @internal */
+  readonly _sdk: Openread;
+
+  constructor(sdk: Openread) {
+    this._sdk = sdk;
+  }
+
+  async listBooks(query: CatalogBrowseQuery = {}, init?: RequestInit): Promise<CatalogBrowseResponse> {
+    return this._sdk.fetch<CatalogBrowseResponse>(`/catalog/books?${catalogQueryString(query)}`, init);
+  }
+
+  async searchInternetArchive(query: { q: string; page?: number; limit?: number }, init?: RequestInit): Promise<CatalogBrowseResponse> {
+    const params = new URLSearchParams({ q: query.q });
+    if (query.page !== undefined) params.set('page', String(query.page));
+    if (query.limit !== undefined) params.set('limit', String(query.limit));
+    return this._sdk.fetch<CatalogBrowseResponse>(`/catalog/ia/search?${params}`, init);
+  }
+
+  async getBook(id: string, init?: RequestInit): Promise<CatalogBookDetail> {
+    return this._sdk.fetch<CatalogBookDetail>(`/catalog/books/${encodeURIComponent(id)}`, init);
+  }
+
+  async getImportStatus(id: string, init?: RequestInit): Promise<CatalogStatusResponse> {
+    return this._sdk.fetch<CatalogStatusResponse>(`/catalog/books/${encodeURIComponent(id)}/status`, init);
+  }
+
+  async importBook(id: string, init?: RequestInit): Promise<CatalogImportResponse> {
+    return this._sdk.fetch<CatalogImportResponse>(`/api/catalog/books/${encodeURIComponent(id)}/import`, {
+      ...init,
+      method: 'POST',
+    });
+  }
+
+  async importInternetArchiveBook(iaIdentifier: string, init?: RequestInit): Promise<CatalogImportResponse> {
+    return this._sdk.fetch<CatalogImportResponse>('/api/catalog/ia/import', {
+      ...init,
+      method: 'POST',
+      body: JSON.stringify({ ia_identifier: iaIdentifier }),
+    });
+  }
+
+  async getDownloadUrl(bookHash: string, init?: RequestInit): Promise<CatalogDownloadUrlResponse> {
+    return this._sdk.fetch<CatalogDownloadUrlResponse>('/api/catalog/books/download-url', {
+      ...init,
+      method: 'POST',
+      body: JSON.stringify({ bookHash }),
+    });
+  }
+
+  async listWishlist(init?: RequestInit): Promise<CatalogWishlistResponse> {
+    return this._sdk.fetch<CatalogWishlistResponse>('/api/catalog/wishlist', init);
+  }
+
+  async addWishlistBook(id: string, init?: RequestInit): Promise<{ ok: boolean }> {
+    return this._sdk.fetch<{ ok: boolean }>(`/api/catalog/books/${encodeURIComponent(id)}/wishlist`, {
+      ...init,
+      method: 'POST',
+    });
+  }
+
+  async removeWishlistBook(id: string, init?: RequestInit): Promise<{ ok: boolean }> {
+    return this._sdk.fetch<{ ok: boolean }>(`/api/catalog/books/${encodeURIComponent(id)}/wishlist`, {
+      ...init,
+      method: 'DELETE',
+    });
+  }
+
+  async listCollections(init?: RequestInit): Promise<CatalogCollectionsResponse> {
+    return this._sdk.fetch<CatalogCollectionsResponse>('/catalog/collections', init);
+  }
+
+  async getCollection(slug: string, init?: RequestInit): Promise<CatalogCollectionDetail> {
+    return this._sdk.fetch<CatalogCollectionDetail>(`/catalog/collections/${encodeURIComponent(slug)}`, init);
+  }
+
+  async listCollectionBooks(slug: string, query: { page?: number; limit?: number } = {}, init?: RequestInit): Promise<CatalogCollectionBooksResponse> {
+    const params = new URLSearchParams();
+    if (query.page !== undefined) params.set('page', String(query.page));
+    if (query.limit !== undefined) params.set('limit', String(query.limit));
+    const suffix = params.size > 0 ? `?${params}` : '';
+    return this._sdk.fetch<CatalogCollectionBooksResponse>(`/catalog/collections/${encodeURIComponent(slug)}/books${suffix}`, init);
+  }
+}
+
+function catalogQueryString(query: CatalogBrowseQuery): string {
+  const params = new URLSearchParams();
+  if (query.q) params.set('q', query.q);
+  if (query.subject) params.set('subject', query.subject);
+  if (query.language) params.set('language', query.language);
+  if (query.languages?.length) params.set('languages', query.languages.join(','));
+  if (query.sources?.length) params.set('sources', query.sources.join(','));
+  if (query.minPages !== undefined) params.set('minPages', String(query.minPages));
+  if (query.maxPages !== undefined) params.set('maxPages', String(query.maxPages));
+  if (query.region) params.set('region', query.region);
+  if (query.sort) params.set('sort', query.sort);
+  if (query.page !== undefined) params.set('page', String(query.page));
+  if (query.limit !== undefined) params.set('limit', String(query.limit));
+  return params.toString();
 }
 
 class BooksClient {
@@ -356,6 +467,11 @@ export class Openread {
   readonly books: BooksClient;
 
   /**
+   * Catalog client for public catalog and import lifecycle operations.
+   */
+  readonly catalog: CatalogClient;
+
+  /**
    * Ingestion client for uploading books.
    */
   readonly ingest: IngestClient;
@@ -386,6 +502,7 @@ export class Openread {
     this.auth = new AuthClient(this);
     this.runtime = new RuntimeClient(this);
     this.books = new BooksClient(this);
+    this.catalog = new CatalogClient(this);
     this.ingest = new IngestClient(this);
   }
 
@@ -397,6 +514,10 @@ export class Openread {
    */
   async getAccessToken(): Promise<string | null> {
     return this.tokenProvider.getAccessToken();
+  }
+
+  private get fetcher(): typeof globalThis.fetch {
+    return this.config.fetch ?? globalThis.fetch.bind(globalThis);
   }
 
   /**
@@ -425,7 +546,7 @@ export class Openread {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    const response = await fetch(url, {
+    const response = await this.fetcher(url, {
       ...init,
       headers,
     });
@@ -523,7 +644,7 @@ export class Openread {
       ...((init?.headers as Record<string, string>) || {}),
     };
 
-    const response = await fetch(url, {
+    const response = await this.fetcher(url, {
       ...init,
       headers,
     });

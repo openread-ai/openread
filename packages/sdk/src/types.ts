@@ -36,4 +36,12 @@ export interface OpenreadConfig {
    * exposes the shared refresh policy used by app/platform clients.
    */
   tokenProvider?: AuthTokenProvider;
+
+  /**
+   * Runtime-specific fetch implementation.
+   *
+   * Apps can inject platform transport here, e.g. Tauri mobile's native HTTP
+   * fetch, while browser and server SDK consumers can omit it to use global fetch.
+   */
+  fetch?: typeof globalThis.fetch;
 }

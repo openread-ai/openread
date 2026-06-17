@@ -6,8 +6,7 @@ import {
   getExploreRailHref,
   type ExploreRailDefinition,
 } from '@/components/explore/exploreRails';
-import { CATALOG_API_BASE_URL } from '@/services/constants';
-import { getPlatformFetch } from '@/utils/fetch';
+import { platform } from '@/services/platform/client';
 import { createLogger } from '@/utils/logger';
 import type { CatalogBook } from '@/types/catalog';
 
@@ -26,16 +25,16 @@ interface UseExploreRailsReturn {
   refresh: () => void;
 }
 
-function buildRailParams(rail: ExploreRailDefinition, limit: number): URLSearchParams {
-  const params = new URLSearchParams();
-  if (rail.params.subject) params.set('subject', rail.params.subject);
-  if (rail.params.sources?.length) params.set('sources', rail.params.sources.join(','));
-  if (rail.params.minPages !== undefined) params.set('minPages', String(rail.params.minPages));
-  if (rail.params.maxPages !== undefined) params.set('maxPages', String(rail.params.maxPages));
-  if (rail.params.sort) params.set('sort', rail.params.sort);
-  params.set('page', '1');
-  params.set('limit', String(limit));
-  return params;
+function buildRailQuery(rail: ExploreRailDefinition, limit: number) {
+  return {
+    subject: rail.params.subject,
+    sources: rail.params.sources,
+    minPages: rail.params.minPages,
+    maxPages: rail.params.maxPages,
+    sort: rail.params.sort,
+    page: 1,
+    limit,
+  };
 }
 
 export function useExploreRails(limit = 10): UseExploreRailsReturn {
@@ -61,22 +60,11 @@ export function useExploreRails(limit = 10): UseExploreRailsReturn {
       setError(null);
 
       try {
-        const platformFetch = await getPlatformFetch();
         const results = await Promise.all(
           railDefinitions.map(async (rail) => {
-            const params = buildRailParams(rail, limit);
-            const response = await platformFetch(
-              `${CATALOG_API_BASE_URL}/catalog/books?${params}`,
-              {
-                signal: controller.signal,
-              },
-            );
-
-            if (!response.ok) {
-              throw new Error(`Failed to fetch ${rail.id}`);
-            }
-
-            const data = await response.json();
+            const data = await platform.catalog.listBooks(buildRailQuery(rail, limit), {
+              signal: controller.signal,
+            });
             return {
               ...rail,
               href: getExploreRailHref(rail.id),

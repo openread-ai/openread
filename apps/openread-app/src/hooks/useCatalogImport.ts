@@ -2,22 +2,16 @@
 
 import { useState, useCallback, useRef } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { CATALOG_API_BASE_URL } from '@/services/constants';
-import { getPlatformFetch } from '@/utils/fetch';
+import { platform } from '@/services/platform/client';
 import { createLogger } from '@/utils/logger';
 import { eventDispatcher } from '@/utils/event';
 import { syncWorker } from '@/services/sync/syncWorker';
 import { useLibraryLimit } from '@/hooks/useLibraryLimit';
-import type { ImportState, ImportApiResponse, StatusApiResponse } from '@/types/catalog';
+import type { ImportState } from '@/types/catalog';
 
 export type { ImportStatus, ImportState } from '@/types/catalog';
 
 const logger = createLogger('catalog-import');
-
-interface ApiErrorResponse {
-  code: string;
-  message: string;
-}
 
 export interface UseCatalogImportReturn {
   importStates: Record<string, ImportState>;
@@ -47,26 +41,25 @@ export function useCatalogImport(): UseCatalogImportReturn {
   }, []);
 
   const pollStatus = useCallback(
-    async (catalogBookId: string, controller: AbortController): Promise<boolean> => {
+    async (
+      stateBookId: string,
+      statusCatalogBookId: string,
+      controller: AbortController,
+    ): Promise<boolean> => {
       for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt++) {
         if (controller.signal.aborted) return false;
 
         // Update progress (capped at 90% during polling — final 100% on ready)
         const progress = Math.min(10 + Math.round((attempt / MAX_POLL_ATTEMPTS) * 80), 90);
-        updateState(catalogBookId, { progress });
+        updateState(stateBookId, { progress });
 
         await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
         if (controller.signal.aborted) return false;
 
         try {
-          const platformFetch = await getPlatformFetch();
-          const res = await platformFetch(
-            `${CATALOG_API_BASE_URL}/catalog/books/${catalogBookId}/status`,
-            { signal: controller.signal },
-          );
-          if (!res.ok) continue;
-
-          const data = (await res.json()) as StatusApiResponse;
+          const data = await platform.catalog.getImportStatus(statusCatalogBookId, {
+            signal: controller.signal,
+          });
           if (data.caching_status === 'cached') {
             return true;
           }
@@ -75,7 +68,7 @@ export function useCatalogImport(): UseCatalogImportReturn {
           }
         } catch (err) {
           if (controller.signal.aborted) return false;
-          logger.warn('Poll status error', { catalogBookId, error: err });
+          logger.warn('Poll status error', { catalogBookId: statusCatalogBookId, error: err });
         }
       }
       return false; // Timeout
@@ -115,38 +108,11 @@ export function useCatalogImport(): UseCatalogImportReturn {
       updateState(catalogBookId, { status: 'importing', progress: 5, error: undefined });
 
       try {
-        const platformFetch = await getPlatformFetch();
-
-        let url: string;
-        let body: string | undefined;
-        if (iaIdentifier) {
-          url = `${CATALOG_API_BASE_URL}/api/catalog/ia/import`;
-          body = JSON.stringify({ ia_identifier: iaIdentifier });
-        } else {
-          url = `${CATALOG_API_BASE_URL}/api/catalog/books/${catalogBookId}/import`;
-        }
-
-        const headers: Record<string, string> = {
-          Authorization: `Bearer ${token}`,
-        };
-        if (body) {
-          headers['Content-Type'] = 'application/json';
-        }
-
-        const res = await platformFetch(url, {
-          method: 'POST',
-          headers,
-          body,
-          signal: controller.signal,
-        });
-
-        if (!res.ok) {
-          const errorData = (await res.json().catch(() => null)) as ApiErrorResponse | null;
-          const errorMessage = errorData?.message || `Import failed (${res.status})`;
-          throw new Error(errorMessage);
-        }
-
-        const data = (await res.json()) as ImportApiResponse;
+        const data = iaIdentifier
+          ? await platform.catalog.importInternetArchiveBook(iaIdentifier, {
+              signal: controller.signal,
+            })
+          : await platform.catalog.importBook(catalogBookId, { signal: controller.signal });
 
         if (data.status === 'ready') {
           updateState(catalogBookId, {
@@ -166,36 +132,28 @@ export function useCatalogImport(): UseCatalogImportReturn {
 
         if (data.status === 'preparing') {
           updateState(catalogBookId, { progress: 10 });
-          const cached = await pollStatus(catalogBookId, controller);
+          const statusCatalogBookId = data.catalog_book_id ?? catalogBookId;
+          const cached = await pollStatus(catalogBookId, statusCatalogBookId, controller);
 
           if (controller.signal.aborted) return;
 
           if (cached) {
-            const retryRes = await platformFetch(
-              `${CATALOG_API_BASE_URL}/api/catalog/books/${catalogBookId}/import`,
-              {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${token}` },
-                signal: controller.signal,
-              },
-            );
-
-            if (retryRes.ok) {
-              const retryData = (await retryRes.json()) as ImportApiResponse;
-              updateState(catalogBookId, {
-                status: 'ready',
-                progress: 100,
-                bookId: retryData.book_id,
-                bookHash: retryData.book_hash,
-                downloadUrl: retryData.download_url,
-              });
-              syncWorker.pullNow('books').catch(() => {});
-              eventDispatcher.dispatch('toast', {
-                message: 'Book added to your library',
-                type: 'success',
-              });
-              return;
-            }
+            const retryData = await platform.catalog.importBook(statusCatalogBookId, {
+              signal: controller.signal,
+            });
+            updateState(catalogBookId, {
+              status: 'ready',
+              progress: 100,
+              bookId: retryData.book_id,
+              bookHash: retryData.book_hash,
+              downloadUrl: retryData.download_url,
+            });
+            syncWorker.pullNow('books').catch(() => {});
+            eventDispatcher.dispatch('toast', {
+              message: 'Book added to your library',
+              type: 'success',
+            });
+            return;
           }
 
           throw new Error('Import timed out. Please try again later.');

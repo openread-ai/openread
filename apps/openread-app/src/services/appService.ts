@@ -84,8 +84,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { createLogger } from '@/utils/logger';
 import { CloudSyncService } from './cloudSync';
 import { LibraryPersistence } from './libraryPersistence';
-import { fetchWithAuth } from '@/utils/fetch';
-import { getAPIBaseUrl } from '@/services/environment';
+import { platform } from '@/services/platform/client';
 
 const logger = createLogger('appService');
 
@@ -601,12 +600,7 @@ export abstract class BaseAppService implements AppService {
   private async downloadStorageBackedBook(book: Book): Promise<void> {
     if (!book.storagePath) throw new Error(BOOK_FILE_NOT_FOUND_ERROR);
 
-    const response = await fetchWithAuth(`${getAPIBaseUrl()}/catalog-books/download-url`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ bookHash: book.hash }),
-    });
-    const data = (await response.json()) as { downloadUrl?: string };
+    const data = await platform.catalog.getDownloadUrl(book.hash);
     if (!data.downloadUrl) throw new Error('No download URL available');
 
     const localPath = getLocalBookFilename(book);

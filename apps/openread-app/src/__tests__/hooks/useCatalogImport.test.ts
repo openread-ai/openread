@@ -4,7 +4,7 @@ import { useCatalogImport } from '@/hooks/useCatalogImport';
 
 // ── Hoisted mocks ──────────────────────────────────────
 
-const { mockAuthState, mockDispatch } = vi.hoisted(() => {
+const { catalogJson, fetchMock, mockAuthState, mockDispatch } = vi.hoisted(() => {
   const mockAuthState = {
     token: 'test-token-123' as string | null,
     user: { id: 'user-1' } as { id: string } | null,
@@ -12,7 +12,16 @@ const { mockAuthState, mockDispatch } = vi.hoisted(() => {
     refresh: vi.fn(),
   };
   const mockDispatch = vi.fn();
-  return { mockAuthState, mockDispatch };
+  const fetchMock = vi.fn();
+  const catalogJson = async (url: string, options?: Record<string, unknown>) => {
+    const response = await fetchMock(url, options);
+    if (!response.ok) {
+      const errorData = (await response.json().catch(() => null)) as { message?: string } | null;
+      throw new Error(errorData?.message || `Import failed (${response.status})`);
+    }
+    return response.json();
+  };
+  return { catalogJson, fetchMock, mockAuthState, mockDispatch };
 });
 
 vi.mock('@/context/AuthContext', () => ({
@@ -28,6 +37,31 @@ vi.mock('@/utils/event', () => ({
 vi.mock('@/services/sync/syncWorker', () => ({
   syncWorker: {
     pullNow: vi.fn(() => Promise.resolve()),
+  },
+}));
+
+vi.mock('@/services/platform/client', () => ({
+  platform: {
+    catalog: {
+      getImportStatus: (catalogBookId: string, init?: Record<string, unknown>) =>
+        catalogJson(`/catalog/books/${catalogBookId}/status`, init),
+      importBook: (catalogBookId: string, init?: Record<string, unknown>) =>
+        catalogJson(`/api/catalog/books/${catalogBookId}/import`, {
+          ...init,
+          method: 'POST',
+          headers: { Authorization: `Bearer ${mockAuthState.token}` },
+        }),
+      importInternetArchiveBook: (iaIdentifier: string, init?: Record<string, unknown>) =>
+        catalogJson('/api/catalog/ia/import', {
+          ...init,
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${mockAuthState.token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ ia_identifier: iaIdentifier }),
+        }),
+    },
   },
 }));
 
@@ -50,9 +84,6 @@ vi.mock('@/hooks/useLibraryLimit', () => ({
 }));
 
 // ── Test helpers ───────────────────────────────────────
-
-const fetchMock = vi.fn();
-vi.stubGlobal('fetch', fetchMock);
 
 function mockImportResponse(status: 'ready' | 'preparing', extra?: Record<string, unknown>) {
   return {
@@ -275,6 +306,54 @@ describe('useCatalogImport', () => {
       const state = result.current.getImportState('catalog-poll');
       expect(state.status).toBe('ready');
       expect(state.bookId).toBe('lib-polled');
+    });
+
+    it('should poll IA preparing imports with the real catalog UUID, not synthetic UI identity', async () => {
+      fetchMock.mockResolvedValueOnce(
+        mockImportResponse('preparing', {
+          catalog_book_id: 'real-catalog-uuid',
+        }),
+      );
+      fetchMock.mockResolvedValueOnce(mockStatusResponse('caching'));
+      fetchMock.mockResolvedValueOnce(mockStatusResponse('cached'));
+      fetchMock.mockResolvedValueOnce(
+        mockImportResponse('ready', {
+          catalog_book_id: 'real-catalog-uuid',
+          book_id: 'lib-ia-polled',
+          book_hash: 'catalog:real-catalog-uuid',
+          download_url: 'https://example.com/ia-polled.epub',
+        }),
+      );
+
+      const { result } = renderHook(() => useCatalogImport());
+
+      let importPromise: Promise<void>;
+      act(() => {
+        importPromise = result.current.importBook(
+          'internet-archive:thegreatgatsby',
+          'thegreatgatsby',
+        );
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2100);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2100);
+      });
+      await act(async () => {
+        await importPromise!;
+      });
+
+      const urls = fetchMock.mock.calls.map(([url]) => url as string);
+      expect(urls).toContain('/catalog/books/real-catalog-uuid/status');
+      expect(urls).toContain('/api/catalog/books/real-catalog-uuid/import');
+      expect(urls).not.toContain('/catalog/books/internet-archive:thegreatgatsby/status');
+      expect(urls).not.toContain('/api/catalog/books/internet-archive:thegreatgatsby/import');
+
+      const state = result.current.getImportState('internet-archive:thegreatgatsby');
+      expect(state.status).toBe('ready');
+      expect(state.bookId).toBe('lib-ia-polled');
     });
   });
 

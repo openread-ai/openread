@@ -30,6 +30,7 @@ const mockBook: CatalogBook = {
   language: 'en',
   format_type: 'epub',
   cover_image_key: 'covers/think-python',
+  cover_url: 'https://api.openread.ai/catalog/covers/catalog/covers/think-python/thumb.jpg',
   cover_is_generated: false,
   is_cached: true,
   import_count: 42,
@@ -63,12 +64,14 @@ describe('ExploreBookCard', () => {
       render(<ExploreBookCard book={mockBook} />);
       const img = screen.getByRole('img', { name: 'Think Python' });
       expect(img).toBeTruthy();
-      expect(img.getAttribute('src')).toBe('/api/catalog-covers/covers/think-pythonthumb.jpg');
+      expect(img.getAttribute('src')).toBe(
+        'https://api.openread.ai/catalog/covers/catalog/covers/think-python/thumb.jpg',
+      );
       expect(img.getAttribute('loading')).toBe('lazy');
     });
 
     it('should render gradient fallback when no cover image', () => {
-      const noCoverBook: CatalogBook = { ...mockBook, cover_image_key: null };
+      const noCoverBook: CatalogBook = { ...mockBook, cover_image_key: null, cover_url: null };
       render(<ExploreBookCard book={noCoverBook} />);
       // No img element should be present
       expect(screen.queryByRole('img')).toBeNull();
@@ -90,7 +93,7 @@ describe('ExploreBookCard', () => {
     });
 
     it('should render book-spine overlay on gradient fallback covers', () => {
-      const noCoverBook: CatalogBook = { ...mockBook, cover_image_key: null };
+      const noCoverBook: CatalogBook = { ...mockBook, cover_image_key: null, cover_url: null };
       const { container } = render(<ExploreBookCard book={noCoverBook} />);
       const spineElements = container.querySelectorAll('.book-spine');
       expect(spineElements.length).toBeGreaterThanOrEqual(1);
@@ -124,6 +127,23 @@ describe('ExploreBookCard', () => {
       render(<ExploreBookCard book={mockBook} isIA onAction={onAction} />);
       fireEvent.click(screen.getByRole('button', { name: /add to library/i }));
       expect(onAction).toHaveBeenCalledWith('test-uuid-1234');
+    });
+
+    it('should use stable IA catalog identity for card actions', () => {
+      const onAction = vi.fn();
+      const iaBook: CatalogBook = {
+        ...mockBook,
+        id: 'internet-archive:stable-ia-id',
+        source: 'internet-archive',
+        source_id: 'stable-ia-id',
+        ia_identifier: 'stable-ia-id',
+      };
+
+      render(<ExploreBookCard book={iaBook} isIA onAction={onAction} />);
+      fireEvent.click(screen.getByRole('button', { name: /add to library/i }));
+
+      expect(onAction).toHaveBeenCalledWith('internet-archive:stable-ia-id');
+      expect(screen.getByTestId('card-tap-internet-archive:stable-ia-id')).toBeTruthy();
     });
 
     it('should show IA badge when isIA is true', () => {

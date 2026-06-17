@@ -70,9 +70,7 @@ function formatLicense(license?: string): string {
 function DetailCover({ book }: { book: CatalogBookDetail }) {
   const [imgError, setImgError] = useState(false);
   const palette = getCoverPalette(book.id);
-  const coverUrl = book.cover_image_key
-    ? `/api/catalog-covers/${book.cover_image_key}thumb.jpg`
-    : null;
+  const coverUrl = book.cover_url;
 
   if (coverUrl && !imgError) {
     return (

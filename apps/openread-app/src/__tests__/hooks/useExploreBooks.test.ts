@@ -32,7 +32,7 @@ function makeLocalBook(overrides: Partial<CatalogBook> = {}): CatalogBook {
 
 function makeIABook(overrides: Partial<CatalogBook> = {}): CatalogBook {
   return {
-    id: '',
+    id: 'internet-archive:ia-id-1',
     title: 'IA Book',
     author_name: 'IA Author',
     language: 'en',

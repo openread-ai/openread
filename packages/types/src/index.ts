@@ -71,6 +71,27 @@ export type {
   UserProfile,
 } from './api.js';
 
+// Catalog API contracts
+export type {
+  CatalogBook,
+  CatalogBookDetail,
+  CatalogBrowseQuery,
+  CatalogBrowseResponse,
+  CatalogCollection,
+  CatalogCollectionBooksResponse,
+  CatalogCollectionDetail,
+  CatalogCollectionsResponse,
+  CatalogDownloadUrlRequest,
+  CatalogDownloadUrlResponse,
+  CatalogImportResponse,
+  CatalogImportStatus,
+  CatalogSort,
+  CatalogStatusResponse,
+  CatalogWishlistBook,
+  CatalogWishlistResponse,
+  CollectionWithBooks,
+} from './catalog.js';
+
 // MCP (Model Context Protocol) types
 export type {
   McpBookInfo,

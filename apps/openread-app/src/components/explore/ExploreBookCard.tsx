@@ -85,9 +85,7 @@ function CoverImage({
   isIA: boolean;
 }) {
   const [imgError, setImgError] = useState(false);
-  const coverUrl = book.cover_image_key
-    ? `/api/catalog-covers/${book.cover_image_key}thumb.jpg`
-    : null;
+  const coverUrl = book.cover_url;
 
   const gradientBg = (
     <div

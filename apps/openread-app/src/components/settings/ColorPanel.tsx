@@ -15,6 +15,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { useResetViewSettings } from '@/hooks/useResetSettings';
 import { useCustomTextureStore } from '@/store/customTextureStore';
 import { saveViewSettings } from '@/helpers/settings';
+import { settingsService } from '@/services/settings/settingsService';
 import { manageSyntaxHighlighting } from '@/utils/highlightjs';
 import { SettingsPanelPanelProp } from './SettingsDialog';
 import { useFileSelector } from '@/hooks/useFileSelector';
@@ -38,7 +39,7 @@ const ColorPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
   const { themeMode, themeColor, isDarkMode, setThemeMode, setThemeColor, saveCustomTheme } =
     useThemeStore();
   const { envConfig, appService } = useEnv();
-  const { settings, setSettings, saveSettings } = useSettingsStore();
+  const { settings, setSettings } = useSettingsStore();
   const { getView, getViewSettings } = useReaderStore();
   const viewSettings = getViewSettings(bookKey) || settings.globalViewSettings;
 
@@ -249,11 +250,6 @@ const ColorPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
 
   const handleDeleteCustomTexture = (textureId: string) => {
     removeTexture(textureId);
-    const updatedTextures = customTextures.filter((t) => t.id !== textureId);
-
-    settings.customTextures = updatedTextures;
-    setSettings(settings);
-
     if (selectedTextureId === textureId) {
       setSelectedTextureId('none');
     }
@@ -262,9 +258,12 @@ const ColorPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
 
   const handleHighlightColorsChange = (colors: typeof customHighlightColors) => {
     setCustomHighlightColors(colors);
-    settings.globalReadSettings.customHighlightColors = colors;
-    setSettings(settings);
-    saveSettings(envConfig, settings);
+    void settingsService
+      .updateGlobalReadSettings(envConfig, settings, (globalReadSettings) => ({
+        ...globalReadSettings,
+        customHighlightColors: colors,
+      }))
+      .then(setSettings);
   };
 
   const handleTTSStyleChange = (style: TTSHighlightStyle) => {
@@ -285,16 +284,22 @@ const ColorPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
 
   const handleCustomTtsColorsChange = (colors: string[]) => {
     setCustomTtsHighlightColors(colors);
-    settings.globalReadSettings.customTtsHighlightColors = colors;
-    setSettings(settings);
-    saveSettings(envConfig, settings);
+    void settingsService
+      .updateGlobalReadSettings(envConfig, settings, (globalReadSettings) => ({
+        ...globalReadSettings,
+        customTtsHighlightColors: colors,
+      }))
+      .then(setSettings);
   };
 
   const handleUserHighlightColorsChange = (colors: string[]) => {
     setUserHighlightColors(colors);
-    settings.globalReadSettings.userHighlightColors = colors;
-    setSettings(settings);
-    saveSettings(envConfig, settings);
+    void settingsService
+      .updateGlobalReadSettings(envConfig, settings, (globalReadSettings) => ({
+        ...globalReadSettings,
+        userHighlightColors: colors,
+      }))
+      .then(setSettings);
   };
 
   return (

@@ -22,6 +22,7 @@ import {
   type OpenReadBookReference,
   type SyncableBookRef,
 } from '@openread/types';
+import { SYNCABLE_SETTINGS_KEYS } from '@openread/settings';
 
 const requireOpenReadBookReference = (value: unknown, field: string): OpenReadBookReference => {
   const parsed = parseOpenReadBookReference(value);
@@ -273,34 +274,14 @@ export const transformBookNoteFromDB = (dbBookNote: DBBookNote): BookNote => {
 };
 
 /**
- * Keys that should roam across devices (sync to server).
- * Per-device keys (paths, screen settings, migration, watermarks) are excluded.
- */
-const ROAMING_KEYS: (keyof SystemSettings)[] = [
-  'libraryViewMode',
-  'librarySortBy',
-  'libraryGroupBy',
-  'librarySortAscending',
-  'libraryCoverFit',
-  'libraryAutoColumns',
-  'libraryColumns',
-  'aiSettings',
-  'globalReadSettings',
-  'globalViewSettings',
-  'keepLogin',
-  'autoUpload',
-  'telemetryEnabled',
-];
-
-/**
  * Extract the roaming subset of settings for sync.
  * Includes a _updatedAt timestamp for LWW resolution on the server.
  */
 export function extractRoamingSettings(settings: SystemSettings): Record<string, unknown> {
   const roaming: Record<string, unknown> = {};
-  for (const key of ROAMING_KEYS) {
+  for (const key of SYNCABLE_SETTINGS_KEYS) {
     if (key in settings) {
-      roaming[key] = settings[key];
+      roaming[key] = settings[key as keyof SystemSettings];
     }
   }
   roaming._updatedAt = new Date().toISOString();
@@ -316,7 +297,7 @@ export function applyRoamingSettings(
   remote: Record<string, unknown>,
 ): SystemSettings {
   const merged = { ...local };
-  for (const key of ROAMING_KEYS) {
+  for (const key of SYNCABLE_SETTINGS_KEYS) {
     if (key in remote && remote[key] !== undefined) {
       (merged as Record<string, unknown>)[key] = remote[key];
     }

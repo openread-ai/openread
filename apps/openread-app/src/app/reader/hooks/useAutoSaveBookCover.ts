@@ -4,6 +4,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { throttle } from '@/utils/throttle';
+import { settingsService } from '@/services/settings/settingsService';
 import { getCoverFilename } from '@/utils/book';
 import { eventDispatcher } from '@/utils/event';
 
@@ -35,9 +36,13 @@ export const useBookCoverAutoSave = (bookKey: string) => {
                   'None',
                 );
               }
-              settings.savedBookCoverForLockScreen = book.hash;
-              useSettingsStore.getState().setSettings(settings);
-              useSettingsStore.getState().saveSettings(envConfig, settings);
+              const nextSettings = await settingsService.updateKey(
+                envConfig,
+                settings,
+                'savedBookCoverForLockScreen',
+                book.hash,
+              );
+              useSettingsStore.getState().setSettings(nextSettings);
             } catch (error) {
               eventDispatcher.dispatch('toast', {
                 type: 'error',

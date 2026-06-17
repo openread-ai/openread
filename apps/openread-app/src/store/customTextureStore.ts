@@ -7,6 +7,7 @@ import {
   mountBackgroundTexture,
   unmountBackgroundTexture,
 } from '@/styles/textures';
+import { settingsService } from '@/services/settings/settingsService';
 import { useSettingsStore } from './settingsStore';
 import { createLogger } from '@/utils/logger';
 
@@ -309,13 +310,15 @@ export const useCustomTextureStore = create<TextureStoreState>((set, get) => ({
 
   saveCustomTextures: async (envConfig) => {
     try {
-      const { settings, setSettings, saveSettings } = useSettingsStore.getState();
+      const { settings, setSettings } = useSettingsStore.getState();
       const { textures } = get();
-
-      settings.customTextures = textures.map(toSettingsTexture);
-
-      setSettings(settings);
-      saveSettings(envConfig, settings);
+      const nextSettings = await settingsService.updateKey(
+        envConfig,
+        settings,
+        'customTextures',
+        textures.map(toSettingsTexture),
+      );
+      setSettings(nextSettings);
     } catch (error) {
       logger.error('Failed to save custom textures settings:', error);
       throw error;

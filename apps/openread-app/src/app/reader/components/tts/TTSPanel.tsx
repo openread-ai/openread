@@ -8,6 +8,7 @@ import { TTSVoicesGroup } from '@/services/tts';
 import { useEnv } from '@/context/EnvContext';
 import { useReaderStore } from '@/store/readerStore';
 import { TranslationFunc, useTranslation } from '@/hooks/useTranslation';
+import { settingsService } from '@/services/settings/settingsService';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useDefaultIconSize, useResponsiveSize } from '@/hooks/useResponsiveSize';
 import { getLanguageName } from '@/utils/lang';
@@ -123,7 +124,7 @@ const TTSPanel = ({
   const _ = useTranslation();
   const { envConfig } = useEnv();
   const { getViewSettings, setViewSettings } = useReaderStore();
-  const { settings, setSettings, saveSettings } = useSettingsStore();
+  const { settings, setSettings } = useSettingsStore();
   const viewSettings = getViewSettings(bookKey);
 
   const [voiceGroups, setVoiceGroups] = useState<TTSVoicesGroup[]>([]);
@@ -144,11 +145,11 @@ const TTSPanel = ({
     setRate(newRate);
     onSetRate(newRate);
     const viewSettings = getViewSettings(bookKey)!;
-    viewSettings.ttsRate = newRate;
-    settings.globalViewSettings.ttsRate = newRate;
-    setViewSettings(bookKey, viewSettings);
-    setSettings(settings);
-    saveSettings(envConfig, settings);
+    const nextViewSettings = { ...viewSettings, ttsRate: newRate };
+    setViewSettings(bookKey, nextViewSettings);
+    void settingsService
+      .updateGlobalViewSetting(envConfig, settings, 'ttsRate', newRate)
+      .then(setSettings);
   };
 
   const handleSelectVoice = (voice: string, lang: string) => {

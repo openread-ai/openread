@@ -97,7 +97,10 @@ const Notebook: React.FC = ({}) => {
 
   const handleNotebookResize = (newWidth: string) => {
     setNotebookWidth(newWidth);
-    settings.globalReadSettings.notebookWidth = newWidth;
+    saveSysSettings(envConfig, 'globalReadSettings', {
+      ...settings.globalReadSettings,
+      notebookWidth: newWidth,
+    });
   };
 
   const handleTogglePin = () => {

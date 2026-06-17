@@ -5,6 +5,9 @@ import { getSystemColorScheme } from '@/utils/bridge';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { CustomTheme, Palette, ThemeMode } from '@/styles/themes';
 import { EnvConfigType, isWebAppPlatform } from '@/services/environment';
+import { settingsLocalAdapter } from '@/services/settings/settingsLocalAdapter';
+import { settingsService } from '@/services/settings/settingsService';
+import { useSettingsStore } from '@/store/settingsStore';
 import { SystemSettings } from '@/types/settings';
 import { Insets } from '@/types/misc';
 
@@ -47,17 +50,11 @@ const getDefaultThemeColor = (): string => {
 };
 
 const getInitialThemeMode = (): ThemeMode => {
-  if (typeof window !== 'undefined' && localStorage) {
-    return (localStorage.getItem('themeMode') as ThemeMode) || 'auto';
-  }
-  return 'auto';
+  return settingsLocalAdapter.getThemeMode('auto');
 };
 
 const getInitialThemeColor = (): string => {
-  if (typeof window !== 'undefined' && localStorage) {
-    return localStorage.getItem('themeColor') || getDefaultThemeColor();
-  }
-  return 'default';
+  return settingsLocalAdapter.getThemeColor(getDefaultThemeColor());
 };
 
 const getResolvedThemeName = (
@@ -94,9 +91,7 @@ export const useThemeStore = create<ThemeState>((set, get) => {
     setStatusBarHeight: (height: number) => set({ statusBarHeight: height }),
     setSystemUIAlwaysHidden: (hidden: boolean) => set({ systemUIAlwaysHidden: hidden }),
     setThemeMode: (mode) => {
-      if (typeof window !== 'undefined' && localStorage) {
-        localStorage.setItem('themeMode', mode);
-      }
+      settingsService.setThemeMode(mode);
       const isDarkMode = mode === 'dark' || (mode === 'auto' && get().systemIsDarkMode);
       document.documentElement.setAttribute(
         'data-theme',
@@ -106,9 +101,7 @@ export const useThemeStore = create<ThemeState>((set, get) => {
       set({ themeCode: getThemeCode() });
     },
     setThemeColor: (color) => {
-      if (typeof window !== 'undefined' && localStorage) {
-        localStorage.setItem('themeColor', color);
-      }
+      settingsService.setThemeColor(color);
       document.documentElement.setAttribute(
         'data-theme',
         `${color}-${get().isDarkMode ? 'dark' : 'light'}`,
@@ -136,14 +129,15 @@ export const useThemeStore = create<ThemeState>((set, get) => {
           customThemes.push(theme);
         }
       }
-      settings.globalReadSettings.customThemes = customThemes;
-      const appService = await envConfig.getAppService();
-      await appService.saveSettings(settings);
-      void import('@/services/sync/helpers')
-        .then(({ enqueueSettingsForSync }) => enqueueSettingsForSync(settings))
-        .catch((error) => {
-          console.error('[ThemeStore] Failed to enqueue custom theme settings sync:', error);
-        });
+      const nextSettings = await settingsService.updateGlobalReadSettings(
+        envConfig,
+        settings,
+        (globalReadSettings) => ({
+          ...globalReadSettings,
+          customThemes,
+        }),
+      );
+      useSettingsStore.getState().setSettings(nextSettings);
     },
     handleSystemThemeChange: (systemIsDarkMode) => {
       const { themeMode, themeColor } = get();
@@ -165,8 +159,8 @@ export const useThemeStore = create<ThemeState>((set, get) => {
 export const loadDataTheme = () => {
   if (typeof localStorage === 'undefined' || typeof document === 'undefined') return;
 
-  const themeMode = (localStorage.getItem('themeMode') as ThemeMode) || 'auto';
-  const themeColor = localStorage.getItem('themeColor') || getDefaultThemeColor();
+  const themeMode = settingsService.getThemeMode('auto');
+  const themeColor = settingsService.getThemeColor(getDefaultThemeColor());
   const systemIsDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
   document.documentElement.setAttribute(
     'data-theme',

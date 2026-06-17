@@ -25,12 +25,12 @@ import {
   transformBookFromDB,
   transformBookConfigFromDB,
   transformBookNoteFromDB,
-  applyRoamingSettings,
 } from '@/utils/transform';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import envConfig from '@/services/environment';
+import { settingsService } from '@/services/settings/settingsService';
 import type { BookConfig, BookDataRecord, BookNote } from '@/types/book';
 import type { DBBook, DBBookConfig, DBBookNote } from '@/types/records';
 import type { RealtimeChannel } from '@supabase/supabase-js';
@@ -132,10 +132,6 @@ const maxAIConversationTimestamp = (
 const maxAIMessageTimestamp = (messages: Array<{ createdAt?: number }>): number =>
   messages.reduce((maxTime, message) => Math.max(maxTime, message.createdAt ?? 0), 0);
 
-/**
- * Persist watermark updates to the settings store.
- * Creates a new object (immutable) and saves locally without triggering a push.
- */
 function isTransientSyncError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return /Failed to fetch|AbortError|timeout|network/i.test(message);
@@ -286,7 +282,9 @@ export class SyncWorker {
         .then(async (appService) => {
           await Promise.all([
             appService.saveLibraryBooks([]),
-            resetSettings ? appService.saveSettings(resetSettings) : Promise.resolve(),
+            resetSettings
+              ? settingsService.save(envConfig, resetSettings, { sync: false })
+              : Promise.resolve(),
           ]);
         })
         .catch((error) => console.warn('[SyncWorker] Failed to clear account-scoped state', error));
@@ -1026,9 +1024,10 @@ export class SyncWorker {
 
       const nextWatermark = result.settingsUpdatedAt ?? Date.now();
       const freshSettings = { ...useSettingsStore.getState().settings };
-      const mergedSettings = remoteSettings
-        ? applyRoamingSettings(freshSettings, remoteSettings)
+      const syncedSettings = remoteSettings
+        ? settingsService.applySyncable(freshSettings, remoteSettings)
         : freshSettings;
+      const mergedSettings = syncedSettings;
       useSettingsStore.getState().setSettings(mergedSettings);
       setCanonicalSyncCursor(
         this.userId,
@@ -1040,8 +1039,7 @@ export class SyncWorker {
         'collection',
         result.cursorByEntity?.collection ?? nextWatermark,
       );
-      const appService = await envConfig.getAppService();
-      await appService.saveSettings(mergedSettings);
+      await settingsService.save(envConfig, mergedSettings, { sync: false });
 
       if (remoteCollections.length > 0 || collectionTombstones.length > 0) {
         const { usePlatformSidebarStore } = await import('@/store/platformSidebarStore');

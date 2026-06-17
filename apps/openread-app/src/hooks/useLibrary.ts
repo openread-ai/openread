@@ -6,6 +6,8 @@ import { useLibraryStore } from '@/store/libraryStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { usePlatformSidebarStore } from '@/store/platformSidebarStore';
 import { LIBRARY_OWNER_STORAGE_KEY } from '@/services/libraryPaintCache';
+import { settingsService } from '@/services/settings/settingsService';
+import { resetCanonicalSyncCursors } from '@/services/sync/cursors';
 import { createLogger } from '@/utils/logger';
 import type { Book } from '@/types/book';
 
@@ -92,12 +94,12 @@ export const useLibrary = () => {
     const initLibrary = async () => {
       try {
         const appService = await envConfig.getAppService();
-        const settings = await appService.loadSettings();
+        const settings = await settingsService.load(envConfig);
         if (cancelled) return;
         const scopedSettings = settings;
         setSettings(scopedSettings);
         if (ownerMismatch) {
-          await appService.saveSettings(scopedSettings);
+          resetCanonicalSyncCursors(userId);
         }
 
         if (!userId) {

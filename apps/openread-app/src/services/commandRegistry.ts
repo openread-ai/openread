@@ -9,6 +9,7 @@ import { TbSunMoon } from 'react-icons/tb';
 import { MdRefresh } from 'react-icons/md';
 import { IconType } from 'react-icons';
 import { LAUNCH_TTS_ENABLED, LAUNCH_TRANSLATION_ENABLED } from '@/services/launchFeatures';
+import { settingsLocalAdapter } from '@/services/settings/settingsLocalAdapter';
 import { stubTranslation as _ } from '@/utils/misc';
 
 export type CommandCategory = 'settings' | 'actions' | 'navigation';
@@ -662,8 +663,7 @@ export const buildCommandRegistry = (options: CommandRegistryOptions): CommandIt
 
   // add action items
   const getThemeIcon = (): IconType => {
-    const themeMode =
-      typeof localStorage !== 'undefined' ? localStorage.getItem('themeMode') : 'auto';
+    const themeMode = settingsLocalAdapter.getThemeMode('auto');
     return themeMode === 'dark' ? PiMoon : themeMode === 'light' ? PiSun : TbSunMoon;
   };
 

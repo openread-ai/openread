@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import Popup from '@/components/Popup';
 import { Position } from '@/utils/sel';
 import { useAuth } from '@/context/AuthContext';
+import { useEnv } from '@/context/EnvContext';
+import { settingsService } from '@/services/settings/settingsService';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useTranslator } from '@/hooks/useTranslator';
@@ -46,6 +48,7 @@ const TranslatorPopup: React.FC<TranslatorPopupProps> = ({
 }) => {
   const _ = useTranslation();
   const { token } = useAuth();
+  const { envConfig } = useEnv();
   const { settings, setSettings } = useSettingsStore();
   const [providers, setProviders] = useState<TranslatorType[]>([]);
   const [sourceLang, setSourceLang] = useState('AUTO');
@@ -67,9 +70,14 @@ const TranslatorPopup: React.FC<TranslatorPopupProps> = ({
   };
 
   const handleTargetLangChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
-    settings.globalReadSettings.translateTargetLang = event.target.value;
-    setSettings(settings);
-    setTargetLang(event.target.value);
+    const translateTargetLang = event.target.value;
+    setTargetLang(translateTargetLang);
+    void settingsService
+      .updateGlobalReadSettings(envConfig, settings, (globalReadSettings) => ({
+        ...globalReadSettings,
+        translateTargetLang,
+      }))
+      .then(setSettings);
   };
 
   const handleProviderChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
@@ -80,9 +88,13 @@ const TranslatorPopup: React.FC<TranslatorPopupProps> = ({
     const selectedTranslator =
       availableTranslators.find((t) => t.name === requestedProvider) || availableTranslators[0]!;
     if (selectedTranslator) {
-      settings.globalReadSettings.translationProvider = selectedTranslator.name;
-      setSettings(settings);
       setProvider(selectedTranslator.name);
+      void settingsService
+        .updateGlobalReadSettings(envConfig, settings, (globalReadSettings) => ({
+          ...globalReadSettings,
+          translationProvider: selectedTranslator.name,
+        }))
+        .then(setSettings);
     }
   };
 

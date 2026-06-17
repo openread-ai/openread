@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { EnvConfigType } from '@/services/environment';
 import { CustomFont, createCustomFont, getFontFormat, getMimeType } from '@/styles/fonts';
+import { settingsService } from '@/services/settings/settingsService';
 import { useSettingsStore } from './settingsStore';
 import { createLogger } from '@/utils/logger';
 
@@ -280,11 +281,15 @@ export const useCustomFontStore = create<FontStoreState>((set, get) => ({
 
   saveCustomFonts: async (envConfig) => {
     try {
-      const { settings, setSettings, saveSettings } = useSettingsStore.getState();
+      const { settings, setSettings } = useSettingsStore.getState();
       const { fonts } = get();
-      settings.customFonts = fonts.map(toSettingsFont);
-      setSettings(settings);
-      saveSettings(envConfig, settings);
+      const nextSettings = await settingsService.updateKey(
+        envConfig,
+        settings,
+        'customFonts',
+        fonts.map(toSettingsFont),
+      );
+      setSettings(nextSettings);
     } catch (error) {
       logger.error('Failed to save custom fonts settings:', error);
       throw error;

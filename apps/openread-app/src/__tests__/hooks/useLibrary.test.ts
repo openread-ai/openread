@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => {
   const setCollectionsOwnerUserId = vi.fn();
   const pullNow = vi.fn().mockResolvedValue(undefined);
   const start = vi.fn();
+  const resetCanonicalSyncCursors = vi.fn();
   let user: { id: string } | null = null;
 
   const useLibraryStore = Object.assign(
@@ -59,6 +60,7 @@ const mocks = vi.hoisted(() => {
     setCollectionsOwnerUserId,
     pullNow,
     start,
+    resetCanonicalSyncCursors,
     get user() {
       return user;
     },
@@ -91,6 +93,10 @@ vi.mock('@/services/sync/syncWorker', () => ({
     start: mocks.start,
     pullNow: mocks.pullNow,
   },
+}));
+
+vi.mock('@/services/sync/cursors', () => ({
+  resetCanonicalSyncCursors: mocks.resetCanonicalSyncCursors,
 }));
 
 vi.mock('@/store/libraryStore', () => ({
@@ -129,6 +135,7 @@ describe('useLibrary account isolation', () => {
     mocks.setCollectionsOwnerUserId.mockClear();
     mocks.pullNow.mockResolvedValue(undefined);
     mocks.start.mockClear();
+    mocks.resetCanonicalSyncCursors.mockClear();
   });
 
   it('clears stale local library when the authenticated user changes', async () => {
@@ -152,7 +159,8 @@ describe('useLibrary account isolation', () => {
     expect(mocks.saveLibraryBooks).toHaveBeenCalledWith([]);
     expect(mocks.resetAccountScopedCollections).toHaveBeenCalled();
     expect(mocks.setCollectionsOwnerUserId).toHaveBeenCalledWith('account-b');
-    expect(mocks.saveSettings).toHaveBeenCalledWith(expect.objectContaining({}));
+    expect(mocks.saveSettings).not.toHaveBeenCalled();
+    expect(mocks.resetCanonicalSyncCursors).toHaveBeenCalledWith('account-b');
     expect(mocks.setLibraryOwnerUserId).toHaveBeenCalledWith('account-b');
     expect(localStorage.getItem('openread_library_owner_user_id')).toBe('account-b');
     expect(mocks.start).toHaveBeenCalledWith('account-b');

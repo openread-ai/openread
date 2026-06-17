@@ -23,6 +23,7 @@ import { eventDispatcher } from '@/utils/event';
 import { navigateToLibrary } from '@/utils/nav';
 import { clearDiscordPresence } from '@/utils/discord';
 import { BOOK_IDS_SEPARATOR } from '@/services/constants';
+import { settingsService } from '@/services/settings/settingsService';
 import { BookDetailModal } from '@/components/metadata';
 
 import useBooksManager from '../hooks/useBooksManager';
@@ -106,8 +107,9 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
       const settings = useSettingsStore.getState().settings;
       const lastOpenBooks = bookKeys.map((key) => getBookIdFromKey(key));
       if (settings.lastOpenBooks?.toString() !== lastOpenBooks.toString()) {
-        settings.lastOpenBooks = lastOpenBooks;
-        saveSettings(envConfig, settings);
+        void settingsService
+          .updateKey(envConfig, settings, 'lastOpenBooks', lastOpenBooks)
+          .then((nextSettings) => useSettingsStore.getState().setSettings(nextSettings));
       }
     }
 

@@ -2,6 +2,7 @@ import i18n from '@/i18n/i18n';
 import { create } from 'zustand';
 import { SystemSettings } from '@/types/settings';
 import { EnvConfigType } from '@/services/environment';
+import { settingsService } from '@/services/settings/settingsService';
 import { initDayjs } from '@/utils/time';
 
 export type FontPanelView = 'main-fonts' | 'custom-fonts';
@@ -33,13 +34,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   activeSettingsItemId: null,
   setSettings: (settings) => set({ settings }),
   saveSettings: async (envConfig: EnvConfigType, settings: SystemSettings) => {
-    const appService = await envConfig.getAppService();
-    await appService.saveSettings(settings);
-    void import('@/services/sync/helpers')
-      .then(({ enqueueSettingsForSync }) => enqueueSettingsForSync(settings))
-      .catch((error) => {
-        console.error('[SettingsStore] Failed to enqueue settings sync:', error);
-      });
+    await settingsService.save(envConfig, settings);
   },
   setSettingsDialogBookKey: (bookKey) => set({ settingsDialogBookKey: bookKey }),
   setSettingsDialogOpen: (open) => set({ isSettingsDialogOpen: open }),

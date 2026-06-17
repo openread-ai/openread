@@ -28,7 +28,10 @@ const useSidebar = (initialWidth: string, isPinned: boolean) => {
 
   const handleSideBarResize = (newWidth: string) => {
     setSideBarWidth(newWidth);
-    settings.globalReadSettings.sideBarWidth = newWidth;
+    saveSysSettings(envConfig, 'globalReadSettings', {
+      ...settings.globalReadSettings,
+      sideBarWidth: newWidth,
+    });
   };
 
   const handleSideBarTogglePin = () => {

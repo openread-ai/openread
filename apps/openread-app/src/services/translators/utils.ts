@@ -1,8 +1,9 @@
 import { Book } from '@/types/book';
+import { LOCAL_PERSISTENCE_KEYS } from '@/services/persistence/localPersistenceRegistry';
 import { isSameLang } from '@/utils/lang';
 import { getLocale } from '@/utils/misc';
 
-const DAILY_USAGE_KEY = 'translationDailyUsage';
+const DAILY_USAGE_KEY = LOCAL_PERSISTENCE_KEYS.translationDailyUsage;
 
 /**
  * Maximum single translation request size in characters.

@@ -4,6 +4,8 @@ import { useState, useCallback } from 'react';
 import { useThemeStore } from '@/store/themeStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useEnv } from '@/context/EnvContext';
+import { LOCAL_PERSISTENCE_KEYS } from '@/services/persistence/localPersistenceRegistry';
+import { settingsLocalAdapter } from '@/services/settings/settingsLocalAdapter';
 import { useTranslation } from '@/hooks/useTranslation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/primitives/card';
 import { Button } from '@/components/primitives/button';
@@ -39,10 +41,10 @@ export function ResetPreferences() {
       setThemeMode('auto');
       setThemeColor('default');
 
-      // Reset notification preferences in localStorage
+      // Reset local-only and legacy settings persistence.
       if (typeof window !== 'undefined') {
-        localStorage.removeItem('notificationPreferences');
-        localStorage.removeItem('openread-preferences');
+        settingsLocalAdapter.clearNotificationPreferences();
+        settingsLocalAdapter.removeLocalSetting(LOCAL_PERSISTENCE_KEYS.openreadPreferences);
       }
 
       // Reset AI settings and view settings

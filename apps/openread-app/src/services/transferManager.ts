@@ -6,10 +6,11 @@ import { ProgressPayload } from '@/utils/transfer';
 import { eventDispatcher } from '@/utils/event';
 import { createLogger } from '@/utils/logger';
 import { isUserCloudUploadEligible } from '@/utils/book';
+import { LOCAL_PERSISTENCE_KEYS } from '@/services/persistence/localPersistenceRegistry';
 
 const logger = createLogger('transfer');
 
-const TRANSFER_QUEUE_KEY = 'openread_transfer_queue';
+const TRANSFER_QUEUE_KEY = LOCAL_PERSISTENCE_KEYS.transferQueue;
 const RETRY_DELAY_BASE_MS = 2000;
 
 export type TransferErrorReason =

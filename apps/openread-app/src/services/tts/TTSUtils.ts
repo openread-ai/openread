@@ -1,8 +1,8 @@
+import { settingsLocalAdapter } from '@/services/settings/settingsLocalAdapter';
 import { TTSVoice } from './types';
 
 export class TTSUtils {
-  private static readonly LOCAL_STORAGE_KEY = 'ttsPreferredVoices';
-  private static readonly PREFERRED_CLIENT_KEY = 'preferredClient';
+  private static readonly PREFERRED_CLIENT_FIELD = 'preferredClient';
 
   private static normalizeLanguage(language: string): string {
     if (!language) return 'n/a';
@@ -12,8 +12,8 @@ export class TTSUtils {
   static setPreferredClient(engine: string): void {
     if (!engine) return;
     const preferences = this.getPreferences();
-    preferences[this.PREFERRED_CLIENT_KEY] = engine;
-    localStorage.setItem(this.LOCAL_STORAGE_KEY, JSON.stringify(preferences));
+    preferences[this.PREFERRED_CLIENT_FIELD] = engine;
+    settingsLocalAdapter.setTtsPreferences(preferences);
   }
 
   static setPreferredVoice(engine: string, language: string, voiceId: string): void {
@@ -21,12 +21,12 @@ export class TTSUtils {
     const preferences = this.getPreferences();
     const lang = this.normalizeLanguage(language);
     preferences[`${engine}-${lang}`] = voiceId;
-    localStorage.setItem(this.LOCAL_STORAGE_KEY, JSON.stringify(preferences));
+    settingsLocalAdapter.setTtsPreferences(preferences);
   }
 
   static getPreferredClient(): string | null {
     const preferences = this.getPreferences();
-    return preferences[this.PREFERRED_CLIENT_KEY] || null;
+    return preferences[this.PREFERRED_CLIENT_FIELD] || null;
   }
 
   static getPreferredVoice(engine: string, language: string): string | null {
@@ -36,8 +36,7 @@ export class TTSUtils {
   }
 
   private static getPreferences(): Record<string, string> {
-    const storedPreferences = localStorage.getItem(this.LOCAL_STORAGE_KEY);
-    return storedPreferences ? JSON.parse(storedPreferences) : {};
+    return settingsLocalAdapter.getTtsPreferences();
   }
 
   static sortVoicesFunc(a: TTSVoice, b: TTSVoice): number {

@@ -24,6 +24,7 @@ import ControlPanel from './ControlPanel';
 import LangPanel from './LangPanel';
 import MiscPanel from './MiscPanel';
 import { useCommandPalette } from '@/components/command-palette';
+import { LOCAL_PERSISTENCE_KEYS } from '@/services/persistence/localPersistenceRegistry';
 
 export type SettingsPanelType = 'Font' | 'Layout' | 'Color' | 'Control' | 'Language' | 'Custom';
 export type SettingsPanelPanelProp = {
@@ -89,7 +90,7 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   ] as TabConfig[];
 
   const [activePanel, setActivePanel] = useState<SettingsPanelType>(() => {
-    const lastPanel = localStorage.getItem('lastConfigPanel');
+    const lastPanel = localStorage.getItem(LOCAL_PERSISTENCE_KEYS.lastConfigPanel);
     if (lastPanel && tabConfig.some((tab) => tab.tab === lastPanel)) {
       return lastPanel as SettingsPanelType;
     }
@@ -99,7 +100,7 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   const handleSetActivePanel = (tab: SettingsPanelType) => {
     setActivePanel(tab);
     setFontPanelView('main-fonts');
-    localStorage.setItem('lastConfigPanel', tab);
+    localStorage.setItem(LOCAL_PERSISTENCE_KEYS.lastConfigPanel, tab);
   };
 
   // sync localStorage and fontPanelView when activePanel changes
@@ -108,7 +109,7 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     if (activePanelRef.current !== activePanel) {
       activePanelRef.current = activePanel;
       setFontPanelView('main-fonts');
-      localStorage.setItem('lastConfigPanel', activePanel);
+      localStorage.setItem(LOCAL_PERSISTENCE_KEYS.lastConfigPanel, activePanel);
     }
   }, [activePanel, setFontPanelView]);
 

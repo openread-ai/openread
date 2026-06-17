@@ -20,12 +20,13 @@ import Dropdown from '@/components/Dropdown';
 import SearchOptions from './SearchOptions';
 import { createLogger } from '@/utils/logger';
 import { getBookIdFromKey } from '@/utils/readerBookKey';
+import { LOCAL_PERSISTENCE_PREFIXES } from '@/services/persistence/localPersistenceRegistry';
 
 const logger = createLogger('search');
 
 const MINIMUM_SEARCH_TERM_LENGTH_DEFAULT = 2;
 const MINIMUM_SEARCH_TERM_LENGTH_CJK = 1;
-const SEARCH_HISTORY_KEY = 'search-history';
+const SEARCH_HISTORY_KEY_PREFIX = LOCAL_PERSISTENCE_PREFIXES.readerSearchHistory;
 const SEARCH_CACHE_DIR = 'search';
 const MAX_SEARCH_HISTORY = 10;
 
@@ -54,7 +55,7 @@ const SearchBar: React.FC<SearchBarProps> = ({ isVisible, bookKey, onBack, onHid
   const inputFocusedRef = useRef(false);
 
   const bookHash = useMemo(() => getBookIdFromKey(bookKey), [bookKey]);
-  const historyStorageKey = useMemo(() => `${SEARCH_HISTORY_KEY}-${bookHash}`, [bookHash]);
+  const historyStorageKey = useMemo(() => `${SEARCH_HISTORY_KEY_PREFIX}${bookHash}`, [bookHash]);
 
   const [searchHistory, setSearchHistory] = useState<string[]>(() => {
     if (typeof window !== 'undefined') {

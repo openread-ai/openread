@@ -10,6 +10,7 @@ import { MdRefresh } from 'react-icons/md';
 import { IconType } from 'react-icons';
 import { LAUNCH_TTS_ENABLED, LAUNCH_TRANSLATION_ENABLED } from '@/services/launchFeatures';
 import { settingsLocalAdapter } from '@/services/settings/settingsLocalAdapter';
+import { LOCAL_PERSISTENCE_KEYS } from '@/services/persistence/localPersistenceRegistry';
 import { stubTranslation as _ } from '@/utils/misc';
 
 export type CommandCategory = 'settings' | 'actions' | 'navigation';
@@ -771,12 +772,14 @@ export const getCategoryLabel = (_: TranslationFunc, category: CommandCategory):
   }
 };
 
-// get recent commands from localStorage
+// get recent commands from registered local persistence
 export const getRecentCommands = (items: CommandItem[], limit = 5): CommandItem[] => {
   if (typeof localStorage === 'undefined') return [];
 
   try {
-    const recentIds = JSON.parse(localStorage.getItem('recentCommands') || '[]') as string[];
+    const recentIds = JSON.parse(
+      localStorage.getItem(LOCAL_PERSISTENCE_KEYS.recentCommands) || '[]',
+    ) as string[];
     return recentIds
       .slice(0, limit)
       .map((id) => items.find((item) => item.id === id))
@@ -791,9 +794,11 @@ export const trackCommandUsage = (commandId: string): void => {
   if (typeof localStorage === 'undefined') return;
 
   try {
-    const recentIds = JSON.parse(localStorage.getItem('recentCommands') || '[]') as string[];
+    const recentIds = JSON.parse(
+      localStorage.getItem(LOCAL_PERSISTENCE_KEYS.recentCommands) || '[]',
+    ) as string[];
     const updated = [commandId, ...recentIds.filter((id) => id !== commandId)].slice(0, 10);
-    localStorage.setItem('recentCommands', JSON.stringify(updated));
+    localStorage.setItem(LOCAL_PERSISTENCE_KEYS.recentCommands, JSON.stringify(updated));
   } catch {
     // ignore errors
   }

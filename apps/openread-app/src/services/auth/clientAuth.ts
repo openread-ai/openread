@@ -11,10 +11,11 @@ import {
 } from '@openread/auth';
 import { supabase } from '@/utils/supabase';
 import { isWebAppPlatform } from '@/services/environment';
+import { LOCAL_PERSISTENCE_KEYS } from '@/services/persistence/localPersistenceRegistry';
 import { createLogger } from '@/utils/logger';
 
 const logger = createLogger('clientAuth');
-const QA_FORCE_SIGNED_OUT_KEY = 'openread_qa_force_signed_out_until';
+const QA_FORCE_SIGNED_OUT_KEY = LOCAL_PERSISTENCE_KEYS.qaForceSignedOutUntil;
 
 class ClientAuthAdapter {
   private readonly storage = new BrowserAuthSessionStorage();

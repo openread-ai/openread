@@ -11,6 +11,7 @@
     "book-identity:check": "node scripts/ops/check-book-identity-ownership.mjs",
     "auth:boundary:check": "node scripts/ops/check-canonical-auth-boundary.mjs",
     "ai-control:boundary:check": "node scripts/ops/check-canonical-ai-control-boundary.mjs",
+    "persistence:check": "node scripts/ops/check-local-persistence-registry.mjs",
     "sync:check": "node scripts/ops/check-canonical-sync-cleanup.mjs",
     "tauri": "pnpm --filter @openread/openread-app tauri",
     "dev-web": "pnpm --filter @openread/openread-app dev-web",

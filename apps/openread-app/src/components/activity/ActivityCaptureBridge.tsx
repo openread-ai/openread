@@ -14,6 +14,7 @@ import { createLogger } from '@/utils/logger';
 import { parseActivityCaptureTarget, type ActivityCaptureTarget } from '@/helpers/activityCapture';
 import { postTauriQaResult, runTauriQaController } from '@/helpers/tauriQaController';
 import type { AppService } from '@/types/system';
+import { LOCAL_PERSISTENCE_KEYS } from '@/services/persistence/localPersistenceRegistry';
 
 const logger = createLogger('activityCaptureBridge');
 const qaAutomationEnabled = process.env.NEXT_PUBLIC_OPENREAD_QA_AUTOMATION === '1';
@@ -45,7 +46,7 @@ export default function ActivityCaptureBridge() {
 
     const handleTarget = async (target: ActivityCaptureTarget) => {
       if (target.onboarding === 'skip') {
-        localStorage.setItem('has_seen_welcome', 'true');
+        localStorage.setItem(LOCAL_PERSISTENCE_KEYS.hasSeenWelcome, 'true');
       }
 
       if (target.qa === 'settings-contract') {
@@ -255,7 +256,7 @@ async function installQaAuthFromSessionUrl(qaSessionUrl: string | null) {
   }
 
   clientAuth.clearQaForceSignedOut();
-  localStorage.setItem('has_seen_welcome', 'true');
+  localStorage.setItem(LOCAL_PERSISTENCE_KEYS.hasSeenWelcome, 'true');
 
   await clientAuth.installSession(session);
 }

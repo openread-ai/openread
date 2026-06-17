@@ -39,13 +39,14 @@ import { aiStore } from '@/services/ai/storage/aiStore';
 import { useAIChatStore } from '@/store/aiChatStore';
 import { isSyncableLibraryBookHash, parseSyncableBookRef } from '@/utils/bookHash';
 import { getDeviceId } from '@/services/deviceService';
+import { LOCAL_PERSISTENCE_KEYS } from '@/services/persistence/localPersistenceRegistry';
 import {
   getCanonicalSyncCursor,
   resetCanonicalSyncCursors,
   setCanonicalSyncCursor,
 } from './cursors';
 
-const LIBRARY_OWNER_STORAGE_KEY = 'openread_library_owner_user_id';
+const LIBRARY_OWNER_STORAGE_KEY = LOCAL_PERSISTENCE_KEYS.libraryOwnerUserId;
 const RECONCILE_RETRY_DELAYS_MS = [500, 1_500] as const;
 
 /** Realtime broadcast event names for cross-device sync */

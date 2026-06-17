@@ -12,6 +12,7 @@
 
 import { platform } from '@/services/platform/client';
 import { createLogger } from '@/utils/logger';
+import { LOCAL_PERSISTENCE_KEYS } from '@/services/persistence/localPersistenceRegistry';
 
 const logger = createLogger('sample-book');
 
@@ -27,7 +28,7 @@ const logger = createLogger('sample-book');
 export const SAMPLE_BOOK_ID = 'alice-in-wonderland';
 
 /** localStorage key used to prevent retrying after a failed or successful attempt. */
-export const SAMPLE_BOOK_ATTEMPTED_KEY = 'sample_book_attempted';
+export const SAMPLE_BOOK_ATTEMPTED_KEY = LOCAL_PERSISTENCE_KEYS.sampleBookAttempted;
 
 // ── Import logic ────────────────────────────────────────
 

@@ -1,3 +1,5 @@
+import { settingsLocalAdapter } from '@/services/settings/settingsLocalAdapter';
+
 export const DEFAULT_SHORTCUTS = {
   onSwitchSideBar: ['ctrl+Tab', 'opt+Tab', 'alt+Tab'],
   onToggleSideBar: ['s'],
@@ -50,17 +52,16 @@ export type ShortcutConfig = {
   [K in keyof typeof DEFAULT_SHORTCUTS]: string[];
 };
 
-// Load shortcuts from localStorage or fallback to defaults
+// Load shortcuts from registered local settings or fallback to defaults.
 export const loadShortcuts = (): ShortcutConfig => {
-  if (typeof localStorage === 'undefined') return DEFAULT_SHORTCUTS;
-  const customShortcuts = JSON.parse(localStorage.getItem('customShortcuts') || '{}');
+  const customShortcuts = settingsLocalAdapter.getCustomShortcuts<Partial<ShortcutConfig>>({});
   return {
     ...DEFAULT_SHORTCUTS,
     ...customShortcuts,
   };
 };
 
-// Save custom shortcuts to localStorage
+// Save custom shortcuts to registered local settings.
 export const saveShortcuts = (shortcuts: ShortcutConfig) => {
-  localStorage.setItem('customShortcuts', JSON.stringify(shortcuts));
+  settingsLocalAdapter.setCustomShortcuts(shortcuts);
 };

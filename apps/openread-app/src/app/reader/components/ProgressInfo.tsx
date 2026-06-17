@@ -8,6 +8,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { formatNumber, formatProgress } from '@/utils/progress';
 import { saveViewSettings } from '@/helpers/settings';
+import { LOCAL_PERSISTENCE_KEYS } from '@/services/persistence/localPersistenceRegistry';
 
 interface PageInfoProps {
   bookKey: string;
@@ -49,7 +50,7 @@ const ProgressInfoView: React.FC<PageInfoProps> = ({
         : '{current} / {total}'
       : '{percent}%';
 
-  const lang = localStorage?.getItem('i18nextLng') || '';
+  const lang = localStorage?.getItem(LOCAL_PERSISTENCE_KEYS.i18nextLanguage) || '';
   const localize = isVertical && lang.toLowerCase().startsWith('zh');
   const progress = bookData?.isFixedLayout ? section : pageinfo;
   const progressInfo = formatProgress(progress?.current, progress?.total, template, localize, lang);

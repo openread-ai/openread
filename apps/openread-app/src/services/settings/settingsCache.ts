@@ -1,4 +1,6 @@
-const JSON_PREFIX = 'openread:settings-cache:';
+import { LOCAL_PERSISTENCE_PREFIXES } from '@/services/persistence/localPersistenceRegistry';
+
+const JSON_PREFIX = LOCAL_PERSISTENCE_PREFIXES.settingsCache;
 
 function canUseLocalStorage() {
   return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';

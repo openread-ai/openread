@@ -1,7 +1,8 @@
 import type { Book } from '@/types/book';
+import { LOCAL_PERSISTENCE_KEYS } from '@/services/persistence/localPersistenceRegistry';
 
-export const LIBRARY_OWNER_STORAGE_KEY = 'openread_library_owner_user_id';
-const LIBRARY_PAINT_CACHE_KEY = 'openread_library_paint_cache_v1';
+export const LIBRARY_OWNER_STORAGE_KEY = LOCAL_PERSISTENCE_KEYS.libraryOwnerUserId;
+const LIBRARY_PAINT_CACHE_KEY = LOCAL_PERSISTENCE_KEYS.libraryPaintCache;
 const LIBRARY_PAINT_CACHE_VERSION = 1;
 
 interface LibraryPaintCacheEntry {

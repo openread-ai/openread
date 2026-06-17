@@ -6,6 +6,7 @@ import { BOOK_IDS_SEPARATOR } from '@/services/constants';
 import { AppService } from '@/types/system';
 import { SETTINGS_ACCOUNT_PATH } from '@/lib/billing-routes';
 import { createLogger } from '@/utils/logger';
+import { LOCAL_PERSISTENCE_KEYS } from '@/services/persistence/localPersistenceRegistry';
 
 const logger = createLogger('nav');
 
@@ -89,7 +90,9 @@ export const navigateToLibrary = (
   navBack?: boolean,
 ) => {
   const lastLibraryParams =
-    typeof window !== 'undefined' ? sessionStorage.getItem('lastLibraryParams') : null;
+    typeof window !== 'undefined'
+      ? sessionStorage.getItem(LOCAL_PERSISTENCE_KEYS.lastLibraryParams)
+      : null;
   if (navBack && lastLibraryParams) {
     queryParams = lastLibraryParams;
   }

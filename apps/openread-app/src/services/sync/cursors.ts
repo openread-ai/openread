@@ -1,8 +1,9 @@
 import type { SyncEntity } from '@openread/sync';
 
 import { getDeviceId } from '@/services/deviceService';
+import { LOCAL_PERSISTENCE_PREFIXES } from '@/services/persistence/localPersistenceRegistry';
 
-const PREFIX = 'openread:sync-cursor';
+const PREFIX = LOCAL_PERSISTENCE_PREFIXES.syncCursor;
 
 const storageKey = (userId: string, entity: SyncEntity, scope = 'global'): string =>
   `${PREFIX}:${userId}:${getDeviceId()}:${entity}:${scope}`;

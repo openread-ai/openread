@@ -14,8 +14,9 @@
  */
 
 import { useState, useCallback, useSyncExternalStore } from 'react';
+import { LOCAL_PERSISTENCE_KEYS } from '@/services/persistence/localPersistenceRegistry';
 
-export const WELCOME_SEEN_KEY = 'has_seen_welcome';
+export const WELCOME_SEEN_KEY = LOCAL_PERSISTENCE_KEYS.hasSeenWelcome;
 
 function getSnapshot(): boolean {
   if (typeof window === 'undefined') return false;

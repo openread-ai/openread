@@ -3,7 +3,9 @@
  * Generates and persists a stable device identifier for sync conflict diagnostics.
  */
 
-const DEVICE_ID_KEY = 'openread_device_id';
+import { LOCAL_PERSISTENCE_KEYS } from '@/services/persistence/localPersistenceRegistry';
+
+const DEVICE_ID_KEY = LOCAL_PERSISTENCE_KEYS.deviceId;
 
 /**
  * Get or create a stable device identifier.

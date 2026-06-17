@@ -1,5 +1,6 @@
 import { OsPlatform } from '@/types/system';
 import { md5 } from 'js-md5';
+import { LOCAL_PERSISTENCE_KEYS } from '@/services/persistence/localPersistenceRegistry';
 
 export const uniqueId = () => Math.random().toString(36).substring(2, 9);
 
@@ -32,7 +33,7 @@ export const makeSafeFilename = (filename: string, replacement = '_') => {
 };
 
 export const getLocale = () => {
-  return localStorage?.getItem('i18nextLng') || navigator?.language || '';
+  return localStorage?.getItem(LOCAL_PERSISTENCE_KEYS.i18nextLanguage) || navigator?.language || '';
 };
 
 export const getUserLang = () => {
@@ -50,7 +51,7 @@ export const getTargetLang = () => {
 
 export const isCJKEnv = () => {
   const browserLanguage = navigator.language || '';
-  const uiLanguage = localStorage?.getItem('i18nextLng') || '';
+  const uiLanguage = localStorage?.getItem(LOCAL_PERSISTENCE_KEYS.i18nextLanguage) || '';
   const isCJKUI = ['zh', 'ja', 'ko'].some((lang) => uiLanguage.startsWith(lang));
   const isCJKLocale = ['zh', 'ja', 'ko'].some((lang) => browserLanguage.startsWith(lang));
   return isCJKLocale || isCJKUI;

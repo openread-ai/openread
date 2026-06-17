@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { platform } from '@/services/platform/client';
 import { createLogger } from '@/utils/logger';
+import { LOCAL_PERSISTENCE_KEYS } from '@/services/persistence/localPersistenceRegistry';
 import type { CatalogBook, CollectionWithBooks } from '@/types/catalog';
 
 export type { CatalogCollection, CollectionWithBooks } from '@/types/catalog';
@@ -24,7 +25,7 @@ interface CollectionsCacheEntry {
   timestamp: number;
 }
 
-const COLLECTIONS_CACHE_KEY = 'openread_explore_collections_cache_v1';
+const COLLECTIONS_CACHE_KEY = LOCAL_PERSISTENCE_KEYS.exploreCollectionsCache;
 const collectionsCache = new Map<number, CollectionsCacheEntry>();
 const CACHE_TTL = 5 * 60_000; // 5 minutes
 

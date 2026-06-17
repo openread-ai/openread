@@ -13,10 +13,11 @@ import {
   OPENREAD_UPDATER_FILE,
 } from '@/services/constants';
 import { createLogger } from '@/utils/logger';
+import { LOCAL_PERSISTENCE_KEYS } from '@/services/persistence/localPersistenceRegistry';
 
 const logger = createLogger('updater');
 
-const LAST_CHECK_KEY = 'lastAppUpdateCheck';
+const LAST_CHECK_KEY = LOCAL_PERSISTENCE_KEYS.lastAppUpdateCheck;
 
 const showUpdateWindow = (latestVersion: string) => {
   const win = new WebviewWindow('updater', {
@@ -71,7 +72,7 @@ export const checkForAppUpdates = async (
   return false;
 };
 
-const LAST_SHOWN_RELEASE_NOTES_KEY = 'lastShownReleaseNotesVersion';
+const LAST_SHOWN_RELEASE_NOTES_KEY = LOCAL_PERSISTENCE_KEYS.lastShownReleaseNotesVersion;
 
 export const setLastShownReleaseNotesVersion = (version: string) => {
   localStorage.setItem(LAST_SHOWN_RELEASE_NOTES_KEY, version);

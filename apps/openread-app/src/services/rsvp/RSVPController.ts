@@ -5,6 +5,7 @@ import { compare as compareCFI } from 'foliate-js/epubcfi.js';
 import { XCFI } from '@/utils/xcfi';
 import { createLogger } from '@/utils/logger';
 import { getBookIdFromKey } from '@/utils/readerBookKey';
+import { LOCAL_PERSISTENCE_PREFIXES } from '@/services/persistence/localPersistenceRegistry';
 
 const logger = createLogger('rsvp');
 
@@ -14,9 +15,9 @@ const MAX_WPM = 1000;
 const WPM_STEP = 50;
 const DEFAULT_PUNCTUATION_PAUSE_MS = 100;
 const PUNCTUATION_PAUSE_OPTIONS = [25, 50, 75, 100, 125, 150, 175, 200];
-const STORAGE_KEY_PREFIX = 'openread_rsvp_wpm_';
-const PUNCTUATION_PAUSE_KEY_PREFIX = 'openread_rsvp_pause_';
-const POSITION_KEY_PREFIX = 'openread_rsvp_pos_';
+const STORAGE_KEY_PREFIX = LOCAL_PERSISTENCE_PREFIXES.rsvpWordsPerMinute;
+const PUNCTUATION_PAUSE_KEY_PREFIX = LOCAL_PERSISTENCE_PREFIXES.rsvpPunctuationPause;
+const POSITION_KEY_PREFIX = LOCAL_PERSISTENCE_PREFIXES.rsvpPosition;
 
 export class RSVPController extends EventTarget {
   private view: FoliateView;

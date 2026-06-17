@@ -3,6 +3,7 @@
 import * as Sentry from '@sentry/nextjs';
 import posthog from 'posthog-js';
 import { useEffect } from 'react';
+import { LOCAL_PERSISTENCE_KEYS } from '@/services/persistence/localPersistenceRegistry';
 
 const qaAutomationEnabled = process.env.NEXT_PUBLIC_OPENREAD_QA_AUTOMATION === '1';
 
@@ -25,7 +26,7 @@ export default function GlobalError({ error, reset }: GlobalErrorProps) {
 
     if (!qaAutomationEnabled) return;
     try {
-      localStorage.setItem('openread_qa_last_error', detail);
+      localStorage.setItem(LOCAL_PERSISTENCE_KEYS.qaLastError, detail);
     } catch {
       // Ignore storage failures; this is QA diagnostics only.
     }

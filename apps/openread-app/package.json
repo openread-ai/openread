@@ -119,6 +119,7 @@
     "@fabianlars/tauri-plugin-oauth": "2",
     "@opennextjs/cloudflare": "^1.15.1",
     "@openread/auth": "workspace:*",
+    "@openread/entitlements": "workspace:*",
     "@openread/sdk": "workspace:*",
     "@openread/storage": "workspace:*",
     "@openread/sync": "workspace:*",

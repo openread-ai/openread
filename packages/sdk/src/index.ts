@@ -27,6 +27,10 @@ import type {
   ApiErrorCode,
   Book,
   CatalogBookDetail,
+  CreatePlatformApiKeyRequest,
+  CreatePlatformApiKeyResponse,
+  DeletePlatformApiKeyResponse,
+  DeleteProviderApiKeyResponse,
   CatalogBrowseQuery,
   CatalogBrowseResponse,
   CatalogCollectionBooksResponse,
@@ -37,8 +41,18 @@ import type {
   CatalogStatusResponse,
   CatalogWishlistResponse,
   ListBooksResponse,
+  ListPlatformApiKeysResponse,
+  ListProviderApiKeysResponse,
+  McpAuthRequest,
+  McpAuthResponse,
+  McpDownloadUrlRequest,
+  McpDownloadUrlResponse,
   PublicPricingResponse,
   TierConfig,
+  TestProviderApiKeyRequest,
+  TestProviderApiKeyResponse,
+  UpsertProviderApiKeyRequest,
+  UpsertProviderApiKeyResponse,
   UserProfile,
 } from '@openread/types';
 import type { OpenreadConfig } from './types.js';
@@ -260,6 +274,104 @@ class CatalogClient {
   }
 }
 
+class ApiKeysClient {
+  /** @internal */
+  readonly _sdk: Openread;
+
+  constructor(sdk: Openread) {
+    this._sdk = sdk;
+  }
+
+  async listPlatformKeys(init?: RequestInit): Promise<ListPlatformApiKeysResponse> {
+    return this._sdk.fetch<ListPlatformApiKeysResponse>('/api/api-keys', init);
+  }
+
+  async createPlatformKey(
+    input: CreatePlatformApiKeyRequest,
+    init?: RequestInit,
+  ): Promise<CreatePlatformApiKeyResponse> {
+    return this._sdk.fetch<CreatePlatformApiKeyResponse>('/api/api-keys', {
+      ...init,
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async deletePlatformKey(id: string, init?: RequestInit): Promise<DeletePlatformApiKeyResponse> {
+    return this._sdk.fetch<DeletePlatformApiKeyResponse>(`/api/api-keys/${encodeURIComponent(id)}`, {
+      ...init,
+      method: 'DELETE',
+    });
+  }
+
+  async listProviderKeys(init?: RequestInit): Promise<ListProviderApiKeysResponse> {
+    return this._sdk.fetch<ListProviderApiKeysResponse>('/api/settings/api-keys', init);
+  }
+
+  async upsertProviderKey(
+    input: UpsertProviderApiKeyRequest,
+    init?: RequestInit,
+  ): Promise<UpsertProviderApiKeyResponse> {
+    return this._sdk.fetch<UpsertProviderApiKeyResponse>('/api/settings/api-keys', {
+      ...init,
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async deleteProviderKey(
+    provider: string,
+    init?: RequestInit,
+  ): Promise<DeleteProviderApiKeyResponse> {
+    return this._sdk.fetch<DeleteProviderApiKeyResponse>(
+      `/api/settings/api-keys/${encodeURIComponent(provider)}`,
+      {
+        ...init,
+        method: 'DELETE',
+      },
+    );
+  }
+
+  async testProviderKey(
+    input: TestProviderApiKeyRequest,
+    init?: RequestInit,
+  ): Promise<TestProviderApiKeyResponse> {
+    return this._sdk.fetch<TestProviderApiKeyResponse>('/api/settings/api-keys/test', {
+      ...init,
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+}
+
+class McpClient {
+  /** @internal */
+  readonly _sdk: Openread;
+
+  constructor(sdk: Openread) {
+    this._sdk = sdk;
+  }
+
+  async auth(input: McpAuthRequest, init?: RequestInit): Promise<McpAuthResponse> {
+    return this._sdk.fetch<McpAuthResponse>('/api/mcp/auth', {
+      ...init,
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async getDownloadUrl(
+    input: McpDownloadUrlRequest,
+    init?: RequestInit,
+  ): Promise<McpDownloadUrlResponse> {
+    return this._sdk.fetch<McpDownloadUrlResponse>('/api/mcp/download-url', {
+      ...init,
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+}
+
 function catalogQueryString(query: CatalogBrowseQuery): string {
   const params = new URLSearchParams();
   if (query.q) params.set('q', query.q);
@@ -472,6 +584,16 @@ export class Openread {
   readonly catalog: CatalogClient;
 
   /**
+   * API-key management client.
+   */
+  readonly apiKeys: ApiKeysClient;
+
+  /**
+   * MCP auth and download-url client.
+   */
+  readonly mcp: McpClient;
+
+  /**
    * Ingestion client for uploading books.
    */
   readonly ingest: IngestClient;
@@ -503,6 +625,8 @@ export class Openread {
     this.runtime = new RuntimeClient(this);
     this.books = new BooksClient(this);
     this.catalog = new CatalogClient(this);
+    this.apiKeys = new ApiKeysClient(this);
+    this.mcp = new McpClient(this);
     this.ingest = new IngestClient(this);
   }
 

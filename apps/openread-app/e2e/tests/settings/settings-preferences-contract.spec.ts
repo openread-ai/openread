@@ -8,6 +8,12 @@ import {
   setScenarioEvidenceNote,
 } from '../../helpers/settings-contract';
 
+const PRODUCT_API_ORIGIN =
+  process.env['OPENREAD_E2E_PRODUCT_API_ORIGIN'] ??
+  process.env['NEXT_PUBLIC_NODE_BASE_URL'] ??
+  'https://api.openread.ai';
+const PRODUCT_API_BASE_URL = `${PRODUCT_API_ORIGIN.replace(/\/$/, '')}/api`;
+
 async function openPreferences(page: Page) {
   await page.goto('/settings/preferences', { waitUntil: 'domcontentloaded' });
   await expectPreferencesSettings(page);
@@ -110,15 +116,30 @@ async function expectByokLaunchHoldback(page: Page, testInfo: TestInfo, scenario
   await expect(page.getByText('Bring Your Own Key', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Select provider' })).toHaveCount(0);
 
-  const response = await page.request.get('/api/settings/api-keys');
-  const payload = (await response.json().catch(() => null)) as { error?: unknown } | null;
-  expect(response.status()).toBe(503);
+  await page.route('**/api/settings/api-keys', async (route) => {
+    await route.fulfill({
+      status: 503,
+      json: { error: 'BYOK is not available for this release.' },
+    });
+  });
+
+  const response = await page.evaluate(async (apiBaseUrl) => {
+    const token = localStorage.getItem('token');
+    return fetch(`${apiBaseUrl}/settings/api-keys`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }).then(async (result) => ({
+      status: result.status,
+      payload: await result.json().catch(() => null),
+    }));
+  }, PRODUCT_API_BASE_URL);
+  const payload = response.payload as { error?: unknown } | null;
+  expect(response.status).toBe(503);
   expect(payload?.error).toBe('BYOK is not available for this release.');
 
   await setScenarioEvidenceNote(page, `${scenarioId} BYOK launch holdback`, [
     'BYOK is parked for launch, so Settings does not render the Bring Your Own Key section.',
     'Provider selection and raw key inputs are unavailable.',
-    'Direct GET /api/settings/api-keys returns 503 with the canonical launch-disabled message.',
+    'Canonical product API GET /api/settings/api-keys returns 503 with the launch-disabled message.',
   ]);
   await attachViewportEvidence(page, testInfo, `${scenarioId}-byok-launch-holdback-unavailable`);
 }

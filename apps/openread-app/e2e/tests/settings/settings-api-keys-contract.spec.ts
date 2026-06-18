@@ -5,6 +5,12 @@ import { join, resolve } from 'node:path';
 import { expect, test } from '../../fixtures';
 import { attachScenarioEvidence, setScenarioEvidenceNote } from '../../helpers/settings-contract';
 
+const PRODUCT_API_ORIGIN =
+  process.env['OPENREAD_E2E_PRODUCT_API_ORIGIN'] ??
+  process.env['NEXT_PUBLIC_NODE_BASE_URL'] ??
+  'https://api.openread.ai';
+const PRODUCT_API_BASE_URL = `${PRODUCT_API_ORIGIN.replace(/\/$/, '')}/api`;
+
 type MockKey = {
   id: string;
   description: string;
@@ -117,40 +123,46 @@ async function createDisposableApiKey(
   page: import('@playwright/test').Page,
   description: string,
 ): Promise<DisposableApiKey> {
-  return page.evaluate(async (keyDescription) => {
-    const token = localStorage.getItem('token');
-    if (!token) throw new Error('Missing authenticated token for API key creation');
+  return page.evaluate(
+    async ({ description: keyDescription, apiBaseUrl }) => {
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('Missing authenticated token for API key creation');
 
-    const response = await fetch('/api/api-keys', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ description: keyDescription }),
-    });
+      const response = await fetch(`${apiBaseUrl}/api-keys`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ description: keyDescription }),
+      });
 
-    if (!response.ok) {
-      throw new Error(`API key create failed: ${response.status} ${await response.text()}`);
-    }
+      if (!response.ok) {
+        throw new Error(`API key create failed: ${response.status} ${await response.text()}`);
+      }
 
-    return (await response.json()) as { id: string; key: string };
-  }, description);
+      return (await response.json()) as { id: string; key: string };
+    },
+    { description, apiBaseUrl: PRODUCT_API_BASE_URL },
+  );
 }
 
 async function revokeDisposableApiKey(
   page: import('@playwright/test').Page,
   keyId: string,
 ): Promise<void> {
-  await page.evaluate(async (id) => {
-    const token = localStorage.getItem('token');
-    if (!token) return;
+  await page.evaluate(
+    async ({ id, apiBaseUrl }) => {
+      const token = localStorage.getItem('token');
+      if (!token) return;
 
-    await fetch(`/api/api-keys/${id}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
-    });
-  }, keyId);
+      await fetch(`${apiBaseUrl}/api-keys/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    },
+    { id: keyId, apiBaseUrl: PRODUCT_API_BASE_URL },
+  );
 }
 
 function spawnOpenreadMcp(apiKey: string, apiUrl: string): SpawnedMcp {
@@ -378,7 +390,7 @@ test.describe('Settings API Keys contract', () => {
     );
     try {
       disposableKey = await createDisposableApiKey(page, description);
-      const apiUrl = new URL(page.url()).origin;
+      const apiUrl = PRODUCT_API_ORIGIN.replace(/\/$/, '');
       const mcpResult = await exerciseExternalMcp(disposableKey.key, apiUrl);
 
       await page.reload({ waitUntil: 'domcontentloaded' });
@@ -490,14 +502,14 @@ test.describe('Settings API Keys contract', () => {
     await revokeDialog.getByRole('button', { name: 'Revoke Key' }).click();
     await expect(revokeDialog).toBeHidden();
     await expect(page.getByText('Claude Desktop QA')).toHaveCount(0);
-    const freshAuthStatus = await page.evaluate(async () => {
-      const response = await fetch('/api/mcp/auth', {
+    const freshAuthStatus = await page.evaluate(async (apiBaseUrl) => {
+      const response = await fetch(`${apiBaseUrl}/mcp/auth`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey: 'orsk_REVOKED_REDACTED' }),
+        body: JSON.stringify({ token: 'orsk_REVOKED_REDACTED' }),
       });
       return response.status;
-    });
+    }, PRODUCT_API_BASE_URL);
     expect(freshAuthStatus).toBe(401);
     await setScenarioEvidenceNote(page, 'SET-052 terminal', [
       'Post-revoke list no longer shows Claude Desktop QA.',

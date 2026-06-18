@@ -7,7 +7,7 @@ vi.mock('@/utils/access', () => ({
 }));
 
 vi.mock('@/services/environment', () => ({
-  getAPIBaseUrl: vi.fn(() => ''),
+  getProductAPIBaseUrl: vi.fn(() => ''),
   isWebAppPlatform: vi.fn(() => true),
   isWebDevMode: vi.fn(() => true),
 }));

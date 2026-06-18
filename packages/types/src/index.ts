@@ -103,6 +103,22 @@ export type {
   CollectionWithBooks,
 } from './catalog.js';
 
+// API key contracts
+export type {
+  CreatePlatformApiKeyRequest,
+  CreatePlatformApiKeyResponse,
+  DeletePlatformApiKeyResponse,
+  DeleteProviderApiKeyResponse,
+  ListPlatformApiKeysResponse,
+  ListProviderApiKeysResponse,
+  PlatformApiKeySummary,
+  ProviderApiKeySummary,
+  TestProviderApiKeyRequest,
+  TestProviderApiKeyResponse,
+  UpsertProviderApiKeyRequest,
+  UpsertProviderApiKeyResponse,
+} from './api-keys.js';
+
 // MCP (Model Context Protocol) types
 export type {
   McpBookInfo,
@@ -111,6 +127,12 @@ export type {
   McpSearchResult,
   McpAnnotation,
 } from './mcp.js';
+export type {
+  McpAuthRequest,
+  McpAuthResponse,
+  McpDownloadUrlRequest,
+  McpDownloadUrlResponse,
+} from './mcp-api.js';
 
 // Error types
 export type { ApiError, ApiErrorCode } from './error.js';

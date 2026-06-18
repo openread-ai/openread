@@ -13,6 +13,7 @@
     "ai-control:boundary:check": "node scripts/ops/check-canonical-ai-control-boundary.mjs",
     "persistence:check": "node scripts/ops/check-local-persistence-registry.mjs",
     "sync:check": "node scripts/ops/check-canonical-sync-cleanup.mjs",
+    "compatibility:tombstones:check": "node scripts/ops/check-compatibility-tombstones.mjs",
     "tauri": "pnpm --filter @openread/openread-app tauri",
     "dev-web": "pnpm --filter @openread/openread-app dev-web",
     "format": "prettier --write \"**/*.{js,jsx,ts,tsx,css,json,md,html,yml}\"",

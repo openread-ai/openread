@@ -104,7 +104,7 @@ const withBase = <E extends SyncMutation['entity']>(
 
 export function buildBookMutation(book: Book, context: SyncMutationContext): SyncMutation<'book'> {
   const now = context.now ?? Date.now();
-  const updatedAt = latestTimestamp(book.updatedAt ?? book.lastUpdated, book.deletedAt, now);
+  const updatedAt = latestTimestamp(book.updatedAt, book.deletedAt, now);
   const bookHash = requireSyncableBookRef(book.hash, 'book.hash');
   const payload: SyncPayloadByEntity['book'] = {
     hash: bookHash,

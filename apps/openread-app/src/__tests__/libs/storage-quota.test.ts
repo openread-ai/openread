@@ -126,39 +126,6 @@ describe('storage-quota', () => {
     });
   });
 
-  describe('add-on compatibility helpers', () => {
-    it('returns no active add-ons', async () => {
-      const { getActiveAddons } = await import('@/lib/storage-quota');
-      const addons = await getActiveAddons('user-1');
-
-      expect(addons).toEqual([]);
-      expect(mockSupabase.from).not.toHaveBeenCalledWith('storage_addons');
-    });
-
-    it('returns zero add-on storage', async () => {
-      const { getAddonStorageGb } = await import('@/lib/storage-quota');
-      const total = await getAddonStorageGb('user-1');
-
-      expect(total).toBe(0);
-    });
-
-    it('does not create storage add-ons', async () => {
-      const { createStorageAddon } = await import('@/lib/storage-quota');
-      const addon = await createStorageAddon('user-1', 25, 499, 'sub_test');
-
-      expect(addon).toBeNull();
-      expect(mockSupabase.from).not.toHaveBeenCalledWith('storage_addons');
-    });
-
-    it('does not cancel storage add-ons', async () => {
-      const { cancelStorageAddon } = await import('@/lib/storage-quota');
-      const success = await cancelStorageAddon('addon-1');
-
-      expect(success).toBe(false);
-      expect(mockSupabase.from).not.toHaveBeenCalledWith('storage_addons');
-    });
-  });
-
   describe('storage usage tracking', () => {
     it('increments storage used via RPC', async () => {
       mockSupabase.rpc.mockResolvedValue({ error: null });

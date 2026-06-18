@@ -1,3 +1,4 @@
+import { migrateBookConfigTombstones } from '@/services/compatibility/tombstones';
 import { BookConfig, BookSearchConfig, ViewSettings } from '@/types/book';
 
 export const serializeConfig = (
@@ -5,9 +6,9 @@ export const serializeConfig = (
   globalViewSettings: ViewSettings,
   defaultSearchConfig: BookSearchConfig,
 ): string => {
-  config = JSON.parse(JSON.stringify(config));
-  const viewSettings = config.viewSettings as Partial<ViewSettings>;
-  const searchConfig = config.searchConfig as Partial<BookSearchConfig>;
+  config = migrateBookConfigTombstones(JSON.parse(JSON.stringify(config)) as BookConfig).value;
+  const viewSettings = (config.viewSettings ?? {}) as Partial<ViewSettings>;
+  const searchConfig = (config.searchConfig ?? {}) as Partial<BookSearchConfig>;
   config.viewSettings = Object.entries(viewSettings).reduce(
     (acc: Partial<Record<keyof ViewSettings, unknown>>, [key, value]) => {
       if (globalViewSettings[key as keyof ViewSettings] !== value) {
@@ -35,9 +36,12 @@ export const deserializeConfig = (
   globalViewSettings: ViewSettings,
   defaultSearchConfig: BookSearchConfig,
 ): BookConfig => {
-  const config = JSON.parse(str) as BookConfig;
+  const config = migrateBookConfigTombstones(JSON.parse(str) as BookConfig).value;
   const { viewSettings, searchConfig } = config;
-  config.viewSettings = { ...globalViewSettings, ...viewSettings };
+  config.viewSettings = migrateBookConfigTombstones({
+    ...config,
+    viewSettings: { ...globalViewSettings, ...viewSettings },
+  }).value.viewSettings;
   config.searchConfig = { ...defaultSearchConfig, ...searchConfig };
   config.updatedAt ??= Date.now();
   return config;

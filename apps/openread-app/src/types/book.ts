@@ -33,7 +33,6 @@ export interface Book extends BookCore {
   platformHash?: PlatformBookHash;
   sourceTitle?: string; // parsed when the book is imported and used to locate the file
   author: string;
-  group?: string; // deprecated in favor of groupId and groupName
   groupId?: string;
   groupName?: string;
   tags?: string[];
@@ -46,7 +45,6 @@ export interface Book extends BookCore {
   coverDownloadedAt?: number | null;
   syncedAt?: number | null;
 
-  lastUpdated?: number; // deprecated in favor of updatedAt
   progress?: [number, number]; // Add progress field: [current, total], 1-based page number
   readingStatus?: ReadingStatus;
   primaryLanguage?: string;
@@ -106,12 +104,10 @@ export interface BookLayout {
   marginBottomPx: number;
   marginLeftPx: number;
   marginRightPx: number;
-  marginPx?: number; // deprecated
   compactMarginTopPx: number;
   compactMarginBottomPx: number;
   compactMarginLeftPx: number;
   compactMarginRightPx: number;
-  compactMarginPx?: number; // deprecated
   gapPercent: number;
   scrolled: boolean;
   disableClick: boolean;

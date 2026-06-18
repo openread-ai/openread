@@ -67,6 +67,7 @@ import {
   isValidURL,
   makeSafeFilename,
 } from '@/utils/misc';
+import { migrateSystemSettingsTombstones } from '@/services/compatibility/tombstones';
 import { deserializeConfig, serializeConfig } from '@/utils/serializer';
 import { downloadFile } from '@/libs/storage';
 import { ClosableFile } from '@/utils/file';
@@ -299,8 +300,13 @@ export abstract class BaseAppService implements AppService {
 
     settings.localBooksDir = await this.fs.getPrefix('Books');
 
+    const migrationResult = migrateSystemSettingsTombstones(settings);
+    settings = migrationResult.value;
+
     if (!settings.kosync.deviceId) {
       settings.kosync.deviceId = uuidv4();
+      await this.saveSettings(settings);
+    } else if (migrationResult.changed) {
       await this.saveSettings(settings);
     }
 

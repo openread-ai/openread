@@ -44,13 +44,11 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
   const [textIndent, setTextIndent] = useState(viewSettings.textIndent!);
   const [fullJustification, setFullJustification] = useState(viewSettings.fullJustification);
   const [hyphenation, setHyphenation] = useState(viewSettings.hyphenation);
-  const [marginTopPx, setMarginTopPx] = useState(viewSettings.marginPx || viewSettings.marginTopPx);
+  const [marginTopPx, setMarginTopPx] = useState(viewSettings.marginTopPx);
   const [marginBottomPx, setMarginBottomPx] = useState(viewSettings.marginBottomPx);
   const [marginLeftPx, setMarginLeftPx] = useState(viewSettings.marginLeftPx);
   const [marginRightPx, setMarginRightPx] = useState(viewSettings.marginRightPx);
-  const [compactMarginTopPx, setCompactMarginTopPx] = useState(
-    viewSettings.compactMarginPx || viewSettings.compactMarginTopPx,
-  );
+  const [compactMarginTopPx, setCompactMarginTopPx] = useState(viewSettings.compactMarginTopPx);
   const [compactMarginBottomPx, setCompactMarginBottomPx] = useState(
     viewSettings.compactMarginBottomPx,
   );
@@ -208,54 +206,36 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
 
   useEffect(() => {
     if (marginTopPx === viewSettings.marginTopPx) return;
-    if (viewSettings.marginPx !== undefined) {
-      saveViewSettings(envConfig, bookKey, 'marginPx', undefined, false, false);
-    }
     saveViewSettings(envConfig, bookKey, 'marginTopPx', marginTopPx, false, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [marginTopPx]);
 
   useEffect(() => {
     if (marginBottomPx === viewSettings.marginBottomPx) return;
-    if (viewSettings.marginPx !== undefined) {
-      saveViewSettings(envConfig, bookKey, 'marginPx', undefined, false, false);
-    }
     saveViewSettings(envConfig, bookKey, 'marginBottomPx', marginBottomPx, false, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [marginBottomPx]);
 
   useEffect(() => {
     if (marginRightPx === viewSettings.marginRightPx) return;
-    if (viewSettings.marginPx !== undefined) {
-      saveViewSettings(envConfig, bookKey, 'marginPx', undefined, false, false);
-    }
     saveViewSettings(envConfig, bookKey, 'marginRightPx', marginRightPx, false, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [marginRightPx]);
 
   useEffect(() => {
     if (marginLeftPx === viewSettings.marginLeftPx) return;
-    if (viewSettings.marginPx !== undefined) {
-      saveViewSettings(envConfig, bookKey, 'marginPx', undefined, false, false);
-    }
     saveViewSettings(envConfig, bookKey, 'marginLeftPx', marginLeftPx, false, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [marginLeftPx]);
 
   useEffect(() => {
     if (compactMarginTopPx === viewSettings.compactMarginTopPx) return;
-    if (viewSettings.compactMarginPx !== undefined) {
-      saveViewSettings(envConfig, bookKey, 'compactMarginPx', undefined, false, false);
-    }
     saveViewSettings(envConfig, bookKey, 'compactMarginTopPx', compactMarginTopPx, false, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [compactMarginTopPx]);
 
   useEffect(() => {
     if (compactMarginBottomPx === viewSettings.compactMarginBottomPx) return;
-    if (viewSettings.compactMarginPx !== undefined) {
-      saveViewSettings(envConfig, bookKey, 'compactMarginPx', undefined, false, false);
-    }
     saveViewSettings(
       envConfig,
       bookKey,
@@ -269,9 +249,6 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
 
   useEffect(() => {
     if (compactMarginRightPx === viewSettings.compactMarginRightPx) return;
-    if (viewSettings.compactMarginPx !== undefined) {
-      saveViewSettings(envConfig, bookKey, 'compactMarginPx', undefined, false, false);
-    }
     saveViewSettings(
       envConfig,
       bookKey,
@@ -285,9 +262,6 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
 
   useEffect(() => {
     if (compactMarginLeftPx === viewSettings.compactMarginLeftPx) return;
-    if (viewSettings.compactMarginPx !== undefined) {
-      saveViewSettings(envConfig, bookKey, 'compactMarginPx', undefined, false, false);
-    }
     saveViewSettings(envConfig, bookKey, 'compactMarginLeftPx', compactMarginLeftPx, false, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [compactMarginLeftPx]);

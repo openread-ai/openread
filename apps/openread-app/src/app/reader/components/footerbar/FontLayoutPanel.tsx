@@ -63,16 +63,16 @@ export const FontLayoutPanel: React.FC<FontLayoutPanelProps> = ({
       if (!currentViewSettings) return;
 
       const { MAX_MARGIN_PX, MAX_GAP_PERCENT } = MARGIN_CONSTANTS;
-      const marginPx = Math.round((value / 100) * MAX_MARGIN_PX);
+      const marginSizePx = Math.round((value / 100) * MAX_MARGIN_PX);
       const gapPercent = Math.round((value / 100) * MAX_GAP_PERCENT);
 
-      currentViewSettings.marginTopPx = marginPx;
-      currentViewSettings.marginBottomPx = marginPx / 2;
-      currentViewSettings.marginLeftPx = marginPx / 2;
-      currentViewSettings.marginRightPx = marginPx / 2;
+      currentViewSettings.marginTopPx = marginSizePx;
+      currentViewSettings.marginBottomPx = marginSizePx / 2;
+      currentViewSettings.marginLeftPx = marginSizePx / 2;
+      currentViewSettings.marginRightPx = marginSizePx / 2;
 
       saveViewSettings(envConfig, bookKey, 'gapPercent', gapPercent, false, false);
-      view?.renderer.setAttribute('margin', `${marginPx}px`);
+      view?.renderer.setAttribute('margin', `${marginSizePx}px`);
       view?.renderer.setAttribute('gap', `${gapPercent}%`);
 
       applyReaderModeToRenderer(view?.renderer, currentViewSettings, {
@@ -93,9 +93,9 @@ export const FontLayoutPanel: React.FC<FontLayoutPanelProps> = ({
     [envConfig, bookKey],
   );
 
-  const getMarginProgressValue = useCallback((marginPx: number, gapPercent: number) => {
+  const getMarginProgressValue = useCallback((marginSizePx: number, gapPercent: number) => {
     const { MAX_MARGIN_PX, MAX_GAP_PERCENT, MARGIN_RATIO } = MARGIN_CONSTANTS;
-    return (marginPx / MAX_MARGIN_PX + gapPercent / MAX_GAP_PERCENT) * MARGIN_RATIO;
+    return (marginSizePx / MAX_MARGIN_PX + gapPercent / MAX_GAP_PERCENT) * MARGIN_RATIO;
   }, []);
 
   const classes = clsx(

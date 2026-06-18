@@ -34,18 +34,6 @@ export interface StorageQuota {
   isOverLimit: boolean;
 }
 
-export interface StorageAddonRecord {
-  id: string;
-  user_id: string;
-  gb_amount: number;
-  price_cents: number;
-  source: string;
-  source_subscription_id: string | null;
-  status: string;
-  created_at: string;
-  canceled_at: string | null;
-}
-
 // ─── Public API ──────────────────────────────────────────────────────
 
 /**
@@ -78,22 +66,6 @@ export async function getStorageQuota(userId: string, plan: UserPlan): Promise<S
     percentUsed: quota.percentUsed,
     isOverLimit: quota.isOverLimit,
   };
-}
-
-/**
- * Storage add-ons are disabled. Kept for API compatibility.
- */
-export async function getActiveAddons(userId: string): Promise<StorageAddonRecord[]> {
-  void userId;
-  return [];
-}
-
-/**
- * Storage add-ons are disabled. Kept for API compatibility.
- */
-export async function getAddonStorageGb(userId: string): Promise<number> {
-  void userId;
-  return 0;
 }
 
 /**
@@ -139,32 +111,4 @@ export async function decrementStorageUsed(userId: string, bytes: number): Promi
   }
 
   return true;
-}
-
-/**
- * Storage add-ons are disabled. Kept for legacy webhook compatibility.
- */
-export async function createStorageAddon(
-  userId: string,
-  gbAmount: number,
-  priceCents: number,
-  sourceSubscriptionId: string,
-  source = 'stripe',
-): Promise<StorageAddonRecord | null> {
-  void userId;
-  void gbAmount;
-  void priceCents;
-  void sourceSubscriptionId;
-  void source;
-  log.warn('Storage add-ons are disabled; createStorageAddon was ignored.');
-  return null;
-}
-
-/**
- * Storage add-ons are disabled. Kept for legacy webhook compatibility.
- */
-export async function cancelStorageAddon(addonId: string): Promise<boolean> {
-  void addonId;
-  log.warn('Storage add-ons are disabled; cancelStorageAddon was ignored.');
-  return false;
 }

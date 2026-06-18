@@ -1,4 +1,5 @@
 import { validateSettingsKeys } from '@openread/settings';
+import { migrateSystemSettingsTombstones } from '@/services/compatibility/tombstones';
 import type { ViewSettings } from '@/types/book';
 import type { SystemSettings } from '@/types/settings';
 import type { EnvConfigType } from '@/services/environment';
@@ -19,10 +20,14 @@ function cloneSettings(settings: SystemSettings): SystemSettings {
 function sanitizeKnownSettings(settings: SystemSettings): {
   settings: SystemSettings;
   droppedKeys: string[];
+  migrated: boolean;
 } {
-  const record = settings as unknown as Record<string, unknown>;
+  const migrationResult = migrateSystemSettingsTombstones(settings);
+  const migratedSettings = migrationResult.value;
+  const record = migratedSettings as unknown as Record<string, unknown>;
   const result = validateSettingsKeys(record);
-  if (result.ok) return { settings, droppedKeys: [] };
+  if (result.ok)
+    return { settings: migratedSettings, droppedKeys: [], migrated: migrationResult.changed };
 
   const sanitized = { ...record };
   for (const key of result.unknownKeys) delete sanitized[key];
@@ -30,6 +35,7 @@ function sanitizeKnownSettings(settings: SystemSettings): {
   return {
     settings: sanitized as unknown as SystemSettings,
     droppedKeys: result.unknownKeys,
+    migrated: migrationResult.changed,
   };
 }
 
@@ -46,8 +52,8 @@ export const settingsService = {
   async load(envConfig: EnvConfigType): Promise<SystemSettings> {
     const persistence = createAppServiceSettingsPersistence(envConfig);
     const loaded = await persistence.load();
-    const { settings, droppedKeys } = sanitizeKnownSettings(loaded);
-    if (droppedKeys.length > 0) await persistence.save(settings);
+    const { settings, droppedKeys, migrated } = sanitizeKnownSettings(loaded);
+    if (droppedKeys.length > 0 || migrated) await persistence.save(settings);
     return settings;
   },
 

@@ -8,7 +8,6 @@ const mockPaymentInsert = vi.fn().mockResolvedValue({ data: null, error: null })
 const mockPaymentUpdate = vi.fn().mockReturnValue({
   eq: vi.fn().mockResolvedValue({ data: null, error: null }),
 });
-const mockUpdateUserStorage = vi.fn().mockResolvedValue(undefined);
 
 const mockStripeClient = {
   subscriptions: { retrieve: mockSubscriptionRetrieve },
@@ -30,10 +29,6 @@ vi.mock('stripe', () => ({
 const mockSupabaseFrom = vi.fn();
 vi.mock('@/utils/supabase', () => ({
   createSupabaseAdminClient: vi.fn(() => ({ from: mockSupabaseFrom })),
-}));
-
-vi.mock('@/libs/payment/storage', () => ({
-  updateUserStorage: (...args: unknown[]) => mockUpdateUserStorage(...args),
 }));
 
 vi.mock('@/utils/logger', () => ({
@@ -193,7 +188,6 @@ describe('stripe server billing persistence', () => {
         }),
       }),
     );
-    expect(mockUpdateUserStorage).toHaveBeenCalledWith('user-1');
   });
 
   it('records paid subscription invoice payments by payment intent', async () => {
@@ -248,6 +242,5 @@ describe('stripe server billing persistence', () => {
         }),
       }),
     );
-    expect(mockUpdateUserStorage).toHaveBeenCalledWith('user-1');
   });
 });

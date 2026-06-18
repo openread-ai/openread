@@ -5,8 +5,8 @@ export const getViewInsets = (viewSettings: ViewSettings) => {
   const showHeader = viewSettings.showHeader!;
   const showFooter = viewSettings.showFooter!;
   const isVertical = viewSettings.vertical || viewSettings.writingMode.includes('vertical');
-  const fullMarginTopPx = viewSettings.marginPx || viewSettings.marginTopPx;
-  const compactMarginTopPx = viewSettings.compactMarginPx || viewSettings.compactMarginTopPx;
+  const fullMarginTopPx = viewSettings.marginTopPx;
+  const compactMarginTopPx = viewSettings.compactMarginTopPx;
   const fullMarginBottomPx = viewSettings.marginBottomPx;
   const compactMarginBottomPx = viewSettings.compactMarginBottomPx;
   const fullMarginLeftPx = viewSettings.marginLeftPx;

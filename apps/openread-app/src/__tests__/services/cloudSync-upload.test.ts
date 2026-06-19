@@ -91,7 +91,7 @@ describe('CloudSyncService storage lifecycle', () => {
     expect(book.uploadedAt).toBeNull();
   });
 
-  it('continues deleting cloud files when one remote delete fails', async () => {
+  it('keeps uploadedAt retryable when one remote delete fails transiently', async () => {
     vi.mocked(deleteFile).mockRejectedValueOnce(new Error('remote delete failed'));
     const book = baseBook({ uploadedAt: 123 });
     const service = new CloudSyncService(
@@ -101,6 +101,20 @@ describe('CloudSyncService storage lifecycle', () => {
     );
 
     await expect(service.deleteBookFromCloud(book)).resolves.toBeUndefined();
+
+    expect(deleteFile).toHaveBeenCalledTimes(2);
+    expect(book.uploadedAt).toBe(123);
+  });
+
+  it('clears uploadedAt when remote files are already missing', async () => {
+    const book = baseBook({ uploadedAt: 123 });
+    const service = new CloudSyncService(
+      createFs(new Set()),
+      '/books',
+      async (path) => `/books/${path}`,
+    );
+
+    await service.deleteBookFromCloud(book);
 
     expect(deleteFile).toHaveBeenCalledTimes(2);
     expect(book.uploadedAt).toBeNull();

@@ -17,13 +17,13 @@ const logger = createLogger('bookActions');
  * Background cleanup for a permanently deleted book.
  * Runs after the book is already removed from the UI — all steps are best-effort.
  */
-async function cleanupDeletedBook(book: Book, remainingLibrary: Book[]): Promise<void> {
+async function cleanupDeletedBook(book: Book): Promise<void> {
   try {
     const appService = await envConfig.getAppService();
 
-    // Save updated library, remove from collections, delete files — all in parallel
-    const [, , sidebarStore] = await Promise.all([
-      appService.saveLibraryBooks(remainingLibrary),
+    // Remove local files/config/AI/collection references only. The foreground
+    // delete path already persisted the tombstoned library before hiding it.
+    const [, sidebarStore] = await Promise.all([
       appService.deleteBook(book, 'both').catch(() => {}),
       import('@/store/platformSidebarStore'),
     ]);
@@ -191,8 +191,8 @@ export function useBookActions() {
   );
 
   /**
-   * Permanently delete a book: instant UI removal, background cleanup.
-   * This is irreversible — re-importing the same file starts fresh.
+   * Permanently delete a book. The local tombstone is the foreground commit:
+   * persist first, then hide from UI, then enqueue sync/cleanup best-effort.
    */
   const permanentlyDeleteBook = useCallback(async (book: Book) => {
     const now = Date.now();
@@ -205,33 +205,39 @@ export function useBookActions() {
     };
 
     const { library, setLibrary } = useLibraryStore.getState();
+    const previousLibrary = library;
     const nextLibrary = library.map((existing) =>
       existing.hash === book.hash ? deletedBook : existing,
     );
+    const appService = await envConfig.getAppService();
+
+    try {
+      await appService.saveLibraryBooks(nextLibrary);
+    } catch (error) {
+      logger.error('Failed to durably save deleted book tombstone:', error);
+      setLibrary(previousLibrary);
+      throw new Error('Failed to delete book locally. Your library was not changed.');
+    }
+
     setLibrary(nextLibrary);
 
-    void enqueueBookForSync(deletedBook);
-
-    const appService = await envConfig.getAppService();
-    await appService.saveLibraryBooks(nextLibrary);
+    void enqueueBookForSync(deletedBook).catch((error) => {
+      logger.warn('Deleted book sync enqueue failed; tombstone remains local for retry:', error);
+    });
 
     const bookKey = `${book.hash}-${book.format}`;
     useBookDataStore.getState().setConfig(bookKey, { booknotes: [], progress: undefined });
 
-    void cleanupDeletedBook(deletedBook, nextLibrary);
+    void cleanupDeletedBook(deletedBook);
   }, []);
 
   /**
-   * Permanently delete multiple books.
-   * Instant UI removal for all, then background cleanup.
+   * Permanently delete multiple books. Persist tombstones first, then hide.
    */
   const bulkRemove = useCallback(
     async (hashes: string[]) => {
       const books = hashes.map((hash) => getBookByHash(hash)).filter(Boolean) as Book[];
       if (books.length === 0) return;
-
-      clearSelection();
-      setSelectMode(false);
 
       const now = Date.now();
       const deletedByHash = new Map(
@@ -247,13 +253,26 @@ export function useBookActions() {
         ]),
       );
       const { library, setLibrary } = useLibraryStore.getState();
+      const previousLibrary = library;
       const nextLibrary = library.map((book) => deletedByHash.get(book.hash) ?? book);
+      const appService = await envConfig.getAppService();
+
+      try {
+        await appService.saveLibraryBooks(nextLibrary);
+      } catch (error) {
+        logger.error('Failed to durably save deleted book tombstones:', error);
+        setLibrary(previousLibrary);
+        throw new Error('Failed to delete books locally. Your library was not changed.');
+      }
+
       setLibrary(nextLibrary);
 
-      void enqueueBooksForSync(Array.from(deletedByHash.values()));
+      void enqueueBooksForSync(Array.from(deletedByHash.values())).catch((error) => {
+        logger.warn('Deleted books sync enqueue failed; tombstones remain local for retry:', error);
+      });
 
-      const appService = await envConfig.getAppService();
-      await appService.saveLibraryBooks(nextLibrary);
+      clearSelection();
+      setSelectMode(false);
 
       for (const book of books) {
         const bookKey = `${book.hash}-${book.format}`;
@@ -261,9 +280,7 @@ export function useBookActions() {
       }
 
       void Promise.all(
-        Array.from(deletedByHash.values()).map((deletedBook) =>
-          cleanupDeletedBook(deletedBook, nextLibrary),
-        ),
+        Array.from(deletedByHash.values()).map((deletedBook) => cleanupDeletedBook(deletedBook)),
       );
     },
     [getBookByHash, clearSelection, setSelectMode],

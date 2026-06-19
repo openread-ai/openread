@@ -2,6 +2,7 @@ import { testOpenReadBookRef } from '../utils/bookIdentityFixtures';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useBookActions } from '@/hooks/useBookActions';
+import { enqueueBookForSync, enqueueBooksForSync } from '@/services/sync/helpers';
 import type { Book } from '@/types/book';
 
 // Use vi.hoisted so these variables are available inside vi.mock factories (which are hoisted)
@@ -10,6 +11,7 @@ const {
   mockPlatformSidebarStoreState,
   mockLibraryViewStoreState,
   mockDispatch,
+  mockAppService,
 } = vi.hoisted(() => {
   const mockLibraryStoreState = {
     library: [] as Book[],
@@ -18,17 +20,25 @@ const {
   };
   const mockPlatformSidebarStoreState = {
     addBookToCollection: vi.fn(),
+    collections: [] as Array<{ id: string; bookHashes: string[] }>,
+    removeBookFromCollection: vi.fn(),
   };
   const mockLibraryViewStoreState = {
     clearSelection: vi.fn(),
     setSelectMode: vi.fn(),
   };
   const mockDispatch = vi.fn();
+  const mockAppService = {
+    deleteBook: vi.fn().mockResolvedValue(undefined),
+    deleteDir: vi.fn().mockResolvedValue(undefined),
+    saveLibraryBooks: vi.fn().mockResolvedValue(undefined),
+  };
   return {
     mockLibraryStoreState,
     mockPlatformSidebarStoreState,
     mockLibraryViewStoreState,
     mockDispatch,
+    mockAppService,
   };
 });
 
@@ -38,11 +48,7 @@ vi.mock('@/services/environment', async (importOriginal) => {
   return {
     ...actual,
     default: {
-      getAppService: vi.fn().mockResolvedValue({
-        deleteBook: vi.fn().mockResolvedValue(undefined),
-        deleteDir: vi.fn().mockResolvedValue(undefined),
-        saveLibraryBooks: vi.fn().mockResolvedValue(undefined),
-      }),
+      getAppService: vi.fn().mockResolvedValue(mockAppService),
     },
     getAPIBaseUrl: vi.fn(() => 'http://localhost:3000/api'),
   };
@@ -63,10 +69,13 @@ vi.mock('@/store/libraryStore', () => {
   return { useLibraryStore: useLibraryStoreMock };
 });
 
-vi.mock('@/store/platformSidebarStore', () => ({
-  usePlatformSidebarStore: (selector: (state: typeof mockPlatformSidebarStoreState) => unknown) =>
-    selector(mockPlatformSidebarStoreState),
-}));
+vi.mock('@/store/platformSidebarStore', () => {
+  const usePlatformSidebarStoreMock = (
+    selector: (state: typeof mockPlatformSidebarStoreState) => unknown,
+  ) => selector(mockPlatformSidebarStoreState);
+  usePlatformSidebarStoreMock.getState = () => mockPlatformSidebarStoreState;
+  return { usePlatformSidebarStore: usePlatformSidebarStoreMock };
+});
 
 vi.mock('@/store/libraryViewStore', () => ({
   useLibraryViewStore: (selector: (state: typeof mockLibraryViewStoreState) => unknown) =>
@@ -89,8 +98,8 @@ vi.mock('@/utils/access', () => ({
 }));
 
 vi.mock('@/services/sync/helpers', () => ({
-  enqueueBookForSync: vi.fn(),
-  enqueueBooksForSync: vi.fn(),
+  enqueueBookForSync: vi.fn().mockResolvedValue(undefined),
+  enqueueBooksForSync: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('@/utils/logger', () => ({
@@ -120,8 +129,15 @@ describe('useBookActions', () => {
     mockLibraryStoreState.updateBook = vi.fn().mockResolvedValue(undefined);
     mockLibraryStoreState.setLibrary = vi.fn();
     mockPlatformSidebarStoreState.addBookToCollection = vi.fn();
+    mockPlatformSidebarStoreState.collections = [];
+    mockPlatformSidebarStoreState.removeBookFromCollection = vi.fn();
     mockLibraryViewStoreState.clearSelection = vi.fn();
     mockLibraryViewStoreState.setSelectMode = vi.fn();
+    mockAppService.deleteBook = vi.fn().mockResolvedValue(undefined);
+    mockAppService.deleteDir = vi.fn().mockResolvedValue(undefined);
+    mockAppService.saveLibraryBooks = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(enqueueBookForSync).mockResolvedValue(undefined);
+    vi.mocked(enqueueBooksForSync).mockResolvedValue(undefined);
   });
 
   describe('setReadingStatus', () => {
@@ -278,6 +294,64 @@ describe('useBookActions', () => {
     });
   });
 
+  describe('permanentlyDeleteBook', () => {
+    it('saves the tombstoned library before hiding and enqueueing sync', async () => {
+      const book = createMockBook({ hash: testOpenReadBookRef('book-delete-1') });
+      mockLibraryStoreState.library = [book];
+      const { result } = renderHook(() => useBookActions());
+
+      await act(async () => {
+        await result.current.permanentlyDeleteBook(book);
+      });
+
+      expect(mockAppService.saveLibraryBooks).toHaveBeenCalledTimes(1);
+      const savedLibrary = mockAppService.saveLibraryBooks.mock.calls[0]?.[0] as Book[];
+      expect(savedLibrary[0]).toMatchObject({ hash: book.hash, downloadedAt: null });
+      expect(savedLibrary[0]?.deletedAt).toEqual(expect.any(Number));
+      expect(mockLibraryStoreState.setLibrary).toHaveBeenCalledWith(savedLibrary);
+      expect(enqueueBookForSync).toHaveBeenCalledWith(savedLibrary[0]);
+      expect(mockAppService.saveLibraryBooks.mock.invocationCallOrder[0]).toBeLessThan(
+        mockLibraryStoreState.setLibrary.mock.invocationCallOrder[0],
+      );
+      expect(mockAppService.saveLibraryBooks.mock.invocationCallOrder[0]).toBeLessThan(
+        vi.mocked(enqueueBookForSync).mock.invocationCallOrder[0],
+      );
+    });
+
+    it('rolls back and does not enqueue sync when durable save fails', async () => {
+      const book = createMockBook({ hash: testOpenReadBookRef('book-delete-rollback') });
+      const previousLibrary = [book];
+      mockLibraryStoreState.library = previousLibrary;
+      mockAppService.saveLibraryBooks.mockRejectedValueOnce(new Error('indexeddb unavailable'));
+      const { result } = renderHook(() => useBookActions());
+
+      await expect(result.current.permanentlyDeleteBook(book)).rejects.toThrow(
+        'Failed to delete book locally. Your library was not changed.',
+      );
+
+      expect(mockLibraryStoreState.setLibrary).toHaveBeenCalledTimes(1);
+      expect(mockLibraryStoreState.setLibrary).toHaveBeenCalledWith(previousLibrary);
+      expect(enqueueBookForSync).not.toHaveBeenCalled();
+      expect(mockAppService.deleteBook).not.toHaveBeenCalled();
+    });
+
+    it('does not fail the foreground delete when background cleanup fails', async () => {
+      const book = createMockBook({ hash: testOpenReadBookRef('book-cleanup-fails') });
+      mockLibraryStoreState.library = [book];
+      mockAppService.deleteBook.mockRejectedValueOnce(new Error('local file already gone'));
+      const { result } = renderHook(() => useBookActions());
+
+      await act(async () => {
+        await result.current.permanentlyDeleteBook(book);
+      });
+
+      expect(mockDispatch).not.toHaveBeenCalledWith(
+        'toast',
+        expect.objectContaining({ message: 'Failed to delete book' }),
+      );
+    });
+  });
+
   describe('bulkRemove', () => {
     it('clears selection and exits select mode', async () => {
       const books = [
@@ -293,6 +367,52 @@ describe('useBookActions', () => {
 
       expect(mockLibraryViewStoreState.clearSelection).toHaveBeenCalled();
       expect(mockLibraryViewStoreState.setSelectMode).toHaveBeenCalledWith(false);
+    });
+
+    it('saves tombstones before hiding and enqueueing bulk sync', async () => {
+      const books = [
+        createMockBook({ hash: testOpenReadBookRef('bulk-book-1') }),
+        createMockBook({ hash: testOpenReadBookRef('bulk-book-2') }),
+      ];
+      mockLibraryStoreState.library = books;
+      const { result } = renderHook(() => useBookActions());
+
+      await act(async () => {
+        await result.current.bulkRemove(books.map((book) => book.hash));
+      });
+
+      const savedLibrary = mockAppService.saveLibraryBooks.mock.calls[0]?.[0] as Book[];
+      expect(savedLibrary).toHaveLength(2);
+      expect(savedLibrary.every((book) => Boolean(book.deletedAt))).toBe(true);
+      expect(mockLibraryStoreState.setLibrary).toHaveBeenCalledWith(savedLibrary);
+      expect(enqueueBooksForSync).toHaveBeenCalledWith(savedLibrary);
+      expect(mockAppService.saveLibraryBooks.mock.invocationCallOrder[0]).toBeLessThan(
+        mockLibraryStoreState.setLibrary.mock.invocationCallOrder[0],
+      );
+      expect(mockAppService.saveLibraryBooks.mock.invocationCallOrder[0]).toBeLessThan(
+        vi.mocked(enqueueBooksForSync).mock.invocationCallOrder[0],
+      );
+    });
+
+    it('rolls back and keeps selection when bulk durable save fails', async () => {
+      const books = [
+        createMockBook({ hash: testOpenReadBookRef('bulk-rollback-1') }),
+        createMockBook({ hash: testOpenReadBookRef('bulk-rollback-2') }),
+      ];
+      const previousLibrary = books;
+      mockLibraryStoreState.library = previousLibrary;
+      mockAppService.saveLibraryBooks.mockRejectedValueOnce(new Error('quota exceeded locally'));
+      const { result } = renderHook(() => useBookActions());
+
+      await expect(result.current.bulkRemove(books.map((book) => book.hash))).rejects.toThrow(
+        'Failed to delete books locally. Your library was not changed.',
+      );
+
+      expect(mockLibraryStoreState.setLibrary).toHaveBeenCalledTimes(1);
+      expect(mockLibraryStoreState.setLibrary).toHaveBeenCalledWith(previousLibrary);
+      expect(enqueueBooksForSync).not.toHaveBeenCalled();
+      expect(mockLibraryViewStoreState.clearSelection).not.toHaveBeenCalled();
+      expect(mockLibraryViewStoreState.setSelectMode).not.toHaveBeenCalled();
     });
 
     it('skips books that are not found in library', async () => {

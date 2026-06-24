@@ -104,7 +104,7 @@ export function buildNativeFixtureManifest({
     status: 'ready',
     fixture: { onboarding: 'skip' },
     application:
-      'ActivityCaptureBridge sets has_seen_welcome and openread_onboarding_completed before opening the target.',
+      'ActivityCaptureBridge sets the account-scoped empty-library onboarding sentinel before opening the target.',
   });
 
   const authMode = fixtures.auth ?? 'anonymous';

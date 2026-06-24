@@ -196,14 +196,6 @@ vi.mock('@/hooks/useLibraryLimit', () => ({
   })),
 }));
 
-// Mock useWelcomeScreen — prevent welcome screen from hiding BookGrid
-vi.mock('@/hooks/useWelcomeScreen', () => ({
-  useWelcomeScreen: vi.fn(() => ({
-    showWelcome: false,
-    dismissWelcome: vi.fn(),
-  })),
-}));
-
 // Mock platform book seeding; these tests assert library UI/import behavior, not seed fixtures.
 vi.mock('@/hooks/usePlatformBooks', () => ({
   usePlatformBooks: vi.fn(),
@@ -360,7 +352,6 @@ describe('LibraryPageClient', () => {
     });
 
     it('should not force the legacy onboarding modal when Library is opened', () => {
-      localStorage.removeItem('openread_onboarding_completed');
       render(<LibraryPageClient filter='all' title='All Books' />);
       expect(screen.queryByTestId('onboarding-dialog')).toBeNull();
       expect(screen.getByTestId('library-header')).toBeTruthy();

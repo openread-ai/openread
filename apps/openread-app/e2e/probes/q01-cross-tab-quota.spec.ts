@@ -156,9 +156,10 @@ test('Q01 — cross-tab quota: Tab B can bypass Tab A client-side limit', async 
       }
       localStorage.setItem(key, value);
     }
-    // Suppress welcome / onboarding dialogs
-    localStorage.setItem('has_seen_welcome', 'true');
-    localStorage.setItem('openread_onboarding_completed', new Date().toISOString());
+    // Suppress empty-library onboarding dialogs for this copied authenticated session.
+    const rawUser = localStorage.getItem('user');
+    const userId = rawUser ? JSON.parse(rawUser).id : 'unknown';
+    localStorage.setItem(`openread:empty-library-onboarding:${userId}`, 'completed');
   }, storageState);
 
   // Track whether Tab B makes a network request to agentic-chat

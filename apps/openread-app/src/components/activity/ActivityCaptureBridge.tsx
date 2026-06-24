@@ -14,7 +14,7 @@ import { createLogger } from '@/utils/logger';
 import { parseActivityCaptureTarget, type ActivityCaptureTarget } from '@/helpers/activityCapture';
 import { postTauriQaResult, runTauriQaController } from '@/helpers/tauriQaController';
 import type { AppService } from '@/types/system';
-import { LOCAL_PERSISTENCE_KEYS } from '@/services/persistence/localPersistenceRegistry';
+import { markEmptyLibraryOnboardingCompletedForUser } from '@/hooks/useEmptyLibraryOnboarding';
 
 const logger = createLogger('activityCaptureBridge');
 const qaAutomationEnabled = process.env.NEXT_PUBLIC_OPENREAD_QA_AUTOMATION === '1';
@@ -37,7 +37,7 @@ type QaEvidence = {
 
 export default function ActivityCaptureBridge() {
   const router = useRouter();
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
   const { appService } = useEnv();
   const [qaEvidence, setQaEvidence] = useState<QaEvidence | null>(null);
 
@@ -46,7 +46,7 @@ export default function ActivityCaptureBridge() {
 
     const handleTarget = async (target: ActivityCaptureTarget) => {
       if (target.onboarding === 'skip') {
-        localStorage.setItem(LOCAL_PERSISTENCE_KEYS.hasSeenWelcome, 'true');
+        markEmptyLibraryOnboardingCompletedForUser(user?.id ?? null);
       }
 
       if (target.qa === 'settings-contract') {
@@ -152,7 +152,7 @@ export default function ActivityCaptureBridge() {
     return () => {
       unlisten.then((fn) => fn()).catch(() => {});
     };
-  }, [appService, logout, router]);
+  }, [appService, logout, router, user?.id]);
 
   if (!qaEvidence) return null;
 
@@ -256,7 +256,7 @@ async function installQaAuthFromSessionUrl(qaSessionUrl: string | null) {
   }
 
   clientAuth.clearQaForceSignedOut();
-  localStorage.setItem(LOCAL_PERSISTENCE_KEYS.hasSeenWelcome, 'true');
+  markEmptyLibraryOnboardingCompletedForUser(session.user.id);
 
   await clientAuth.installSession(session);
 }

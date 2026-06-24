@@ -111,11 +111,8 @@ export async function injectSession(page: Page, session: Session): Promise<void>
         localStorage.setItem(supabaseStorageKey, JSON.stringify(session));
       }
 
-      // Skip welcome/onboarding/sample import flows — they block clicks or add
-      // background mutations/noise that are covered by unit tests separately.
-      localStorage.setItem('has_seen_welcome', 'true');
-      localStorage.setItem('openread_onboarding_completed', new Date().toISOString());
-      localStorage.setItem('sample_book_attempted', new Date().toISOString());
+      // Skip empty-library onboarding; the behavior is covered by unit tests separately.
+      localStorage.setItem(`openread:empty-library-onboarding:${session.user.id}`, 'completed');
     },
     { session, supabaseStorageKey: SUPABASE_STORAGE_KEY },
   );

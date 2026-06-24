@@ -5531,9 +5531,10 @@ localStorage.setItem('token', session.access_token);
 localStorage.setItem('refresh_token', session.refresh_token);
 localStorage.setItem('user', JSON.stringify(session.user));
 localStorage.setItem(storageKey, JSON.stringify(session));
-localStorage.setItem('has_seen_welcome', 'true');
-localStorage.setItem('openread_onboarding_completed', new Date().toISOString());
-localStorage.setItem('sample_book_attempted', new Date().toISOString());
+localStorage.setItem(
+  'openread:empty-library-onboarding:' + session.user.id,
+  'completed',
+);
 return {
   hasToken: Boolean(localStorage.getItem('token')),
   hasRefreshToken: Boolean(localStorage.getItem('refresh_token')),

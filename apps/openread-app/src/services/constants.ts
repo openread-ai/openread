@@ -40,6 +40,8 @@ export const SUPPORTED_BOOK_EXTS = [
   'txt',
 ];
 export const BOOK_ACCEPT_FORMATS = SUPPORTED_BOOK_EXTS.map((ext) => `.${ext}`).join(', ');
+export const UNSUPPORTED_BOOK_FILES_MESSAGE =
+  'No supported book files found. Supported formats: EPUB, PDF, MOBI, FB2, CBZ, AZW, TXT';
 export const BOOK_UNGROUPED_NAME = '';
 export const BOOK_UNGROUPED_ID = '';
 

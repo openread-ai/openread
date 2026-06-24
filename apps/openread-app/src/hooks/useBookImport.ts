@@ -5,7 +5,7 @@ import { useEnv } from '@/context/EnvContext';
 import { useFileSelector, type SelectedFile } from '@/hooks/useFileSelector';
 import { useLibraryLimit } from '@/hooks/useLibraryLimit';
 import { useSync } from '@/hooks/useSync';
-import { SUPPORTED_BOOK_EXTS } from '@/services/constants';
+import { SUPPORTED_BOOK_EXTS, UNSUPPORTED_BOOK_FILES_MESSAGE } from '@/services/constants';
 import { transferManager } from '@/services/transferManager';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useLibraryStore } from '@/store/libraryStore';
@@ -16,9 +16,6 @@ import { useTranslation } from './useTranslation';
 import type { Book } from '@/types/book';
 
 const logger = createLogger('book-import');
-
-const UNSUPPORTED_BOOK_FILES_MESSAGE =
-  'No supported book files found. Supported formats: EPUB, PDF, MOBI, FB2, CBZ, AZW, TXT';
 
 export interface BookImportResult {
   successCount: number;

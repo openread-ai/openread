@@ -12,9 +12,9 @@ import {
   XIcon,
 } from 'lucide-react';
 
+import { AI_COMPOSER_PLACEHOLDER } from '@/components/assistant/constants';
 import { useAIChatStore } from '@/store/aiChatStore';
 import { useNotebookStore } from '@/store/notebookStore';
-import { useBookDataStore } from '@/store/bookDataStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -58,8 +58,7 @@ const InlineQuestionBar: React.FC<InlineQuestionBarProps> = ({ bookKey }) => {
   const sideBarWidth = useSidebarStore((s) => s.sideBarWidth);
 
   const { primaryBookHash, getParallelHashes } = usePrimaryBookHash(bookKey);
-  const bookTitle = useBookDataStore((s) => s.getBookData(bookKey)?.book?.title);
-  const mobilePlaceholder = bookTitle ? `Chat with ${bookTitle}` : _('Chat with this book');
+  const composerPlaceholder = _(AI_COMPOSER_PLACEHOLDER);
   // Default to enabled while settings load (DEFAULT_AI_SETTINGS.enabled = true).
   // The store initializes as {} before loadSettings() completes.
   const aiEnabled = settings?.aiSettings?.enabled ?? true;
@@ -201,7 +200,7 @@ const InlineQuestionBar: React.FC<InlineQuestionBarProps> = ({ bookKey }) => {
               type='text'
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
-              placeholder={mobilePlaceholder}
+              placeholder={composerPlaceholder}
               className='text-base-content placeholder:text-base-content/45 min-h-8 w-full min-w-0 bg-transparent text-xl leading-8 outline-none'
             />
 
@@ -292,7 +291,7 @@ const InlineQuestionBar: React.FC<InlineQuestionBarProps> = ({ bookKey }) => {
               type='text'
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
-              placeholder={_('Ask about this book...')}
+              placeholder={composerPlaceholder}
               className={cn(
                 'min-w-0 flex-1 bg-transparent text-sm outline-none',
                 appService?.isMobile

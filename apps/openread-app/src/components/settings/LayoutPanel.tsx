@@ -15,7 +15,7 @@ import { getStyles } from '@/utils/style';
 import { getMaxInlineSize } from '@/utils/config';
 import { lockScreenOrientation } from '@/utils/bridge';
 import { saveViewSettings } from '@/helpers/settings';
-import { applyReaderModeToRenderer } from '@/app/reader/utils/readerMode';
+import { applyReaderLayoutToRenderer } from '@/app/reader/utils/readerLayoutContract';
 import { getBookDirFromWritingMode, getBookLangCode } from '@/utils/book';
 import { MIGHT_BE_RTL_LANGS } from '@/services/constants';
 import { SettingsPanelPanelProp } from './SettingsDialog';
@@ -74,9 +74,9 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
   const [tapToToggleFooter, setTapToToggleFooter] = useState(viewSettings.tapToToggleFooter);
   const [progressStyle, setProgressStyle] = useState(viewSettings.progressStyle);
   const [screenOrientation, setScreenOrientation] = useState(viewSettings.screenOrientation);
-  const [zoomLevel, setZoomLevel] = useState(viewSettings.zoomLevel);
-  const [zoomMode, setZoomMode] = useState(viewSettings.zoomMode);
-  const [spreadMode, setSpreadMode] = useState(viewSettings.spreadMode);
+  const [zoomLevel, setZoomLevel] = useState(viewSettings.pageZoomLevel);
+  const [zoomMode, setZoomMode] = useState(viewSettings.pageZoomMode);
+  const [spreadMode, setSpreadMode] = useState(viewSettings.pageSpreadMode);
   const [keepCoverSpread, setKeepCoverSpread] = useState(viewSettings.keepCoverSpread);
 
   const resetToDefaults = useResetViewSettings();
@@ -87,9 +87,9 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
     const currentBookData = getBookData(bookKey);
     const currentViewSettings = getViewSettings(bookKey) || settings.globalViewSettings;
     const defaultSettings = appService.getDefaultViewSettings();
-    const nextZoomLevel = defaultSettings.zoomLevel ?? currentViewSettings.zoomLevel;
-    const nextZoomMode = defaultSettings.zoomMode ?? currentViewSettings.zoomMode;
-    const nextSpreadMode = defaultSettings.spreadMode ?? currentViewSettings.spreadMode;
+    const nextZoomLevel = defaultSettings.pageZoomLevel ?? currentViewSettings.pageZoomLevel;
+    const nextZoomMode = defaultSettings.pageZoomMode ?? currentViewSettings.pageZoomMode;
+    const nextSpreadMode = defaultSettings.pageSpreadMode ?? currentViewSettings.pageSpreadMode;
     const nextKeepCoverSpread =
       defaultSettings.keepCoverSpread ?? currentViewSettings.keepCoverSpread;
 
@@ -99,9 +99,9 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
     setKeepCoverSpread(nextKeepCoverSpread);
     setViewSettings(bookKey, {
       ...currentViewSettings,
-      zoomLevel: nextZoomLevel,
-      zoomMode: nextZoomMode,
-      spreadMode: nextSpreadMode,
+      pageZoomLevel: nextZoomLevel,
+      pageZoomMode: nextZoomMode,
+      pageSpreadMode: nextSpreadMode,
       keepCoverSpread: nextKeepCoverSpread,
     });
 
@@ -113,9 +113,9 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
     view?.renderer.setAttribute('scale-factor', nextZoomLevel);
     view?.renderer.setAttribute('zoom', nextZoomMode);
     view?.renderer.setAttribute('spread', nextSpreadMode);
-    saveViewSettings(envConfig, bookKey, 'zoomLevel', nextZoomLevel, true, true);
-    saveViewSettings(envConfig, bookKey, 'zoomMode', nextZoomMode, true, false);
-    saveViewSettings(envConfig, bookKey, 'spreadMode', nextSpreadMode, true, false);
+    saveViewSettings(envConfig, bookKey, 'pageZoomLevel', nextZoomLevel, true, true);
+    saveViewSettings(envConfig, bookKey, 'pageZoomMode', nextZoomMode, true, false);
+    saveViewSettings(envConfig, bookKey, 'pageSpreadMode', nextSpreadMode, true, false);
     saveViewSettings(envConfig, bookKey, 'keepCoverSpread', nextKeepCoverSpread, true, false);
   };
 
@@ -270,13 +270,16 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
     if (gapPercent === viewSettings.gapPercent) return;
     saveViewSettings(envConfig, bookKey, 'gapPercent', gapPercent, false, false);
     view?.renderer.setAttribute('gap', `${gapPercent}%`);
-    applyReaderModeToRenderer(view?.renderer, viewSettings, {
-      platform: { isMobile: !!appService?.isMobile },
-      book: {
+    applyReaderLayoutToRenderer(
+      view?.renderer,
+      viewSettings,
+      {
         isFixedLayout,
         renditionLayout: bookData?.bookDoc?.rendition?.layout,
+        format: bookData?.book?.format,
       },
-    });
+      { isMobile: !!appService?.isMobile },
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gapPercent]);
 
@@ -422,23 +425,23 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
 
   const saveFixedLayoutZoomLevel = (value: number) => {
     setZoomLevel(value);
-    setViewSettings(bookKey, { ...viewSettings, zoomLevel: value });
+    setViewSettings(bookKey, { ...viewSettings, pageZoomLevel: value });
     view?.renderer.setAttribute('scale-factor', value);
-    saveViewSettings(envConfig, bookKey, 'zoomLevel', value, true, true);
+    saveViewSettings(envConfig, bookKey, 'pageZoomLevel', value, true, true);
   };
 
-  const saveFixedLayoutZoomMode = (value: typeof viewSettings.zoomMode) => {
+  const saveFixedLayoutZoomMode = (value: typeof viewSettings.pageZoomMode) => {
     setZoomMode(value);
-    setViewSettings(bookKey, { ...viewSettings, zoomMode: value });
+    setViewSettings(bookKey, { ...viewSettings, pageZoomMode: value });
     view?.renderer.setAttribute('zoom', value);
-    saveViewSettings(envConfig, bookKey, 'zoomMode', value, true, false);
+    saveViewSettings(envConfig, bookKey, 'pageZoomMode', value, true, false);
   };
 
-  const saveFixedLayoutSpreadMode = (value: typeof viewSettings.spreadMode) => {
+  const saveFixedLayoutSpreadMode = (value: typeof viewSettings.pageSpreadMode) => {
     setSpreadMode(value);
-    setViewSettings(bookKey, { ...viewSettings, spreadMode: value });
+    setViewSettings(bookKey, { ...viewSettings, pageSpreadMode: value });
     view?.renderer.setAttribute('spread', value);
-    saveViewSettings(envConfig, bookKey, 'spreadMode', value, true, false);
+    saveViewSettings(envConfig, bookKey, 'pageSpreadMode', value, true, false);
   };
 
   const saveKeepCoverSpread = (value: boolean) => {
@@ -466,9 +469,12 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
                 min={50}
                 max={400}
                 step={10}
-                data-setting-id='settings.layout.fixedLayout.zoomLevel'
+                data-setting-id='settings.layout.fixedLayout.pageZoomLevel'
               />
-              <div className='config-item' data-setting-id='settings.layout.fixedLayout.zoomMode'>
+              <div
+                className='config-item'
+                data-setting-id='settings.layout.fixedLayout.pageZoomMode'
+              >
                 <span>{_('Zoom Mode')}</span>
                 <div className='flex flex-wrap justify-end gap-2'>
                   {[
@@ -480,14 +486,19 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
                       key={value}
                       type='button'
                       className={`btn btn-xs ${zoomMode === value ? 'btn-active' : 'btn-ghost'}`}
-                      onClick={() => saveFixedLayoutZoomMode(value as typeof viewSettings.zoomMode)}
+                      onClick={() =>
+                        saveFixedLayoutZoomMode(value as typeof viewSettings.pageZoomMode)
+                      }
                     >
                       {label}
                     </button>
                   ))}
                 </div>
               </div>
-              <div className='config-item' data-setting-id='settings.layout.fixedLayout.spreadMode'>
+              <div
+                className='config-item'
+                data-setting-id='settings.layout.fixedLayout.pageSpreadMode'
+              >
                 <span>{_('Page Spread')}</span>
                 <div className='flex justify-end gap-2'>
                   {[
@@ -499,7 +510,7 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
                       type='button'
                       className={`btn btn-xs ${spreadMode === value ? 'btn-active' : 'btn-ghost'}`}
                       onClick={() =>
-                        saveFixedLayoutSpreadMode(value as typeof viewSettings.spreadMode)
+                        saveFixedLayoutSpreadMode(value as typeof viewSettings.pageSpreadMode)
                       }
                     >
                       {label}
@@ -771,7 +782,7 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
               data-setting-id='settings.layout.maxBlockSize'
             />
             <div className='config-item'>
-              <span className=''>{_('Apply also in Scrolled Mode')}</span>
+              <span className=''>{_('Apply also in Continuous Layout')}</span>
               <input
                 type='checkbox'
                 className='toggle'
@@ -872,7 +883,7 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
               />
             </div>
             <div className='config-item'>
-              <span className=''>{_('Apply also in Scrolled Mode')}</span>
+              <span className=''>{_('Apply also in Continuous Layout')}</span>
               <input
                 type='checkbox'
                 className='toggle'

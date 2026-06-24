@@ -13,7 +13,7 @@ export const useTextSelector = (
   showDesktopNativeMenu?: (x: number, y: number) => void,
 ) => {
   const { appService } = useEnv();
-  const { getView, getViewSettings } = useReaderStore();
+  const { getView } = useReaderStore();
   const view = getView(bookKey);
   const osPlatform = getOSPlatform();
 
@@ -180,8 +180,7 @@ export const useTextSelector = (
     // Uses overflow-anchor: none on container + re-anchor to selection start position.
     if (osPlatform !== 'android' || !appService?.isAndroidApp) return;
 
-    const viewSettings = getViewSettings(bookKey);
-    if (viewSettings?.scrolled) return;
+    if (view?.renderer?.scrolled) return;
 
     if (isTextSelected.current && view?.renderer) {
       // Apply overflow-anchor: none to prevent browser auto-scroll

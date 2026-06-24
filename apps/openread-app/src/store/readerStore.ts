@@ -25,7 +25,7 @@ import { useBookDataStore } from './bookDataStore';
 import { useLibraryStore } from './libraryStore';
 import { uniqueId } from '@/utils/misc';
 import { getBookIdFromKey } from '@/utils/readerBookKey';
-import { getInitialReaderViewSettings } from '@/app/reader/utils/readerMode';
+import { getInitialReaderViewSettings } from '@/app/reader/utils/readerLayoutContract';
 
 interface ViewState {
   /* Unique key for each book view */
@@ -222,12 +222,11 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
       const viewSettings = getInitialReaderViewSettings({
         globalViewSettings,
         configViewSettings,
-        context: {
-          platform: { isMobile: appService.isMobile },
-          book: {
-            isFixedLayout,
-            renditionLayout: bookDoc.rendition?.layout,
-          },
+        platform: { isMobile: appService.isMobile },
+        book: {
+          isFixedLayout,
+          renditionLayout: bookDoc.rendition?.layout,
+          format: book.format,
         },
       });
       set((state) => ({

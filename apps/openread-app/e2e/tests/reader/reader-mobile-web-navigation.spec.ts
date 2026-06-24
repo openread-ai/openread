@@ -236,7 +236,7 @@ test.describe('Mobile web reader navigation regression', () => {
     await header.getByLabel('More Options').click();
     const viewMenu = page.locator('.view-menu').first();
     await expect(viewMenu).toBeVisible({ timeout: 10_000 });
-    await expect(viewMenu.getByText('Scrolled Mode', { exact: true }).first()).toBeHidden();
+    await expect(viewMenu.getByText('Continuous', { exact: true }).first()).toBeHidden();
     await expect(viewMenu.getByText('Paragraph Mode', { exact: true }).first()).toBeHidden();
   });
 

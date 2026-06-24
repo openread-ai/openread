@@ -8,9 +8,9 @@ import { saveViewSettings } from '@/helpers/settings';
 import { ParagraphIterator } from '@/utils/paragraph';
 import { DEFAULT_PARAGRAPH_MODE_CONFIG } from '@/services/constants';
 import {
-  persistReaderMode,
+  persistReaderLayout,
   setParagraphMode as setReaderParagraphMode,
-} from '@/app/reader/utils/readerMode';
+} from '@/app/reader/utils/readerLayoutContract';
 import { createLogger } from '@/utils/logger';
 
 const logger = createLogger('paragraph-mode');
@@ -363,19 +363,19 @@ export const useParagraphMode = ({ bookKey, viewRef }: UseParagraphModeProps) =>
       const currentConfig = settings.paragraphMode ?? DEFAULT_PARAGRAPH_MODE_CONFIG;
       const newEnabled = !currentConfig.enabled;
       const bookData = getBookData(bookKeyRef.current);
-      const context = {
-        platform: { isMobile: !!appService?.isMobile },
-        book: {
-          isFixedLayout: bookData?.isFixedLayout,
-          renditionLayout: bookData?.bookDoc?.rendition?.layout,
-        },
+      const book = {
+        isFixedLayout: bookData?.isFixedLayout,
+        renditionLayout: bookData?.bookDoc?.rendition?.layout,
+        format: bookData?.book?.format,
       };
-      const nextSettings = await persistReaderMode({
+      const platform = { isMobile: !!appService?.isMobile };
+      const nextSettings = await persistReaderLayout({
         envConfig,
         bookKey: bookKeyRef.current,
         current: settings,
-        next: setReaderParagraphMode(settings, context, newEnabled),
-        context,
+        next: setReaderParagraphMode(settings, newEnabled),
+        book,
+        platform,
         renderer: viewRef.current?.renderer,
         setViewSettings,
         saveViewSettings,

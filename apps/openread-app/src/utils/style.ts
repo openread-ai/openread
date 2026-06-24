@@ -577,8 +577,8 @@ export const getStyles = (viewSettings: ViewSettings, themeCode?: ThemeCode) => 
   // scale the font size on-the-fly so that we can sync the same font size on different devices
   const isMobile = ['ios', 'android'].includes(getOSPlatform());
   const fontScale = isMobile ? 1.25 : 1;
-  // Only for backward compatibility, new viewSettings.zoomLevel will always be 100 for EPUBs
-  const zoomScale = (viewSettings.zoomLevel || 100) / 100.0;
+  // Only for backward compatibility, new viewSettings.pageZoomLevel will always be 100 for EPUBs
+  const zoomScale = (viewSettings.pageZoomLevel || 100) / 100.0;
   const fontStyles = getFontStyles(
     viewSettings.serifFont!,
     viewSettings.sansSerifFont!,

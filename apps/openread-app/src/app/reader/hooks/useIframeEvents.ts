@@ -8,6 +8,7 @@ import { debounce } from '@/utils/debounce';
 import { ScrollSource } from './usePagination';
 import { eventDispatcher } from '@/utils/event';
 import { shouldUseMobileWebTouchScroll } from '../utils/mobileScroll';
+import { normalizeReaderLayout } from '../utils/readerLayoutContract';
 
 export const useMouseEvent = (
   bookKey: string,
@@ -93,9 +94,17 @@ export const useTouchEvent = (
 
     const viewSettings = getViewSettings(bookKey);
     const bookData = getBookData(bookKey);
-    if (!viewSettings?.scrolled || !viewSettings.continuousScroll || bookData?.isFixedLayout) {
-      return;
-    }
+    if (!viewSettings || !bookData) return;
+    const layoutState = normalizeReaderLayout({
+      settings: viewSettings,
+      book: {
+        isFixedLayout: bookData.isFixedLayout,
+        renditionLayout: bookData.bookDoc?.rendition?.layout,
+        format: bookData.book?.format,
+      },
+      platform: { isMobile: !!appService?.isMobile },
+    });
+    if (layoutState.layoutMode !== 'continuous') return;
 
     const previousTouch = lastTouchRef.current ?? touchStartRef.current;
     if (!previousTouch) return;
@@ -163,7 +172,16 @@ export const useTouchEvent = (
       const deltaY = touchEnd.screenY - touchStart.screenY;
       const deltaX = touchEnd.screenX - touchStart.screenX;
       if (!(window as unknown as Record<string, unknown>).__sheetOpen) {
-        if (!viewSettings!.scrolled && !viewSettings!.vertical) {
+        const layoutState = normalizeReaderLayout({
+          settings: viewSettings,
+          book: {
+            isFixedLayout: getBookData(bookKey)?.isFixedLayout,
+            renditionLayout: getBookData(bookKey)?.bookDoc?.rendition?.layout,
+            format: getBookData(bookKey)?.book?.format,
+          },
+          platform: { isMobile: !!appService?.isMobile },
+        });
+        if (layoutState.layoutMode === 'paged' && !viewSettings!.vertical) {
           if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 10) {
             setHoveredBookKey(null);
           }
@@ -208,9 +226,17 @@ export const useTouchEvent = (
       ) {
         // swipe up to toggle the header bar and the footer bar, only for horizontal page mode
         if (
-          !viewSettings!.scrolled && // not scrolled
+          normalizeReaderLayout({
+            settings: viewSettings,
+            book: {
+              isFixedLayout: bookData.isFixedLayout,
+              renditionLayout: bookData.bookDoc?.rendition?.layout,
+              format: bookData.book?.format,
+            },
+            platform: { isMobile: !!appService?.isMobile },
+          }).layoutMode === 'paged' &&
           !viewSettings!.vertical && // not vertical
-          (!bookData.isFixedLayout || viewSettings.zoomLevel <= 100) // for fixed layout, not when zoomed in
+          (!bookData.isFixedLayout || viewSettings.pageZoomLevel <= 100) // for fixed layout, not when zoomed in
         ) {
           setHoveredBookKey(hoveredBookKey ? null : bookKey);
         }

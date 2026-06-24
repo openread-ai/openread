@@ -394,16 +394,16 @@ const colorPanelItems = [
 // control panel items
 const controlPanelItems = [
   {
-    id: 'settings.control.scrolledMode',
-    labelKey: _('Scrolled Mode'),
-    keywords: ['scroll', 'scrolled', 'mode', 'paginate', 'continuous'],
-    section: 'Scroll',
+    id: 'settings.control.layoutMode',
+    labelKey: _('Reader Layout'),
+    keywords: ['layout', 'paged', 'continuous', 'scroll', 'mode'],
+    section: 'Reader Layout',
   },
   {
-    id: 'settings.control.continuousScroll',
-    labelKey: _('Continuous Scroll'),
-    keywords: ['continuous', 'scroll', 'endless', 'infinite'],
-    section: 'Scroll',
+    id: 'settings.control.textContinuousSections',
+    labelKey: _('Continuous Sections'),
+    keywords: ['continuous', 'sections', 'chapter', 'scroll', 'endless'],
+    section: 'Reader Layout',
   },
   {
     id: 'settings.control.overlapPixels',

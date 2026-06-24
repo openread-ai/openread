@@ -10,7 +10,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { getGridTemplate, getInsetEdges } from '@/utils/grid';
 import { getViewInsets } from '@/utils/insets';
 import { viewPagination } from '../hooks/usePagination';
-import { getReaderMode } from '../utils/readerMode';
+import { normalizeReaderLayout } from '../utils/readerLayoutContract';
 import { debounce } from '@/utils/debounce';
 import { computeProgress } from './footerbar/progressUtils';
 import SearchResultsNav from './sidebar/SearchResultsNav';
@@ -168,14 +168,16 @@ const BooksGrid: React.FC<BooksGridProps> = ({ bookKeys, onCloseBook }) => {
           bottom: gridInsets.bottom + viewInsets.bottom,
           left: gridInsets.left + viewInsets.left,
         };
-        const readerMode = getReaderMode(viewSettings, {
-          platform: { isMobile: !!appService?.isMobile },
+        const readerLayout = normalizeReaderLayout({
+          settings: viewSettings,
           book: {
             isFixedLayout: bookData?.isFixedLayout,
             renditionLayout: bookData?.bookDoc?.rendition?.layout,
+            format: bookData?.book?.format,
           },
+          platform: { isMobile: !!appService?.isMobile },
         });
-        const scrolled = readerMode.scrolled;
+        const scrolled = readerLayout.layoutMode === 'continuous';
         const showBarsOnScroll = viewSettings.showBarsOnScroll;
         const showHeader = viewSettings.showHeader && (scrolled ? showBarsOnScroll : true);
         const showFooter = viewSettings.showFooter && (scrolled ? showBarsOnScroll : true);

@@ -9,6 +9,7 @@ import { useBookDataStore } from '@/store/bookDataStore';
 import { formatNumber, formatProgress } from '@/utils/progress';
 import { saveViewSettings } from '@/helpers/settings';
 import { LOCAL_PERSISTENCE_KEYS } from '@/services/persistence/localPersistenceRegistry';
+import { normalizeReaderLayout } from '../utils/readerLayoutContract';
 
 interface PageInfoProps {
   bookKey: string;
@@ -38,7 +39,16 @@ const ProgressInfoView: React.FC<PageInfoProps> = ({
   const viewSettings = getViewSettings(bookKey)!;
 
   const showDoubleBorder = viewSettings.vertical && viewSettings.doubleBorder;
-  const isScrolled = viewSettings.scrolled;
+  const isScrolled =
+    normalizeReaderLayout({
+      settings: viewSettings,
+      book: {
+        isFixedLayout: bookData?.isFixedLayout,
+        renditionLayout: bookData?.bookDoc?.rendition?.layout,
+        format: bookData?.book?.format,
+      },
+      platform: { isMobile: !!appService?.isMobile },
+    }).layoutMode === 'continuous';
   const isVertical = viewSettings.vertical;
   const isEink = viewSettings.isEink;
   const { progressStyle: readingProgressStyle } = viewSettings;

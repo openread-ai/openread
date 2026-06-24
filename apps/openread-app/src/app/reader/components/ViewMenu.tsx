@@ -27,12 +27,13 @@ import { navigateToLogin } from '@/utils/nav';
 import { eventDispatcher } from '@/utils/event';
 import { saveViewSettings } from '@/helpers/settings';
 import {
+  canUsePageSpreadControls,
+  canUsePageZoomControls,
   canUseParagraphMode,
-  canUseScrolledMode,
-  getReaderMode,
-  persistReaderMode,
-  setScrolledMode,
-} from '@/app/reader/utils/readerMode';
+  normalizeReaderLayout,
+  persistReaderLayout,
+  setReaderLayoutMode,
+} from '@/app/reader/utils/readerLayoutContract';
 import { tauriHandleToggleFullScreen } from '@/utils/window';
 import { LAUNCH_TTS_ENABLED, LAUNCH_TRANSLATION_ENABLED } from '@/services/launchFeatures';
 import MenuItem from '@/components/MenuItem';
@@ -58,19 +59,22 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
   const viewState = getViewState(bookKey);
   const isMobileReader = !!appService?.isMobile;
 
-  const readerModeContext = {
-    platform: { isMobile: isMobileReader },
-    book: {
-      isFixedLayout: bookData.isFixedLayout,
-      renditionLayout: bookData.bookDoc?.rendition?.layout,
-    },
+  const readerLayoutBook = {
+    isFixedLayout: bookData.isFixedLayout,
+    renditionLayout: bookData.bookDoc?.rendition?.layout,
+    format: bookData.book?.format,
   };
-  const readerMode = getReaderMode(viewSettings, readerModeContext);
+  const readerLayoutPlatform = { isMobile: isMobileReader };
+  const readerLayout = normalizeReaderLayout({
+    settings: viewSettings,
+    book: readerLayoutBook,
+    platform: readerLayoutPlatform,
+  });
 
   const { themeMode, isDarkMode, setThemeMode } = useThemeStore();
-  const [zoomLevel, setZoomLevel] = useState(viewSettings!.zoomLevel!);
-  const [zoomMode, setZoomMode] = useState(viewSettings!.zoomMode!);
-  const [spreadMode, setSpreadMode] = useState(viewSettings!.spreadMode!);
+  const [zoomLevel, setZoomLevel] = useState(viewSettings!.pageZoomLevel!);
+  const [zoomMode, setZoomMode] = useState(viewSettings!.pageZoomMode!);
+  const [spreadMode, setSpreadMode] = useState(viewSettings!.pageSpreadMode!);
   const [keepCoverSpread, setKeepCoverSpread] = useState(viewSettings!.keepCoverSpread!);
   const [invertImgColorInDark, setInvertImgColorInDark] = useState(
     viewSettings!.invertImgColorInDark,
@@ -79,13 +83,15 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
   const zoomIn = () => setZoomLevel((prev) => Math.min(prev + ZOOM_STEP, MAX_ZOOM_LEVEL));
   const zoomOut = () => setZoomLevel((prev) => Math.max(prev - ZOOM_STEP, MIN_ZOOM_LEVEL));
   const resetZoom = () => setZoomLevel(100);
-  const toggleScrolledMode = async () => {
-    await persistReaderMode({
+  const toggleLayoutMode = async () => {
+    const nextMode = readerLayout.layoutMode === 'continuous' ? 'paged' : 'continuous';
+    await persistReaderLayout({
       envConfig,
       bookKey,
       current: viewSettings,
-      next: setScrolledMode(viewSettings, readerModeContext, !readerMode.scrolled),
-      context: readerModeContext,
+      next: setReaderLayoutMode(viewSettings, nextMode),
+      book: readerLayoutBook,
+      platform: readerLayoutPlatform,
       renderer: getView(bookKey)?.renderer,
       setViewSettings,
       saveViewSettings,
@@ -123,7 +129,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
   };
 
   useEffect(() => {
-    saveViewSettings(envConfig, bookKey, 'zoomLevel', zoomLevel, true, true);
+    saveViewSettings(envConfig, bookKey, 'pageZoomLevel', zoomLevel, true, true);
     if (bookData.bookDoc?.rendition?.layout === 'pre-paginated') {
       getView(bookKey)?.renderer.setAttribute('scale-factor', zoomLevel);
     }
@@ -137,20 +143,20 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
   }, [invertImgColorInDark]);
 
   useEffect(() => {
-    if (zoomMode === viewSettings.zoomMode) return;
-    viewSettings.zoomMode = zoomMode;
+    if (zoomMode === viewSettings.pageZoomMode) return;
+    viewSettings.pageZoomMode = zoomMode;
     getView(bookKey)?.renderer.setAttribute('zoom', zoomMode);
     setViewSettings(bookKey, viewSettings);
-    saveViewSettings(envConfig, bookKey, 'zoomMode', zoomMode, true, false);
+    saveViewSettings(envConfig, bookKey, 'pageZoomMode', zoomMode, true, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zoomMode]);
 
   useEffect(() => {
-    if (spreadMode === viewSettings.spreadMode) return;
-    viewSettings.spreadMode = spreadMode;
+    if (spreadMode === viewSettings.pageSpreadMode) return;
+    viewSettings.pageSpreadMode = spreadMode;
     getView(bookKey)?.renderer.setAttribute('spread', spreadMode);
     setViewSettings(bookKey, viewSettings);
-    saveViewSettings(envConfig, bookKey, 'spreadMode', spreadMode, true, false);
+    saveViewSettings(envConfig, bookKey, 'pageSpreadMode', spreadMode, true, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spreadMode]);
 
@@ -183,7 +189,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
       }}
       onCancel={() => setIsDropdownOpen?.(false)}
     >
-      {bookData.bookDoc?.rendition?.layout === 'pre-paginated' && (
+      {canUsePageZoomControls(readerLayout) && (
         <>
           <div
             title={_('Zoom Level')}
@@ -268,12 +274,14 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
               </button>
             </div>
 
-            <MenuItem
-              label={_('Separate Cover Page')}
-              Icon={keepCoverSpread ? MdCheck : undefined}
-              onClick={() => setKeepCoverSpread(!keepCoverSpread)}
-              disabled={spreadMode === 'none'}
-            />
+            {canUsePageSpreadControls(readerLayout) && (
+              <MenuItem
+                label={_('Separate Cover Page')}
+                Icon={keepCoverSpread ? MdCheck : undefined}
+                onClick={() => setKeepCoverSpread(!keepCoverSpread)}
+                disabled={spreadMode === 'none'}
+              />
+            )}
           </>
           <hr aria-hidden='true' className='border-base-300 my-1' />
         </>
@@ -286,19 +294,18 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
       {!isMobileReader && (
         <>
           <MenuItem
-            label={_('Scrolled Mode')}
+            label={_('Continuous')}
             shortcut='Shift+J'
-            Icon={readerMode.scrolled ? MdCheck : undefined}
-            onClick={toggleScrolledMode}
-            disabled={!canUseScrolledMode(readerModeContext)}
+            Icon={readerLayout.layoutMode === 'continuous' ? MdCheck : undefined}
+            onClick={toggleLayoutMode}
           />
 
           <MenuItem
             label={_('Paragraph Mode')}
             shortcut='Shift+P'
-            Icon={readerMode.paragraphMode ? MdCheck : undefined}
+            Icon={readerLayout.paragraphModeEnabled ? MdCheck : undefined}
             onClick={toggleParagraphMode}
-            disabled={!canUseParagraphMode(viewSettings, readerModeContext)}
+            disabled={!canUseParagraphMode(readerLayout)}
           />
         </>
       )}

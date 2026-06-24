@@ -517,10 +517,7 @@ test.describe('Settings reader contract', () => {
     const dialog = await openDesktopSettingsDialog(page);
 
     await selectDesktopSettingsPanel(dialog, 'Behavior');
-    await expect(dialog.locator('[data-setting-id="settings.control.scrolledMode"]')).toBeVisible();
-    await expect(
-      dialog.locator('[data-setting-id="settings.control.continuousScroll"]'),
-    ).toBeVisible();
+    await expect(dialog.locator('[data-setting-id="settings.control.layoutMode"]')).toBeVisible();
     await expect(
       dialog.locator('[data-setting-id="settings.control.overlapPixels"]'),
     ).toBeVisible();
@@ -553,14 +550,32 @@ test.describe('Settings reader contract', () => {
     await expect(dialog.getByText('Volume Keys for Page Flip', { exact: true })).toHaveCount(0);
     await expect(dialog.getByText('Auto Screen Brightness', { exact: true })).toHaveCount(0);
 
-    const initialContinuousScroll = Boolean(await getGlobalViewSetting(page, 'continuousScroll'));
-    const continuousScrollToggle = dialog
-      .locator('[data-setting-id="settings.control.continuousScroll"] input')
+    const initialLayoutMode =
+      ((await getGlobalViewSetting(page, 'layoutMode')) as string | undefined) ?? 'paged';
+    const layoutModeToggle = dialog
+      .locator('[data-setting-id="settings.control.layoutMode"] input')
       .first();
-    await continuousScrollToggle.setChecked(!initialContinuousScroll);
-    await waitForGlobalViewSetting(page, 'continuousScroll', !initialContinuousScroll);
-    await continuousScrollToggle.setChecked(initialContinuousScroll);
-    await waitForGlobalViewSetting(page, 'continuousScroll', initialContinuousScroll);
+    if (initialLayoutMode !== 'continuous') {
+      await layoutModeToggle.setChecked(true);
+      await waitForGlobalViewSetting(page, 'layoutMode', 'continuous');
+    }
+
+    const initialTextContinuousSections = Boolean(
+      await getGlobalViewSetting(page, 'textContinuousSections'),
+    );
+    const textContinuousSectionsToggle = dialog
+      .locator('[data-setting-id="settings.control.textContinuousSections"] input')
+      .first();
+    await expect(textContinuousSectionsToggle).toBeVisible();
+    await textContinuousSectionsToggle.setChecked(!initialTextContinuousSections);
+    await waitForGlobalViewSetting(page, 'textContinuousSections', !initialTextContinuousSections);
+    await textContinuousSectionsToggle.setChecked(initialTextContinuousSections);
+    await waitForGlobalViewSetting(page, 'textContinuousSections', initialTextContinuousSections);
+
+    if (initialLayoutMode !== 'continuous') {
+      await layoutModeToggle.setChecked(false);
+      await waitForGlobalViewSetting(page, 'layoutMode', initialLayoutMode);
+    }
     await attachReaderEvidence(
       page,
       testInfo,
@@ -609,7 +624,7 @@ test.describe('Settings reader contract', () => {
       'Behavior',
       'Language',
       'Custom',
-      'Continuous Scroll',
+      'Reader Layout',
       'Click to Paginate',
       'Tap to Paginate',
       'Enable Quick Actions',
@@ -644,14 +659,14 @@ test.describe('Settings reader contract', () => {
     const menu = page.locator('.view-menu').first();
     await expect(menu).toBeVisible({ timeout: 10_000 });
 
-    await expect(menu.getByText('Scrolled Mode', { exact: true })).toBeVisible();
+    await expect(menu.getByText('Continuous', { exact: true })).toBeVisible();
     await expect(menu.getByText('Paragraph Mode', { exact: true })).toBeVisible();
     for (const absentLabel of [
       'Font & Layout',
       'Behavior',
       'Language',
       'Custom',
-      'Continuous Scroll',
+      'Reader Layout',
       'Interface Language',
       'Custom Content CSS',
       'Allow JavaScript',

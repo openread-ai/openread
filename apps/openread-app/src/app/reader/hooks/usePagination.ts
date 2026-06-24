@@ -9,6 +9,7 @@ import { eventDispatcher } from '@/utils/event';
 import { bridge } from '@/services/bridge/bridgeService';
 import { isTauriAppPlatform } from '@/services/environment';
 import { tauriGetWindowLogicalPosition } from '@/utils/window';
+import { normalizeReaderLayout } from '../utils/readerLayoutContract';
 
 export type ScrollSource = 'touch' | 'mouse';
 
@@ -21,12 +22,22 @@ const swapLeftRight = (side: PaginationSide) => {
   return side;
 };
 
+const getLayoutState = (view: FoliateView | null, viewSettings: ViewSettings | null | undefined) =>
+  view && viewSettings
+    ? normalizeReaderLayout({
+        settings: viewSettings,
+        book: {
+          isFixedLayout: view.book.rendition?.layout === 'pre-paginated',
+          renditionLayout: view.book.rendition?.layout,
+        },
+        platform: {},
+      })
+    : null;
+
 const isPanningView = (view: FoliateView | null, viewSettings: ViewSettings | null | undefined) => {
-  if (!view || !viewSettings) return false;
-  return (
-    view.book.rendition?.layout === 'pre-paginated' &&
-    (viewSettings.zoomLevel > 100 || viewSettings.zoomMode !== 'fit-page')
-  );
+  const layoutState = getLayoutState(view, viewSettings);
+  if (!view || !viewSettings || layoutState?.bookCapability !== 'page') return false;
+  return viewSettings.pageZoomLevel > 100 || viewSettings.pageZoomMode !== 'fit-page';
 };
 
 const hasHorizontalPanning = (
@@ -57,7 +68,8 @@ export const viewPagination = (
   if (view.book.dir === 'rtl') {
     side = swapLeftRight(side);
   }
-  if (renderer.scrolled) {
+  const layoutState = getLayoutState(view, viewSettings);
+  if (layoutState?.layoutMode === 'continuous') {
     const { size } = renderer;
     const showHeader = viewSettings.showHeader && viewSettings.showBarsOnScroll;
     const showFooter = viewSettings.showFooter && viewSettings.showBarsOnScroll;
@@ -188,7 +200,7 @@ export const usePagination = (
           }
         } else if (
           msg.data.type === 'iframe-wheel' &&
-          !viewSettings.scrolled &&
+          getLayoutState(viewRef.current, viewSettings)?.layoutMode === 'paged' &&
           !isPanningView(viewRef.current, viewSettings)
         ) {
           // The wheel event is handled by the iframe itself in scrolled mode.
@@ -242,11 +254,12 @@ export const usePagination = (
   const handleContinuousScroll = (mode: ScrollSource, scrollDelta: number, threshold: number) => {
     const renderer = viewRef.current?.renderer;
     const viewSettings = getViewSettings(bookKey)!;
-    const bookData = getBookData(bookKey)!;
-    // Currently continuous scroll is not supported in pre-paginated layout
-    if (bookData.bookDoc?.rendition?.layout === 'pre-paginated') return;
+    const layoutState = getLayoutState(viewRef.current, viewSettings);
+    const shouldBridgeSectionScroll =
+      layoutState?.layoutMode === 'continuous' &&
+      (layoutState.bookCapability === 'page' || layoutState.textContinuousSections);
 
-    if (renderer && viewSettings.scrolled && viewSettings.continuousScroll) {
+    if (renderer && shouldBridgeSectionScroll) {
       const doScroll = () => {
         // may have overscroll where the start is greater than 0
         if (renderer.start <= scrollDelta && scrollDelta > threshold) {

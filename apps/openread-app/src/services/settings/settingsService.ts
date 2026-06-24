@@ -6,6 +6,11 @@ import type { EnvConfigType } from '@/services/environment';
 import { settingsLocalAdapter } from './settingsLocalAdapter';
 import { createAppServiceSettingsPersistence } from './settingsPersistence';
 import { applySyncableSettings, extractSyncableSettings } from './settingsSyncAdapter';
+import {
+  LEGACY_READER_LAYOUT_KEYS,
+  normalizeLegacyReaderLayoutSettings,
+  stripLegacyReaderLayoutFields,
+} from '@/app/reader/utils/readerLayoutContract';
 
 export interface SettingsSaveOptions {
   sync?: boolean;
@@ -23,7 +28,12 @@ function sanitizeKnownSettings(settings: SystemSettings): {
   migrated: boolean;
 } {
   const migrationResult = migrateSystemSettingsTombstones(settings);
-  const migratedSettings = migrationResult.value;
+  const migratedSettings = {
+    ...migrationResult.value,
+    globalViewSettings: normalizeLegacyReaderLayoutSettings(
+      migrationResult.value.globalViewSettings ?? {},
+    ),
+  };
   const record = migratedSettings as unknown as Record<string, unknown>;
   const result = validateSettingsKeys(record);
   if (result.ok)
@@ -97,15 +107,20 @@ export const settingsService = {
     value: ViewSettings[K],
     options?: SettingsSaveOptions,
   ): Promise<SystemSettings> {
+    if ((LEGACY_READER_LAYOUT_KEYS as readonly string[]).includes(String(key))) {
+      throw new Error(`Legacy reader layout setting "${String(key)}" cannot be written at runtime`);
+    }
     return this.update(
       envConfig,
       current,
       (settings) => ({
         ...settings,
-        globalViewSettings: {
-          ...settings.globalViewSettings,
-          [key]: value,
-        },
+        globalViewSettings: normalizeLegacyReaderLayoutSettings(
+          stripLegacyReaderLayoutFields({
+            ...settings.globalViewSettings,
+            [key]: value,
+          }),
+        ),
       }),
       options,
     );

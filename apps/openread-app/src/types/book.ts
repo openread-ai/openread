@@ -99,6 +99,11 @@ export interface BooknoteGroup {
 
 export type WritingMode = 'auto' | 'horizontal-tb' | 'horizontal-rl' | 'vertical-rl';
 
+export type ReaderBookCapability = 'text' | 'page';
+export type ReaderLayoutMode = 'paged' | 'continuous';
+export type PageZoomMode = 'fit-page' | 'fit-width' | 'original-size' | 'custom';
+export type PageSpreadMode = 'auto' | 'none';
+
 export interface BookLayout {
   marginTopPx: number;
   marginBottomPx: number;
@@ -109,13 +114,13 @@ export interface BookLayout {
   compactMarginLeftPx: number;
   compactMarginRightPx: number;
   gapPercent: number;
-  scrolled: boolean;
+  layoutMode: ReaderLayoutMode;
   disableClick: boolean;
   fullscreenClickArea: boolean;
   swapClickArea: boolean;
   disableDoubleClick: boolean;
   volumeKeysToFlip: boolean;
-  continuousScroll: boolean;
+  textContinuousSections: boolean;
   maxColumnCount: number;
   maxInlineSize: number;
   maxBlockSize: number;
@@ -127,7 +132,6 @@ export interface BookLayout {
 }
 
 export interface BookStyle {
-  zoomLevel: number;
   paragraphMargin: number;
   lineHeight: number;
   wordSpacing: number;
@@ -148,9 +152,10 @@ export interface BookStyle {
   userStylesheet: string;
   userUIStylesheet: string;
 
-  // fixed-layout specific
-  zoomMode: 'fit-page' | 'fit-width' | 'original-size' | 'custom';
-  spreadMode: 'auto' | 'none';
+  // page-book specific
+  pageZoomMode: PageZoomMode;
+  pageZoomLevel: number;
+  pageSpreadMode: PageSpreadMode;
   keepCoverSpread: boolean;
 }
 

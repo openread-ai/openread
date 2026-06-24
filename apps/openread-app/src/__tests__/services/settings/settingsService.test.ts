@@ -45,13 +45,16 @@ describe('settings sync adapter', () => {
       kosync: { enabled: false },
       customFonts: [{ name: 'Local Font' }],
       globalReadSettings: { theme: 'light' },
-      globalViewSettings: { scrolled: true },
+      globalViewSettings: { layoutMode: 'continuous' },
       aiSettings: { provider: 'groq' },
     } as unknown as SystemSettings;
 
     const payload = extractSyncableSettings(local);
     expect(payload.keepLogin).toBe(false);
     expect(payload.globalReadSettings).toEqual({ theme: 'light' });
+    expect(payload.globalViewSettings).toEqual(
+      expect.objectContaining({ layoutMode: 'continuous' }),
+    );
     expect(payload.localBooksDir).toBeUndefined();
     expect(payload.themeMode).toBeUndefined();
     expect(payload.kosync).toBeUndefined();
@@ -96,6 +99,13 @@ describe('settings service sanitization', () => {
     expect(appService.saveSettings).toHaveBeenCalledWith({
       keepLogin: true,
       globalReadSettings: { theme: 'light' },
+      globalViewSettings: expect.objectContaining({
+        layoutMode: 'paged',
+        textContinuousSections: false,
+        pageZoomLevel: 100,
+        pageZoomMode: 'fit-page',
+        pageSpreadMode: 'auto',
+      }),
     });
   });
 });

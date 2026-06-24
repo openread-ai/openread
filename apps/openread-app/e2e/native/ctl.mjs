@@ -4220,7 +4220,7 @@ async function waitForNativeCondition(context, script, scriptArgs = [], timeoutM
   );
 }
 
-async function waitForNativeAsyncCondition(context, script, scriptArgs = [], timeoutMs = 30_000) {
+async function _waitForNativeAsyncCondition(context, script, scriptArgs = [], timeoutMs = 30_000) {
   const started = Date.now();
   let last = null;
   while (Date.now() - started < timeoutMs) {

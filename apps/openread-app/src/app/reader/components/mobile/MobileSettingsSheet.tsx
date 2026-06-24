@@ -13,7 +13,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { saveSysSettings, saveViewSettings } from '@/helpers/settings';
 import { themes } from '@/styles/themes';
 import { debounce } from '@/utils/debounce';
-import { applyReaderModeToRenderer } from '../../utils/readerMode';
+import { applyReaderLayoutToRenderer } from '../../utils/readerLayoutContract';
 import Slider from '@/components/Slider';
 const FONT_SIZE_LIMITS = { MIN: 8, MAX: 30, DEFAULT: 16 } as const;
 const LINE_HEIGHT_LIMITS = { MIN: 8, MAX: 24, MULTIPLIER: 10 } as const;
@@ -38,9 +38,9 @@ function MobileSettingsInner({ bookKey }: { bookKey: string }) {
   const isFixedLayout =
     bookData?.isFixedLayout || bookData?.bookDoc?.rendition?.layout === 'pre-paginated';
 
-  const [zoomLevel, setZoomLevel] = useState(viewSettings?.zoomLevel ?? 100);
-  const [zoomMode, setZoomMode] = useState(viewSettings?.zoomMode ?? 'fit-page');
-  const [spreadMode, setSpreadMode] = useState(viewSettings?.spreadMode ?? 'none');
+  const [zoomLevel, setZoomLevel] = useState(viewSettings?.pageZoomLevel ?? 100);
+  const [zoomMode, setZoomMode] = useState(viewSettings?.pageZoomMode ?? 'fit-page');
+  const [spreadMode, setSpreadMode] = useState(viewSettings?.pageSpreadMode ?? 'none');
 
   const [screenBrightnessValue, setScreenBrightnessValue] = useState(
     settings.screenBrightness >= 0 ? settings.screenBrightness : SCREEN_BRIGHTNESS_LIMITS.DEFAULT,
@@ -99,13 +99,16 @@ function MobileSettingsInner({ bookKey }: { bookKey: string }) {
       view?.renderer.setAttribute('margin', `${marginSizePx}px`);
       view?.renderer.setAttribute('gap', `${gapPercent}%`);
 
-      applyReaderModeToRenderer(view?.renderer, currentViewSettings, {
-        platform: { isMobile: !!appService?.isMobile },
-        book: {
+      applyReaderLayoutToRenderer(
+        view?.renderer,
+        currentViewSettings,
+        {
           isFixedLayout,
           renditionLayout: bookData?.bookDoc?.rendition?.layout,
+          format: bookData?.book?.format,
         },
-      });
+        { isMobile: !!appService?.isMobile },
+      );
     },
     [envConfig, bookKey, view, getViewSettings, appService?.isMobile, isFixedLayout, bookData],
   );
@@ -131,9 +134,9 @@ function MobileSettingsInner({ bookKey }: { bookKey: string }) {
     (value: number) => {
       if (!viewSettings) return;
       setZoomLevel(value);
-      setViewSettings(bookKey, { ...viewSettings, zoomLevel: value });
+      setViewSettings(bookKey, { ...viewSettings, pageZoomLevel: value });
       view?.renderer.setAttribute('scale-factor', value);
-      saveViewSettings(envConfig, bookKey, 'zoomLevel', value, true, true);
+      saveViewSettings(envConfig, bookKey, 'pageZoomLevel', value, true, true);
     },
     [bookKey, envConfig, setViewSettings, view, viewSettings],
   );
@@ -142,9 +145,9 @@ function MobileSettingsInner({ bookKey }: { bookKey: string }) {
     (value: typeof zoomMode) => {
       if (!viewSettings) return;
       setZoomMode(value);
-      setViewSettings(bookKey, { ...viewSettings, zoomMode: value });
+      setViewSettings(bookKey, { ...viewSettings, pageZoomMode: value });
       view?.renderer.setAttribute('zoom', value);
-      saveViewSettings(envConfig, bookKey, 'zoomMode', value, true, false);
+      saveViewSettings(envConfig, bookKey, 'pageZoomMode', value, true, false);
     },
     [bookKey, envConfig, setViewSettings, view, viewSettings],
   );
@@ -153,9 +156,9 @@ function MobileSettingsInner({ bookKey }: { bookKey: string }) {
     (value: typeof spreadMode) => {
       if (!viewSettings) return;
       setSpreadMode(value);
-      setViewSettings(bookKey, { ...viewSettings, spreadMode: value });
+      setViewSettings(bookKey, { ...viewSettings, pageSpreadMode: value });
       view?.renderer.setAttribute('spread', value);
-      saveViewSettings(envConfig, bookKey, 'spreadMode', value, true, false);
+      saveViewSettings(envConfig, bookKey, 'pageSpreadMode', value, true, false);
     },
     [bookKey, envConfig, setViewSettings, view, viewSettings],
   );

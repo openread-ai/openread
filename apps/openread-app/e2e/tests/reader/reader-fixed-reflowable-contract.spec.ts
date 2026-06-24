@@ -102,7 +102,7 @@ async function openDesktopControlPanel(page: Page, testInfo: TestInfo) {
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible({ timeout: 10_000 });
   await dialog.locator('button[title="Behavior"]').click();
-  await expect(dialog.getByText('Continuous Scroll')).toBeVisible({ timeout: 10_000 });
+  await expect(dialog.getByText('Reader Layout')).toBeVisible({ timeout: 10_000 });
   return dialog;
 }
 
@@ -126,10 +126,10 @@ test.describe('Reader fixed-layout vs reflowable contract', () => {
 
     const viewMenu = await openViewMenu(page, testInfo);
     if (isMobileProject(testInfo)) {
-      await expectMenuItemHidden(viewMenu, 'Scrolled Mode');
+      await expectMenuItemHidden(viewMenu, 'Continuous');
       await expectMenuItemHidden(viewMenu, 'Paragraph Mode');
     } else {
-      await expectMenuItemEnabled(viewMenu, 'Scrolled Mode');
+      await expectMenuItemEnabled(viewMenu, 'Continuous');
       await expectMenuItemEnabled(viewMenu, 'Paragraph Mode');
     }
     await expectMenuItemEnabled(viewMenu, 'Speed Reading Mode');
@@ -144,11 +144,12 @@ test.describe('Reader fixed-layout vs reflowable contract', () => {
 
     const viewMenu = await openViewMenu(page, testInfo);
     if (isMobileProject(testInfo)) {
-      await expectMenuItemHidden(viewMenu, 'Scrolled Mode');
+      await expectMenuItemHidden(viewMenu, 'Continuous');
       await expectMenuItemHidden(viewMenu, 'Paragraph Mode');
       await expectMenuItemDisabled(viewMenu, 'Speed Reading Mode');
     } else {
-      for (const label of ['Scrolled Mode', 'Paragraph Mode', 'Speed Reading Mode']) {
+      await expectMenuItemEnabled(viewMenu, 'Continuous');
+      for (const label of ['Paragraph Mode', 'Speed Reading Mode']) {
         await expectMenuItemDisabled(viewMenu, label);
       }
     }
@@ -172,12 +173,10 @@ test.describe('Reader fixed-layout vs reflowable contract', () => {
 
     await openFixtureInReader(page, FIXTURES.reflowable);
     let controlPanel = await openDesktopControlPanel(page, testInfo);
-    await expectControlToggleDisabled(controlPanel, 'Scrolled Mode', false);
-    await expectControlToggleDisabled(controlPanel, 'Continuous Scroll', false);
+    await expectControlToggleDisabled(controlPanel, 'Continuous', false);
 
     await openFixtureInReader(page, FIXTURES.fixed);
     controlPanel = await openDesktopControlPanel(page, testInfo);
-    await expectControlToggleDisabled(controlPanel, 'Scrolled Mode', true);
-    await expectControlToggleDisabled(controlPanel, 'Continuous Scroll', true);
+    await expectControlToggleDisabled(controlPanel, 'Continuous', false);
   });
 });

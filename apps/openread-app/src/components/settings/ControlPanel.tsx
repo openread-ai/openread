@@ -9,13 +9,11 @@ import { useResetViewSettings } from '@/hooks/useResetSettings';
 import { useEinkMode } from '@/hooks/useEinkMode';
 import { saveSysSettings, saveViewSettings } from '@/helpers/settings';
 import {
-  canUseContinuousScroll,
-  canUseScrolledMode,
-  getReaderMode,
-  persistReaderMode,
-  setContinuousScroll,
-  setScrolledMode as setReaderScrolledMode,
-} from '@/app/reader/utils/readerMode';
+  canUseTextContinuousSectionControls,
+  normalizeReaderLayout,
+  persistReaderLayout,
+  setReaderLayoutMode,
+} from '@/app/reader/utils/readerLayoutContract';
 import { SettingsPanelPanelProp } from './SettingsDialog';
 import { annotationToolQuickActions } from '@/app/reader/components/annotator/AnnotationTools';
 import NumberInput from './NumberInput';
@@ -50,14 +48,17 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
   const [isColorEink, setIsColorEink] = useState(viewSettings.isColorEink);
   const [autoScreenBrightness, setAutoScreenBrightness] = useState(settings.autoScreenBrightness);
   const [allowScript, setAllowScript] = useState(viewSettings.allowScript);
-  const readerModeContext = {
-    platform: { isMobile: !!appService?.isMobile },
-    book: {
-      isFixedLayout: bookData?.isFixedLayout,
-      renditionLayout: bookData?.bookDoc?.rendition?.layout,
-    },
+  const readerLayoutBook = {
+    isFixedLayout: bookData?.isFixedLayout,
+    renditionLayout: bookData?.bookDoc?.rendition?.layout,
+    format: bookData?.book?.format,
   };
-  const readerMode = getReaderMode(viewSettings, readerModeContext);
+  const readerLayoutPlatform = { isMobile: !!appService?.isMobile };
+  const readerLayout = normalizeReaderLayout({
+    settings: viewSettings,
+    book: readerLayoutBook,
+    platform: readerLayoutPlatform,
+  });
 
   const resetToDefaults = useResetViewSettings();
 
@@ -79,16 +80,17 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
     });
 
     if (defaultSettings) {
-      void persistReaderMode({
+      void persistReaderLayout({
         envConfig,
         bookKey,
         current: viewSettings,
         next: {
           ...viewSettings,
-          scrolled: defaultSettings.scrolled,
-          continuousScroll: defaultSettings.continuousScroll,
+          layoutMode: defaultSettings.layoutMode,
+          textContinuousSections: defaultSettings.textContinuousSections,
         },
-        context: readerModeContext,
+        book: readerLayoutBook,
+        platform: readerLayoutPlatform,
         renderer: getView(bookKey)?.renderer,
         setViewSettings,
         saveViewSettings,
@@ -101,30 +103,22 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const updateScrolledMode = async (enabled: boolean) => {
-    await persistReaderMode({
+  const updateLayoutMode = async (mode: typeof viewSettings.layoutMode) => {
+    await persistReaderLayout({
       envConfig,
       bookKey,
       current: viewSettings,
-      next: setReaderScrolledMode(viewSettings, readerModeContext, enabled),
-      context: readerModeContext,
+      next: setReaderLayoutMode(viewSettings, mode),
+      book: readerLayoutBook,
+      platform: readerLayoutPlatform,
       renderer: getView(bookKey)?.renderer,
       setViewSettings,
       saveViewSettings,
     });
   };
 
-  const updateContinuousScroll = async (enabled: boolean) => {
-    await persistReaderMode({
-      envConfig,
-      bookKey,
-      current: viewSettings,
-      next: setContinuousScroll(viewSettings, readerModeContext, enabled),
-      context: readerModeContext,
-      renderer: getView(bookKey)?.renderer,
-      setViewSettings,
-      saveViewSettings,
-    });
+  const updateTextContinuousSections = (enabled: boolean) => {
+    saveViewSettings(envConfig, bookKey, 'textContinuousSections', enabled, false, false);
   };
 
   useEffect(() => {
@@ -244,35 +238,45 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
   return (
     <div className='my-4 w-full space-y-6'>
       {!appService?.isMobile && (
-        <div className='w-full' data-setting-id='settings.control.scrolledMode'>
-          <h2 className='mb-2 font-medium'>{_('Scroll')}</h2>
+        <div className='w-full' data-setting-id='settings.control.layoutMode'>
+          <h2 className='mb-2 font-medium'>{_('Reader Layout')}</h2>
           <div className='card border-base-200 bg-base-100 border shadow'>
             <div className='divide-base-200 divide-y'>
               <div className='config-item'>
-                <span className=''>{_('Scrolled Mode')}</span>
+                <span className=''>{_('Continuous')}</span>
                 <input
                   type='checkbox'
                   className='toggle'
-                  checked={readerMode.scrolled}
-                  disabled={!canUseScrolledMode(readerModeContext)}
-                  onChange={() => updateScrolledMode(!readerMode.scrolled)}
+                  checked={readerLayout.layoutMode === 'continuous'}
+                  onChange={() =>
+                    updateLayoutMode(
+                      readerLayout.layoutMode === 'continuous' ? 'paged' : 'continuous',
+                    )
+                  }
                 />
               </div>
-              <div className='config-item' data-setting-id='settings.control.continuousScroll'>
-                <span className=''>{_('Continuous Scroll')}</span>
-                <input
-                  type='checkbox'
-                  className='toggle'
-                  checked={readerMode.continuousScroll}
-                  disabled={!canUseContinuousScroll(viewSettings, readerModeContext)}
-                  onChange={() => updateContinuousScroll(!readerMode.continuousScroll)}
-                />
-              </div>
+              {canUseTextContinuousSectionControls(readerLayout) && (
+                <div
+                  className='config-item'
+                  data-setting-id='settings.control.textContinuousSections'
+                >
+                  <span className=''>{_('Continuous Sections')}</span>
+                  <input
+                    type='checkbox'
+                    className='toggle'
+                    checked={readerLayout.textContinuousSections}
+                    disabled={readerLayout.layoutMode !== 'continuous'}
+                    onChange={() =>
+                      updateTextContinuousSections(!readerLayout.textContinuousSections)
+                    }
+                  />
+                </div>
+              )}
               <NumberInput
                 label={_('Overlap Pixels')}
                 value={scrollingOverlap}
                 onChange={setScrollingOverlap}
-                disabled={!readerMode.scrolled}
+                disabled={readerLayout.layoutMode !== 'continuous'}
                 min={0}
                 max={200}
                 step={10}

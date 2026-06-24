@@ -47,7 +47,7 @@ import {
   handleTouchCancel,
 } from '../utils/iframeEventHandlers';
 import { shouldUseNativeChapterPull } from '../utils/mobileScroll';
-import { applyReaderModeToRenderer, getReaderMode } from '../utils/readerMode';
+import { applyReaderLayoutToRenderer, normalizeReaderLayout } from '../utils/readerLayoutContract';
 import { getMaxInlineSize } from '@/utils/config';
 import { getDirFromUILanguage } from '@/utils/rtl';
 import { isTauriAppPlatform } from '@/services/environment';
@@ -98,14 +98,20 @@ const FoliateViewer: React.FC<{
   const bookData = getBookData(bookKey);
   const viewState = getViewState(bookKey);
   const viewSettings = getViewSettings(bookKey);
-  const readerModeContext = {
-    platform: { isMobile: !!appService?.isMobile },
-    book: {
-      isFixedLayout: bookData?.isFixedLayout,
-      renditionLayout: bookData?.bookDoc?.rendition?.layout,
-    },
+  const readerLayoutBook = {
+    isFixedLayout: bookData?.isFixedLayout,
+    renditionLayout: bookData?.bookDoc?.rendition?.layout,
+    format: bookData?.book?.format,
   };
-  const readerMode = viewSettings ? getReaderMode(viewSettings, readerModeContext) : null;
+  const readerLayoutPlatform = { isMobile: !!appService?.isMobile };
+  const readerLayout = viewSettings
+    ? normalizeReaderLayout({
+        settings: viewSettings,
+        book: readerLayoutBook,
+        platform: readerLayoutPlatform,
+      })
+    : null;
+  const isContinuousLayout = readerLayout?.layoutMode === 'continuous';
 
   const viewRef = useRef<FoliateView | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -229,7 +235,7 @@ const FoliateViewer: React.FC<{
       applyImageStyle(detail.doc);
       applyTableStyle(detail.doc);
       applyThemeModeClass(detail.doc, isDarkMode);
-      applyScrollModeClass(detail.doc, readerMode?.scrolled || false);
+      applyScrollModeClass(detail.doc, isContinuousLayout);
       keepTextAlignment(detail.doc);
       removeTabIndex(detail.doc);
 
@@ -338,7 +344,8 @@ const FoliateViewer: React.FC<{
       }
 
       if (bookDoc.rendition?.layout === 'pre-paginated' && bookDoc.sections) {
-        bookDoc.rendition.spread = viewSettings.spreadMode;
+        bookDoc.rendition.spread =
+          readerLayout?.layoutMode === 'paged' ? viewSettings.pageSpreadMode : 'none';
         const coverSide = bookDoc.dir === 'rtl' ? 'right' : 'left';
         bookDoc.sections[0]!.pageSpread = viewSettings.keepCoverSpread ? '' : coverSide;
       }
@@ -486,9 +493,12 @@ const FoliateViewer: React.FC<{
         applyEinkMode(eink);
       }
       if (bookDoc?.rendition?.layout === 'pre-paginated') {
-        view.renderer.setAttribute('zoom', viewSettings.zoomMode);
-        view.renderer.setAttribute('spread', viewSettings.spreadMode);
-        view.renderer.setAttribute('scale-factor', viewSettings.zoomLevel);
+        view.renderer.setAttribute('zoom', viewSettings.pageZoomMode);
+        view.renderer.setAttribute(
+          'spread',
+          readerLayout?.layoutMode === 'paged' ? viewSettings.pageSpreadMode : 'none',
+        );
+        view.renderer.setAttribute('scale-factor', viewSettings.pageZoomLevel);
       } else {
         view.renderer.setAttribute('max-column-count', maxColumnCount);
         view.renderer.setAttribute('max-inline-size', `${maxInlineSize}px`);
@@ -530,14 +540,19 @@ const FoliateViewer: React.FC<{
     const rightMargin = insets.right + moreRightInset;
     const bottomMargin = (showBottomFooter ? insets.bottom : viewInsets.bottom) + moreBottomInset;
     const leftMargin = insets.left + moreLeftInset;
-    const viewMargins = viewSettings.showMarginsOnScroll && readerMode?.scrolled;
+    const viewMargins = viewSettings.showMarginsOnScroll && isContinuousLayout;
 
     viewRef.current?.renderer.setAttribute('margin-top', `${viewMargins ? 0 : topMargin}px`);
     viewRef.current?.renderer.setAttribute('margin-right', `${rightMargin}px`);
     viewRef.current?.renderer.setAttribute('margin-bottom', `${viewMargins ? 0 : bottomMargin}px`);
     viewRef.current?.renderer.setAttribute('margin-left', `${leftMargin}px`);
     viewRef.current?.renderer.setAttribute('gap', `${viewSettings.gapPercent}%`);
-    applyReaderModeToRenderer(viewRef.current?.renderer, viewSettings, readerModeContext);
+    applyReaderLayoutToRenderer(
+      viewRef.current?.renderer,
+      viewSettings,
+      readerLayoutBook,
+      readerLayoutPlatform,
+    );
   };
 
   useEffect(() => {
@@ -550,14 +565,14 @@ const FoliateViewer: React.FC<{
           applyFixedlayoutStyles(doc, viewSettings);
         }
         applyThemeModeClass(doc, isDarkMode);
-        applyScrollModeClass(doc, readerMode?.scrolled || false);
+        applyScrollModeClass(doc, isContinuousLayout);
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     themeCode,
     isDarkMode,
-    readerMode?.scrolled,
+    isContinuousLayout,
     viewSettings?.overrideColor,
     viewSettings?.invertImgColorInDark,
   ]);
@@ -611,7 +626,7 @@ const FoliateViewer: React.FC<{
     viewState?.ttsEnabled,
   ]);
 
-  const showViewMargins = viewSettings?.showMarginsOnScroll && readerMode?.scrolled;
+  const showViewMargins = viewSettings?.showMarginsOnScroll && isContinuousLayout;
 
   return (
     <>

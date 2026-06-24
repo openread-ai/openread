@@ -1,5 +1,9 @@
 import { migrateBookConfigTombstones } from '@/services/compatibility/tombstones';
 import { BookConfig, BookSearchConfig, ViewSettings } from '@/types/book';
+import {
+  normalizeLegacyReaderLayoutSettings,
+  stripLegacyReaderLayoutFields,
+} from '@/app/reader/utils/readerLayoutContract';
 
 export const serializeConfig = (
   config: BookConfig,
@@ -7,7 +11,9 @@ export const serializeConfig = (
   defaultSearchConfig: BookSearchConfig,
 ): string => {
   config = migrateBookConfigTombstones(JSON.parse(JSON.stringify(config)) as BookConfig).value;
-  const viewSettings = (config.viewSettings ?? {}) as Partial<ViewSettings>;
+  const viewSettings = stripLegacyReaderLayoutFields(
+    normalizeLegacyReaderLayoutSettings(config.viewSettings ?? {}),
+  );
   const searchConfig = (config.searchConfig ?? {}) as Partial<BookSearchConfig>;
   config.viewSettings = Object.entries(viewSettings).reduce(
     (acc: Partial<Record<keyof ViewSettings, unknown>>, [key, value]) => {
@@ -38,10 +44,12 @@ export const deserializeConfig = (
 ): BookConfig => {
   const config = migrateBookConfigTombstones(JSON.parse(str) as BookConfig).value;
   const { viewSettings, searchConfig } = config;
-  config.viewSettings = migrateBookConfigTombstones({
-    ...config,
-    viewSettings: { ...globalViewSettings, ...viewSettings },
-  }).value.viewSettings;
+  config.viewSettings = normalizeLegacyReaderLayoutSettings(
+    migrateBookConfigTombstones({
+      ...config,
+      viewSettings: { ...globalViewSettings, ...viewSettings },
+    }).value.viewSettings ?? {},
+  );
   config.searchConfig = { ...defaultSearchConfig, ...searchConfig };
   config.updatedAt ??= Date.now();
   return config;

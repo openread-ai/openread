@@ -20,6 +20,7 @@ import DesktopFooterBar from './DesktopFooterBar';
 import TTSControl from '../tts/TTSControl';
 import { RSVPControl } from '../rsvp';
 import { LAUNCH_TTS_ENABLED } from '@/services/launchFeatures';
+import { normalizeReaderLayout } from '../../utils/readerLayoutContract';
 
 const FooterBar: React.FC<FooterBarProps> = ({
   bookKey,
@@ -201,9 +202,20 @@ const FooterBar: React.FC<FooterBarProps> = ({
     onSpeakText: handleSpeakText,
   };
 
+  const readerLayout = viewSettings
+    ? normalizeReaderLayout({
+        settings: viewSettings,
+        book: {
+          isFixedLayout: bookData?.isFixedLayout,
+          renditionLayout: bookData?.bookDoc?.rendition?.layout,
+          format: bookData?.book?.format,
+        },
+        platform: { isMobile: !!appService?.isMobile },
+      })
+    : null;
   const needHorizontalScroll =
-    (viewSettings?.vertical && viewSettings?.scrolled) ||
-    (bookData?.isFixedLayout && viewSettings?.zoomLevel && viewSettings.zoomLevel > 100);
+    (viewSettings?.vertical && readerLayout?.layoutMode === 'continuous') ||
+    (bookData?.isFixedLayout && viewSettings?.pageZoomLevel && viewSettings.pageZoomLevel > 100);
 
   const containerClasses = clsx(
     'footer-bar shadow-xs bottom-0 z-10 flex w-full flex-col sm:h-[52px]',

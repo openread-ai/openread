@@ -129,7 +129,7 @@ test.describe('Chromium reader chrome', () => {
 
     const viewMenu = await openViewMenu(page);
     await expect(viewMenu.getByText('Font & Layout')).toBeVisible();
-    await expect(viewMenu.getByText('Scrolled Mode')).toBeVisible();
+    await expect(viewMenu.getByText('Continuous')).toBeVisible();
     await expect(viewMenu.getByText('Paragraph Mode')).toBeVisible();
     await expect(viewMenu.getByText('Speed Reading Mode')).toBeVisible();
     await expect(
@@ -244,13 +244,13 @@ test.describe('Chromium reader chrome', () => {
     await openFirstBookInReader(page);
 
     let viewMenu = await openViewMenu(page);
-    const scrolledMode = viewMenu.getByRole('menuitem', { name: /Scrolled Mode/ });
-    if (await scrolledMode.isDisabled()) {
-      await expect(scrolledMode).toBeDisabled();
+    const layoutMode = viewMenu.getByRole('menuitem', { name: /Continuous/ });
+    if (await layoutMode.isDisabled()) {
+      await expect(layoutMode).toBeDisabled();
     } else {
-      await scrolledMode.click();
+      await layoutMode.click();
       await expect(page.getByRole('document', { name: 'Book Content' })).toBeVisible();
-      await scrolledMode.click();
+      await layoutMode.click();
     }
 
     const themeMode = viewMenu.getByRole('menuitem', {

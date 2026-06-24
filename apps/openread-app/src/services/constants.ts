@@ -155,13 +155,13 @@ export const DEFAULT_BOOK_LAYOUT: BookLayout = {
   compactMarginLeftPx: 16,
   compactMarginRightPx: 16,
   gapPercent: 5,
-  scrolled: false,
+  layoutMode: 'paged',
   disableClick: false,
   fullscreenClickArea: false,
   swapClickArea: false,
   disableDoubleClick: false,
   volumeKeysToFlip: false,
-  continuousScroll: false,
+  textContinuousSections: false,
   maxColumnCount: 2,
   maxInlineSize: getDefaultMaxInlineSize(),
   maxBlockSize: getDefaultMaxBlockSize(),
@@ -178,7 +178,7 @@ export const DEFAULT_BOOK_LANGUAGE: BookLanguage = {
 };
 
 export const DEFAULT_BOOK_STYLE: BookStyle = {
-  zoomLevel: 100,
+  pageZoomLevel: 100,
   paragraphMargin: 0.6,
   lineHeight: 1.4,
   wordSpacing: 0,
@@ -199,8 +199,8 @@ export const DEFAULT_BOOK_STYLE: BookStyle = {
   userStylesheet: '',
   userUIStylesheet: '',
 
-  zoomMode: 'fit-page',
-  spreadMode: 'auto',
+  pageZoomMode: 'fit-page',
+  pageSpreadMode: 'auto',
   keepCoverSpread: true,
 };
 
@@ -210,7 +210,7 @@ export const DEFAULT_MOBILE_VIEW_SETTINGS: Partial<ViewSettings> = {
   defaultFont: 'Sans-serif',
   marginBottomPx: 16,
   disableDoubleClick: true,
-  spreadMode: 'none',
+  pageSpreadMode: 'none',
 };
 
 export const DEFAULT_CJK_VIEW_SETTINGS: Partial<ViewSettings> = {

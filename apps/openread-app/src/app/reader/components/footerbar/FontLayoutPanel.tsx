@@ -7,7 +7,7 @@ import { useReaderStore } from '@/store/readerStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { saveViewSettings } from '@/helpers/settings';
-import { applyReaderModeToRenderer } from '../../utils/readerMode';
+import { applyReaderLayoutToRenderer } from '../../utils/readerLayoutContract';
 import Slider from '@/components/Slider';
 
 const FONT_SIZE_LIMITS = {
@@ -75,13 +75,16 @@ export const FontLayoutPanel: React.FC<FontLayoutPanelProps> = ({
       view?.renderer.setAttribute('margin', `${marginSizePx}px`);
       view?.renderer.setAttribute('gap', `${gapPercent}%`);
 
-      applyReaderModeToRenderer(view?.renderer, currentViewSettings, {
-        platform: { isMobile: !!appService?.isMobile },
-        book: {
+      applyReaderLayoutToRenderer(
+        view?.renderer,
+        currentViewSettings,
+        {
           isFixedLayout: bookData?.isFixedLayout,
           renditionLayout: bookData?.bookDoc?.rendition?.layout,
+          format: bookData?.book?.format,
         },
-      });
+        { isMobile: !!appService?.isMobile },
+      );
     },
     [envConfig, bookKey, view, getViewSettings, appService?.isMobile, bookData],
   );

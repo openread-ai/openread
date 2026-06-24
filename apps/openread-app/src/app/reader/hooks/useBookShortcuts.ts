@@ -15,10 +15,10 @@ import { getStyles } from '@/utils/style';
 import { saveViewSettings } from '@/helpers/settings';
 import useShortcuts from '@/hooks/useShortcuts';
 import {
-  canUseScrolledMode,
-  persistReaderMode,
-  setScrolledMode,
-} from '@/app/reader/utils/readerMode';
+  normalizeReaderLayout,
+  persistReaderLayout,
+  setReaderLayoutMode,
+} from '@/app/reader/utils/readerLayoutContract';
 import { LAUNCH_TTS_ENABLED } from '@/services/launchFeatures';
 import useBooksManager from './useBooksManager';
 
@@ -47,21 +47,24 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
     const bookData = getBookData(sideBarBookKey ?? '');
     if (!viewSettings || !sideBarBookKey) return false;
 
-    const context = {
-      platform: { isMobile: !!appService?.isMobile },
-      book: {
-        isFixedLayout: bookData?.isFixedLayout,
-        renditionLayout: bookData?.bookDoc?.rendition?.layout,
-      },
+    const book = {
+      isFixedLayout: bookData?.isFixedLayout,
+      renditionLayout: bookData?.bookDoc?.rendition?.layout,
+      format: bookData?.book?.format,
     };
-    if (!canUseScrolledMode(context)) return true;
+    const platform = { isMobile: !!appService?.isMobile };
+    const layoutState = normalizeReaderLayout({ settings: viewSettings, book, platform });
 
-    persistReaderMode({
+    persistReaderLayout({
       envConfig,
       bookKey: sideBarBookKey,
       current: viewSettings,
-      next: setScrolledMode(viewSettings, context, !viewSettings.scrolled),
-      context,
+      next: setReaderLayoutMode(
+        viewSettings,
+        layoutState.layoutMode === 'continuous' ? 'paged' : 'continuous',
+      ),
+      book,
+      platform,
       renderer: getView(sideBarBookKey)?.renderer,
       setViewSettings,
       saveViewSettings,
@@ -152,7 +155,7 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
   const goHalfPageDown = () => {
     const view = getView(sideBarBookKey);
     const viewSettings = getViewSettings(sideBarBookKey ?? '');
-    if (view && viewSettings && viewSettings.scrolled) {
+    if (view && viewSettings && view.renderer.scrolled) {
       view.next(view.renderer.size / 2);
     }
   };
@@ -160,7 +163,7 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
   const goHalfPageUp = () => {
     const view = getView(sideBarBookKey);
     const viewSettings = getViewSettings(sideBarBookKey ?? '');
-    if (view && viewSettings && viewSettings.scrolled) {
+    if (view && viewSettings && view.renderer.scrolled) {
       view.prev(view.renderer.size / 2);
     }
   };
@@ -203,7 +206,7 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
     const view = getView(sideBarBookKey);
     const bookData = getBookData(sideBarBookKey);
     const viewSettings = getViewSettings(sideBarBookKey)!;
-    viewSettings!.zoomLevel = zoomLevel;
+    viewSettings!.pageZoomLevel = zoomLevel;
     setViewSettings(sideBarBookKey, viewSettings!);
     view?.renderer.setStyles?.(getStyles(viewSettings!));
     if (bookData?.bookDoc?.rendition?.layout === 'pre-paginated') {
@@ -214,14 +217,14 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
   const zoomInFactor = (factor = 1.0) => {
     if (!sideBarBookKey) return;
     const viewSettings = getViewSettings(sideBarBookKey)!;
-    const zoomLevel = viewSettings!.zoomLevel + ZOOM_STEP * factor;
+    const zoomLevel = viewSettings!.pageZoomLevel + ZOOM_STEP * factor;
     applyZoomLevel(Math.min(zoomLevel, MAX_ZOOM_LEVEL));
   };
 
   const zoomOutFactor = (factor = 1.0) => {
     if (!sideBarBookKey) return;
     const viewSettings = getViewSettings(sideBarBookKey)!;
-    const zoomLevel = viewSettings!.zoomLevel - ZOOM_STEP * factor;
+    const zoomLevel = viewSettings!.pageZoomLevel - ZOOM_STEP * factor;
     applyZoomLevel(Math.max(zoomLevel, MIN_ZOOM_LEVEL));
   };
 

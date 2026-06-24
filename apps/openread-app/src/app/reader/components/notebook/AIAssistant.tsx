@@ -96,6 +96,9 @@ const AIAssistantChat = ({
   bookHash,
   bookKey,
   bookTitle,
+  sourceTitle,
+  metadataTitle,
+  catalogBookId,
   authorName,
   sectionHref,
   sectionFraction,
@@ -107,6 +110,9 @@ const AIAssistantChat = ({
   bookHash: string;
   bookKey: string;
   bookTitle: string;
+  sourceTitle?: string;
+  metadataTitle?: string;
+  catalogBookId?: string | null;
   authorName: string;
   /** Current EPUB section href — used to find the exact chapter. */
   sectionHref?: string;
@@ -140,6 +146,9 @@ const AIAssistantChat = ({
     settings: aiSettings,
     bookHash,
     bookTitle,
+    sourceTitle,
+    metadataTitle,
+    catalogBookId,
     authorName,
     sectionHref,
     sectionFraction,
@@ -156,6 +165,9 @@ const AIAssistantChat = ({
       settings: aiSettings,
       bookHash,
       bookTitle,
+      sourceTitle,
+      metadataTitle,
+      catalogBookId,
       authorName,
       sectionHref,
       sectionFraction,
@@ -400,6 +412,12 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
 
   const bookHash = bookData?.book?.platformHash || getBookIdFromKey(bookKey);
   const bookTitle = bookData?.book?.title || 'Unknown';
+  const sourceTitle = bookData?.book?.sourceTitle;
+  const metadataTitle =
+    typeof bookData?.bookDoc?.metadata?.title === 'string'
+      ? bookData.bookDoc.metadata.title
+      : undefined;
+  const catalogBookId = bookData?.book?.catalogBookId;
   const authorName = bookData?.book?.author || '';
   const bookFormat = bookData?.book?.format;
   const sectionHref = progress?.sectionHref || undefined;
@@ -470,6 +488,9 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
       bookHash={bookHash}
       bookKey={bookKey}
       bookTitle={bookTitle}
+      sourceTitle={sourceTitle}
+      metadataTitle={metadataTitle}
+      catalogBookId={catalogBookId}
       authorName={authorName}
       sectionHref={sectionHref}
       sectionFraction={sectionFraction}

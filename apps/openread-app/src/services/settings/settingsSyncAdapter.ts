@@ -1,6 +1,7 @@
 import { SYNCABLE_SETTINGS_KEYS } from '@openread/settings';
 import type { SystemSettings } from '@/types/settings';
 import {
+  mergeViewSettingsWithLegacyLayout,
   normalizeLegacyReaderLayoutSettings,
   stripLegacyReaderLayoutFields,
 } from '@/app/reader/utils/readerLayoutContract';
@@ -31,10 +32,10 @@ export function applySyncableSettings(
     if (remote[key] !== undefined) {
       (merged as unknown as Record<string, unknown>)[key] =
         key === 'globalViewSettings'
-          ? normalizeLegacyReaderLayoutSettings({
-              ...local.globalViewSettings,
-              ...(remote[key] as Record<string, unknown>),
-            })
+          ? mergeViewSettingsWithLegacyLayout(
+              local.globalViewSettings,
+              remote[key] as Record<string, unknown>,
+            )
           : remote[key];
     }
   }

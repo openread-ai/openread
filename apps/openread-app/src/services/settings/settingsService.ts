@@ -8,6 +8,8 @@ import { createAppServiceSettingsPersistence } from './settingsPersistence';
 import { applySyncableSettings, extractSyncableSettings } from './settingsSyncAdapter';
 import {
   LEGACY_READER_LAYOUT_KEYS,
+  hasLegacyReaderLayoutFields,
+  mergeViewSettingsWithLegacyLayout,
   normalizeLegacyReaderLayoutSettings,
   stripLegacyReaderLayoutFields,
 } from '@/app/reader/utils/readerLayoutContract';
@@ -28,16 +30,23 @@ function sanitizeKnownSettings(settings: SystemSettings): {
   migrated: boolean;
 } {
   const migrationResult = migrateSystemSettingsTombstones(settings);
+  const hadLegacyGlobalViewSettings = hasLegacyReaderLayoutFields(
+    migrationResult.value.globalViewSettings,
+  );
   const migratedSettings = {
     ...migrationResult.value,
-    globalViewSettings: normalizeLegacyReaderLayoutSettings(
+    globalViewSettings: mergeViewSettingsWithLegacyLayout(
       migrationResult.value.globalViewSettings ?? {},
     ),
   };
   const record = migratedSettings as unknown as Record<string, unknown>;
   const result = validateSettingsKeys(record);
   if (result.ok)
-    return { settings: migratedSettings, droppedKeys: [], migrated: migrationResult.changed };
+    return {
+      settings: migratedSettings,
+      droppedKeys: [],
+      migrated: migrationResult.changed || hadLegacyGlobalViewSettings,
+    };
 
   const sanitized = { ...record };
   for (const key of result.unknownKeys) delete sanitized[key];
@@ -45,7 +54,7 @@ function sanitizeKnownSettings(settings: SystemSettings): {
   return {
     settings: sanitized as unknown as SystemSettings,
     droppedKeys: result.unknownKeys,
-    migrated: migrationResult.changed,
+    migrated: migrationResult.changed || hadLegacyGlobalViewSettings,
   };
 }
 

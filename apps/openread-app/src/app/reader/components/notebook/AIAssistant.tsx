@@ -25,6 +25,13 @@ import { useBookChapters } from '@/app/reader/hooks/useBookChapters';
 import { Thread } from '@/components/assistant/Thread';
 import { getBookIdFromKey } from '@/utils/readerBookKey';
 import { LAUNCH_BYOK_ENABLED } from '@/services/launchFeatures';
+import { normalizeReaderLayout } from '@/app/reader/utils/readerLayoutContract';
+import {
+  getCanonicalReaderLocation,
+  getReaderNavigationTargetFromAICitation,
+  navigateReaderToTarget,
+  type CanonicalReaderLocation,
+} from '@/app/reader/utils/readerLocationContract';
 
 // Helper function to convert AIMessage array to ExportedMessageRepository format
 // Each message needs to be wrapped with { message, parentId } structure
@@ -105,6 +112,7 @@ const AIAssistantChat = ({
   chapterTitle,
   bookFormat,
   bookDoc,
+  readerLocation,
 }: {
   aiSettings: AISettings;
   bookHash: string;
@@ -121,8 +129,9 @@ const AIAssistantChat = ({
   chapterTitle?: string;
   bookFormat?: string;
   bookDoc: import('@/libs/document').BookDoc | null;
+  readerLocation: CanonicalReaderLocation;
 }) => {
-  const { getChapters, getVisualContextImages } = useBookChapters(bookDoc, sectionHref);
+  const { getChapters, getVisualContextImages } = useBookChapters(bookDoc, readerLocation);
   const {
     activeConversationId,
     addMessage,
@@ -157,6 +166,7 @@ const AIAssistantChat = ({
     bookSubjects,
     getChapters,
     getVisualContextImages,
+    readerLocation,
   });
 
   // update ref on every render with latest values
@@ -176,6 +186,7 @@ const AIAssistantChat = ({
       bookSubjects,
       getChapters,
       getVisualContextImages,
+      readerLocation,
     };
   });
 
@@ -401,9 +412,10 @@ const ThreadWrapper = ({
 
 const AIAssistant = ({ bookKey }: AIAssistantProps) => {
   const _ = useTranslation();
+  const { appService } = useEnv();
   const { settings } = useSettingsStore();
   const { getBookData } = useBookDataStore();
-  const { getView, getProgress } = useReaderStore();
+  const { getView, getProgress, getViewSettings } = useReaderStore();
   const { user } = useAuth();
   const fetchInitialQuota = useAIQuotaStore((s) => s.fetchInitial);
   const userId = user?.id;
@@ -420,10 +432,35 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
   const catalogBookId = bookData?.book?.catalogBookId;
   const authorName = bookData?.book?.author || '';
   const bookFormat = bookData?.book?.format;
-  const sectionHref = progress?.sectionHref || undefined;
-  const sectionPage = progress?.section;
-  const sectionFraction =
-    sectionPage && sectionPage.total > 0 ? (sectionPage.current + 1) / sectionPage.total : 0;
+  const viewSettings = getViewSettings(bookKey) ?? settings?.globalViewSettings;
+  const readerBookInput = useMemo(
+    () => ({
+      isFixedLayout: bookData?.isFixedLayout,
+      renditionLayout: bookData?.bookDoc?.rendition?.layout,
+      format: bookFormat,
+    }),
+    [bookData?.isFixedLayout, bookData?.bookDoc?.rendition?.layout, bookFormat],
+  );
+  const readerLayoutState = useMemo(
+    () =>
+      normalizeReaderLayout({
+        settings: viewSettings ?? {},
+        book: readerBookInput,
+        platform: { isMobile: !!appService?.isMobile },
+      }),
+    [appService?.isMobile, readerBookInput, viewSettings],
+  );
+  const readerLocation = useMemo(
+    () =>
+      getCanonicalReaderLocation({
+        progress,
+        book: readerBookInput,
+        layoutState: readerLayoutState,
+      }),
+    [progress, readerBookInput, readerLayoutState],
+  );
+  const sectionHref = readerLocation.sectionHref;
+  const sectionFraction = readerLocation.sectionFraction ?? 0;
   const chapterTitle = progress?.sectionLabel || undefined;
   const aiSettings = settings?.aiSettings;
 
@@ -434,28 +471,31 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
     }
   }, [userId, aiSettings?.enabled, fetchInitialQuota]);
 
-  // Listen for citation link clicks — navigate the reader to the cited offset.
-  // Character offset is converted to a fraction of total book content for goToFraction().
-  const { getChapters: getChaptersForNav } = useBookChapters(bookData?.bookDoc ?? null);
+  const { getChapters: getChaptersForNav } = useBookChapters(
+    bookData?.bookDoc ?? null,
+    readerLocation,
+  );
   useEffect(() => {
     const handleNavigateToOffset = async (event: CustomEvent) => {
       const offset = event.detail?.offset;
       const quoteText = event.detail?.quoteText as string | undefined;
       if (typeof offset !== 'number' || offset < 0) return;
 
-      const view = getView(bookKey);
-      if (!view) return;
-
       const chapters = await getChaptersForNav();
       const totalChars = chapters.reduce((sum, ch) => sum + ch.text.length, 0);
-      if (totalChars === 0) return;
+      if (totalChars === 0 && readerLocation.bookCapability === 'text') return;
 
-      const fraction = Math.min(1, Math.max(0, offset / totalChars));
-      console.log(
-        `[citation-nav] offset ${offset} → fraction ${fraction.toFixed(4)} | ` +
-          `totalChars: ${totalChars}, chapters: ${chapters.length}`,
-      );
-      await view.goToFraction(fraction);
+      const target = getReaderNavigationTargetFromAICitation({
+        offset,
+        quoteText,
+        chapters,
+        location: readerLocation,
+      });
+      if (!target) return;
+
+      const view = getView(bookKey);
+      if (!view) return;
+      await navigateReaderToTarget(view, target, { offset, totalChars });
 
       // TODO: Flash-highlight the quoted text in the reader for 1.5s
       // Requires flashHighlight() implementation — see GitHub issue
@@ -470,7 +510,7 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
     return () => {
       eventDispatcher.off('navigate-to-offset', handleNavigateToOffset);
     };
-  }, [bookKey, getView, getChaptersForNav]);
+  }, [bookKey, getView, getChaptersForNav, readerLocation]);
 
   if (!aiSettings?.enabled) {
     return (
@@ -497,6 +537,7 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
       chapterTitle={chapterTitle}
       bookFormat={bookFormat}
       bookDoc={bookData?.bookDoc ?? null}
+      readerLocation={readerLocation}
     />
   );
 };

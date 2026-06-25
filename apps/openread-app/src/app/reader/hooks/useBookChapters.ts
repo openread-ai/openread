@@ -1,6 +1,7 @@
 import { useCallback, useRef } from 'react';
 import type { BookDoc, TOCItem } from '@/libs/document';
 import type { ReaderChapter, ReaderVisualContextImage } from '@/services/ai/tools/bookTools';
+import type { CanonicalReaderLocation } from '@/app/reader/utils/readerLocationContract';
 import { createLogger } from '@/utils/logger';
 
 const logger = createLogger('book-chapters');
@@ -109,7 +110,14 @@ async function imageBlobToVisionDataUrl(blob: Blob): Promise<string | null> {
   return dataUrl.startsWith('data:image/') ? dataUrl : null;
 }
 
-function findVisualStartIndex(sections: VisualSection[], sectionHref?: string): number {
+function findVisualStartIndex(
+  sections: VisualSection[],
+  sectionHref?: string,
+  pageNumber?: number,
+): number {
+  if (!sectionHref && pageNumber && pageNumber > 0) {
+    return Math.min(sections.length - 1, Math.max(0, pageNumber - 1));
+  }
   if (!sectionHref) return 0;
   const base = sectionHref.split('#')[0]!;
   const index = sections.findIndex((section) => {
@@ -394,12 +402,13 @@ function chunkChapters(
 export async function buildReaderVisualContextImages(
   bookDoc: BookDoc,
   sectionHref?: string,
+  pageNumber?: number,
 ): Promise<ReaderVisualContextImage[]> {
   const sections = (bookDoc.sections || []) as VisualSection[];
   const visualSections = sections.filter((section) => typeof section.load === 'function');
   if (visualSections.length === 0) return [];
 
-  const startIndex = findVisualStartIndex(visualSections, sectionHref);
+  const startIndex = findVisualStartIndex(visualSections, sectionHref, pageNumber);
   const images: ReaderVisualContextImage[] = [];
   const candidates = visualSections.slice(startIndex, startIndex + MAX_VISUAL_CONTEXT_IMAGES);
 
@@ -509,11 +518,21 @@ export async function buildReaderChaptersForAI(bookDoc: BookDoc): Promise<Reader
  * BookDoc on first call, then caches the result. Subsequent calls return
  * the cached chapters instantly. Cache is invalidated when bookDoc changes.
  */
-export function useBookChapters(bookDoc: BookDoc | null | undefined, sectionHref?: string) {
+export function useBookChapters(
+  bookDoc: BookDoc | null | undefined,
+  locationOrSectionHref?: string | CanonicalReaderLocation,
+) {
+  const sectionHref =
+    typeof locationOrSectionHref === 'string'
+      ? locationOrSectionHref
+      : locationOrSectionHref?.sectionHref;
+  const pageNumber =
+    typeof locationOrSectionHref === 'string' ? undefined : locationOrSectionHref?.pageNumber;
   const cacheRef = useRef<{ forDoc: BookDoc; chapters: ReaderChapter[] } | null>(null);
   const visualCacheRef = useRef<{
     forDoc: BookDoc;
     sectionHref?: string;
+    pageNumber?: number;
     images: ReaderVisualContextImage[];
   } | null>(null);
 
@@ -536,15 +555,16 @@ export function useBookChapters(bookDoc: BookDoc | null | undefined, sectionHref
 
     if (
       visualCacheRef.current?.forDoc === bookDoc &&
-      visualCacheRef.current.sectionHref === sectionHref
+      visualCacheRef.current.sectionHref === sectionHref &&
+      visualCacheRef.current.pageNumber === pageNumber
     ) {
       return visualCacheRef.current.images;
     }
 
-    const images = await buildReaderVisualContextImages(bookDoc, sectionHref);
-    visualCacheRef.current = { forDoc: bookDoc, sectionHref, images };
+    const images = await buildReaderVisualContextImages(bookDoc, sectionHref, pageNumber);
+    visualCacheRef.current = { forDoc: bookDoc, sectionHref, pageNumber, images };
     return images;
-  }, [bookDoc, sectionHref]);
+  }, [bookDoc, sectionHref, pageNumber]);
 
   return { getChapters, getVisualContextImages };
 }

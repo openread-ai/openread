@@ -3,6 +3,7 @@ import type { ViewSettings } from '@/types/book';
 import {
   getInitialReaderViewSettings,
   getReaderBookCapability,
+  mergeViewSettingsWithLegacyLayout,
   normalizeLegacyReaderLayoutSettings,
   normalizeReaderLayout,
   setParagraphMode,
@@ -86,6 +87,32 @@ describe('readerLayoutContract', () => {
       pageSpreadMode: 'none',
     });
     expect(stripLegacyReaderLayoutFields(migrated)).not.toHaveProperty('scrolled');
+  });
+
+  it('merges legacy layout before source precedence so canonical values win', () => {
+    const merged = mergeViewSettingsWithLegacyLayout(
+      { scrolled: true, continuousScroll: true, zoomLevel: 125 },
+      { layoutMode: 'paged', pageZoomLevel: 175 },
+    );
+
+    expect(merged).toMatchObject({
+      layoutMode: 'paged',
+      textContinuousSections: true,
+      pageZoomLevel: 175,
+    });
+    expect(stripLegacyReaderLayoutFields(merged)).not.toHaveProperty('scrolled');
+  });
+
+  it('lets newer legacy source override older canonical source only after migration', () => {
+    const merged = mergeViewSettingsWithLegacyLayout(
+      { layoutMode: 'paged', textContinuousSections: false },
+      { scrolled: true, continuousScroll: true },
+    );
+
+    expect(merged).toMatchObject({
+      layoutMode: 'continuous',
+      textContinuousSections: true,
+    });
   });
 
   it('normalizes stale text paragraph settings when switching to continuous layout', () => {

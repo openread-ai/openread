@@ -74,6 +74,47 @@ describe('settings sync adapter', () => {
     expect((merged as unknown as { themeMode: string }).themeMode).toBe('dark');
     expect(merged.customFonts).toEqual([{ name: 'Local Font' }]);
   });
+
+  it('strips legacy reader layout fields before sync push', () => {
+    const payload = extractSyncableSettings({
+      globalViewSettings: {
+        layoutMode: 'paged',
+        scrolled: true,
+        continuousScroll: true,
+        zoomLevel: 150,
+      },
+    } as unknown as SystemSettings);
+
+    expect(payload.globalViewSettings).toEqual(
+      expect.objectContaining({
+        layoutMode: 'paged',
+        textContinuousSections: true,
+        pageZoomLevel: 150,
+      }),
+    );
+    expect(payload.globalViewSettings).not.toHaveProperty('scrolled');
+    expect(payload.globalViewSettings).not.toHaveProperty('continuousScroll');
+    expect(payload.globalViewSettings).not.toHaveProperty('zoomLevel');
+  });
+
+  it('migrates remote legacy layout before applying canonical sync precedence', () => {
+    const merged = applySyncableSettings(
+      {
+        globalViewSettings: { layoutMode: 'paged', textContinuousSections: false },
+      } as unknown as SystemSettings,
+      {
+        globalViewSettings: { scrolled: true, continuousScroll: true },
+      },
+    );
+
+    expect(merged.globalViewSettings).toEqual(
+      expect.objectContaining({
+        layoutMode: 'continuous',
+        textContinuousSections: true,
+      }),
+    );
+    expect(merged.globalViewSettings).not.toHaveProperty('scrolled');
+  });
 });
 
 describe('settings service sanitization', () => {

@@ -68,6 +68,10 @@ import {
   makeSafeFilename,
 } from '@/utils/misc';
 import { migrateSystemSettingsTombstones } from '@/services/compatibility/tombstones';
+import {
+  hasLegacyReaderLayoutFields,
+  mergeViewSettingsWithLegacyLayout,
+} from '@/app/reader/utils/readerLayoutContract';
 import { deserializeConfig, serializeConfig } from '@/utils/serializer';
 import { downloadFile } from '@/libs/storage';
 import { ClosableFile } from '@/utils/file';
@@ -289,10 +293,11 @@ export abstract class BaseAppService implements AppService {
       ...(this.isMobile ? DEFAULT_MOBILE_READSETTINGS : {}),
       ...settings.globalReadSettings,
     };
-    settings.globalViewSettings = {
-      ...this.getDefaultViewSettings(),
-      ...settings.globalViewSettings,
-    };
+    const hadLegacyGlobalViewSettings = hasLegacyReaderLayoutFields(settings.globalViewSettings);
+    settings.globalViewSettings = mergeViewSettingsWithLegacyLayout(
+      this.getDefaultViewSettings(),
+      settings.globalViewSettings,
+    );
     settings.aiSettings = {
       ...DEFAULT_AI_SETTINGS,
       ...settings.aiSettings,
@@ -306,7 +311,7 @@ export abstract class BaseAppService implements AppService {
     if (!settings.kosync.deviceId) {
       settings.kosync.deviceId = uuidv4();
       await this.saveSettings(settings);
-    } else if (migrationResult.changed) {
+    } else if (migrationResult.changed || hadLegacyGlobalViewSettings) {
       await this.saveSettings(settings);
     }
 

@@ -42,6 +42,23 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
   const lineHeight = viewSettings?.lineHeight ?? 1.6;
   const distance = fontSize * lineHeight * 3;
 
+  const getCurrentLayoutState = () => {
+    const viewSettings = getViewSettings(sideBarBookKey ?? '');
+    const bookData = getBookData(sideBarBookKey ?? '');
+    if (!viewSettings) return null;
+    return normalizeReaderLayout({
+      settings: viewSettings,
+      book: {
+        isFixedLayout: bookData?.isFixedLayout,
+        renditionLayout: bookData?.bookDoc?.rendition?.layout,
+        format: bookData?.book?.format,
+      },
+      platform: { isMobile: !!appService?.isMobile },
+    });
+  };
+
+  const isContinuousLayout = () => getCurrentLayoutState()?.layoutMode === 'continuous';
+
   const toggleScrollMode = () => {
     const viewSettings = getViewSettings(sideBarBookKey ?? '');
     const bookData = getBookData(sideBarBookKey ?? '');
@@ -104,7 +121,7 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
       eventDispatcher.dispatch('paragraph-prev', { bookKey: sideBarBookKey });
       return;
     }
-    if (view?.renderer.scrolled && event instanceof MessageEvent) return;
+    if (isContinuousLayout() && event instanceof MessageEvent) return;
     viewPagination(view, viewSettings, 'up', 'pan', distance);
   };
 
@@ -116,7 +133,7 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
       eventDispatcher.dispatch('paragraph-next', { bookKey: sideBarBookKey });
       return;
     }
-    if (view?.renderer.scrolled && event instanceof MessageEvent) return;
+    if (isContinuousLayout() && event instanceof MessageEvent) return;
     viewPagination(view, viewSettings, 'down', 'pan', distance);
   };
 
@@ -155,7 +172,7 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
   const goHalfPageDown = () => {
     const view = getView(sideBarBookKey);
     const viewSettings = getViewSettings(sideBarBookKey ?? '');
-    if (view && viewSettings && view.renderer.scrolled) {
+    if (view && viewSettings && isContinuousLayout()) {
       view.next(view.renderer.size / 2);
     }
   };
@@ -163,7 +180,7 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
   const goHalfPageUp = () => {
     const view = getView(sideBarBookKey);
     const viewSettings = getViewSettings(sideBarBookKey ?? '');
-    if (view && viewSettings && view.renderer.scrolled) {
+    if (view && viewSettings && isContinuousLayout()) {
       view.prev(view.renderer.size / 2);
     }
   };

@@ -28,6 +28,7 @@ import TTSPanel from './TTSPanel';
 import TTSIcon from './TTSIcon';
 import TTSBar from './TTSBar';
 import { createLogger } from '@/utils/logger';
+import { normalizeReaderLayout } from '@/app/reader/utils/readerLayoutContract';
 
 const logger = createLogger('tts');
 
@@ -236,7 +237,18 @@ const TTSControl: React.FC<TTSControlProps> = ({ bookKey, gridInsets }) => {
         return;
       }
 
-      if (!view.renderer.scrolled) {
+      const bookData = getBookData(bookKey);
+      const layoutState = normalizeReaderLayout({
+        settings: viewSettings,
+        book: {
+          isFixedLayout: bookData?.isFixedLayout,
+          renditionLayout: bookData?.bookDoc?.rendition?.layout,
+          format: bookData?.book?.format,
+        },
+        platform: { isMobile: !!appService?.isMobile },
+      });
+
+      if (layoutState.layoutMode !== 'continuous') {
         view.renderer.scrollToAnchor(range);
       } else {
         const rect = range.getBoundingClientRect();

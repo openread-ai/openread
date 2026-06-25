@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { useEnv } from '@/context/EnvContext';
 import { useReaderStore } from '@/store/readerStore';
+import { useBookDataStore } from '@/store/bookDataStore';
+import { normalizeReaderLayout } from '@/app/reader/utils/readerLayoutContract';
 import { getOSPlatform } from '@/utils/misc';
 import { eventDispatcher } from '@/utils/event';
 import { isPointerInsideSelection, TextSelection } from '@/utils/sel';
@@ -13,7 +15,8 @@ export const useTextSelector = (
   showDesktopNativeMenu?: (x: number, y: number) => void,
 ) => {
   const { appService } = useEnv();
-  const { getView } = useReaderStore();
+  const { getView, getViewSettings } = useReaderStore();
+  const { getBookData } = useBookDataStore();
   const view = getView(bookKey);
   const osPlatform = getOSPlatform();
 
@@ -180,7 +183,21 @@ export const useTextSelector = (
     // Uses overflow-anchor: none on container + re-anchor to selection start position.
     if (osPlatform !== 'android' || !appService?.isAndroidApp) return;
 
-    if (view?.renderer?.scrolled) return;
+    const viewSettings = getViewSettings(bookKey);
+    const bookData = getBookData(bookKey);
+    const layoutState = viewSettings
+      ? normalizeReaderLayout({
+          settings: viewSettings,
+          book: {
+            isFixedLayout: bookData?.isFixedLayout,
+            renditionLayout: bookData?.bookDoc?.rendition?.layout,
+            format: bookData?.book?.format,
+          },
+          platform: { isMobile: !!appService?.isMobile },
+        })
+      : null;
+
+    if (layoutState?.layoutMode === 'continuous') return;
 
     if (isTextSelected.current && view?.renderer) {
       // Apply overflow-anchor: none to prevent browser auto-scroll

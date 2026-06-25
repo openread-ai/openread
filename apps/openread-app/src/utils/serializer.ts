@@ -1,7 +1,8 @@
 import { migrateBookConfigTombstones } from '@/services/compatibility/tombstones';
 import { BookConfig, BookSearchConfig, ViewSettings } from '@/types/book';
 import {
-  normalizeLegacyReaderLayoutSettings,
+  mergeViewSettingsWithLegacyLayout,
+  migrateLegacyReaderLayoutSettings,
   stripLegacyReaderLayoutFields,
 } from '@/app/reader/utils/readerLayoutContract';
 
@@ -12,7 +13,7 @@ export const serializeConfig = (
 ): string => {
   config = migrateBookConfigTombstones(JSON.parse(JSON.stringify(config)) as BookConfig).value;
   const viewSettings = stripLegacyReaderLayoutFields(
-    normalizeLegacyReaderLayoutSettings(config.viewSettings ?? {}),
+    migrateLegacyReaderLayoutSettings(config.viewSettings ?? {}),
   );
   const searchConfig = (config.searchConfig ?? {}) as Partial<BookSearchConfig>;
   config.viewSettings = Object.entries(viewSettings).reduce(
@@ -44,10 +45,11 @@ export const deserializeConfig = (
 ): BookConfig => {
   const config = migrateBookConfigTombstones(JSON.parse(str) as BookConfig).value;
   const { viewSettings, searchConfig } = config;
-  config.viewSettings = normalizeLegacyReaderLayoutSettings(
+  config.viewSettings = mergeViewSettingsWithLegacyLayout(
+    globalViewSettings,
     migrateBookConfigTombstones({
       ...config,
-      viewSettings: { ...globalViewSettings, ...viewSettings },
+      viewSettings,
     }).value.viewSettings ?? {},
   );
   config.searchConfig = { ...defaultSearchConfig, ...searchConfig };

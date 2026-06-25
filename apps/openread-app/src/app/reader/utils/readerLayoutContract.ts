@@ -94,6 +94,10 @@ export function getReaderBookCapability(input: ReaderLayoutBookInput): ReaderBoo
   return 'text';
 }
 
+export function hasLegacyReaderLayoutFields(settings: unknown): boolean {
+  return isRecord(settings) && LEGACY_READER_LAYOUT_KEYS.some((key) => hasOwn(settings, key));
+}
+
 export function stripLegacyReaderLayoutFields(
   settings: Partial<ViewSettings> | LegacyReaderLayoutSettings,
 ): Partial<ViewSettings> {
@@ -102,35 +106,63 @@ export function stripLegacyReaderLayoutFields(
   return next as Partial<ViewSettings>;
 }
 
+export function migrateLegacyReaderLayoutSettings(
+  settings: Partial<ViewSettings> | LegacyReaderLayoutSettings,
+): Partial<ViewSettings> {
+  const source = (isRecord(settings) ? settings : {}) as LegacyReaderLayoutSettings;
+  const canonical = stripLegacyReaderLayoutFields(settings) as Partial<ViewSettings>;
+  const migrated: Partial<ViewSettings> = { ...canonical };
+
+  if (migrated.layoutMode === undefined && typeof source.scrolled === 'boolean') {
+    migrated.layoutMode = source.scrolled ? 'continuous' : 'paged';
+  }
+  if (
+    migrated.textContinuousSections === undefined &&
+    typeof source.continuousScroll === 'boolean'
+  ) {
+    migrated.textContinuousSections = source.continuousScroll;
+  }
+  if (migrated.pageZoomMode === undefined && source.zoomMode) {
+    migrated.pageZoomMode = source.zoomMode;
+  }
+  if (migrated.pageZoomLevel === undefined && typeof source.zoomLevel === 'number') {
+    migrated.pageZoomLevel = source.zoomLevel;
+  }
+  if (migrated.pageSpreadMode === undefined && source.spreadMode) {
+    migrated.pageSpreadMode = source.spreadMode;
+  }
+
+  return migrated;
+}
+
+export function mergeViewSettingsWithLegacyLayout(
+  ...sources: Array<Partial<ViewSettings> | LegacyReaderLayoutSettings | null | undefined>
+): ViewSettings {
+  const merged = sources.reduce<Partial<ViewSettings>>(
+    (acc, source) => ({
+      ...acc,
+      ...migrateLegacyReaderLayoutSettings(source ?? {}),
+    }),
+    {} as Partial<ViewSettings>,
+  );
+  return normalizeLegacyReaderLayoutSettings(merged);
+}
+
 export function normalizeLegacyReaderLayoutSettings(
   settings: Partial<ViewSettings> | LegacyReaderLayoutSettings,
 ): ViewSettings {
-  const source = (isRecord(settings) ? settings : {}) as LegacyReaderLayoutSettings;
-  const canonical = stripLegacyReaderLayoutFields(settings) as Partial<ViewSettings>;
-
-  const legacyScrolled = source.scrolled;
-  const legacyContinuousScroll = source.continuousScroll;
-  const legacyZoomMode = source.zoomMode;
-  const legacyZoomLevel = source.zoomLevel;
-  const legacySpreadMode = source.spreadMode;
+  const migrated = migrateLegacyReaderLayoutSettings(settings);
 
   return {
-    ...canonical,
-    layoutMode:
-      canonical.layoutMode ??
-      (legacyScrolled === true ? 'continuous' : legacyScrolled === false ? 'paged' : 'paged'),
-    textContinuousSections:
-      canonical.textContinuousSections ??
-      (typeof legacyContinuousScroll === 'boolean' ? legacyContinuousScroll : false),
-    pageZoomMode:
-      canonical.pageZoomMode ?? (legacyZoomMode as PageZoomMode | undefined) ?? 'fit-page',
-    pageZoomLevel:
-      canonical.pageZoomLevel ?? (typeof legacyZoomLevel === 'number' ? legacyZoomLevel : 100),
-    pageSpreadMode:
-      canonical.pageSpreadMode ?? (legacySpreadMode as PageSpreadMode | undefined) ?? 'auto',
-    keepCoverSpread: canonical.keepCoverSpread ?? true,
-    scrollingOverlap: canonical.scrollingOverlap ?? 0,
-    paragraphMode: canonical.paragraphMode ?? { enabled: false },
+    ...migrated,
+    layoutMode: migrated.layoutMode ?? 'paged',
+    textContinuousSections: migrated.textContinuousSections ?? false,
+    pageZoomMode: migrated.pageZoomMode ?? 'fit-page',
+    pageZoomLevel: migrated.pageZoomLevel ?? 100,
+    pageSpreadMode: migrated.pageSpreadMode ?? 'auto',
+    keepCoverSpread: migrated.keepCoverSpread ?? true,
+    scrollingOverlap: migrated.scrollingOverlap ?? 0,
+    paragraphMode: migrated.paragraphMode ?? { enabled: false },
   } as ViewSettings;
 }
 
@@ -229,10 +261,7 @@ export function getInitialReaderViewSettings({
   book: ReaderLayoutBookInput;
   platform: ReaderLayoutPlatformInput;
 }): ViewSettings {
-  const merged = normalizeLegacyReaderLayoutSettings({
-    ...globalViewSettings,
-    ...configViewSettings,
-  });
+  const merged = mergeViewSettingsWithLegacyLayout(globalViewSettings, configViewSettings);
   const rawState = normalizeReaderLayout({ settings: configViewSettings, book, platform });
   const useMobileTextDefault =
     rawState.bookCapability === 'text' &&

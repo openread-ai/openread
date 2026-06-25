@@ -312,6 +312,102 @@ describe('SyncWorker book reconcile queue', () => {
     expect(secondSettled).toBe(true);
   });
 
+  it('skips malformed remote book config rows while applying valid first-open configs', async () => {
+    const { SyncWorker } = await import('@/services/sync/syncWorker');
+    const worker = new SyncWorker();
+    (worker as unknown as { stopped: boolean; userId: string }).stopped = false;
+    (worker as unknown as { stopped: boolean; userId: string }).userId = 'user-1';
+
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    mocks.pullChanges.mockResolvedValueOnce({
+      configs: [
+        {
+          book_hash: 'not-a-syncable-hash',
+          updated_at: '2026-06-25T00:00:00.000Z',
+        },
+        {
+          book_hash: mocks.libraryBook.hash,
+          progress: [4, 10],
+          location: 'epubcfi(/6/18)',
+          updated_at: '2026-06-25T00:00:10.000Z',
+        },
+      ],
+      cursorByEntity: { bookConfig: 'remote-cursor-1' },
+    });
+
+    const configs = await worker.pullBookConfigs();
+
+    expect(configs).toHaveLength(1);
+    expect(configs[0]).toMatchObject({
+      bookHash: mocks.libraryBook.hash,
+      progress: [4, 10],
+      location: 'epubcfi(/6/18)',
+    });
+    expect(mocks.bookDataState.configs.get(mocks.libraryBook.hash)).toMatchObject({
+      progress: [4, 10],
+      location: 'epubcfi(/6/18)',
+    });
+    expect(mocks.bookDataState.preSyncedConfigs[mocks.libraryBook.hash]).toMatchObject({
+      progress: [4, 10],
+      location: 'epubcfi(/6/18)',
+    });
+    expect(consoleError).toHaveBeenCalledWith(
+      '[SyncWorker] Skipping malformed remote book config row:',
+      expect.any(Error),
+    );
+    consoleError.mockRestore();
+  });
+
+  it('advances the config watermark for malformed-only remote rows after logging skip', async () => {
+    const { SyncWorker } = await import('@/services/sync/syncWorker');
+    const { getCanonicalSyncCursor } = await import('@/services/sync/cursors');
+    const worker = new SyncWorker();
+    (worker as unknown as { stopped: boolean; userId: string }).stopped = false;
+    (worker as unknown as { stopped: boolean; userId: string }).userId = 'user-1';
+
+    const skippedAt = '2026-06-25T00:00:20.000Z';
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    mocks.pullChanges.mockResolvedValueOnce({
+      configs: [{ book_hash: 'not-a-syncable-hash', updated_at: skippedAt }],
+      cursorByEntity: {},
+    });
+
+    const configs = await worker.pullBookConfigs();
+
+    expect(configs).toEqual([]);
+    expect(getCanonicalSyncCursor('user-1', 'bookConfig')).toBe(new Date(skippedAt).getTime());
+    expect(consoleError).toHaveBeenCalledWith(
+      '[SyncWorker] Skipping malformed remote book config row:',
+      expect.any(Error),
+    );
+    consoleError.mockRestore();
+  });
+
+  it('advances the notes watermark for malformed-only remote rows after logging skip', async () => {
+    const { SyncWorker } = await import('@/services/sync/syncWorker');
+    const { getCanonicalSyncCursor } = await import('@/services/sync/cursors');
+    const worker = new SyncWorker();
+    (worker as unknown as { stopped: boolean; userId: string }).stopped = false;
+    (worker as unknown as { stopped: boolean; userId: string }).userId = 'user-1';
+
+    const skippedAt = '2026-06-25T00:00:30.000Z';
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    mocks.pullChanges.mockResolvedValueOnce({
+      notes: [{ book_hash: 'not-a-syncable-hash', id: 'bad-note', updated_at: skippedAt }],
+      cursorByEntity: {},
+    });
+
+    const notes = await worker.pullBookNotes();
+
+    expect(notes).toEqual([]);
+    expect(getCanonicalSyncCursor('user-1', 'bookNote')).toBe(new Date(skippedAt).getTime());
+    expect(consoleError).toHaveBeenCalledWith(
+      '[SyncWorker] Skipping malformed remote book note row:',
+      expect.any(Error),
+    );
+    consoleError.mockRestore();
+  });
+
   it('applies canonical bookConfig tombstones and advances the config watermark', async () => {
     const { SyncWorker } = await import('@/services/sync/syncWorker');
     const worker = new SyncWorker();

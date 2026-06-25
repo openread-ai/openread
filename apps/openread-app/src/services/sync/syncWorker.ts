@@ -116,6 +116,51 @@ function configDeletePatch(bookHash: SyncableBookRef, deletedAt: number): Partia
   };
 }
 
+type RemoteConfigTransform = { config: BookConfig; record: BookDataRecord };
+type RemoteNoteTransform = { note: BookNote; record: BookDataRecord };
+type RemoteConfigTransformResult = {
+  rows: RemoteConfigTransform[];
+  skippedRecords: BookDataRecord[];
+};
+type RemoteNoteTransformResult = {
+  rows: RemoteNoteTransform[];
+  skippedRecords: BookDataRecord[];
+};
+
+function transformRemoteConfigRows(dbConfigs: unknown[]): RemoteConfigTransformResult {
+  const rows: RemoteConfigTransform[] = [];
+  const skippedRecords: BookDataRecord[] = [];
+  for (const row of dbConfigs) {
+    try {
+      rows.push({
+        config: transformBookConfigFromDB(row as DBBookConfig),
+        record: row as BookDataRecord,
+      });
+    } catch (error) {
+      skippedRecords.push(row as BookDataRecord);
+      console.error('[SyncWorker] Skipping malformed remote book config row:', error);
+    }
+  }
+  return { rows, skippedRecords };
+}
+
+function transformRemoteNoteRows(dbNotes: unknown[]): RemoteNoteTransformResult {
+  const rows: RemoteNoteTransform[] = [];
+  const skippedRecords: BookDataRecord[] = [];
+  for (const row of dbNotes) {
+    try {
+      rows.push({
+        note: transformBookNoteFromDB(row as DBBookNote),
+        record: row as BookDataRecord,
+      });
+    } catch (error) {
+      skippedRecords.push(row as BookDataRecord);
+      console.error('[SyncWorker] Skipping malformed remote book note row:', error);
+    }
+  }
+  return { rows, skippedRecords };
+}
+
 const scopedBookCursor = (
   bookHash?: SyncableBookRef,
   metaHash?: MetaHash | null,
@@ -769,7 +814,9 @@ export class SyncWorker {
         return [];
       }
 
-      const configs = dbConfigs.map((c) => transformBookConfigFromDB(c as unknown as DBBookConfig));
+      const { rows: configRows, skippedRecords: skippedConfigRecords } =
+        transformRemoteConfigRows(dbConfigs);
+      const configs = configRows.map(({ config }) => config);
       const bookDataStore = useBookDataStore.getState();
       // Build lookup map of active (non-deleted) books to skip orphaned configs
       const library = useLibraryStore.getState().library;
@@ -784,11 +831,11 @@ export class SyncWorker {
       const acceptedConfigTombstones: SyncTombstone[] = [];
 
       for (let index = 0; index < configs.length; index += 1) {
-        const config = configs[index]!;
+        const { config, record } = configRows[index]!;
         if (!config.bookHash) continue;
         const book = bookByHash.get(config.bookHash);
         if (!book) continue;
-        acceptedConfigRecords.push(dbConfigs[index] as unknown as BookDataRecord);
+        acceptedConfigRecords.push(record);
         const bookKey = book.hash;
         const existing = bookDataStore.getConfig(bookKey);
         if (!existing || (config.updatedAt ?? 0) >= (existing.updatedAt ?? 0)) {
@@ -847,6 +894,7 @@ export class SyncWorker {
 
       const maxTime = Math.max(
         computeMaxTimestamp(acceptedConfigRecords),
+        computeMaxTimestamp(skippedConfigRecords),
         computeMaxTombstoneTimestamp(acceptedConfigTombstones),
       );
       if (maxTime > 0) {
@@ -897,7 +945,9 @@ export class SyncWorker {
         return [];
       }
 
-      const notes = dbNotes.map((n) => transformBookNoteFromDB(n as unknown as DBBookNote));
+      const { rows: noteRows, skippedRecords: skippedNoteRecords } =
+        transformRemoteNoteRows(dbNotes);
+      const notes = noteRows.map(({ note }) => note);
       const bookDataStore = useBookDataStore.getState();
 
       // Group notes by bookHash
@@ -980,6 +1030,7 @@ export class SyncWorker {
       );
       const maxTime = Math.max(
         computeMaxTimestamp(appliedNoteRecords),
+        computeMaxTimestamp(skippedNoteRecords),
         computeMaxTombstoneTimestamp(appliedNoteTombstones),
       );
       if (maxTime > 0) {

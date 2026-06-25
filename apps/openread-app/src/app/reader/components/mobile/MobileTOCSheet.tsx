@@ -11,9 +11,9 @@ type TabType = 'chapters' | 'highlights' | 'bookmarks';
 export function MobileTOCContent({ bookKey }: { bookKey: string }) {
   const _ = useTranslation();
   const [activeTab, setActiveTab] = useState<TabType>('chapters');
-  const { getBookData, getConfig } = useBookDataStore();
+  const { getBookDataByReaderKey, getConfig } = useBookDataStore();
   const { getViewSettings } = useReaderStore();
-  const bookData = getBookData(bookKey);
+  const bookData = getBookDataByReaderKey(bookKey);
   const viewSettings = getViewSettings(bookKey);
   const bookDoc = bookData?.bookDoc;
   const config = getConfig(bookKey);

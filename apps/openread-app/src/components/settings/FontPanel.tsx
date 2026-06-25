@@ -96,12 +96,12 @@ const FontPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
   const _ = useTranslation();
   const { envConfig, appService } = useEnv();
   const { getView, getViewSettings } = useReaderStore();
-  const { getBookData } = useBookDataStore();
+  const { getBookDataByReaderKey } = useBookDataStore();
   const { settings, fontPanelView, setFontPanelView } = useSettingsStore();
   const { fonts: allCustomFonts, getFontFamilies } = useCustomFontStore();
   const viewSettings = getViewSettings(bookKey) || settings.globalViewSettings;
   const view = getView(bookKey);
-  const bookData = getBookData(bookKey);
+  const bookData = getBookDataByReaderKey(bookKey);
   const isFixedLayout =
     bookData?.isFixedLayout || bookData?.bookDoc?.rendition?.layout === 'pre-paginated';
   const iconSize18 = useResponsiveSize(18);

@@ -24,7 +24,7 @@ import { useSettingsStore } from './settingsStore';
 import { useBookDataStore } from './bookDataStore';
 import { useLibraryStore } from './libraryStore';
 import { uniqueId } from '@/utils/misc';
-import { getBookIdFromKey } from '@/utils/readerBookKey';
+import { parseBookRefFromReaderBookKey } from '@/utils/readerBookKey';
 import { getInitialReaderViewSettings } from '@/app/reader/utils/readerLayoutContract';
 
 interface ViewState {
@@ -112,7 +112,10 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
   getViewsById: (id: string) => {
     const { viewStates } = get();
     return Object.values(viewStates)
-      .filter((state) => state.key && state.key.startsWith(id))
+      .filter((state) => {
+        const bookRef = parseBookRefFromReaderBookKey(state.key);
+        return bookRef === id;
+      })
       .map((state) => state.view!);
   },
 
@@ -280,8 +283,11 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
   },
   getViewSettings: (key: string) => get().viewStates[key]?.viewSettings || null,
   setViewSettings: (key: string, viewSettings: ViewSettings) => {
-    if (!key) return;
-    const id = getBookIdFromKey(key);
+    const id = parseBookRefFromReaderBookKey(key);
+    if (!id) {
+      logger.warn('Ignoring setViewSettings for invalid reader key/ref', { key });
+      return;
+    }
     const bookData = useBookDataStore.getState().booksData[id];
     const viewState = get().viewStates[key];
     if (!viewState || !bookData) return;
@@ -321,7 +327,11 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
     range: Range,
   ) =>
     set((state) => {
-      const id = getBookIdFromKey(key);
+      const id = parseBookRefFromReaderBookKey(key);
+      if (!id) {
+        logger.warn('Ignoring setProgress for invalid reader key/ref', { key });
+        return state;
+      }
       const bookData = useBookDataStore.getState().booksData[id];
       const viewState = state.viewStates[key];
       if (!viewState || !bookData) return state;
@@ -478,7 +488,11 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
     })),
 
   recreateViewer: (envConfig: EnvConfigType, key: string) => {
-    const id = getBookIdFromKey(key);
+    const id = parseBookRefFromReaderBookKey(key);
+    if (!id) {
+      logger.warn('Ignoring recreateViewer for invalid reader key/ref', { key });
+      return;
+    }
     get()
       .initViewState(envConfig, id, key, true, true)
       .then(() => {

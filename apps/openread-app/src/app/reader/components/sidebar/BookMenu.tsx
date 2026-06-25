@@ -23,7 +23,7 @@ import { getParallelReadMenuBooks } from '../../utils/parallelReadEligibility';
 // import { setAboutDialogVisible } from '@/components/AboutWindow'; // disabled: About
 import { useBookDataStore } from '@/store/bookDataStore';
 import { sortTocItems } from '@/utils/toc';
-import { getBookIdFromKey } from '@/utils/readerBookKey';
+import { parseBookRefFromReaderBookKey } from '@/utils/readerBookKey';
 import useBooksManager from '../../hooks/useBooksManager';
 import MenuItem from '@/components/MenuItem';
 import Menu from '@/components/Menu';
@@ -41,13 +41,13 @@ export const BookMenuItems: React.FC<BookMenuItemsProps> = ({ bookKey, setIsDrop
   // const auth = useAuth();
   // const settings = useSettingsStore();
   const { bookKeys, getViewSettings, setViewSettings } = useReaderStore();
-  const { getBookData } = useBookDataStore();
+  const { getBookDataByReaderKey } = useBookDataStore();
   const { getVisibleLibrary } = useLibraryStore();
   const { openParallelView } = useBooksManager();
   const { sideBarBookKey, setSideBarBookKey } = useSidebarStore();
   const { parallelViews, setParallel, unsetParallel } = useParallelViewStore();
   const activeBookKey = bookKey ?? sideBarBookKey ?? bookKeys[0];
-  const activeBookId = activeBookKey ? getBookIdFromKey(activeBookKey) : undefined;
+  const activeBookId = activeBookKey ? parseBookRefFromReaderBookKey(activeBookKey) : undefined;
   const viewSettings = activeBookKey ? getViewSettings(activeBookKey) : undefined;
 
   const [isSortedTOC, setIsSortedTOC] = React.useState(viewSettings?.sortedTOC || false);
@@ -56,7 +56,10 @@ export const BookMenuItems: React.FC<BookMenuItemsProps> = ({ bookKey, setIsDrop
     setIsSortedTOC(viewSettings?.sortedTOC || false);
   }, [viewSettings?.sortedTOC, activeBookKey]);
 
-  const eligibleParallelBooks = getParallelReadMenuBooks(getVisibleLibrary(), activeBookId);
+  const eligibleParallelBooks = getParallelReadMenuBooks(
+    getVisibleLibrary(),
+    activeBookId ?? undefined,
+  );
 
   const handleParallelView = (id: string) => {
     if (activeBookKey) setSideBarBookKey(activeBookKey);
@@ -85,7 +88,7 @@ export const BookMenuItems: React.FC<BookMenuItemsProps> = ({ bookKey, setIsDrop
     setViewSettings(activeBookKey, nextViewSettings);
 
     // Sort TOC in place instead of recreating the entire viewer
-    const bookData = getBookData(activeBookKey);
+    const bookData = getBookDataByReaderKey(activeBookKey);
     const toc = bookData?.bookDoc?.toc;
     if (toc) {
       if (newSorted) {

@@ -32,7 +32,7 @@ const FooterBar: React.FC<FooterBarProps> = ({
 }) => {
   const _ = useTranslation();
   const { appService } = useEnv();
-  const { getConfig, setConfig, getBookData } = useBookDataStore();
+  const { getConfig, setConfig, getBookDataByReaderKey } = useBookDataStore();
   const { settings } = useSettingsStore();
   const { hoveredBookKey, setHoveredBookKey } = useReaderStore();
   const { getView, getViewState, getProgress, getViewSettings } = useReaderStore();
@@ -41,7 +41,7 @@ const FooterBar: React.FC<FooterBarProps> = ({
 
   const view = getView(bookKey);
   const config = getConfig(bookKey);
-  const bookData = getBookData(bookKey);
+  const bookData = getBookDataByReaderKey(bookKey);
   const viewState = getViewState(bookKey);
   const progress = getProgress(bookKey);
   const viewSettings = getViewSettings(bookKey);

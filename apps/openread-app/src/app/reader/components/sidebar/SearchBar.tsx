@@ -19,7 +19,7 @@ import { createRejectFilter } from '@/utils/node';
 import Dropdown from '@/components/Dropdown';
 import SearchOptions from './SearchOptions';
 import { createLogger } from '@/utils/logger';
-import { getBookIdFromKey } from '@/utils/readerBookKey';
+import { parseBookRefFromReaderBookKey } from '@/utils/readerBookKey';
 import { LOCAL_PERSISTENCE_PREFIXES } from '@/services/persistence/localPersistenceRegistry';
 
 const logger = createLogger('search');
@@ -41,7 +41,7 @@ const SearchBar: React.FC<SearchBarProps> = ({ isVisible, bookKey, onBack, onHid
   const _ = useTranslation();
   const { envConfig, appService } = useEnv();
   const { settings } = useSettingsStore();
-  const { getBookData } = useBookDataStore();
+  const { getBookDataByReaderKey } = useBookDataStore();
   const { getConfig, setConfig, saveConfig } = useBookDataStore();
   const { getView, getProgress, getViewSettings } = useReaderStore();
   const { setSearchTerm, setSearchResults, setSearchProgress } = useSidebarStore();
@@ -54,8 +54,11 @@ const SearchBar: React.FC<SearchBarProps> = ({ isVisible, bookKey, onBack, onHid
   const inputRef = useRef<HTMLInputElement>(null);
   const inputFocusedRef = useRef(false);
 
-  const bookHash = useMemo(() => getBookIdFromKey(bookKey), [bookKey]);
-  const historyStorageKey = useMemo(() => `${SEARCH_HISTORY_KEY_PREFIX}${bookHash}`, [bookHash]);
+  const bookHash = useMemo(() => parseBookRefFromReaderBookKey(bookKey), [bookKey]);
+  const historyStorageKey = useMemo(
+    () => `${SEARCH_HISTORY_KEY_PREFIX}${bookHash ?? 'unknown'}`,
+    [bookHash],
+  );
 
   const [searchHistory, setSearchHistory] = useState<string[]>(() => {
     if (typeof window !== 'undefined') {
@@ -161,7 +164,7 @@ const SearchBar: React.FC<SearchBarProps> = ({ isVisible, bookKey, onBack, onHid
 
   const view = getView(bookKey)!;
   const config = getConfig(bookKey)!;
-  const bookData = getBookData(bookKey)!;
+  const bookData = getBookDataByReaderKey(bookKey)!;
   const progress = getProgress(bookKey)!;
   const primaryLang = bookData.book?.primaryLanguage || 'en';
 

@@ -127,6 +127,8 @@ const InlineQuestionBar: React.FC<InlineQuestionBarProps> = ({ bookKey }) => {
       // Store the question so AIAssistant auto-sends it when it mounts
       setPendingQuestion(trimmed);
 
+      if (!primaryBookHash) return;
+
       // Create conversation under the primary book
       await createConversation(primaryBookHash, trimmed.slice(0, 50), getParallelHashes());
       openAIChat();

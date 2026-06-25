@@ -16,7 +16,7 @@ export const useTextSelector = (
 ) => {
   const { appService } = useEnv();
   const { getView, getViewSettings } = useReaderStore();
-  const { getBookData } = useBookDataStore();
+  const { getBookDataByReaderKey } = useBookDataStore();
   const view = getView(bookKey);
   const osPlatform = getOSPlatform();
 
@@ -184,7 +184,7 @@ export const useTextSelector = (
     if (osPlatform !== 'android' || !appService?.isAndroidApp) return;
 
     const viewSettings = getViewSettings(bookKey);
-    const bookData = getBookData(bookKey);
+    const bookData = getBookDataByReaderKey(bookKey);
     const layoutState = viewSettings
       ? normalizeReaderLayout({
           settings: viewSettings,

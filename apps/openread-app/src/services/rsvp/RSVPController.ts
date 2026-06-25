@@ -4,7 +4,7 @@ import { containsCJK, splitTextIntoWords } from './utils';
 import { compare as compareCFI } from 'foliate-js/epubcfi.js';
 import { XCFI } from '@/utils/xcfi';
 import { createLogger } from '@/utils/logger';
-import { getBookIdFromKey } from '@/utils/readerBookKey';
+import { parseBookRefFromReaderBookKey } from '@/utils/readerBookKey';
 import { LOCAL_PERSISTENCE_PREFIXES } from '@/services/persistence/localPersistenceRegistry';
 
 const logger = createLogger('rsvp');
@@ -45,8 +45,14 @@ export class RSVPController extends EventTarget {
     super();
     this.view = view;
     this.bookKey = bookKey;
-    // Use only the stable book hash for persistent position storage across sessions.
-    this.bookId = getBookIdFromKey(bookKey);
+    // Use only the stable book ref for persistent position storage across sessions.
+    const bookRef = parseBookRefFromReaderBookKey(bookKey);
+    if (!bookRef) {
+      logger.warn('Invalid reader key for RSVP controller; using non-persistent fallback', {
+        bookKey,
+      });
+    }
+    this.bookId = bookRef ?? 'invalid-reader-book';
     this.loadSettings();
   }
 

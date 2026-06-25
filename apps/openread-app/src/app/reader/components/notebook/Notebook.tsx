@@ -40,7 +40,7 @@ const Notebook: React.FC = ({}) => {
   const { notebookWidth, isNotebookVisible, isNotebookPinned, notebookActiveTab } =
     useNotebookStore();
   const { notebookNewAnnotation, notebookEditAnnotation, setNotebookPin } = useNotebookStore();
-  const { getBookData, getConfig, saveConfig, updateBooknotes } = useBookDataStore();
+  const { getBookDataByReaderKey, getConfig, saveConfig, updateBooknotes } = useBookDataStore();
   const { getView, getViewSettings } = useReaderStore();
   const { getNotebookWidth, setNotebookWidth, setNotebookVisible, toggleNotebookPin } =
     useNotebookStore();
@@ -48,7 +48,7 @@ const Notebook: React.FC = ({}) => {
     useNotebookStore();
   const { activeConversationId, createConversation } = useAIChatStore();
   const conversations = useAIChatStore((s) => s.conversations);
-  const { primaryBookHash, getParallelHashes } = usePrimaryBookHash(sideBarBookKey ?? '');
+  const { primaryBookHash, getParallelHashes } = usePrimaryBookHash(sideBarBookKey);
 
   const [isSearchBarVisible, setIsSearchBarVisible] = useState(false);
   const [searchResults, setSearchResults] = useState<BookNote[] | null>(null);
@@ -118,6 +118,7 @@ const Notebook: React.FC = ({}) => {
   };
 
   const handleNewAIChat = useCallback(async () => {
+    if (!primaryBookHash) return;
     await createConversation(primaryBookHash, 'New conversation', getParallelHashes());
   }, [createConversation, primaryBookHash, getParallelHashes]);
 
@@ -230,7 +231,7 @@ const Notebook: React.FC = ({}) => {
 
   if (!sideBarBookKey) return null;
 
-  const bookData = getBookData(sideBarBookKey);
+  const bookData = getBookDataByReaderKey(sideBarBookKey);
   const viewSettings = getViewSettings(sideBarBookKey);
   if (!bookData || !bookData.bookDoc) {
     return null;

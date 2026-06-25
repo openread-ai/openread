@@ -34,7 +34,7 @@ import { getHighlightColorHex } from '../../utils/annotatorUtil';
 import { registerNativeMenuBridge } from '@/services/annotation/nativeMenuBridge';
 import { bridge } from '@/services/bridge/bridgeService';
 import { ANNOTATION_ACTION_EVENT } from '@/services/annotation/menuConfig';
-import { getBookIdFromKey } from '@/utils/readerBookKey';
+import { parseBookRefFromReaderBookKey } from '@/utils/readerBookKey';
 import type { AnnotationActionEvent } from '@/services/annotation/menuConfig';
 import { annotationToolButtons } from './AnnotationTools';
 import AnnotationRangeEditor from './AnnotationRangeEditor';
@@ -59,7 +59,7 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   const { envConfig, appService } = useEnv();
   const { settings } = useSettingsStore();
   const { isDarkMode } = useThemeStore();
-  const { getConfig, saveConfig, getBookData, updateBooknotes } = useBookDataStore();
+  const { getConfig, saveConfig, getBookDataByReaderKey, updateBooknotes } = useBookDataStore();
   const { getProgress, getView, getViewsById, getViewSettings } = useReaderStore();
   const { setNotebookVisible, openNotebookForAnnotation } = useNotebookStore();
   const { listenToNativeTouchEvents } = useDeviceControlStore();
@@ -70,7 +70,7 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   const osPlatform = getOSPlatform();
   const config = getConfig(bookKey)!;
   const progress = getProgress(bookKey)!;
-  const bookData = getBookData(bookKey)!;
+  const bookData = getBookDataByReaderKey(bookKey)!;
   const view = getView(bookKey);
   const viewSettings = getViewSettings(bookKey)!;
   const primaryLang = bookData.book?.primaryLanguage || 'en';
@@ -675,7 +675,9 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
         annotation.style &&
         !annotation.deletedAt,
     );
-    const views = getViewsById(getBookIdFromKey(bookKey));
+    const bookRef = parseBookRefFromReaderBookKey(bookKey);
+    if (!bookRef) return;
+    const views = getViewsById(bookRef);
     if (existingIndex !== -1) {
       views.forEach((view) => view?.addAnnotation(annotation, true));
       if (update) {

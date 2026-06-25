@@ -15,10 +15,10 @@ const TranslationToggler = ({ bookKey }: { bookKey: string }) => {
   const _ = useTranslation();
   const translateGate = useFeatureGate('translate');
   const { envConfig, appService } = useEnv();
-  const { getBookData } = useBookDataStore();
+  const { getBookDataByReaderKey } = useBookDataStore();
   const { getViewSettings, setViewSettings, setHoveredBookKey } = useReaderStore();
 
-  const bookData = getBookData(bookKey);
+  const bookData = getBookDataByReaderKey(bookKey);
   const viewSettings = getViewSettings(bookKey)!;
   const [translationEnabled, setTranslationEnabled] = useState(viewSettings.translationEnabled!);
   const [translationAvailable, setTranslationAvailable] = useState(

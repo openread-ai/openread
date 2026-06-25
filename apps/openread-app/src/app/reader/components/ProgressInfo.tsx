@@ -32,10 +32,10 @@ const ProgressInfoView: React.FC<PageInfoProps> = ({
 }) => {
   const _ = useTranslation();
   const { envConfig, appService } = useEnv();
-  const { getBookData } = useBookDataStore();
+  const { getBookDataByReaderKey } = useBookDataStore();
   const { getView, getViewSettings } = useReaderStore();
   const view = getView(bookKey);
-  const bookData = getBookData(bookKey);
+  const bookData = getBookDataByReaderKey(bookKey);
   const viewSettings = getViewSettings(bookKey)!;
 
   const showDoubleBorder = viewSettings.vertical && viewSettings.doubleBorder;

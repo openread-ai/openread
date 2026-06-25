@@ -21,14 +21,14 @@ const BookmarkToggler: React.FC<BookmarkTogglerProps> = ({ bookKey }) => {
   const _ = useTranslation();
   const { envConfig } = useEnv();
   const { settings } = useSettingsStore();
-  const { getConfig, saveConfig, getBookData, updateBooknotes } = useBookDataStore();
+  const { getConfig, saveConfig, getBookDataByReaderKey, updateBooknotes } = useBookDataStore();
   const { getProgress, getViewState, setBookmarkRibbonVisibility } = useReaderStore();
   const [isBookmarked, setIsBookmarked] = useState(false);
   const config = getConfig(bookKey);
   const progress = getProgress(bookKey);
 
   const toggleBookmark = () => {
-    const bookData = getBookData(bookKey);
+    const bookData = getBookDataByReaderKey(bookKey);
     const config = getConfig(bookKey);
     const progress = getProgress(bookKey);
     if (!bookData || !config || !progress) return;

@@ -47,7 +47,7 @@ const TTSControl: React.FC<TTSControlProps> = ({ bookKey, gridInsets }) => {
   const { user } = useAuth();
   const { safeAreaInsets, isDarkMode } = useThemeStore();
   const { settings } = useSettingsStore();
-  const { getBookData } = useBookDataStore();
+  const { getBookDataByReaderKey } = useBookDataStore();
   const { hoveredBookKey, getView, getProgress, getViewSettings } = useReaderStore();
   const { setViewSettings, setTTSEnabled } = useReaderStore();
   const { getMergedRules } = useProofreadStore();
@@ -119,7 +119,7 @@ const TTSControl: React.FC<TTSControlProps> = ({ bookKey, gridInsets }) => {
     mediaSessionRef.current = mediaSession;
 
     if (mediaSession instanceof TauriMediaSession) {
-      const bookData = getBookData(bookKey);
+      const bookData = getBookDataByReaderKey(bookKey);
       const progress = getProgress(bookKey);
       if (!bookData || !bookData.book) return;
       const { title, author, coverImageUrl } = bookData.book;
@@ -180,7 +180,7 @@ const TTSControl: React.FC<TTSControlProps> = ({ bookKey, gridInsets }) => {
 
   useEffect(() => {
     if (!ttsController || !bookKey) return;
-    const bookData = getBookData(bookKey);
+    const bookData = getBookDataByReaderKey(bookKey);
     if (!bookData || !bookData.book) return;
     const { title, author, coverImageUrl } = bookData.book;
 
@@ -237,7 +237,7 @@ const TTSControl: React.FC<TTSControlProps> = ({ bookKey, gridInsets }) => {
         return;
       }
 
-      const bookData = getBookData(bookKey);
+      const bookData = getBookDataByReaderKey(bookKey);
       const layoutState = normalizeReaderLayout({
         settings: viewSettings,
         book: {
@@ -289,13 +289,13 @@ const TTSControl: React.FC<TTSControlProps> = ({ bookKey, gridInsets }) => {
     if (viewSettings?.translationEnabled && ttsReadAloudText === 'translated') {
       return viewSettings?.translateTargetLang || getLocale();
     } else if (viewSettings?.translationEnabled && ttsReadAloudText === 'source') {
-      const bookData = getBookData(bookKey);
+      const bookData = getBookDataByReaderKey(bookKey);
       return bookData?.book?.primaryLanguage || '';
     }
     return null;
   }, [
     bookKey,
-    getBookData,
+    getBookDataByReaderKey,
     viewSettings?.translationEnabled,
     viewSettings?.ttsReadAloudText,
     viewSettings?.translateTargetLang,
@@ -369,7 +369,7 @@ const TTSControl: React.FC<TTSControlProps> = ({ bookKey, gridInsets }) => {
     const view = getView(bookKey);
     const progress = getProgress(bookKey);
     const viewSettings = getViewSettings(bookKey);
-    const bookData = getBookData(bookKey);
+    const bookData = getBookDataByReaderKey(bookKey);
     if (!view || !progress || !viewSettings || !bookData || !bookData.book) return;
     if (bookData.book?.format === 'pdf') {
       eventDispatcher.dispatch('toast', {

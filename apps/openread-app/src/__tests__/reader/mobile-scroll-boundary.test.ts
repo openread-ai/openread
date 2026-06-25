@@ -92,7 +92,7 @@ describe('mobile reader scroll boundaries', () => {
       textContinuousSections: true,
       vertical: false,
     } as never);
-    vi.spyOn(useBookDataStore.getState(), 'getBookData').mockReturnValue({
+    vi.spyOn(useBookDataStore.getState(), 'getBookDataByReaderKey').mockReturnValue({
       isFixedLayout: false,
     } as never);
 
@@ -131,7 +131,7 @@ describe('mobile reader scroll boundaries', () => {
       vertical: false,
       pageZoomLevel: 100,
     } as never);
-    vi.spyOn(useBookDataStore.getState(), 'getBookData').mockReturnValue({
+    vi.spyOn(useBookDataStore.getState(), 'getBookDataByReaderKey').mockReturnValue({
       isFixedLayout: true,
     } as never);
 

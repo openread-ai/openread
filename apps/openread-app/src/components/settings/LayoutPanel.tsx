@@ -28,11 +28,11 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
   const { settings } = useSettingsStore();
   const { getView, getViewSettings, getGridInsets } = useReaderStore();
   const { setViewSettings, recreateViewer } = useReaderStore();
-  const { getBookData } = useBookDataStore();
+  const { getBookDataByReaderKey } = useBookDataStore();
   const viewSettings = getViewSettings(bookKey) || settings.globalViewSettings;
 
   const view = getView(bookKey);
-  const bookData = getBookData(bookKey);
+  const bookData = getBookDataByReaderKey(bookKey);
   const gridInsets = getGridInsets(bookKey) || { top: 0, bottom: 0, left: 0, right: 0 };
   const isFixedLayout =
     bookData?.isFixedLayout || bookData?.bookDoc?.rendition?.layout === 'pre-paginated';
@@ -84,7 +84,7 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
   const resetFixedLayoutControls = () => {
     if (!appService) return;
 
-    const currentBookData = getBookData(bookKey);
+    const currentBookData = getBookDataByReaderKey(bookKey);
     const currentViewSettings = getViewSettings(bookKey) || settings.globalViewSettings;
     const defaultSettings = appService.getDefaultViewSettings();
     const nextZoomLevel = defaultSettings.pageZoomLevel ?? currentViewSettings.pageZoomLevel;
@@ -120,7 +120,7 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
   };
 
   const handleReset = () => {
-    const currentBookData = getBookData(bookKey);
+    const currentBookData = getBookDataByReaderKey(bookKey);
     const currentIsFixedLayout =
       currentBookData?.isFixedLayout ||
       currentBookData?.bookDoc?.rendition?.layout === 'pre-paginated';

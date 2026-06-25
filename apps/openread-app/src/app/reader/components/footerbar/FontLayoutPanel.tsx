@@ -45,10 +45,10 @@ export const FontLayoutPanel: React.FC<FontLayoutPanelProps> = ({
   const _ = useTranslation();
   const { envConfig, appService } = useEnv();
   const { getView, getViewSettings } = useReaderStore();
-  const { getBookData } = useBookDataStore();
+  const { getBookDataByReaderKey } = useBookDataStore();
   const viewSettings = getViewSettings(bookKey);
   const view = getView(bookKey);
-  const bookData = getBookData(bookKey);
+  const bookData = getBookDataByReaderKey(bookKey);
 
   const handleFontSizeChange = useCallback(
     (value: number) => {

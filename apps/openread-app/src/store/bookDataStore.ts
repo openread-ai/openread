@@ -4,7 +4,10 @@ import { Book, BookConfig, BookNote } from '@/types/book';
 import { EnvConfigType } from '@/services/environment';
 import { BookDoc } from '@/libs/document';
 import { useLibraryStore } from './libraryStore';
-import { getBookIdFromKey } from '@/utils/readerBookKey';
+import { parseBookRefFromReaderBookKey, normalizeBookReference } from '@/utils/readerBookKey';
+import { createLogger } from '@/utils/logger';
+
+const logger = createLogger('bookDataStore');
 
 interface BookData {
   /* Persistent data shared with different views of the same book */
@@ -32,8 +35,9 @@ interface BookDataState {
     settings: SystemSettings,
   ) => void;
   updateBooknotes: (key: string, booknotes: BookNote[]) => BookConfig | undefined;
-  getBookData: (keyOrId: string) => BookData | null;
-  clearBookData: (keyOrId: string) => void;
+  getBookDataByReaderKey: (bookKey: string | null) => BookData | null;
+  getBookDataByRef: (bookRef: string | null) => BookData | null;
+  clearBookDataByReaderKey: (bookKey: string | null) => void;
 }
 
 export const useBookDataStore = create<BookDataState>((set, get) => ({
@@ -63,12 +67,22 @@ export const useBookDataStore = create<BookDataState>((set, get) => ({
     });
     return consumed;
   },
-  getBookData: (keyOrId: string) => {
-    const id = getBookIdFromKey(keyOrId);
+  getBookDataByReaderKey: (bookKey: string | null) => {
+    const id = parseBookRefFromReaderBookKey(bookKey);
+    if (!id) return null;
     return get().booksData[id] || null;
   },
-  clearBookData: (keyOrId: string) => {
-    const id = getBookIdFromKey(keyOrId);
+  getBookDataByRef: (bookRef: string | null) => {
+    const id = normalizeBookReference(bookRef);
+    if (!id) return null;
+    return get().booksData[id] || null;
+  },
+  clearBookDataByReaderKey: (bookKey: string | null) => {
+    const id = parseBookRefFromReaderBookKey(bookKey);
+    if (!id) {
+      logger.warn('Ignoring clearBookDataByReaderKey for invalid reader key', { bookKey });
+      return;
+    }
     set((state) => {
       const newBooksData = { ...state.booksData };
       delete newBooksData[id];
@@ -78,13 +92,17 @@ export const useBookDataStore = create<BookDataState>((set, get) => ({
     });
   },
   getConfig: (key: string | null) => {
-    if (!key) return null;
-    const id = getBookIdFromKey(key);
+    const id = parseBookRefFromReaderBookKey(key);
+    if (!id) return null;
     return get().booksData[id]?.config || null;
   },
   setConfig: (key: string, partialConfig: Partial<BookConfig>) => {
+    const id = parseBookRefFromReaderBookKey(key);
+    if (!id) {
+      logger.warn('Ignoring setConfig for invalid reader key/ref', { key });
+      return;
+    }
     set((state: BookDataState) => {
-      const id = getBookIdFromKey(key);
       const existing = state.booksData[id];
       if (!existing) return state;
       const config = { ...(existing.config || {}), ...partialConfig } as BookConfig;
@@ -107,7 +125,11 @@ export const useBookDataStore = create<BookDataState>((set, get) => ({
   ) => {
     const appService = await envConfig.getAppService();
     const { library, setLibrary } = useLibraryStore.getState();
-    const bookId = getBookIdFromKey(bookKey);
+    const bookId = parseBookRefFromReaderBookKey(bookKey);
+    if (!bookId) {
+      logger.warn('Ignoring saveConfig for invalid reader key/ref', { bookKey });
+      return;
+    }
     const bookIndex = library.findIndex((b) => b.hash === bookId);
     if (bookIndex === -1) return;
     const book = {
@@ -128,8 +150,12 @@ export const useBookDataStore = create<BookDataState>((set, get) => ({
   },
   updateBooknotes: (key: string, booknotes: BookNote[]) => {
     let updatedConfig: BookConfig | undefined;
+    const id = parseBookRefFromReaderBookKey(key);
+    if (!id) {
+      logger.warn('Ignoring updateBooknotes for invalid reader key/ref', { key });
+      return undefined;
+    }
     set((state) => {
-      const id = getBookIdFromKey(key);
       const book = state.booksData[id];
       if (!book) return state;
       const dedupedBooknotes = Array.from(

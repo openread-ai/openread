@@ -37,7 +37,7 @@ const SideBar: React.FC<{
     useSidebarStore();
   const searchNavState = sideBarBookKey ? getSearchNavState(sideBarBookKey) : null;
   const { searchTerm = '', searchResults = null, searchProgress = 1 } = searchNavState || {};
-  const { getBookData } = useBookDataStore();
+  const { getBookDataByReaderKey } = useBookDataStore();
   const { getView, getViewSettings, setHoveredBookKey } = useReaderStore();
   const [isSearchBarVisible, setIsSearchBarVisible] = useState(false);
   const searchTermRef = useRef(searchTerm);
@@ -235,7 +235,7 @@ const SideBar: React.FC<{
   if (!sideBarBookKey) return null;
 
   const viewSettings = getViewSettings(sideBarBookKey);
-  const bookData = getBookData(sideBarBookKey);
+  const bookData = getBookDataByReaderKey(sideBarBookKey);
   if (!bookData || !bookData.book || !bookData.bookDoc) {
     return null;
   }

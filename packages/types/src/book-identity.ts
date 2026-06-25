@@ -141,9 +141,9 @@ export function createReaderBookKey(
   return `${parsed}${READER_KEY_SEPARATOR}${nonce}` as ReaderBookKey;
 }
 
-export function getBookRefFromReaderBookKey(readerBookKey: ReaderBookKey | string): OpenReadBookReference {
-  const normalized = normalizeString(readerBookKey);
-  if (!normalized) throw new Error('Invalid reader book key');
+export function parseBookRefFromReaderBookKey(value: unknown): OpenReadBookReference | null {
+  const normalized = normalizeString(value);
+  if (!normalized) return null;
 
   const separatorIndex = normalized.lastIndexOf(READER_KEY_SEPARATOR);
   const canonicalCandidate = separatorIndex === -1 ? normalized : normalized.slice(0, separatorIndex);
@@ -153,8 +153,16 @@ export function getBookRefFromReaderBookKey(readerBookKey: ReaderBookKey | strin
   // Legacy migration path for pre-canonical reader keys: <32-char-local-hash>-<7-char-session-id>.
   // Keep this compatibility only here so feature code never parses session keys itself.
   const legacyLocalHash = normalized.match(LEGACY_LOCAL_HASH_READER_KEY_PATTERN)?.[1];
-  const legacyRef = parseLocalBookHash(legacyLocalHash);
-  if (legacyRef) return legacyRef;
+  return parseLocalBookHash(legacyLocalHash);
+}
+
+export function isReaderBookKeyOrRef(value: unknown): value is ReaderBookKey | OpenReadBookReference {
+  return parseBookRefFromReaderBookKey(value) !== null;
+}
+
+export function getBookRefFromReaderBookKey(readerBookKey: ReaderBookKey | string): OpenReadBookReference {
+  const parsed = parseBookRefFromReaderBookKey(readerBookKey);
+  if (parsed) return parsed;
 
   throw new Error('Invalid reader book key');
 }

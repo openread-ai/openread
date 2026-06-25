@@ -92,10 +92,10 @@ const FoliateViewer: React.FC<{
   const { getView, setView: setFoliateView, setViewInited, setProgress } = useReaderStore();
   const { getViewState, getViewSettings, setViewSettings } = useReaderStore();
   const { getParallels } = useParallelViewStore();
-  const { getBookData } = useBookDataStore();
+  const { getBookDataByReaderKey } = useBookDataStore();
   const { applyBackgroundTexture } = useBackgroundTexture();
   const { applyEinkMode } = useEinkMode();
-  const bookData = getBookData(bookKey);
+  const bookData = getBookDataByReaderKey(bookKey);
   const viewState = getViewState(bookKey);
   const viewSettings = getViewSettings(bookKey);
   const readerLayoutBook = {
@@ -161,7 +161,7 @@ const FoliateViewer: React.FC<{
       detail.data = Promise.resolve(detail.data)
         .then((data) => {
           const viewSettings = getViewSettings(bookKey);
-          const bookData = getBookData(bookKey);
+          const bookData = getBookDataByReaderKey(bookKey);
           if (viewSettings && detail.type === 'text/css')
             return transformStylesheet(data, width, height, viewSettings.vertical);
           const isHtml = detail.type === 'application/xhtml+xml' || detail.type === 'text/html';
@@ -205,7 +205,7 @@ const FoliateViewer: React.FC<{
     if (detail.doc) {
       const writingDir = viewRef.current?.renderer.setStyles && getDirection(detail.doc);
       const viewSettings = getViewSettings(bookKey)!;
-      const bookData = getBookData(bookKey)!;
+      const bookData = getBookDataByReaderKey(bookKey)!;
 
       const newVertical =
         writingDir?.vertical || viewSettings.writingMode.includes('vertical') || false;

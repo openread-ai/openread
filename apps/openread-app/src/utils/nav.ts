@@ -7,6 +7,7 @@ import { AppService } from '@/types/system';
 import { SETTINGS_ACCOUNT_PATH } from '@/lib/billing-routes';
 import { createLogger } from '@/utils/logger';
 import { LOCAL_PERSISTENCE_KEYS } from '@/services/persistence/localPersistenceRegistry';
+import { normalizeBookReference } from '@/utils/readerBookKey';
 
 const logger = createLogger('nav');
 
@@ -39,8 +40,13 @@ const createReaderWindow = (appService: AppService, url: string) => {
   });
 };
 
-export const showReaderWindow = (appService: AppService, bookIds: string[]) => {
-  const ids = bookIds.join(BOOK_IDS_SEPARATOR);
+export const showReaderWindow = (appService: AppService, bookRefs: string[]) => {
+  const normalizedBookRefs = bookRefs.map((bookRef) => normalizeBookReference(bookRef));
+  if (normalizedBookRefs.length === 0 || normalizedBookRefs.some((bookRef) => !bookRef)) {
+    logger.warn('Ignoring reader window navigation with invalid book refs', { bookRefs });
+    return;
+  }
+  const ids = normalizedBookRefs.join(BOOK_IDS_SEPARATOR);
   const params = new URLSearchParams('');
   params.set('ids', ids);
   const url = `/reader?${params.toString()}`;
@@ -56,11 +62,16 @@ export const showLibraryWindow = (appService: AppService, filenames: string[]) =
 
 export const navigateToReader = (
   router: ReturnType<typeof useRouter>,
-  bookIds: string[],
+  bookRefs: string[],
   queryParams?: string,
   navOptions?: { scroll?: boolean },
 ) => {
-  const ids = bookIds.join(BOOK_IDS_SEPARATOR);
+  const normalizedBookRefs = bookRefs.map((bookRef) => normalizeBookReference(bookRef));
+  if (normalizedBookRefs.length === 0 || normalizedBookRefs.some((bookRef) => !bookRef)) {
+    logger.warn('Ignoring reader navigation with invalid book refs', { bookRefs });
+    return;
+  }
+  const ids = normalizedBookRefs.join(BOOK_IDS_SEPARATOR);
   const params = new URLSearchParams(queryParams || '');
   if (isWebAppPlatform() && !isPWA()) {
     params.delete('ids');

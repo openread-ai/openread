@@ -34,7 +34,7 @@ const FootnotePopup: React.FC<FootnotePopupProps> = ({ bookKey, bookDoc }) => {
   const [popupPosition, setPopupPosition] = useState<Position | null>();
   const [showPopup, setShowPopup] = useState(false);
 
-  const { getBookData } = useBookDataStore();
+  const { getBookDataByReaderKey } = useBookDataStore();
   const { getView, getViewSettings } = useReaderStore();
   const { getLoadedFonts } = useCustomFontStore();
   const view = getView(bookKey);
@@ -74,7 +74,7 @@ const FootnotePopup: React.FC<FootnotePopupProps> = ({ bookKey, bookDoc }) => {
       });
       view.addEventListener('load', (e: CustomEvent) => {
         const { doc } = e.detail;
-        const bookData = getBookData(bookKey)!;
+        const bookData = getBookDataByReaderKey(bookKey)!;
         mountAdditionalFonts(doc, isCJKLang(bookData.book?.primaryLanguage));
         getLoadedFonts().forEach((font) => {
           mountCustomFont(doc, font);

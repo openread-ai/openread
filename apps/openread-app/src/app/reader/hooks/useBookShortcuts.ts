@@ -31,20 +31,21 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
   const { envConfig, appService } = useEnv();
   const { getView, getViewState, getViewSettings, setViewSettings } = useReaderStore();
   const { toggleSideBar, setSideBarBookKey } = useSidebarStore();
-  const { setSettingsDialogOpen } = useSettingsStore();
-  const { getBookData } = useBookDataStore();
+  const { setSettingsDialogBookKey, setSettingsDialogOpen } = useSettingsStore();
+  const { getBookDataByReaderKey } = useBookDataStore();
   const { toggleNotebook } = useNotebookStore();
   const { getNextBookKey } = useBooksManager();
   const { open: openCommandPalette } = useCommandPalette();
   const lastParagraphToggleRef = useRef(0);
-  const viewSettings = getViewSettings(sideBarBookKey ?? '');
+  const viewSettings = sideBarBookKey ? getViewSettings(sideBarBookKey) : null;
   const fontSize = viewSettings?.defaultFontSize ?? 16;
   const lineHeight = viewSettings?.lineHeight ?? 1.6;
   const distance = fontSize * lineHeight * 3;
 
   const getCurrentLayoutState = () => {
-    const viewSettings = getViewSettings(sideBarBookKey ?? '');
-    const bookData = getBookData(sideBarBookKey ?? '');
+    if (!sideBarBookKey) return null;
+    const viewSettings = getViewSettings(sideBarBookKey);
+    const bookData = getBookDataByReaderKey(sideBarBookKey);
     if (!viewSettings) return null;
     return normalizeReaderLayout({
       settings: viewSettings,
@@ -60,9 +61,10 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
   const isContinuousLayout = () => getCurrentLayoutState()?.layoutMode === 'continuous';
 
   const toggleScrollMode = () => {
-    const viewSettings = getViewSettings(sideBarBookKey ?? '');
-    const bookData = getBookData(sideBarBookKey ?? '');
-    if (!viewSettings || !sideBarBookKey) return false;
+    if (!sideBarBookKey) return false;
+    const viewSettings = getViewSettings(sideBarBookKey);
+    const bookData = getBookDataByReaderKey(sideBarBookKey);
+    if (!viewSettings) return false;
 
     const book = {
       isFixedLayout: bookData?.isFixedLayout,
@@ -221,7 +223,7 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
   const applyZoomLevel = (zoomLevel: number) => {
     if (!sideBarBookKey) return;
     const view = getView(sideBarBookKey);
-    const bookData = getBookData(sideBarBookKey);
+    const bookData = getBookDataByReaderKey(sideBarBookKey);
     const viewSettings = getViewSettings(sideBarBookKey)!;
     viewSettings!.pageZoomLevel = zoomLevel;
     setViewSettings(sideBarBookKey, viewSettings!);
@@ -313,7 +315,12 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
       onToggleScrollMode: toggleScrollMode,
       onToggleBookmark: toggleBookmark,
       onToggleParagraphMode: toggleParagraphMode,
-      onOpenFontLayoutSettings: () => setSettingsDialogOpen(true),
+      onOpenFontLayoutSettings: () => {
+        if (!sideBarBookKey) return;
+        setSideBarBookKey(sideBarBookKey);
+        setSettingsDialogBookKey(sideBarBookKey);
+        setSettingsDialogOpen(true);
+      },
       onShowSearchBar: showSearchBar,
       onToggleFullscreen: toggleFullscreen,
       onToggleTTS: toggleTTS,

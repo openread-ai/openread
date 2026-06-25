@@ -117,7 +117,7 @@ export const usePagination = (
   containerRef: React.RefObject<HTMLDivElement | null>,
 ) => {
   const { appService } = useEnv();
-  const { getBookData } = useBookDataStore();
+  const { getBookDataByReaderKey } = useBookDataStore();
   const { getViewSettings, getViewState } = useReaderStore();
   const { hoveredBookKey, setHoveredBookKey } = useReaderStore();
   const { acquireVolumeKeyInterception, releaseVolumeKeyInterception } = useDeviceControlStore();
@@ -126,7 +126,7 @@ export const usePagination = (
     msg: MessageEvent | CustomEvent | React.MouseEvent<HTMLDivElement, MouseEvent>,
   ) => {
     const viewState = getViewState(bookKey);
-    const bookData = getBookData(bookKey);
+    const bookData = getBookDataByReaderKey(bookKey);
     if (!viewState?.inited || !bookData) return;
 
     if (msg instanceof MessageEvent) {

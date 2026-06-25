@@ -28,13 +28,13 @@ function MobileSettingsInner({ bookKey }: { bookKey: string }) {
   const _ = useTranslation();
   const { envConfig, appService } = useEnv();
   const { getView, getViewSettings, setViewSettings } = useReaderStore();
-  const { getBookData } = useBookDataStore();
+  const { getBookDataByReaderKey } = useBookDataStore();
   const { themeMode, themeColor, isDarkMode, setThemeMode, setThemeColor } = useThemeStore();
   const { settings } = useSettingsStore();
   const { getScreenBrightness, setScreenBrightness } = useDeviceControlStore();
   const viewSettings = getViewSettings(bookKey);
   const view = getView(bookKey);
-  const bookData = getBookData(bookKey);
+  const bookData = getBookDataByReaderKey(bookKey);
   const isFixedLayout =
     bookData?.isFixedLayout || bookData?.bookDoc?.rendition?.layout === 'pre-paginated';
 

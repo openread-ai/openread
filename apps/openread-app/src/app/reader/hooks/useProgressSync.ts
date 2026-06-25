@@ -14,14 +14,14 @@ import { DEFAULT_BOOK_SEARCH_CONFIG, SYNC_PROGRESS_INTERVAL_SEC } from '@/servic
 import { getCFIFromXPointer, getXPointerFromCFI, normalizeProgressXPointer } from '@/utils/xcfi';
 import { createLogger } from '@/utils/logger';
 import { enqueueBookConfigForSync } from '@/services/sync/helpers';
-import { getBookIdFromKey } from '@/utils/readerBookKey';
+import { parseBookRefFromReaderBookKey } from '@/utils/readerBookKey';
 import { parseSyncableBookRef } from '@openread/types';
 
 const logger = createLogger('progress-sync');
 
 export const useProgressSync = (bookKey: string) => {
   const _ = useTranslation();
-  const { getConfig, setConfig, getBookData } = useBookDataStore();
+  const { getConfig, setConfig, getBookDataByReaderKey } = useBookDataStore();
   const { getView, getProgress, setHoveredBookKey } = useReaderStore();
   const { settings } = useSettingsStore();
   const { syncedConfigs, syncConfigs } = useSync(bookKey);
@@ -32,9 +32,9 @@ export const useProgressSync = (bookKey: string) => {
   const hasPulledConfigOnce = useRef(false);
 
   const pushConfig = async (bookKey: string, config: BookConfig | null) => {
-    const book = getBookData(bookKey)?.book;
+    const book = getBookDataByReaderKey(bookKey)?.book;
     if (!config || !book || !user) return;
-    const bookHash = parseSyncableBookRef(getBookIdFromKey(bookKey));
+    const bookHash = parseSyncableBookRef(parseBookRefFromReaderBookKey(bookKey));
     if (!bookHash) return;
     const metaHash = book.metaHash;
     const newConfig = { ...config, bookHash, metaHash };
@@ -46,9 +46,9 @@ export const useProgressSync = (bookKey: string) => {
   };
 
   const pullConfig = async (bookKey: string) => {
-    const book = getBookData(bookKey)?.book;
+    const book = getBookDataByReaderKey(bookKey)?.book;
     if (!user || !book) return;
-    const bookHash = parseSyncableBookRef(getBookIdFromKey(bookKey));
+    const bookHash = parseSyncableBookRef(parseBookRefFromReaderBookKey(bookKey));
     if (!bookHash) return;
     const metaHash = book.metaHash;
     await syncConfigs([], bookHash, metaHash, 'pull');
@@ -60,7 +60,7 @@ export const useProgressSync = (bookKey: string) => {
     } else {
       const config = getConfig(bookKey);
       const view = getView(bookKey);
-      const book = getBookData(bookKey)?.book;
+      const book = getBookDataByReaderKey(bookKey)?.book;
       if (config && view && book && config.progress && config.progress[0] > 0) {
         try {
           const content = view.renderer.getContents()[0];
@@ -99,10 +99,10 @@ export const useProgressSync = (bookKey: string) => {
   useEffect(() => {
     return () => {
       const config = getConfig(bookKey);
-      const book = getBookData(bookKey)?.book;
+      const book = getBookDataByReaderKey(bookKey)?.book;
       if (!config || !book || !user) return;
 
-      const bookHash = parseSyncableBookRef(getBookIdFromKey(bookKey));
+      const bookHash = parseSyncableBookRef(parseBookRefFromReaderBookKey(bookKey));
       if (!bookHash) return;
       if (config.updatedAt) {
         void enqueueBookConfigForSync({ ...config, bookHash, metaHash: book.metaHash });
@@ -136,10 +136,10 @@ export const useProgressSync = (bookKey: string) => {
 
   const applyRemoteProgress = async (syncedConfigs: BookConfig[]) => {
     const config = getConfig(bookKey);
-    const book = getBookData(bookKey)?.book;
+    const book = getBookDataByReaderKey(bookKey)?.book;
     if (!syncedConfigs || syncedConfigs.length === 0 || !config || !book) return;
 
-    const bookHash = parseSyncableBookRef(getBookIdFromKey(bookKey));
+    const bookHash = parseSyncableBookRef(parseBookRefFromReaderBookKey(bookKey));
     if (!bookHash) return;
     const metaHash = book.metaHash;
     const syncedConfig = syncedConfigs.filter(
@@ -149,7 +149,7 @@ export const useProgressSync = (bookKey: string) => {
       const configCFI = config?.location;
       let remoteCFILocation = syncedConfig.location;
       const xPointer = syncedConfig.xpointer;
-      const bookData = getBookData(bookKey);
+      const bookData = getBookDataByReaderKey(bookKey);
       const view = getView(bookKey);
       if (xPointer && view && bookData && bookData.bookDoc) {
         const content = view.renderer.getContents()[0];

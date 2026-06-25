@@ -2,7 +2,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useEnv } from '@/context/EnvContext';
 import { useReaderStore } from '@/store/readerStore';
 import { useSidebarStore } from '@/store/sidebarStore';
-import { createBookKey, getBookIdFromKey } from '@/utils/readerBookKey';
+import { createBookKey, parseBookRefFromReaderBookKey } from '@/utils/readerBookKey';
 import { useParallelViewStore } from '@/store/parallelViewStore';
 import { navigateToReader } from '@/utils/nav';
 
@@ -16,7 +16,9 @@ const useBooksManager = () => {
   const { setParallel } = useParallelViewStore();
 
   const syncSearchParams = (nextBookKeys: string[]) => {
-    const ids = nextBookKeys.map((key) => getBookIdFromKey(key));
+    const ids = nextBookKeys
+      .map((key) => parseBookRefFromReaderBookKey(key))
+      .filter((bookRef): bookRef is NonNullable<typeof bookRef> => !!bookRef);
     navigateToReader(router, ids, searchParams?.toString() || '', { scroll: false });
   };
 
@@ -52,7 +54,7 @@ const useBooksManager = () => {
   };
 
   const openParallelView = (id: string, sourceBookKey = sideBarBookKey) => {
-    const sourceBookId = sourceBookKey ? getBookIdFromKey(sourceBookKey) : undefined;
+    const sourceBookId = sourceBookKey ? parseBookRefFromReaderBookKey(sourceBookKey) : undefined;
     appendBook(id, sourceBookId != id, true, sourceBookKey);
   };
 

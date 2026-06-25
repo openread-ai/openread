@@ -88,7 +88,7 @@ const BooksGrid: React.FC<BooksGridProps> = ({ bookKeys, onCloseBook }) => {
   const _ = useTranslation();
   const { appService } = useEnv();
   // These getters are called during render (in .map loop) so they need hook subscriptions
-  const { getConfig, getBookData } = useBookDataStore();
+  const { getConfig, getBookDataByReaderKey } = useBookDataStore();
   const { getProgress, getViewState, getViewSettings } = useReaderStore();
   const setGridInsets = useReaderStore((s) => s.setGridInsets);
   const hoveredBookKey = useReaderStore((s) => s.hoveredBookKey);
@@ -109,7 +109,7 @@ const BooksGrid: React.FC<BooksGridProps> = ({ bookKeys, onCloseBook }) => {
 
   useEffect(() => {
     if (!sideBarBookKey) return;
-    const bookData = getBookData(sideBarBookKey);
+    const bookData = getBookDataByReaderKey(sideBarBookKey);
     if (!bookData || !bookData.book) return;
     document.title = bookData.book.title;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -148,7 +148,7 @@ const BooksGrid: React.FC<BooksGridProps> = ({ bookKeys, onCloseBook }) => {
       aria-label={_('Books Content')}
     >
       {bookKeys.map((bookKey, index) => {
-        const bookData = getBookData(bookKey);
+        const bookData = getBookDataByReaderKey(bookKey);
         const config = getConfig(bookKey);
         const progress = getProgress(bookKey);
         const viewSettings = getViewSettings(bookKey);

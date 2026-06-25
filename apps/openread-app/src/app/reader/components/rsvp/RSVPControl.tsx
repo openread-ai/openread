@@ -105,7 +105,7 @@ const expandRangeToSentence = (range: Range, doc: Document): Range => {
 const RSVPControl: React.FC<RSVPControlProps> = ({ bookKey }) => {
   const _ = useTranslation();
   const { getView, getProgress } = useReaderStore();
-  const { getBookData } = useBookDataStore();
+  const { getBookDataByReaderKey } = useBookDataStore();
   const { themeCode } = useThemeStore();
 
   const [isActive, setIsActive] = useState(false);
@@ -169,7 +169,7 @@ const RSVPControl: React.FC<RSVPControlProps> = ({ bookKey }) => {
   const handleStart = useCallback(
     (selectionText?: string) => {
       const view = getView(bookKey);
-      const bookData = getBookData(bookKey);
+      const bookData = getBookDataByReaderKey(bookKey);
       const progress = getProgress(bookKey);
 
       if (!view || !bookData || !bookData.book) {
@@ -227,7 +227,7 @@ const RSVPControl: React.FC<RSVPControlProps> = ({ bookKey }) => {
       controller.addEventListener('rsvp-start-choice', handleStartChoice, { once: true });
       controller.requestStart(selectionText);
     },
-    [_, bookKey, getBookData, getProgress, getView, removeRsvpHighlight],
+    [_, bookKey, getBookDataByReaderKey, getProgress, getView, removeRsvpHighlight],
   );
 
   const handleStartDialogSelect = useCallback(
@@ -441,7 +441,7 @@ const RSVPControl: React.FC<RSVPControlProps> = ({ bookKey }) => {
 
   // Get current chapter info
   const progress = getProgress(bookKey);
-  const bookData = getBookData(bookKey);
+  const bookData = getBookDataByReaderKey(bookKey);
   const chapters = bookData?.bookDoc?.toc || [];
   const currentChapterHref = progress?.sectionHref || null;
 

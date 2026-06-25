@@ -6,7 +6,7 @@ import { useReaderStore } from '@/store/readerStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { createLogger } from '@/utils/logger';
-import { getBookIdFromKey } from '@/utils/readerBookKey';
+import { parseBookRefFromReaderBookKey } from '@/utils/readerBookKey';
 
 const logger = createLogger('annotation-editor');
 
@@ -159,7 +159,9 @@ export const useAnnotationEditor = ({
             updatedAt: Date.now(),
           };
 
-          const views = getViewsById(getBookIdFromKey(bookKey));
+          const bookRef = parseBookRefFromReaderBookKey(bookKey);
+          if (!bookRef) return;
+          const views = getViewsById(bookRef);
           views.forEach((v) => v?.addAnnotation(editingAnnotationRef.current, true));
           views.forEach((v) => v?.addAnnotation(updatedAnnotation));
           editingAnnotationRef.current = updatedAnnotation;

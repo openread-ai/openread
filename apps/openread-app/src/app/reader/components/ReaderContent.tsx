@@ -17,7 +17,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { UnlistenFn } from '@tauri-apps/api/event';
 import { tauriHandleClose, tauriHandleOnCloseWindow } from '@/utils/window';
 import { isTauriAppPlatform } from '@/services/environment';
-import { createBookKey, getBookIdFromKey } from '@/utils/readerBookKey';
+import { createBookKey, parseBookRefFromReaderBookKey } from '@/utils/readerBookKey';
 import { throttle } from '@/utils/throttle';
 import { eventDispatcher } from '@/utils/event';
 import { navigateToLibrary } from '@/utils/nav';
@@ -46,7 +46,7 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
   const { bookKeys, dismissBook, getNextBookKey } = useBooksManager();
   const { sideBarBookKey, setSideBarBookKey } = useSidebarStore();
   const { saveSettings } = useSettingsStore();
-  const { getConfig, getBookData, saveConfig } = useBookDataStore();
+  const { getConfig, getBookDataByReaderKey, saveConfig } = useBookDataStore();
   const { getView, setBookKeys, getViewSettings } = useReaderStore();
   const { initViewState, getViewState, clearViewState } = useReaderStore();
   const { isSettingsDialogOpen, settingsDialogBookKey } = useSettingsStore();
@@ -54,6 +54,7 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
   const isInitiating = useRef(false);
   const [loading, setLoading] = useState(false);
   const [errorLoading, setErrorLoading] = useState(false);
+  const [readerEntryError, setReaderEntryError] = useState<string | null>(null);
 
   useBookShortcuts({ sideBarBookKey, bookKeys });
   useGamepad();
@@ -65,12 +66,28 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
     const pathname = window.location.pathname;
     const bookIds = ids || searchParams?.get('ids') || pathname.split('/reader/')[1] || '';
     const initialIds = bookIds.split(BOOK_IDS_SEPARATOR).filter(Boolean);
-    const initialBookKeys = initialIds.map((id) => createBookKey(id));
+    const initialBookRefs = initialIds.map((id) => parseBookRefFromReaderBookKey(id));
+    const validBookRefs = initialBookRefs.filter(
+      (bookRef): bookRef is NonNullable<typeof bookRef> => Boolean(bookRef),
+    );
+    if (validBookRefs.length === 0 || validBookRefs.length !== initialBookRefs.length) {
+      setErrorLoading(true);
+      setReaderEntryError(_('Unable to open book'));
+      eventDispatcher.dispatch('toast', {
+        message: _('Unable to open book'),
+        timeout: 2000,
+        type: 'error',
+      });
+      navigateBackToLibrary();
+      return;
+    }
+    const initialBookKeys = validBookRefs.map((bookRef) => createBookKey(bookRef));
     setBookKeys(initialBookKeys);
     const uniqueIds = new Set<string>();
     logger.info('Initialize books', initialBookKeys);
     initialBookKeys.forEach((key, index) => {
-      const id = getBookIdFromKey(key);
+      const id = parseBookRefFromReaderBookKey(key);
+      if (!id) return;
       const isPrimary = !uniqueIds.has(id);
       uniqueIds.add(id);
       if (!getViewState(key)) {
@@ -105,7 +122,9 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
   useEffect(() => {
     if (bookKeys && bookKeys.length > 0) {
       const settings = useSettingsStore.getState().settings;
-      const lastOpenBooks = bookKeys.map((key) => getBookIdFromKey(key));
+      const lastOpenBooks = bookKeys
+        .map((key) => parseBookRefFromReaderBookKey(key))
+        .filter((bookRef): bookRef is NonNullable<typeof bookRef> => !!bookRef);
       if (settings.lastOpenBooks?.toString() !== lastOpenBooks.toString()) {
         void settingsService
           .updateKey(envConfig, settings, 'lastOpenBooks', lastOpenBooks)
@@ -133,7 +152,7 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
 
   const saveBookConfig = async (bookKey: string) => {
     const config = getConfig(bookKey);
-    const { book } = getBookData(bookKey) || {};
+    const { book } = getBookDataByReaderKey(bookKey) || {};
     const { isPrimary } = getViewState(bookKey) || {};
     if (isPrimary && book && config) {
       const settings = useSettingsStore.getState().settings;
@@ -213,8 +232,21 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
     }
   };
 
+  if (readerEntryError) {
+    return (
+      <div className='hero hero-content full-height' data-testid='reader-entry-error'>
+        <div className='text-center'>
+          <h1 className='text-xl font-semibold'>{readerEntryError}</h1>
+          <button className='btn btn-primary mt-4' onClick={navigateBackToLibrary} type='button'>
+            {_('Back to Library')}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (!bookKeys || bookKeys.length === 0) return null;
-  const bookData = getBookData(bookKeys[0]!);
+  const bookData = getBookDataByReaderKey(bookKeys[0]!);
   const viewSettings = getViewSettings(bookKeys[0]!);
   if (!bookData || !bookData.book || !bookData.bookDoc || !viewSettings) {
     setTimeout(() => setLoading(true), 200);
@@ -232,7 +264,9 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
     <div className='reader-content full-height flex' data-testid='reader-content-ready'>
       <SideBar onGoToLibrary={handleCloseBooksToLibrary} />
       <BooksGrid bookKeys={bookKeys} onCloseBook={handleCloseBook} />
-      {isSettingsDialogOpen && <SettingsDialog bookKey={settingsDialogBookKey} />}
+      {isSettingsDialogOpen && settingsDialogBookKey && (
+        <SettingsDialog bookKey={settingsDialogBookKey} />
+      )}
       <Notebook />
       {sideBarBookKey && <InlineQuestionBar bookKey={sideBarBookKey} />}
       {showDetailsBook && (

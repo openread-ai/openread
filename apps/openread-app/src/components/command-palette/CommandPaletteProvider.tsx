@@ -4,12 +4,15 @@ import React, { createContext, useContext, useState, useCallback, useEffect, use
 import { useTranslation } from '@/hooks/useTranslation';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useThemeStore } from '@/store/themeStore';
+import { useSidebarStore } from '@/store/sidebarStore';
 import { useEnv } from '@/context/EnvContext';
 import { isTauriAppPlatform } from '@/services/environment';
 import { tauriHandleSetAlwaysOnTop, tauriHandleToggleFullScreen } from '@/utils/window';
 import { setAboutDialogVisible } from '@/components/AboutWindow';
 import { saveSysSettings } from '@/helpers/settings';
 import { SettingsPanelType } from '@/components/settings/SettingsDialog';
+import { isReaderBookKeyOrRef } from '@/utils/readerBookKey';
+import { eventDispatcher } from '@/utils/event';
 import {
   CommandItem,
   buildCommandRegistry,
@@ -53,7 +56,9 @@ export const CommandPaletteProvider: React.FC<CommandPaletteProviderProps> = ({ 
   const _ = useTranslation();
   const { envConfig, appService } = useEnv();
   const { themeMode, setThemeMode } = useThemeStore();
-  const { settings, setSettingsDialogOpen, setActiveSettingsItemId } = useSettingsStore();
+  const { settings, setSettingsDialogBookKey, setSettingsDialogOpen, setActiveSettingsItemId } =
+    useSettingsStore();
+  const sideBarBookKey = useSidebarStore((state) => state.sideBarBookKey);
 
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -108,12 +113,21 @@ export const CommandPaletteProvider: React.FC<CommandPaletteProviderProps> = ({ 
     (_panel: SettingsPanelType, itemId?: string) => {
       // panel is encoded in itemId (e.g., 'settings.font.defaultFontSize')
       // SettingsDialog will parse this to determine which panel to show
+      if (!sideBarBookKey || !isReaderBookKeyOrRef(sideBarBookKey)) {
+        eventDispatcher.dispatch('toast', {
+          message: _('Open a book before changing reader settings'),
+          timeout: 2000,
+          type: 'warning',
+        });
+        return;
+      }
       if (itemId) {
         setActiveSettingsItemId(itemId);
       }
+      setSettingsDialogBookKey(sideBarBookKey);
       setSettingsDialogOpen(true);
     },
-    [setSettingsDialogOpen, setActiveSettingsItemId],
+    [_, sideBarBookKey, setSettingsDialogBookKey, setSettingsDialogOpen, setActiveSettingsItemId],
   );
 
   // build command registry

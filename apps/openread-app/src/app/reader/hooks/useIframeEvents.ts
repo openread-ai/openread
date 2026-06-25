@@ -74,7 +74,7 @@ interface IframeTouchEvent {
 
 export const useTouchEvent = (bookKey: string, handlePageFlip: (msg: CustomEvent) => void) => {
   const { appService } = useEnv();
-  const { getBookData } = useBookDataStore();
+  const { getBookDataByReaderKey } = useBookDataStore();
   const { hoveredBookKey, setHoveredBookKey, getViewSettings } = useReaderStore();
 
   const touchStartRef = useRef<IframeTouch | null>(null);
@@ -126,9 +126,9 @@ export const useTouchEvent = (bookKey: string, handlePageFlip: (msg: CustomEvent
         const layoutState = normalizeReaderLayout({
           settings: viewSettings,
           book: {
-            isFixedLayout: getBookData(bookKey)?.isFixedLayout,
-            renditionLayout: getBookData(bookKey)?.bookDoc?.rendition?.layout,
-            format: getBookData(bookKey)?.book?.format,
+            isFixedLayout: getBookDataByReaderKey(bookKey)?.isFixedLayout,
+            renditionLayout: getBookDataByReaderKey(bookKey)?.bookDoc?.rendition?.layout,
+            format: getBookDataByReaderKey(bookKey)?.book?.format,
           },
           platform: { isMobile: !!appService?.isMobile },
         });
@@ -167,7 +167,7 @@ export const useTouchEvent = (bookKey: string, handlePageFlip: (msg: CustomEvent
       }
 
       const viewSettings = getViewSettings(bookKey);
-      const bookData = getBookData(bookKey);
+      const bookData = getBookDataByReaderKey(bookKey);
       if (!viewSettings || !bookData) {
         resetTouchState();
         return;

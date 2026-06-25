@@ -35,7 +35,7 @@ export const useKOSync = (bookKey: string) => {
   const { appService } = useEnv();
   const { settings } = useSettingsStore();
   const { getProgress, getView } = useReaderStore();
-  const { getBookData } = useBookDataStore();
+  const { getBookDataByReaderKey } = useBookDataStore();
 
   const [kosyncClient, setKOSyncClient] = useState<KOSyncClient | null>(null);
   const [syncState, setSyncState] = useState<SyncState>('idle');
@@ -64,7 +64,7 @@ export const useKOSync = (bookKey: string) => {
 
   const generateKOProgress = useCallback(() => {
     const progress = getProgress(bookKey);
-    const book = getBookData(bookKey)?.book;
+    const book = getBookDataByReaderKey(bookKey)?.book;
     if (!progress || !book) return null;
 
     let koProgress = '';
@@ -96,7 +96,7 @@ export const useKOSync = (bookKey: string) => {
     }
 
     return { koProgress, percentage };
-  }, [bookKey, getProgress, getBookData, getView]);
+  }, [bookKey, getProgress, getBookDataByReaderKey, getView]);
 
   const applyRemoteProgress = async (book: Book, bookDoc: BookDoc, remote: KoSyncProgress) => {
     const view = getView(bookKey);
@@ -202,7 +202,7 @@ export const useKOSync = (bookKey: string) => {
         const { settings } = useSettingsStore.getState();
         if (['receive', 'disable'].includes(settings.kosync.strategy)) return;
 
-        const currentBook = getBookData(bookKey)?.book;
+        const currentBook = getBookDataByReaderKey(bookKey)?.book;
         const progress = generateKOProgress();
         if (!currentBook || !progress || !progress.koProgress) return;
 
@@ -217,7 +217,7 @@ export const useKOSync = (bookKey: string) => {
       if (!LAUNCH_KOREADER_SYNC_ENABLED || !progress?.location || !appService || !kosyncClient)
         return;
 
-      const bookData = getBookData(bookKey);
+      const bookData = getBookDataByReaderKey(bookKey);
       const book = bookData?.book;
       const bookDoc = bookData?.bookDoc;
       if (!book || !bookDoc) return;

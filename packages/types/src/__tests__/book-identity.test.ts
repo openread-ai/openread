@@ -6,9 +6,11 @@ import {
   getBookReferenceKind,
   getBookRefFromReaderBookKey,
   isOpenReadBookReference,
+  isReaderBookKeyOrRef,
   isSyncableBookRef,
   normalizeBookReference,
   parseBookId,
+  parseBookRefFromReaderBookKey,
   parseCatalogBookRef,
   parseLocalBookHash,
   parseMetaHash,
@@ -74,5 +76,21 @@ describe('book identity contract', () => {
 
   it('keeps legacy local-hash reader key compatibility inside the identity module', () => {
     expect(getBookRefFromReaderBookKey(`${LOCAL_HASH}-abc1234`)).toBe(LOCAL_HASH);
+  });
+
+  it('non-throwingly parses reader keys and direct reader refs', () => {
+    expect(parseBookRefFromReaderBookKey(LOCAL_HASH)).toBe(LOCAL_HASH);
+    expect(parseBookRefFromReaderBookKey(PLATFORM_HASH)).toBe(PLATFORM_HASH);
+    expect(parseBookRefFromReaderBookKey(`catalog:${BOOK_ID}`)).toBe(`catalog:${BOOK_ID}`);
+    expect(parseBookRefFromReaderBookKey(`${PLATFORM_HASH}::session-a`)).toBe(PLATFORM_HASH);
+    expect(parseBookRefFromReaderBookKey(`${LOCAL_HASH}-abc1234`)).toBe(LOCAL_HASH);
+  });
+
+  it('rejects invalid reader key/ref shapes without throwing', () => {
+    for (const invalid of [BOOK_ID, '_placeholder', '', '   ', null, undefined, 'not-a-book']) {
+      expect(parseBookRefFromReaderBookKey(invalid)).toBeNull();
+      expect(isReaderBookKeyOrRef(invalid)).toBe(false);
+    }
+    expect(() => getBookRefFromReaderBookKey(BOOK_ID)).toThrow('Invalid reader book key');
   });
 });

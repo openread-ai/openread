@@ -23,11 +23,11 @@ const ControlPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRes
   const _ = useTranslation();
   const { envConfig, appService } = useEnv();
   const { getView, getViewSettings, recreateViewer, setViewSettings } = useReaderStore();
-  const { getBookData } = useBookDataStore();
+  const { getBookDataByReaderKey } = useBookDataStore();
   const { settings } = useSettingsStore();
   const { applyEinkMode } = useEinkMode();
   const { acquireVolumeKeyInterception, releaseVolumeKeyInterception } = useDeviceControlStore();
-  const bookData = getBookData(bookKey);
+  const bookData = getBookDataByReaderKey(bookKey);
   const viewSettings = getViewSettings(bookKey) || settings.globalViewSettings;
 
   const [scrollingOverlap, setScrollingOverlap] = useState(viewSettings.scrollingOverlap);

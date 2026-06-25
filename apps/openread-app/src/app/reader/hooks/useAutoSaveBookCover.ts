@@ -18,7 +18,7 @@ export const useBookCoverAutoSave = (bookKey: string) => {
       () => {
         setTimeout(async () => {
           const settings = useSettingsStore.getState().settings;
-          const bookData = useBookDataStore.getState().getBookData(bookKey);
+          const bookData = useBookDataStore.getState().getBookDataByReaderKey(bookKey);
           const book = bookData?.book;
           const savedBookHash = settings.savedBookCoverForLockScreen;
           const savedCoverPath = settings.savedBookCoverForLockScreenPath;

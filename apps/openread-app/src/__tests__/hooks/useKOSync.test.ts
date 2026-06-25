@@ -41,7 +41,7 @@ vi.mock('@/store/readerStore', () => ({
 
 vi.mock('@/store/bookDataStore', () => ({
   useBookDataStore: () => ({
-    getBookData: () => ({
+    getBookDataByReaderKey: () => ({
       book: { hash: 'book-1', title: 'Book', format: 'epub', updatedAt: Date.now() },
       bookDoc: {},
       config: { updatedAt: Date.now() },

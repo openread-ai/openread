@@ -31,7 +31,7 @@ export interface ParagraphState {
 export const useParagraphMode = ({ bookKey, viewRef }: UseParagraphModeProps) => {
   const { envConfig, appService } = useEnv();
   const { getViewSettings, setViewSettings, getProgress } = useReaderStore();
-  const { getBookData } = useBookDataStore();
+  const { getBookDataByReaderKey } = useBookDataStore();
 
   const iteratorRef = useRef<ParagraphIterator | null>(null);
   const currentDocIndexRef = useRef<number | undefined>(undefined);
@@ -362,7 +362,7 @@ export const useParagraphMode = ({ bookKey, viewRef }: UseParagraphModeProps) =>
     try {
       const currentConfig = settings.paragraphMode ?? DEFAULT_PARAGRAPH_MODE_CONFIG;
       const newEnabled = !currentConfig.enabled;
-      const bookData = getBookData(bookKeyRef.current);
+      const bookData = getBookDataByReaderKey(bookKeyRef.current);
       const book = {
         isFixedLayout: bookData?.isFixedLayout,
         renditionLayout: bookData?.bookDoc?.rendition?.layout,
@@ -418,7 +418,7 @@ export const useParagraphMode = ({ bookKey, viewRef }: UseParagraphModeProps) =>
     getViewSettings,
     setViewSettings,
     getProgress,
-    getBookData,
+    getBookDataByReaderKey,
     envConfig,
     appService?.isMobile,
     initIterator,

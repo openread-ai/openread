@@ -11,13 +11,13 @@ import { parseSyncableBookRef } from '@openread/types';
 export const useNotesSync = (bookKey: string) => {
   const { user } = useAuth();
   const { syncedNotes, syncNotes, lastNotePullAt } = useSync(bookKey);
-  const { getConfig, setConfig, getBookData } = useBookDataStore();
+  const { getConfig, setConfig, getBookDataByReaderKey } = useBookDataStore();
 
   const config = getConfig(bookKey);
 
   const getNewNotes = useCallback(() => {
     const config = getConfig(bookKey);
-    const book = getBookData(bookKey)?.book;
+    const book = getBookDataByReaderKey(bookKey)?.book;
     if (!config?.location || !book || !user) return {};
 
     const syncBookRef = parseSyncableBookRef(book.hash);
@@ -35,13 +35,13 @@ export const useNotesSync = (bookKey: string) => {
       notes: newNotes,
       lastSyncedAt: lastNotePullAt,
     };
-  }, [user, bookKey, lastNotePullAt, getConfig, getBookData]);
+  }, [user, bookKey, lastNotePullAt, getConfig, getBookDataByReaderKey]);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const handleAutoSync = useCallback(
     throttle(
       async () => {
-        const book = getBookData(bookKey)?.book;
+        const book = getBookDataByReaderKey(bookKey)?.book;
         const newNotes = getNewNotes();
         if (!newNotes.notes?.length) return;
         const syncBookRef = parseSyncableBookRef(book?.hash);
@@ -58,7 +58,7 @@ export const useNotesSync = (bookKey: string) => {
   useEffect(() => {
     if (!config?.location || !user || hasPulledNotesOnce.current) return;
     hasPulledNotesOnce.current = true;
-    const book = getBookData(bookKey)?.book;
+    const book = getBookDataByReaderKey(bookKey)?.book;
     const syncBookRef = parseSyncableBookRef(book?.hash);
     syncNotes([], syncBookRef ?? undefined, book?.metaHash, 'pull');
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -98,7 +98,7 @@ export const useNotesSync = (bookKey: string) => {
       return note;
     };
     if (syncedNotes?.length && config) {
-      const book = getBookData(bookKey)?.book;
+      const book = getBookDataByReaderKey(bookKey)?.book;
       const newNotes = syncedNotes.filter(
         (note) => note.bookHash === book?.hash || note.metaHash === book?.metaHash,
       );

@@ -23,7 +23,7 @@ import { createAgenticAdapter } from '@/services/ai';
 import type { AISettings, AIMessage } from '@/services/ai/types';
 import { useBookChapters } from '@/app/reader/hooks/useBookChapters';
 import { Thread } from '@/components/assistant/Thread';
-import { getBookIdFromKey } from '@/utils/readerBookKey';
+import { parseBookRefFromReaderBookKey } from '@/utils/readerBookKey';
 import { LAUNCH_BYOK_ENABLED } from '@/services/launchFeatures';
 import { normalizeReaderLayout } from '@/app/reader/utils/readerLayoutContract';
 import {
@@ -393,6 +393,7 @@ const ThreadWrapper = ({
   }, [pendingQuestion, setPendingQuestion, assistantRuntime]);
 
   const handleNewChat = useCallback(async () => {
+    if (!primaryBookHash) return;
     await createConversation(primaryBookHash, _('New conversation'), getParallelHashes());
   }, [createConversation, primaryBookHash, _, getParallelHashes]);
 
@@ -414,15 +415,15 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
   const _ = useTranslation();
   const { appService } = useEnv();
   const { settings } = useSettingsStore();
-  const { getBookData } = useBookDataStore();
+  const { getBookDataByReaderKey } = useBookDataStore();
   const { getView, getProgress, getViewSettings } = useReaderStore();
   const { user } = useAuth();
   const fetchInitialQuota = useAIQuotaStore((s) => s.fetchInitial);
   const userId = user?.id;
-  const bookData = getBookData(bookKey);
+  const bookData = getBookDataByReaderKey(bookKey);
   const progress = getProgress(bookKey);
 
-  const bookHash = bookData?.book?.platformHash || getBookIdFromKey(bookKey);
+  const bookHash = bookData?.book?.platformHash || parseBookRefFromReaderBookKey(bookKey);
   const bookTitle = bookData?.book?.title || 'Unknown';
   const sourceTitle = bookData?.book?.sourceTitle;
   const metadataTitle =
@@ -511,6 +512,14 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
       eventDispatcher.off('navigate-to-offset', handleNavigateToOffset);
     };
   }, [bookKey, getView, getChaptersForNav, readerLocation]);
+
+  if (!bookHash) {
+    return (
+      <div className='flex h-full items-center justify-center p-4'>
+        <p className='text-muted-foreground text-sm'>{_('Unable to open book')}</p>
+      </div>
+    );
+  }
 
   if (!aiSettings?.enabled) {
     return (

@@ -7,7 +7,6 @@ import { useSidebarStore } from '@/store/sidebarStore';
 import { debounce } from '@/utils/debounce';
 import { ScrollSource } from './usePagination';
 import { eventDispatcher } from '@/utils/event';
-import { shouldUseMobileWebTouchScroll } from '../utils/mobileScroll';
 import { normalizeReaderLayout } from '../utils/readerLayoutContract';
 
 export const useMouseEvent = (
@@ -73,66 +72,20 @@ interface IframeTouchEvent {
   changedTouches?: IframeTouch[];
 }
 
-export const useTouchEvent = (
-  bookKey: string,
-  handlePageFlip: (msg: CustomEvent) => void,
-  handleContinuousScroll: (source: ScrollSource, delta: number, threshold: number) => void,
-) => {
+export const useTouchEvent = (bookKey: string, handlePageFlip: (msg: CustomEvent) => void) => {
   const { appService } = useEnv();
   const { getBookData } = useBookDataStore();
-  const { hoveredBookKey, setHoveredBookKey, getView, getViewSettings } = useReaderStore();
+  const { hoveredBookKey, setHoveredBookKey, getViewSettings } = useReaderStore();
 
   const touchStartRef = useRef<IframeTouch | null>(null);
   const touchEndRef = useRef<IframeTouch | null>(null);
-  const lastTouchRef = useRef<IframeTouch | null>(null);
   const touchStartTimeRef = useRef<number | null>(null);
   const touchEndTimeRef = useRef<number | null>(null);
   const touchMovedRef = useRef(false);
 
-  const applyMobileWebTouchScroll = (touch: IframeTouch) => {
-    if (!shouldUseMobileWebTouchScroll(appService)) return;
-
-    const viewSettings = getViewSettings(bookKey);
-    const bookData = getBookData(bookKey);
-    if (!viewSettings || !bookData) return;
-    const layoutState = normalizeReaderLayout({
-      settings: viewSettings,
-      book: {
-        isFixedLayout: bookData.isFixedLayout,
-        renditionLayout: bookData.bookDoc?.rendition?.layout,
-        format: bookData.book?.format,
-      },
-      platform: { isMobile: !!appService?.isMobile },
-    });
-    if (layoutState.layoutMode !== 'continuous') return;
-
-    const previousTouch = lastTouchRef.current ?? touchStartRef.current;
-    if (!previousTouch) return;
-
-    const renderer = getView(bookKey)?.renderer as
-      | (HTMLElement & { scrollProp?: 'scrollTop' | 'scrollLeft' })
-      | undefined;
-    const scrollContainer = renderer?.shadowRoot?.getElementById('container');
-    if (!scrollContainer) return;
-
-    const scrollProp = renderer?.scrollProp ?? (viewSettings.vertical ? 'scrollLeft' : 'scrollTop');
-    const deltaX = previousTouch.screenX - touch.screenX;
-    const deltaY = previousTouch.screenY - touch.screenY;
-    const primaryDelta = scrollProp === 'scrollLeft' ? deltaX : deltaY;
-    const crossDelta = scrollProp === 'scrollLeft' ? deltaY : deltaX;
-    if (Math.abs(primaryDelta) < 1 || Math.abs(primaryDelta) < Math.abs(crossDelta)) return;
-
-    const previousPosition = scrollContainer[scrollProp];
-    scrollContainer[scrollProp] = previousPosition + primaryDelta;
-    if (scrollContainer[scrollProp] !== previousPosition) {
-      scrollContainer.dispatchEvent(new Event('scroll'));
-    }
-  };
-
   const resetTouchState = () => {
     touchStartRef.current = null;
     touchEndRef.current = null;
-    lastTouchRef.current = null;
     touchStartTimeRef.current = null;
     touchEndTimeRef.current = null;
     touchMovedRef.current = false;
@@ -142,7 +95,6 @@ export const useTouchEvent = (
     const touch = e.targetTouches[0];
     if (!touch) return;
     touchStartRef.current = touch;
-    lastTouchRef.current = touch;
     touchStartTimeRef.current = 'timeStamp' in e ? e.timeStamp : Date.now();
     touchMovedRef.current = false;
   };
@@ -152,9 +104,7 @@ export const useTouchEvent = (
     const touch = e.targetTouches[0];
     if (touch) {
       touchMovedRef.current = true;
-      applyMobileWebTouchScroll(touch);
       touchEndRef.current = touch;
-      lastTouchRef.current = touch;
       touchEndTimeRef.current = 'timeStamp' in e ? e.timeStamp : Date.now();
     }
     const { current: touchStart } = touchStartRef;
@@ -168,10 +118,11 @@ export const useTouchEvent = (
         useSidebarStore.getState().isSideBarVisible
       )
         return;
-      const viewSettings = getViewSettings(bookKey)!;
       const deltaY = touchEnd.screenY - touchStart.screenY;
       const deltaX = touchEnd.screenX - touchStart.screenX;
       if (!(window as unknown as Record<string, unknown>).__sheetOpen) {
+        const viewSettings = getViewSettings(bookKey);
+        if (!viewSettings) return;
         const layoutState = normalizeReaderLayout({
           settings: viewSettings,
           book: {
@@ -181,7 +132,7 @@ export const useTouchEvent = (
           },
           platform: { isMobile: !!appService?.isMobile },
         });
-        if (layoutState.layoutMode === 'paged' && !viewSettings!.vertical) {
+        if (layoutState.layoutMode === 'paged' && !viewSettings.vertical) {
           if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 10) {
             setHoveredBookKey(null);
           }
@@ -215,55 +166,61 @@ export const useTouchEvent = (
         return;
       }
 
-      const viewSettings = getViewSettings(bookKey)!;
-      const bookData = getBookData(bookKey)!;
+      const viewSettings = getViewSettings(bookKey);
+      const bookData = getBookData(bookKey);
+      if (!viewSettings || !bookData) {
+        resetTouchState();
+        return;
+      }
       const deltaT = touchEndTime && touchStartTime ? touchEndTime - touchStartTime : 0;
+      const layoutState = normalizeReaderLayout({
+        settings: viewSettings,
+        book: {
+          isFixedLayout: bookData.isFixedLayout,
+          renditionLayout: bookData.bookDoc?.rendition?.layout,
+          format: bookData.book?.format,
+        },
+        platform: { isMobile: !!appService?.isMobile },
+      });
+      const isPagedMode = layoutState.layoutMode === 'paged';
       // also check for deltaX to prevent swipe page turn from triggering the toggle
       if (
+        isPagedMode &&
         deltaY < -10 &&
         Math.abs(deltaY) > Math.abs(deltaX) * 2 &&
         Math.abs(deltaX) < windowWidth * 0.3
       ) {
         // swipe up to toggle the header bar and the footer bar, only for horizontal page mode
         if (
-          normalizeReaderLayout({
-            settings: viewSettings,
-            book: {
-              isFixedLayout: bookData.isFixedLayout,
-              renditionLayout: bookData.bookDoc?.rendition?.layout,
-              format: bookData.book?.format,
-            },
-            platform: { isMobile: !!appService?.isMobile },
-          }).layoutMode === 'paged' &&
-          !viewSettings!.vertical && // not vertical
+          !viewSettings.vertical && // not vertical
           (!bookData.isFixedLayout || viewSettings.pageZoomLevel <= 100) // for fixed layout, not when zoomed in
         ) {
           setHoveredBookKey(hoveredBookKey ? null : bookKey);
         }
-      } else {
-        if (
-          hoveredBookKey &&
-          !useNotebookStore.getState().isNotebookVisible &&
-          !useSidebarStore.getState().isSideBarVisible &&
-          !(window as unknown as Record<string, unknown>).__sheetOpen
-        ) {
-          setHoveredBookKey(null);
-        }
+      } else if (
+        hoveredBookKey &&
+        !useNotebookStore.getState().isNotebookVisible &&
+        !useSidebarStore.getState().isSideBarVisible &&
+        !(window as unknown as Record<string, unknown>).__sheetOpen
+      ) {
+        setHoveredBookKey(null);
       }
-      handlePageFlip(
-        new CustomEvent('touch-swipe', {
-          detail: {
-            deltaX,
-            deltaY,
-            deltaT,
-            startX: touchStart.screenX,
-            startY: touchStart.screenY,
-            endX: touchEnd.screenX,
-            endY: touchEnd.screenY,
-          },
-        }),
-      );
-      handleContinuousScroll('touch', deltaY, 30);
+
+      if (isPagedMode) {
+        handlePageFlip(
+          new CustomEvent('touch-swipe', {
+            detail: {
+              deltaX,
+              deltaY,
+              deltaT,
+              startX: touchStart.screenX,
+              startY: touchStart.screenY,
+              endX: touchEnd.screenX,
+              endY: touchEnd.screenY,
+            },
+          }),
+        );
+      }
     }
 
     resetTouchState();
@@ -275,8 +232,10 @@ export const useTouchEvent = (
         onTouchStart(msg.data);
       } else if (msg.data.type === 'iframe-touchmove') {
         onTouchMove(msg.data);
-      } else if (msg.data.type === 'iframe-touchend' || msg.data.type === 'iframe-touchcancel') {
+      } else if (msg.data.type === 'iframe-touchend') {
         onTouchEnd(msg.data);
+      } else if (msg.data.type === 'iframe-touchcancel') {
+        resetTouchState();
       }
     }
   };

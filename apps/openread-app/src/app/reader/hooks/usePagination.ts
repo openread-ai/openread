@@ -11,7 +11,7 @@ import { isTauriAppPlatform } from '@/services/environment';
 import { tauriGetWindowLogicalPosition } from '@/utils/window';
 import { normalizeReaderLayout } from '../utils/readerLayoutContract';
 
-export type ScrollSource = 'touch' | 'mouse';
+export type ScrollSource = 'mouse';
 
 type PaginationSide = 'left' | 'right' | 'up' | 'down';
 type PaginationMode = 'pan' | 'page' | 'section';
@@ -263,30 +263,18 @@ export const usePagination = (
       const doScroll = () => {
         // may have overscroll where the start is greater than 0
         if (renderer.start <= scrollDelta && scrollDelta > threshold) {
-          setTimeout(() => {
-            viewRef.current?.prev(renderer.start + 1);
-          }, 100);
+          viewRef.current?.prev(renderer.start + 1);
           // sometimes viewSize has subpixel value that the end never reaches
         } else if (
           Math.ceil(renderer.end) - scrollDelta >= renderer.viewSize &&
           scrollDelta < -threshold
         ) {
-          setTimeout(() => {
-            viewRef.current?.next(renderer.viewSize - Math.floor(renderer.end) + 1);
-          }, 100);
+          viewRef.current?.next(renderer.viewSize - Math.floor(renderer.end) + 1);
         }
       };
       if (mode === 'mouse') {
         // we can always get mouse wheel events
         doScroll();
-      } else if (mode === 'touch') {
-        // when the document height is less than the viewport height, we can't get the relocate event
-        if (renderer.size >= renderer.viewSize) {
-          doScroll();
-        } else {
-          // scroll after the relocate event
-          renderer.addEventListener('relocate', () => doScroll(), { once: true });
-        }
       }
     }
   };

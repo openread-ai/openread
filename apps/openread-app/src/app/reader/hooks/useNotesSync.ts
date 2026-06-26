@@ -1,17 +1,20 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useSync } from '@/hooks/useSync';
-import { BookNote } from '@/types/book';
 import { useBookDataStore } from '@/store/bookDataStore';
+import { useReaderStore } from '@/store/readerStore';
 import { SYNC_NOTES_INTERVAL_SEC } from '@/services/constants';
 import { throttle } from '@/utils/throttle';
 import { enqueueBookNotesForSync } from '@/services/sync/helpers';
+import { remoteApplyEventMatchesBook, subscribeRemoteApply } from '@/services/sync/remoteApply';
+import { NOTE_PREFIX } from '@/types/view';
 import { parseSyncableBookRef } from '@openread/types';
 
 export const useNotesSync = (bookKey: string) => {
   const { user } = useAuth();
-  const { syncedNotes, syncNotes, lastNotePullAt } = useSync(bookKey);
-  const { getConfig, setConfig, getBookDataByReaderKey } = useBookDataStore();
+  const { syncNotes, lastNotePullAt } = useSync(bookKey);
+  const { getConfig, getBookDataByReaderKey } = useBookDataStore();
+  const { getViewsById } = useReaderStore();
 
   const config = getConfig(bookKey);
 
@@ -70,46 +73,64 @@ export const useNotesSync = (bookKey: string) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config?.booknotes, handleAutoSync]);
 
-  // Flush unsent notes to offline queue on unmount so changes
-  // aren't lost if the user closes the reader before the throttle fires.
+  const flushNotesToQueue = useCallback(() => {
+    const { notes } = getNewNotes();
+    if (!notes?.length || !user) return;
+    void enqueueBookNotesForSync(notes);
+  }, [getNewNotes, user]);
+
+  // Flush unsent notes to the durable outbox on unmount and mobile browser lifecycle
+  // transitions so bookmark/highlight/note changes are not lost before throttled sync.
   useEffect(() => {
-    return () => {
-      const { notes } = getNewNotes();
-      if (!notes?.length || !user) return;
-      void enqueueBookNotesForSync(notes);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') flushNotesToQueue();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bookKey]);
+    window.addEventListener('pagehide', flushNotesToQueue);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      flushNotesToQueue();
+      window.removeEventListener('pagehide', flushNotesToQueue);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [flushNotesToQueue]);
 
   useEffect(() => {
-    const processNewNote = (note: BookNote) => {
-      const config = getConfig(bookKey);
-      const oldNotes = config?.booknotes ?? [];
-      const existingNote = oldNotes.find((oldNote) => oldNote.id === note.id);
-      if (existingNote) {
-        const remoteTime = Math.max(note.updatedAt ?? 0, note.deletedAt ?? 0);
-        const localTime = Math.max(existingNote.updatedAt ?? 0, existingNote.deletedAt ?? 0);
-        if (remoteTime > localTime) {
-          return { ...existingNote, ...note };
-        } else {
-          return { ...note, ...existingNote };
+    return subscribeRemoteApply((event) => {
+      if (event.type !== 'bookNotes') return;
+      const book = getBookDataByReaderKey(bookKey)?.book;
+      const syncBookRef = parseSyncableBookRef(book?.hash);
+      if (
+        !book ||
+        !remoteApplyEventMatchesBook({
+          eventBookHash: event.bookHash,
+          eventMetaHash: event.metaHash,
+          bookHash: syncBookRef,
+          bookMetaHash: book.metaHash,
+        })
+      ) {
+        return;
+      }
+
+      const views = getViewsById(book.hash);
+      for (const note of event.changedNotes) {
+        if (note.type !== 'annotation') continue;
+        const previous = event.previousNotes.find((item) => item.id === note.id);
+        if (previous) {
+          views.forEach((view) => view?.addAnnotation(previous, true));
+          if (previous.note?.trim()) {
+            views.forEach((view) =>
+              view?.addAnnotation({ ...previous, value: `${NOTE_PREFIX}${previous.cfi}` }, true),
+            );
+          }
+        }
+        if (note.deletedAt) continue;
+        if (note.style) views.forEach((view) => view?.addAnnotation(note));
+        if (note.note?.trim()) {
+          views.forEach((view) =>
+            view?.addAnnotation({ ...note, value: `${NOTE_PREFIX}${note.cfi}` }),
+          );
         }
       }
-      return note;
-    };
-    if (syncedNotes?.length && config) {
-      const book = getBookDataByReaderKey(bookKey)?.book;
-      const newNotes = syncedNotes.filter(
-        (note) => note.bookHash === book?.hash || note.metaHash === book?.metaHash,
-      );
-      if (!newNotes.length) return;
-      const oldNotes = config.booknotes ?? [];
-      const mergedNotes = [
-        ...oldNotes.filter((oldNote) => !newNotes.some((newNote) => newNote.id === oldNote.id)),
-        ...newNotes.map(processNewNote),
-      ];
-      setConfig(bookKey, { booknotes: mergedNotes });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [syncedNotes]);
+    });
+  }, [bookKey, getBookDataByReaderKey, getViewsById]);
 };

@@ -13,12 +13,7 @@ import type { MetaHash, SyncableBookRef } from '@openread/types';
 
 import { createBackendSyncTransport } from './backendTransport';
 import { SyncEngine, type SyncDrainResult } from './engine';
-import {
-  pullCanonicalSyncChanges,
-  reconcileCanonicalBooks,
-  type CollectionRecord,
-  type SyncType,
-} from './client';
+import { pullCanonicalSyncChanges, reconcileCanonicalBooks, type SyncType } from './client';
 import { listFiles } from '@/libs/storage';
 import { supabase } from '@/utils/supabase';
 import {
@@ -27,11 +22,17 @@ import {
   transformBookNoteFromDB,
 } from '@/utils/transform';
 import { useLibraryStore } from '@/store/libraryStore';
-import { useBookDataStore } from '@/store/bookDataStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import envConfig from '@/services/environment';
 import { settingsService } from '@/services/settings/settingsService';
 import type { BookConfig, BookDataRecord, BookNote } from '@/types/book';
+import {
+  applyRemoteBookConfigRows,
+  applyRemoteBookNoteRows,
+  applyRemoteSettingsAndCollections,
+  type RemoteConfigTransform,
+  type RemoteNoteTransform,
+} from './remoteApply';
 import type { DBBook, DBBookConfig, DBBookNote } from '@/types/records';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import type { AIMessage } from '@/services/ai/types';
@@ -91,33 +92,6 @@ function computeMaxTombstoneTimestamp(tombstones: SyncTombstone[]): number {
   );
 }
 
-function parseBookNoteEntityId(
-  entityId: string,
-): { bookHash: SyncableBookRef; noteId: string } | null {
-  const separatorIndex = entityId.lastIndexOf(':');
-  if (separatorIndex <= 0 || separatorIndex === entityId.length - 1) return null;
-  const bookHash = parseSyncableBookRef(entityId.slice(0, separatorIndex));
-  if (!bookHash) return null;
-  return {
-    bookHash,
-    noteId: entityId.slice(separatorIndex + 1),
-  };
-}
-
-function configDeletePatch(bookHash: SyncableBookRef, deletedAt: number): Partial<BookConfig> {
-  return {
-    bookHash,
-    progress: undefined,
-    location: undefined,
-    xpointer: undefined,
-    searchConfig: undefined,
-    viewSettings: undefined,
-    updatedAt: deletedAt,
-  };
-}
-
-type RemoteConfigTransform = { config: BookConfig; record: BookDataRecord };
-type RemoteNoteTransform = { note: BookNote; record: BookDataRecord };
 type RemoteConfigTransformResult = {
   rows: RemoteConfigTransform[];
   skippedRecords: BookDataRecord[];
@@ -202,31 +176,6 @@ function waitForLibraryLoaded(timeoutMs = 5_000): Promise<boolean> {
       resolve(true);
     });
   });
-}
-
-type SyncableCollection = CollectionRecord;
-
-/**
- * Merge local and remote collections using per-collection LWW.
- * New collections from either side are added; conflicts resolved by updatedAt.
- */
-function mergeCollections(
-  local: SyncableCollection[],
-  remote: SyncableCollection[],
-): SyncableCollection[] {
-  const localMap = new Map(local.map((c) => [c.id, c]));
-  for (const r of remote) {
-    if (!r.id) continue;
-    const l = localMap.get(r.id);
-    if (!l) {
-      localMap.set(r.id, r);
-    } else if (
-      Math.max(r.updatedAt ?? 0, r.deletedAt ?? 0) > Math.max(l.updatedAt ?? 0, l.deletedAt ?? 0)
-    ) {
-      localMap.set(r.id, r);
-    }
-  }
-  return Array.from(localMap.values()).filter((c) => !c.deletedAt);
 }
 
 export interface SyncWorkerStatus {
@@ -816,86 +765,12 @@ export class SyncWorker {
 
       const { rows: configRows, skippedRecords: skippedConfigRecords } =
         transformRemoteConfigRows(dbConfigs);
-      const configs = configRows.map(({ config }) => config);
-      const bookDataStore = useBookDataStore.getState();
-      // Build lookup map of active (non-deleted) books to skip orphaned configs
-      const library = useLibraryStore.getState().library;
-      const bookByHash = new Map<string, (typeof library)[number]>(library.map((b) => [b.hash, b]));
-
-      const booksToUpdate: Array<{
-        hash: string;
-        progress: BookConfig['progress'];
-        updatedAt: number;
-      }> = [];
-      const acceptedConfigRecords: BookDataRecord[] = [];
-      const acceptedConfigTombstones: SyncTombstone[] = [];
-
-      for (let index = 0; index < configs.length; index += 1) {
-        const { config, record } = configRows[index]!;
-        if (!config.bookHash) continue;
-        const book = bookByHash.get(config.bookHash);
-        if (!book) continue;
-        acceptedConfigRecords.push(record);
-        const bookKey = book.hash;
-        const existing = bookDataStore.getConfig(bookKey);
-        if (!existing || (config.updatedAt ?? 0) >= (existing.updatedAt ?? 0)) {
-          const merged = { ...existing, ...config };
-          // Discard malformed CFI location strings from remote
-          if (merged.location && !merged.location.startsWith('epubcfi(')) {
-            delete merged.location;
-          }
-          bookDataStore.setConfig(bookKey, merged);
-
-          // Also store in pre-synced cache so initViewState can merge the location
-          // before FoliateViewer initializes (avoids flash from page 1). See #62.
-          bookDataStore.setPreSyncedConfig(config.bookHash, merged);
-
-          // Sync progress from config back to library book for card display
-          if (config.progress) {
-            booksToUpdate.push({
-              hash: book.hash,
-              progress: config.progress,
-              updatedAt: Date.now(),
-            });
-          }
-        }
-      }
-
-      for (const tombstone of configTombstones) {
-        const bookHash = parseSyncableBookRef(tombstone.entityId);
-        if (!bookHash) continue;
-        const book = bookByHash.get(bookHash);
-        if (!book) continue;
-        const deletedAt = tombstoneTimestamp(tombstone);
-        const bookKey = book.hash;
-        const existing = bookDataStore.getConfig(bookKey);
-        if (!existing || deletedAt >= (existing.updatedAt ?? 0)) {
-          const patch = configDeletePatch(bookHash, deletedAt);
-          bookDataStore.setConfig(bookKey, patch);
-          bookDataStore.setPreSyncedConfig(bookHash, patch);
-        }
-        acceptedConfigTombstones.push(tombstone);
-      }
-
-      // Batch-update library books with synced progress only.
-      // Merge only the changed fields (progress, updatedAt) into current state —
-      // never spread a stale full-book snapshot which would clobber fields set
-      // concurrently by downloadMissingCovers (e.g., coverImageUrl). See #63.
-      if (booksToUpdate.length > 0) {
-        const currentLibrary = useLibraryStore.getState().library;
-        const updateMap = new Map(booksToUpdate.map((b) => [b.hash, b]));
-        const updatedLibrary = currentLibrary.map((b) => {
-          const update = updateMap.get(b.hash);
-          if (!update) return b;
-          return { ...b, progress: update.progress, updatedAt: update.updatedAt };
-        });
-        useLibraryStore.getState().setLibrary(updatedLibrary);
-      }
+      const applyResult = await applyRemoteBookConfigRows(configRows, configTombstones);
 
       const maxTime = Math.max(
-        computeMaxTimestamp(acceptedConfigRecords),
+        computeMaxTimestamp(applyResult.acceptedRecords),
         computeMaxTimestamp(skippedConfigRecords),
-        computeMaxTombstoneTimestamp(acceptedConfigTombstones),
+        computeMaxTombstoneTimestamp(applyResult.acceptedTombstones),
       );
       if (maxTime > 0) {
         setCanonicalSyncCursor(
@@ -905,7 +780,7 @@ export class SyncWorker {
           cursorScope,
         );
       }
-      return configs;
+      return applyResult.configs;
     } catch (error) {
       console.error('[SyncWorker] Pull remote configs failed:', error);
       return [];
@@ -947,91 +822,14 @@ export class SyncWorker {
 
       const { rows: noteRows, skippedRecords: skippedNoteRecords } =
         transformRemoteNoteRows(dbNotes);
-      const notes = noteRows.map(({ note }) => note);
-      const bookDataStore = useBookDataStore.getState();
+      const applyResult = await applyRemoteBookNoteRows(noteRows, noteTombstones);
 
-      // Group notes by bookHash
-      const notesByBook = new Map<string, typeof notes>();
-      for (const note of notes) {
-        if (!note.bookHash) continue;
-        const existing = notesByBook.get(note.bookHash) ?? [];
-        existing.push(note);
-        notesByBook.set(note.bookHash, existing);
-      }
-
-      // Build lookup map of active (non-deleted) books to skip orphaned notes
-      const library = useLibraryStore.getState().library;
-      const bookByHash = new Map<string, (typeof library)[number]>(library.map((b) => [b.hash, b]));
-
-      const appliedNoteKeys = new Set<string>();
-      const appliedNoteTombstones: SyncTombstone[] = [];
-      for (const [bookHash, bookNotes] of notesByBook) {
-        const book = bookByHash.get(bookHash);
-        if (!book) continue;
-        const bookKey = book.hash;
-        const config = bookDataStore.getConfig(bookKey);
-        if (!config) continue;
-
-        const oldNotes = config.booknotes ?? [];
-        const noteIdxMap = new Map(oldNotes.map((n, i) => [n.id, i]));
-        const mergedNotes = [...oldNotes];
-
-        for (const note of bookNotes) {
-          const idx = noteIdxMap.get(note.id);
-          if (idx !== undefined) {
-            const remoteTime = Math.max(note.updatedAt ?? 0, note.deletedAt ?? 0);
-            const localTime = Math.max(
-              mergedNotes[idx]!.updatedAt ?? 0,
-              mergedNotes[idx]!.deletedAt ?? 0,
-            );
-            if (remoteTime > localTime) {
-              mergedNotes[idx] = { ...mergedNotes[idx]!, ...note };
-            }
-          } else {
-            mergedNotes.push(note);
-          }
-        }
-
-        bookDataStore.setConfig(bookKey, { booknotes: mergedNotes });
-        bookNotes.forEach((note) => appliedNoteKeys.add(`${note.bookHash}:${note.id}`));
-      }
-
-      for (const tombstone of noteTombstones) {
-        const parsed = parseBookNoteEntityId(tombstone.entityId);
-        if (!parsed) continue;
-        const book = bookByHash.get(parsed.bookHash);
-        if (!book) continue;
-        const bookKey = book.hash;
-        const config = bookDataStore.getConfig(bookKey);
-        if (!config) continue;
-
-        const oldNotes = config.booknotes ?? [];
-        const idx = oldNotes.findIndex((note) => note.id === parsed.noteId);
-        if (idx !== -1) {
-          const remoteTime = tombstoneTimestamp(tombstone);
-          const localTime = Math.max(oldNotes[idx]!.updatedAt ?? 0, oldNotes[idx]!.deletedAt ?? 0);
-          if (remoteTime > localTime) {
-            const mergedNotes = [...oldNotes];
-            mergedNotes[idx] = {
-              ...mergedNotes[idx]!,
-              updatedAt: remoteTime,
-              deletedAt: tombstone.deletedAt,
-            };
-            bookDataStore.setConfig(bookKey, { booknotes: mergedNotes });
-          }
-        }
-        appliedNoteTombstones.push(tombstone);
-      }
-
-      // Only advance the watermark for records/tombstones actually applied — prevents
-      // silently skipping notes on fresh installs where booksData is empty.
-      const appliedNoteRecords = (dbNotes as unknown as BookDataRecord[]).filter((note) =>
-        appliedNoteKeys.has(`${String(note.book_hash)}:${String(note.id)}`),
-      );
+      // Advance for every processed/malformed remote row or tombstone so stale/non-applicable
+      // records do not churn repeated pulls while malformed rows still move past poison records.
       const maxTime = Math.max(
-        computeMaxTimestamp(appliedNoteRecords),
+        computeMaxTimestamp(applyResult.acceptedRecords),
         computeMaxTimestamp(skippedNoteRecords),
-        computeMaxTombstoneTimestamp(appliedNoteTombstones),
+        computeMaxTombstoneTimestamp(applyResult.acceptedTombstones),
       );
       if (maxTime > 0) {
         setCanonicalSyncCursor(
@@ -1041,7 +839,7 @@ export class SyncWorker {
           cursorScope,
         );
       }
-      return notes;
+      return applyResult.notes;
     } catch (error) {
       console.error('[SyncWorker] Pull remote notes failed:', error);
       return [];
@@ -1075,12 +873,11 @@ export class SyncWorker {
       }
 
       const nextWatermark = result.settingsUpdatedAt ?? Date.now();
-      const freshSettings = { ...useSettingsStore.getState().settings };
-      const syncedSettings = remoteSettings
-        ? settingsService.applySyncable(freshSettings, remoteSettings)
-        : freshSettings;
-      const mergedSettings = syncedSettings;
-      useSettingsStore.getState().setSettings(mergedSettings);
+      await applyRemoteSettingsAndCollections({
+        remoteSettings,
+        remoteCollections,
+        collectionTombstones,
+      });
       setCanonicalSyncCursor(
         this.userId,
         'settings',
@@ -1091,27 +888,6 @@ export class SyncWorker {
         'collection',
         result.cursorByEntity?.collection ?? nextWatermark,
       );
-      await settingsService.save(envConfig, mergedSettings, { sync: false });
-
-      if (remoteCollections.length > 0 || collectionTombstones.length > 0) {
-        const { usePlatformSidebarStore } = await import('@/store/platformSidebarStore');
-        const localCollections = usePlatformSidebarStore.getState().collections;
-        const tombstoneCollections = collectionTombstones.map((tombstone) => ({
-          id: tombstone.entityId,
-          name: '',
-          bookHashes: [],
-          createdAt: new Date(tombstone.deletedAt).toISOString(),
-          updatedAt: tombstoneTimestamp(tombstone),
-          deletedAt: tombstone.deletedAt,
-        }));
-        const mergedCollections = mergeCollections(localCollections, [
-          ...remoteCollections,
-          ...tombstoneCollections,
-        ]);
-        usePlatformSidebarStore.setState({
-          collections: mergedCollections as typeof localCollections,
-        });
-      }
     } catch (error) {
       console.error('[SyncWorker] Pull remote settings failed:', error);
     }

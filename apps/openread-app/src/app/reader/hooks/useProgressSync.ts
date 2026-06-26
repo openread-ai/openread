@@ -7,13 +7,13 @@ import { useReaderStore } from '@/store/readerStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { serializeConfig } from '@/utils/serializer';
-import { CFI } from '@/libs/document';
 import { debounce } from '@/utils/debounce';
 import { eventDispatcher } from '@/utils/event';
 import { DEFAULT_BOOK_SEARCH_CONFIG, SYNC_PROGRESS_INTERVAL_SEC } from '@/services/constants';
 import { getCFIFromXPointer, getXPointerFromCFI, normalizeProgressXPointer } from '@/utils/xcfi';
 import { createLogger } from '@/utils/logger';
 import { enqueueBookConfigForSync } from '@/services/sync/helpers';
+import { remoteApplyEventMatchesBook, subscribeRemoteApply } from '@/services/sync/remoteApply';
 import { parseBookRefFromReaderBookKey } from '@/utils/readerBookKey';
 import { parseSyncableBookRef } from '@openread/types';
 
@@ -21,10 +21,10 @@ const logger = createLogger('progress-sync');
 
 export const useProgressSync = (bookKey: string) => {
   const _ = useTranslation();
-  const { getConfig, setConfig, getBookDataByReaderKey } = useBookDataStore();
+  const { getConfig, getBookDataByReaderKey } = useBookDataStore();
   const { getView, getProgress, setHoveredBookKey } = useReaderStore();
   const { settings } = useSettingsStore();
-  const { syncedConfigs, syncConfigs } = useSync(bookKey);
+  const { syncConfigs } = useSync(bookKey);
   const { user } = useAuth();
   const progress = getProgress(bookKey);
 
@@ -52,6 +52,7 @@ export const useProgressSync = (bookKey: string) => {
     if (!bookHash) return;
     const metaHash = book.metaHash;
     await syncConfigs([], bookHash, metaHash, 'pull');
+    configPulled.current = true;
   };
 
   const syncConfig = async () => {
@@ -94,22 +95,32 @@ export const useProgressSync = (bookKey: string) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookKey]);
 
-  // Flush unsaved config to offline queue on unmount so changes
-  // aren't lost if the user closes the reader before the throttle fires.
-  useEffect(() => {
-    return () => {
-      const config = getConfig(bookKey);
-      const book = getBookDataByReaderKey(bookKey)?.book;
-      if (!config || !book || !user) return;
+  const flushConfigToQueue = useCallback(() => {
+    const config = getConfig(bookKey);
+    const book = getBookDataByReaderKey(bookKey)?.book;
+    if (!config || !book || !user) return;
 
-      const bookHash = parseSyncableBookRef(parseBookRefFromReaderBookKey(bookKey));
-      if (!bookHash) return;
-      if (config.updatedAt) {
-        void enqueueBookConfigForSync({ ...config, bookHash, metaHash: book.metaHash });
-      }
+    const bookHash = parseSyncableBookRef(parseBookRefFromReaderBookKey(bookKey));
+    if (!bookHash) return;
+    if (config.updatedAt) {
+      void enqueueBookConfigForSync({ ...config, bookHash, metaHash: book.metaHash });
+    }
+  }, [bookKey, getBookDataByReaderKey, getConfig, user]);
+
+  // Flush unsaved config to the durable outbox on unmount and mobile browser lifecycle
+  // transitions so progress is not lost before the debounce fires.
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') flushConfigToQueue();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bookKey]);
+    window.addEventListener('pagehide', flushConfigToQueue);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      flushConfigToQueue();
+      window.removeEventListener('pagehide', flushConfigToQueue);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [flushConfigToQueue]);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const handleAutoSync = useCallback(
@@ -134,81 +145,72 @@ export const useProgressSync = (bookKey: string) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [progress]);
 
-  const applyRemoteProgress = async (syncedConfigs: BookConfig[]) => {
-    const config = getConfig(bookKey);
-    const book = getBookDataByReaderKey(bookKey)?.book;
-    if (!syncedConfigs || syncedConfigs.length === 0 || !config || !book) return;
-
-    const bookHash = parseSyncableBookRef(parseBookRefFromReaderBookKey(bookKey));
-    if (!bookHash) return;
-    const metaHash = book.metaHash;
-    const syncedConfig = syncedConfigs.filter(
-      (c) => c.bookHash === bookHash || c.metaHash === metaHash,
-    )[0];
-    if (syncedConfig) {
-      const configCFI = config?.location;
-      let remoteCFILocation = syncedConfig.location;
-      const xPointer = syncedConfig.xpointer;
-      const bookData = getBookDataByReaderKey(bookKey);
-      const view = getView(bookKey);
-      if (xPointer && view && bookData && bookData.bookDoc) {
-        const content = view.renderer.getContents()[0];
-        const koProgress = normalizeProgressXPointer(xPointer);
-        const candidateCFI = await getCFIFromXPointer(
-          koProgress,
-          content?.doc,
-          content?.index,
-          bookData.bookDoc,
-        );
-        if (!remoteCFILocation || CFI.compare(remoteCFILocation, candidateCFI) < 0) {
-          remoteCFILocation = candidateCFI;
-        }
-      }
-      const filteredSyncedConfig = Object.fromEntries(
-        Object.entries(syncedConfig).filter(([_, value]) => value !== null && value !== undefined),
-      );
-      if (syncedConfig.updatedAt >= config.updatedAt) {
-        setConfig(bookKey, { ...config, ...filteredSyncedConfig });
-      } else {
-        setConfig(bookKey, { ...filteredSyncedConfig, ...config });
-      }
-      // Navigate to remote position if it's ahead of local (or local has no position).
-      // Without the !configCFI fallback, books opened for the first time on a device
-      // would never navigate because configCFI is undefined. See issue #62.
-      if (remoteCFILocation && view) {
-        let shouldNavigate = !configCFI;
-        if (configCFI) {
-          try {
-            shouldNavigate = CFI.compare(configCFI, remoteCFILocation) < 0;
-          } catch {
-            logger.warn('CFI compare failed, navigating to remote position');
-            shouldNavigate = true;
-          }
-        }
-        if (shouldNavigate) {
-          try {
-            await view.goTo(remoteCFILocation);
-            setHoveredBookKey(null);
-            eventDispatcher.dispatch('hint', {
-              bookKey,
-              message: _('Reading Progress Synced'),
-            });
-          } catch (navError) {
-            logger.warn('Navigation to synced position failed', { remoteCFILocation, navError });
-          }
-        }
-      }
-    }
-  };
-
-  // Pull: process the pulled progress
-  useEffect(() => {
-    if (!configPulled.current && syncedConfigs) {
-      configPulled.current = true;
-      applyRemoteProgress(syncedConfigs).catch((error) => {
-        logger.error('Failed to apply remote progress', error);
+  const remoteConfigMatchesCurrentBook = useCallback(
+    (remoteConfig: BookConfig) => {
+      const book = getBookDataByReaderKey(bookKey)?.book;
+      const bookHash = parseSyncableBookRef(parseBookRefFromReaderBookKey(bookKey));
+      if (!book || !bookHash) return false;
+      return remoteApplyEventMatchesBook({
+        eventBookHash: remoteConfig.bookHash,
+        eventMetaHash: remoteConfig.metaHash,
+        bookHash,
+        bookMetaHash: book.metaHash,
       });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [syncedConfigs]);
+    },
+    [bookKey, getBookDataByReaderKey],
+  );
+
+  const navigateToAppliedRemoteProgress = useCallback(
+    async (remoteConfig: BookConfig) => {
+      if (!remoteConfigMatchesCurrentBook(remoteConfig)) return;
+
+      let remoteCFILocation = remoteConfig.location;
+      const view = getView(bookKey);
+      const bookData = getBookDataByReaderKey(bookKey);
+      if (remoteConfig.xpointer && view && bookData?.bookDoc) {
+        const content = view.renderer.getContents()[0];
+        try {
+          remoteCFILocation = await getCFIFromXPointer(
+            normalizeProgressXPointer(remoteConfig.xpointer),
+            content?.doc,
+            content?.index,
+            bookData.bookDoc,
+          );
+        } catch (error) {
+          logger.warn('Failed to convert remote XPointer to CFI', error);
+        }
+      }
+
+      if (!remoteCFILocation || !view) return;
+      try {
+        await view.goTo(remoteCFILocation);
+        setHoveredBookKey(null);
+        eventDispatcher.dispatch('hint', {
+          bookKey,
+          message: _('Reading Progress Synced'),
+        });
+      } catch (navError) {
+        logger.warn('Navigation to synced position failed', { remoteCFILocation, navError });
+      }
+    },
+    [
+      _,
+      bookKey,
+      getBookDataByReaderKey,
+      getView,
+      remoteConfigMatchesCurrentBook,
+      setHoveredBookKey,
+    ],
+  );
+
+  useEffect(() => {
+    return subscribeRemoteApply((event) => {
+      if (event.type !== 'bookConfig') return;
+      if (!remoteConfigMatchesCurrentBook(event.config)) return;
+      configPulled.current = true;
+      navigateToAppliedRemoteProgress(event.config).catch((error) => {
+        logger.error('Failed to navigate to applied remote progress', error);
+      });
+    });
+  }, [navigateToAppliedRemoteProgress, remoteConfigMatchesCurrentBook]);
 };

@@ -74,6 +74,8 @@ const mocks = vi.hoisted(() => {
     downloadBookCovers: vi.fn(async () => undefined),
     generateCoverImageUrl: vi.fn(async () => null as string | null),
     saveLibraryBooks: vi.fn(),
+    loadBookConfig: vi.fn(async () => ({ updatedAt: 0 }) as BookConfig),
+    saveBookConfig: vi.fn(async () => undefined),
     saveSettings: vi.fn(),
   };
 
@@ -209,6 +211,9 @@ describe('SyncWorker book reconcile queue', () => {
     mocks.appService.generateCoverImageUrl.mockReset();
     mocks.appService.generateCoverImageUrl.mockResolvedValue(null);
     mocks.appService.saveLibraryBooks.mockClear();
+    mocks.appService.loadBookConfig.mockReset();
+    mocks.appService.loadBookConfig.mockResolvedValue({ updatedAt: 0 } as BookConfig);
+    mocks.appService.saveBookConfig.mockClear();
     mocks.appService.saveSettings.mockClear();
     mocks.aiState.currentBookHash = mocks.libraryBook.hash;
     mocks.aiState.conversations = [];

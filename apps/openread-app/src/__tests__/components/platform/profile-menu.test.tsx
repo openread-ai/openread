@@ -1,5 +1,6 @@
+import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import { ProfileMenu } from '@/components/platform/profile-menu';
 import { UserAvatar } from '@/components/platform/user-avatar';
 import type { User } from '@supabase/supabase-js';
@@ -16,6 +17,54 @@ vi.mock('next/navigation', () => ({
 // Mock useTranslation
 vi.mock('@/hooks/useTranslation', () => ({
   useTranslation: () => (key: string) => key,
+}));
+
+vi.mock('@/components/primitives/dropdown-menu', () => ({
+  DropdownMenu: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DropdownMenuTrigger: ({
+    children,
+    asChild,
+  }: {
+    children: React.ReactNode;
+    asChild?: boolean;
+  }) => {
+    if (asChild) {
+      const child = React.Children.only(children) as React.ReactElement<Record<string, unknown>>;
+      return React.cloneElement(child, { 'aria-haspopup': 'menu', 'aria-expanded': 'false' });
+    }
+    return <button type='button'>{children}</button>;
+  },
+  DropdownMenuContent: ({ children }: { children: React.ReactNode }) => (
+    <div role='menu'>{children}</div>
+  ),
+  DropdownMenuItem: ({
+    children,
+    asChild,
+    onClick,
+    className,
+  }: {
+    children: React.ReactNode;
+    asChild?: boolean;
+    onClick?: () => void;
+    className?: string;
+  }) => {
+    if (asChild) {
+      const child = React.Children.only(children) as React.ReactElement<Record<string, unknown>>;
+      return React.cloneElement(child, {
+        role: 'menuitem',
+        className,
+        ...(onClick ? { onClick } : {}),
+      });
+    }
+    return (
+      <button type='button' role='menuitem' onClick={onClick} className={className}>
+        {children}
+      </button>
+    );
+  },
+  DropdownMenuSeparator: ({ className }: { className?: string }) => (
+    <div role='separator' className={className} />
+  ),
 }));
 
 // Mock navigateToLogin
@@ -131,6 +180,20 @@ describe('ProfileMenu', () => {
       expect(container.querySelector('.lucide-user')).toBeTruthy();
       expect(screen.queryByText('JD')).toBeNull();
     });
+
+    it('should call onNavigate when Settings is selected', async () => {
+      const onNavigate = vi.fn();
+      render(<ProfileMenu onNavigate={onNavigate} />);
+
+      fireEvent.pointerDown(screen.getByRole('button', { name: /profile menu/i }));
+
+      const settingsLink = await screen.findByRole('menuitem', { name: /settings/i });
+      settingsLink.addEventListener('click', (event) => event.preventDefault());
+      fireEvent.click(settingsLink);
+
+      await waitFor(() => expect(onNavigate).toHaveBeenCalledTimes(1));
+      expect(settingsLink.getAttribute('href')).toBe('/settings/account');
+    });
   });
 
   describe('Unauthenticated State', () => {
@@ -166,6 +229,14 @@ describe('ProfileMenu', () => {
       const button = screen.getByRole('button', { name: /sign in/i });
       fireEvent.click(button);
       expect(mockNavigateToLogin).toHaveBeenCalled();
+    });
+
+    it('should call onNavigate when sign in is clicked', () => {
+      const onNavigate = vi.fn();
+      render(<ProfileMenu onNavigate={onNavigate} />);
+      const button = screen.getByRole('button', { name: /sign in/i });
+      fireEvent.click(button);
+      expect(onNavigate).toHaveBeenCalledTimes(1);
     });
   });
 });

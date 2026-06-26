@@ -30,16 +30,22 @@ vi.mock('@/context/EnvContext', () => ({
 vi.mock('@/components/platform/sidebar', () => ({
   Sidebar: ({
     className,
+    onNavigate,
     reserveMobileToolbarSpace,
   }: {
     className?: string;
+    onNavigate?: () => void;
     reserveMobileToolbarSpace?: boolean;
   }) => (
     <aside
       data-testid='sidebar'
       className={className}
       data-reserve-mobile-toolbar-space={String(reserveMobileToolbarSpace)}
-    />
+    >
+      <button type='button' onClick={onNavigate}>
+        Mock sidebar navigation
+      </button>
+    </aside>
   ),
 }));
 
@@ -71,5 +77,13 @@ describe('MobileSidebar', () => {
     expect(sidebar.className).toContain('min-h-0');
     expect(sidebar.className).toContain('flex-1');
     expect(sidebar.getAttribute('data-reserve-mobile-toolbar-space')).toBe('false');
+  });
+
+  it('closes the mobile drawer when nested sidebar navigation fires', () => {
+    render(<MobileSidebar />);
+
+    screen.getByRole('button', { name: 'Mock sidebar navigation' }).click();
+
+    expect(mockStore.setMobileOpen).toHaveBeenCalledWith(false);
   });
 });

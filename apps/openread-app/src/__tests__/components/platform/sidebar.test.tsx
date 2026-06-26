@@ -22,6 +22,19 @@ vi.mock('@/hooks/useTranslation', () => ({
   useTranslation: () => (key: string) => key,
 }));
 
+vi.mock('@/components/platform/profile-menu', () => ({
+  ProfileMenu: ({ collapsed, onNavigate }: { collapsed?: boolean; onNavigate?: () => void }) => (
+    <button
+      type='button'
+      aria-label='Profile menu'
+      data-collapsed={String(collapsed)}
+      onClick={onNavigate}
+    >
+      Profile menu
+    </button>
+  ),
+}));
+
 // Mock AuthContext for ProfileMenu
 vi.mock('@/context/AuthContext', () => ({
   useAuth: () => ({
@@ -149,6 +162,15 @@ describe('Sidebar', () => {
     it('should render profile menu placeholder', () => {
       render(<Sidebar />);
       expect(screen.getByRole('button', { name: /profile menu/i })).toBeTruthy();
+    });
+
+    it('should pass the sidebar navigation-close contract into the profile menu', () => {
+      const onNavigate = vi.fn();
+      render(<Sidebar onNavigate={onNavigate} />);
+
+      fireEvent.click(screen.getByRole('button', { name: /profile menu/i }));
+
+      expect(onNavigate).toHaveBeenCalledTimes(1);
     });
 
     it('should show empty collections message when no collections exist', () => {

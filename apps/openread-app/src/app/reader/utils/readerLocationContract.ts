@@ -1,6 +1,7 @@
 import type { BookProgress } from '@/types/book';
 import type { FoliateView } from '@/types/view';
 import type { ReaderChapter } from '@/services/ai/tools/bookTools';
+import { findSectionIdentityIndex } from '@/utils/sectionIdentity';
 import type {
   ReaderBookCapability,
   ReaderLayoutMode,
@@ -90,14 +91,8 @@ export function getCanonicalReaderLocation(input: {
 }
 
 function findChapterByHref(chapters: ReaderChapter[], sectionHref?: string): ReaderChapter | null {
-  if (!sectionHref) return null;
-  const base = sectionHref.split('#')[0]!;
-  return (
-    chapters.find((chapter) => {
-      const id = chapter.id;
-      return id === sectionHref || id === base || sectionHref.startsWith(id);
-    }) ?? null
-  );
+  const index = findSectionIdentityIndex(chapters, sectionHref, (chapter) => [chapter.id]);
+  return index >= 0 ? chapters[index]! : null;
 }
 
 function findChapterByOffset(

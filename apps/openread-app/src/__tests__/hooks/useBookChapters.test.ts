@@ -128,6 +128,66 @@ describe('buildReaderChaptersForAI', () => {
     expect(images[0]!.dataUrl).toMatch(/^data:image\/png;base64,/);
   });
 
+  test('starts visual context at exact numeric section instead of prefix lookalike', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        blob: vi.fn().mockResolvedValue(new Blob(['image-bytes'], { type: 'image/png' })),
+      }),
+    );
+    const bookDoc = makeBookDoc({
+      sections: [
+        {
+          id: '1',
+          cfi: '1',
+          size: 100,
+          linear: 'yes',
+          load: async () => ({ data: '<html><body><img src="blob:page-1" /></body></html>' }),
+        } as unknown as SectionItem,
+        {
+          id: '10',
+          cfi: '10',
+          size: 100,
+          linear: 'yes',
+          load: async () => ({ data: '<html><body><img src="blob:page-10" /></body></html>' }),
+        } as unknown as SectionItem,
+      ],
+    });
+
+    const images = await buildReaderVisualContextImages(bookDoc, '10#frag');
+
+    expect(images[0]).toMatchObject({ id: '10', title: 'Visual page 2' });
+  });
+
+  test('falls back visual context start to canonical page number when href is unavailable', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        blob: vi.fn().mockResolvedValue(new Blob(['image-bytes'], { type: 'image/png' })),
+      }),
+    );
+    const bookDoc = makeBookDoc({
+      sections: [1, 2, 3].map(
+        (page) =>
+          ({
+            id: `page-${page}`,
+            cfi: `page-${page}`,
+            size: 100,
+            linear: 'yes',
+            load: async () => ({
+              data: `<html><body><img src="blob:page-${page}" /></body></html>`,
+            }),
+          }) as unknown as SectionItem,
+      ),
+    });
+
+    const images = await buildReaderVisualContextImages(bookDoc, 'missing-page', 3);
+
+    expect(images[0]).toMatchObject({ id: 'page-3', title: 'Visual page 3' });
+  });
+
   test('resolves numeric TOC section hrefs for PDF-style documents', async () => {
     const bookDoc = makeBookDoc({
       sections: [makeSection(0, 'This readable section has enough body text to become a chapter.')],

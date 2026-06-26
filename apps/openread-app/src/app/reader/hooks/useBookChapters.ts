@@ -3,6 +3,7 @@ import type { BookDoc, TOCItem } from '@/libs/document';
 import type { ReaderChapter, ReaderVisualContextImage } from '@/services/ai/tools/bookTools';
 import type { CanonicalReaderLocation } from '@/app/reader/utils/readerLocationContract';
 import { createLogger } from '@/utils/logger';
+import { findSectionIdentityIndex } from '@/utils/sectionIdentity';
 
 const logger = createLogger('book-chapters');
 
@@ -119,12 +120,11 @@ function findVisualStartIndex(
     return Math.min(sections.length - 1, Math.max(0, pageNumber - 1));
   }
   if (!sectionHref) return 0;
-  const base = sectionHref.split('#')[0]!;
-  const index = sections.findIndex((section) => {
-    const id = String(section.id);
-    return id === sectionHref || id === base || sectionHref.startsWith(id);
-  });
-  return index >= 0 ? index : 0;
+  const index = findSectionIdentityIndex(sections, sectionHref, (section) => [section.id]);
+  if (index >= 0) return index;
+  if (pageNumber && pageNumber > 0)
+    return Math.min(sections.length - 1, Math.max(0, pageNumber - 1));
+  return 0;
 }
 
 /** Threshold for triggering synthetic chunking on a single oversized chapter. */

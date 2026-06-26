@@ -100,6 +100,23 @@ describe('readerLocationContract', () => {
     });
   });
 
+  it('routes text citations with exact fragment matching instead of prefix lookalikes', () => {
+    const target = getReaderNavigationTargetFromAICitation({
+      chapters: [
+        { id: 'ch-1', index: 0, title: 'One', text: 'a'.repeat(100) },
+        { id: 'ch-10', index: 1, title: 'Ten', text: 'b'.repeat(100) },
+      ],
+      location: {
+        bookCapability: 'text',
+        layoutMode: 'paged',
+        sectionHref: 'ch-10#frag',
+        sectionFraction: 0.4,
+      },
+    });
+
+    expect(target).toEqual({ kind: 'text-location', sectionHref: 'ch-10', fraction: 0.4 });
+  });
+
   it('routes page-book citations to page targets, not text fractions', () => {
     const target = getReaderNavigationTargetFromAICitation({
       offset: 150,

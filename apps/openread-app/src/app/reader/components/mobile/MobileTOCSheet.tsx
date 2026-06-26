@@ -1,16 +1,22 @@
 import clsx from 'clsx';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useReaderStore } from '@/store/readerStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import TOCView from '../sidebar/TOCView';
 import BooknoteView from '../sidebar/BooknoteView';
 
-type TabType = 'chapters' | 'highlights' | 'bookmarks';
+export type MobileTOCTab = 'chapters' | 'highlights' | 'bookmarks';
 
-export function MobileTOCContent({ bookKey }: { bookKey: string }) {
+export function MobileTOCContent({
+  bookKey,
+  initialTab = 'chapters',
+}: {
+  bookKey: string;
+  initialTab?: MobileTOCTab;
+}) {
   const _ = useTranslation();
-  const [activeTab, setActiveTab] = useState<TabType>('chapters');
+  const [activeTab, setActiveTab] = useState<MobileTOCTab>(initialTab);
   const { getBookDataByReaderKey, getConfig } = useBookDataStore();
   const { getViewSettings } = useReaderStore();
   const bookData = getBookDataByReaderKey(bookKey);
@@ -21,7 +27,11 @@ export function MobileTOCContent({ bookKey }: { bookKey: string }) {
   const hasHighlights = booknotes.some((n) => n.type === 'annotation' && !n.deletedAt);
   const hasBookmarks = booknotes.some((n) => n.type === 'bookmark' && !n.deletedAt);
 
-  const tabs: { key: TabType; label: string }[] = [
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
+
+  const tabs: { key: MobileTOCTab; label: string }[] = [
     { key: 'chapters', label: _('Chapters') },
     { key: 'highlights', label: _('Highlights') },
     { key: 'bookmarks', label: _('Bookmarks') },

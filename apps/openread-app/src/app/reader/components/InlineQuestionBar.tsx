@@ -24,6 +24,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { appendSpeechText, useSpeechToText } from '@/hooks/useSpeechToText';
 import { useDismissableLayer } from '@/hooks/useDismissableLayer';
 import { usePrimaryBookHash } from '@/app/reader/hooks/usePrimaryBookHash';
+import { isMobileWebReader } from '@/app/reader/utils/mobileReaderPanels';
 import { cn } from '@/utils/tailwind';
 
 interface InlineQuestionBarProps {
@@ -63,8 +64,7 @@ const InlineQuestionBar: React.FC<InlineQuestionBarProps> = ({ bookKey }) => {
   // The store initializes as {} before loadSettings() completes.
   const aiEnabled = settings?.aiSettings?.enabled ?? true;
   const notebookOnAI = useNotebookStore((s) => s.notebookActiveTab === 'ai');
-  const useMobileWebDock =
-    !!appService?.isMobile && !appService?.isIOSApp && !appService?.isAndroidApp;
+  const useMobileWebDock = isMobileWebReader(appService);
 
   // Compute left/right offsets so the bar centers over the reading area
   const leftOffset = sideBarVisible && sideBarPinned && sideBarWidth ? sideBarWidth : '0px';

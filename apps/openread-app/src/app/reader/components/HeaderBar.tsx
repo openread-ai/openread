@@ -34,6 +34,7 @@ import SettingsToggler from './SettingsToggler';
 import TranslationToggler from './TranslationToggler';
 import ViewMenu from './ViewMenu';
 import { LAUNCH_TRANSLATION_ENABLED } from '@/services/launchFeatures';
+import { isMobileWebReader } from '../utils/mobileReaderPanels';
 
 interface HeaderBarProps {
   bookKey: string;
@@ -73,8 +74,7 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
   // On macOS, native traffic lights handle minimize/maximize/close — no HTML buttons needed.
   // On Windows/Linux, show HTML buttons since there are no native decorations.
   const windowButtonVisible = appService?.hasWindowBar && !appService?.hasTrafficLight;
-  const useMobileWebHeader =
-    !!appService?.isMobile && !appService?.isIOSApp && !appService?.isAndroidApp;
+  const useMobileWebHeader = isMobileWebReader(appService);
 
   const docs = view?.renderer.getContents() ?? [];
   const pointerInDoc = docs.some(({ doc }) => doc?.body?.style.cursor === 'pointer');
@@ -92,7 +92,7 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
 
   const handleToggleDropdown = (isOpen: boolean) => {
     setIsDropdownOpen(isOpen);
-    if (!isOpen) setHoveredBookKey('');
+    if (!isOpen) setHoveredBookKey(null);
   };
 
   const handleAnnotationQuickActionSelect = (action: AnnotationToolType | null) => {
@@ -175,7 +175,7 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
         onFocus={() => !appService?.isMobile && setHoveredBookKey(bookKey)}
         onMouseLeave={(e) => {
           if (!appService?.isMobile && isMouseOutsideHeader(e.clientX, e.clientY)) {
-            setHoveredBookKey('');
+            setHoveredBookKey(null);
           }
         }}
       >

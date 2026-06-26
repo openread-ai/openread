@@ -16,11 +16,13 @@ import { viewPagination } from '../../hooks/usePagination';
 import { setNativeFooterVisible } from '@/services/annotation/nativeMenuBridge';
 import MobileFooterBar from './MobileFooterBar';
 import MobileFooterBarV2 from '../mobile/MobileFooterBarV2';
+import MobileReaderPanelHost from '../mobile/MobileReaderPanelHost';
 import DesktopFooterBar from './DesktopFooterBar';
 import TTSControl from '../tts/TTSControl';
 import { RSVPControl } from '../rsvp';
 import { LAUNCH_TTS_ENABLED } from '@/services/launchFeatures';
 import { normalizeReaderLayout } from '../../utils/readerLayoutContract';
+import { isMobileWebReader } from '../../utils/mobileReaderPanels';
 
 const FooterBar: React.FC<FooterBarProps> = ({
   bookKey,
@@ -233,8 +235,7 @@ const FooterBar: React.FC<FooterBarProps> = ({
 
   const useMobileSettingsSheet = isMobile || appService?.isIOSApp;
   const aiEnabled = settings?.aiSettings?.enabled ?? true;
-  const useMobileWebReaderChatDock =
-    aiEnabled && !!appService?.isMobile && !appService?.isIOSApp && !appService?.isAndroidApp;
+  const useMobileWebReaderChatDock = aiEnabled && isMobileWebReader(appService);
 
   return (
     <>
@@ -258,7 +259,7 @@ const FooterBar: React.FC<FooterBarProps> = ({
           className={containerClasses}
           dir={viewSettings?.rtl ? 'rtl' : 'ltr'}
           onFocus={() => !appService?.isMobile && setHoveredBookKey(bookKey)}
-          onMouseLeave={() => window.innerWidth >= 640 && setHoveredBookKey('')}
+          onMouseLeave={() => window.innerWidth >= 640 && setHoveredBookKey(null)}
         >
           {useMobileSettingsSheet ? (
             <MobileFooterBarV2 bookKey={bookKey} />
@@ -268,6 +269,7 @@ const FooterBar: React.FC<FooterBarProps> = ({
           <DesktopFooterBar {...commonProps} />
         </div>
       )}
+      {useMobileSettingsSheet && <MobileReaderPanelHost bookKey={bookKey} />}
       {isVisible && needHorizontalScroll && (
         <div className='bg-base-100 pointer-events-none absolute bottom-0 left-0 hidden h-3 w-full sm:block' />
       )}

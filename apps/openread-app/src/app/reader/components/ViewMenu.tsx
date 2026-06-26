@@ -1,4 +1,5 @@
 import clsx from 'clsx';
+import Image from 'next/image';
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { BiMoon, BiSun } from 'react-icons/bi';
@@ -21,6 +22,9 @@ import { useNotebookStore } from '@/store/notebookStore';
 import { useThemeStore } from '@/store/themeStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useBookDataStore } from '@/store/bookDataStore';
+import { useLibraryStore } from '@/store/libraryStore';
+import { useMobileReaderPanelStore } from '@/store/mobileReaderPanelStore';
+import { useParallelViewStore } from '@/store/parallelViewStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { navigateToLogin } from '@/utils/nav';
@@ -34,11 +38,19 @@ import {
   persistReaderLayout,
   setReaderLayoutMode,
 } from '@/app/reader/utils/readerLayoutContract';
+import {
+  isMobileWebReader,
+  type MobileWebKebabDestination,
+} from '@/app/reader/utils/mobileReaderPanels';
 import { tauriHandleToggleFullScreen } from '@/utils/window';
 import { LAUNCH_TTS_ENABLED, LAUNCH_TRANSLATION_ENABLED } from '@/services/launchFeatures';
+import { getParallelReadMenuBooks } from '../utils/parallelReadEligibility';
+import { parseBookRefFromReaderBookKey } from '@/utils/readerBookKey';
+import { sortTocItems } from '@/utils/toc';
 import MenuItem from '@/components/MenuItem';
 import Menu from '@/components/Menu';
 import { BookMenuItems } from './sidebar/BookMenu';
+import useBooksManager from '../hooks/useBooksManager';
 
 interface ViewMenuProps {
   bookKey: string;
@@ -51,13 +63,18 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
   const { user } = useAuth();
   const { envConfig, appService } = useEnv();
   const { getConfig, getBookDataByReaderKey } = useBookDataStore();
+  const { getVisibleLibrary } = useLibraryStore();
+  const { openMobileReaderPanel } = useMobileReaderPanelStore();
+  const { parallelViews, setParallel, unsetParallel } = useParallelViewStore();
   const { setSettingsDialogOpen, setSettingsDialogBookKey } = useSettingsStore();
-  const { getView, getViewSettings, getViewState, setViewSettings } = useReaderStore();
+  const { bookKeys, getView, getViewSettings, getViewState, setViewSettings } = useReaderStore();
   const config = getConfig(bookKey)!;
   const bookData = getBookDataByReaderKey(bookKey)!;
   const viewSettings = getViewSettings(bookKey)!;
   const viewState = getViewState(bookKey);
   const isMobileReader = !!appService?.isMobile;
+  const isMobileWeb = isMobileWebReader(appService);
+  const { openParallelView } = useBooksManager();
 
   const readerLayoutBook = {
     isFixedLayout: bookData.isFixedLayout,
@@ -173,6 +190,150 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
   }, [keepCoverSpread]);
 
   const lastSyncTime = config?.updatedAt || 0;
+  const activeBookId = parseBookRefFromReaderBookKey(bookKey);
+  const eligibleParallelBooks = getParallelReadMenuBooks(
+    getVisibleLibrary(),
+    activeBookId ?? undefined,
+  );
+  const hasParallelGroup = parallelViews.some((group) => bookKeys.some((key) => group.has(key)));
+
+  const openMobileWebDestination = (destination: MobileWebKebabDestination) => {
+    openMobileReaderPanel(bookKey, destination);
+    setIsDropdownOpen?.(false);
+  };
+
+  const handleParallelRead = () => {
+    if (bookKeys.length < 2) return;
+    if (hasParallelGroup) {
+      unsetParallel(bookKeys);
+    } else {
+      setParallel(bookKeys);
+    }
+    setIsDropdownOpen?.(false);
+  };
+
+  const handleOpenParallelBook = (id: string) => {
+    openParallelView(id, bookKey);
+    setIsDropdownOpen?.(false);
+  };
+
+  const handleExportAnnotations = () => {
+    eventDispatcher.dispatch('export-annotations', { bookKey });
+    setIsDropdownOpen?.(false);
+  };
+
+  const handleToggleSortTOC = () => {
+    const nextSortedTOC = !viewSettings.sortedTOC;
+    const nextViewSettings = { ...viewSettings, sortedTOC: nextSortedTOC };
+    setViewSettings(bookKey, nextViewSettings);
+    const toc = bookData.bookDoc?.toc;
+    if (toc) {
+      if (nextSortedTOC) {
+        sortTocItems(toc);
+      } else {
+        toc.sort((a, b) => (a.id ?? 0) - (b.id ?? 0));
+      }
+      eventDispatcher.dispatch('toc-updated', { bookKey });
+    }
+    setIsDropdownOpen?.(false);
+  };
+
+  const handleReloadPage = () => {
+    window.location.reload();
+    setIsDropdownOpen?.(false);
+  };
+
+  if (isMobileWeb) {
+    return (
+      <Menu
+        className='view-menu dropdown-content no-triangle dropdown-end bgcolor-base-200 z-20 mt-1 border shadow-2xl'
+        style={{ width: 'calc(100vw - 32px)', maxWidth: 'calc(100vw - 32px)', right: 0 }}
+        onCancel={() => setIsDropdownOpen?.(false)}
+      >
+        <MenuItem label={_('Table of Contents')} onClick={() => openMobileWebDestination('toc')} />
+        <MenuItem label={_('Highlights')} onClick={() => openMobileWebDestination('highlights')} />
+        <MenuItem label={_('Bookmarks')} onClick={() => openMobileWebDestination('bookmarks')} />
+        <MenuItem
+          label={_('AI Chat History')}
+          Icon={PiChatCircleBold}
+          onClick={() => openMobileWebDestination('ai-chat-history')}
+        />
+        <MenuItem
+          label={_('Speed Reading Mode')}
+          onClick={() => {
+            eventDispatcher.dispatch('rsvp-start', { bookKey });
+            setIsDropdownOpen?.(false);
+          }}
+          disabled={bookData.isFixedLayout}
+        />
+        {bookKeys.length < 2 && eligibleParallelBooks.length > 0 ? (
+          <MenuItem label={_('Parallel Read')}>
+            <ul className='max-h-60 overflow-y-auto'>
+              {eligibleParallelBooks.map((book) => (
+                <MenuItem
+                  key={book.hash}
+                  Icon={
+                    book.coverImageUrl ? (
+                      <Image
+                        src={book.coverImageUrl}
+                        alt={book.title}
+                        width={56}
+                        height={80}
+                        className='aspect-auto max-h-8 max-w-4 rounded-sm shadow-md'
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = 'none';
+                        }}
+                      />
+                    ) : undefined
+                  }
+                  label={book.title}
+                  labelClass='max-w-36'
+                  onClick={() => handleOpenParallelBook(book.hash)}
+                />
+              ))}
+            </ul>
+          </MenuItem>
+        ) : (
+          <MenuItem
+            label={_('Parallel Read')}
+            Icon={hasParallelGroup && bookKeys.length > 1 ? MdCheck : undefined}
+            onClick={handleParallelRead}
+            disabled={bookKeys.length < 2}
+          />
+        )}
+        <MenuItem label={_('Export Annotations')} onClick={handleExportAnnotations} />
+        <MenuItem
+          label={_('Sort TOC by Page')}
+          Icon={viewSettings.sortedTOC ? MdCheck : undefined}
+          onClick={handleToggleSortTOC}
+        />
+        <MenuItem label={_('Reload Page')} shortcut='Shift+R' onClick={handleReloadPage} />
+        <MenuItem
+          label={
+            !user
+              ? _('Sign in to Sync')
+              : lastSyncTime
+                ? _('Synced at {{time}}', { time: new Date(lastSyncTime).toLocaleString() })
+                : _('Never synced')
+          }
+          Icon={user ? MdSync : MdSyncProblem}
+          iconClassName={user && viewState?.syncing ? 'animate-reverse-spin' : ''}
+          onClick={handleSync}
+        />
+        <MenuItem
+          label={{ dark: _('Dark Mode'), light: _('Light Mode'), auto: _('Auto Mode') }[themeMode]}
+          Icon={{ dark: BiMoon, light: BiSun, auto: TbSunMoon }[themeMode]}
+          onClick={cycleThemeMode}
+        />
+        <MenuItem
+          label={_('Invert Image In Dark Mode')}
+          disabled={!isDarkMode}
+          Icon={invertImgColorInDark ? MdCheck : undefined}
+          onClick={() => setInvertImgColorInDark(!invertImgColorInDark)}
+        />
+      </Menu>
+    );
+  }
 
   return (
     <Menu

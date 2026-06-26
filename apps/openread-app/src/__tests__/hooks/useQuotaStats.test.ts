@@ -90,7 +90,7 @@ describe('useQuotaStats', () => {
 
       expect(result.current.userProfilePlan).toBe(plan);
       expect(result.current.storageQuota?.plan).toBe(plan);
-      expect(result.current.quotas[0]).toMatchObject({ name: 'Cloud Sync Storage' });
+      expect(result.current.quotas[0]).toMatchObject({ name: 'Cloud Storage' });
     },
   );
 

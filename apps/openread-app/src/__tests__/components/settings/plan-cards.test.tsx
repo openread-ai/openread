@@ -91,9 +91,9 @@ const mockPlans: PlanDetails[] = [
     currency: 'USD',
     productId: 'price_reader_monthly',
     interval: 'month',
-    features: [{ label: 'Everything in Free' }, { label: 'Cloud sync' }, { label: 'TTS' }],
+    features: [{ label: 'Everything in Free' }, { label: 'Cloud storage' }, { label: 'TTS' }],
     limits: {
-      'Cloud Sync Storage': '10 GB',
+      'Cloud Storage': '10 GB',
     },
   },
   {
@@ -112,7 +112,7 @@ const mockPlans: PlanDetails[] = [
       { label: 'Priority support' },
     ],
     limits: {
-      'Cloud Sync Storage': '50 GB',
+      'Cloud Storage': '50 GB',
     },
   },
 ];

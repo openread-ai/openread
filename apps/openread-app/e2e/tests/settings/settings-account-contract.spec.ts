@@ -59,30 +59,13 @@ async function mockProfileUpdateFailure(page: Page) {
   });
 }
 
-async function mockSyncReconcile(page: Page, outcome: 'success' | 'error') {
-  await page.route('**/sync**', async (route) => {
-    if (route.request().method() !== 'POST') {
-      await route.continue();
-      return;
-    }
-
-    if (outcome === 'error') {
-      await route.fulfill({ status: 500, json: { error: 'Mock sync failure' } });
-      return;
-    }
-
-    await route.fulfill({ json: { reconcile: { upsert: [], remove: [] } } });
-  });
-}
-
-async function enableSyncAndGetButton(page: Page) {
-  const syncToggle = page.getByLabel('Enable Sync');
-  if (!(await syncToggle.isChecked())) await syncToggle.click({ force: true });
-  await expect(syncToggle).toBeChecked();
-
-  const syncButton = page.getByRole('button', { name: 'Sync Now' });
-  await expect(syncButton).toBeEnabled({ timeout: 30_000 });
-  return syncButton;
+async function expectAccountSyncControlsRemoved(page: Page) {
+  await expect(page.getByText('Sync', { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('Enable Sync')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Sync Now' })).toHaveCount(0);
+  await expect(page.getByText('Sign in to enable sync')).toHaveCount(0);
+  await expect(page.getByText('Sync your books and reading progress to the cloud')).toHaveCount(0);
+  await expect(page.getByText('Keep your library synced across devices')).toHaveCount(0);
 }
 
 test.describe('Settings account contract', () => {
@@ -186,49 +169,42 @@ test.describe('Settings account contract', () => {
     await attachScenarioEvidence(page, testInfo, 'SET-012-terminal-storage-usage-and-breakdown');
   });
 
-  test('SET-018 toggles Sync preference off and on', async ({
+  test('SET-018 removes manual Account sync controls', async ({
     authenticatedPage: page,
   }, testInfo) => {
     await openAccount(page);
-    await attachScenarioEvidence(page, testInfo, 'SET-018-start-sync-toggle-off-on-persistence');
+    await attachScenarioEvidence(page, testInfo, 'SET-018-start-account-sync-controls-removed');
 
-    const syncToggle = page.getByLabel('Enable Sync');
-    await expect(syncToggle).toBeVisible();
-    const initiallyChecked = await syncToggle.isChecked();
-    await syncToggle.click({ force: true });
-    await expect(syncToggle).toBeChecked({ checked: !initiallyChecked });
-    await syncToggle.click({ force: true });
-    await expect(syncToggle).toBeChecked({ checked: initiallyChecked });
+    await expectAccountSyncControlsRemoved(page);
+    await expect(page.getByText('Profile').first()).toBeVisible();
+    await expect(page.getByText('Cloud Storage').first()).toBeVisible();
+    await expect(page.getByText('Danger Zone').first()).toBeVisible();
 
-    await attachScenarioEvidence(page, testInfo, 'SET-018-terminal-sync-toggle-off-on-persistence');
+    await attachScenarioEvidence(page, testInfo, 'SET-018-terminal-account-sync-controls-removed');
   });
 
-  test('SET-019 runs Sync Now successfully', async ({ authenticatedPage: page }, testInfo) => {
-    await mockSyncReconcile(page, 'success');
+  test('SET-019 keeps Account settings free of manual Sync Now action', async ({
+    authenticatedPage: page,
+  }, testInfo) => {
     await openAccount(page);
-    await attachScenarioEvidence(page, testInfo, 'SET-019-start-sync-now-success');
+    await attachScenarioEvidence(page, testInfo, 'SET-019-start-sync-now-action-removed');
 
-    const syncButton = await enableSyncAndGetButton(page);
-    await syncButton.click();
+    await expectAccountSyncControlsRemoved(page);
+    await expect(page.locator('main').getByText(TEST_USER.email).first()).toBeVisible();
 
-    await expect(page.getByText('Synced').first()).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByText('Last synced')).toBeVisible();
-
-    await attachScenarioEvidence(page, testInfo, 'SET-019-terminal-sync-now-success');
+    await attachScenarioEvidence(page, testInfo, 'SET-019-terminal-sync-now-action-removed');
   });
 
-  test('SET-020 shows Sync Now error state', async ({ authenticatedPage: page }, testInfo) => {
-    await mockSyncReconcile(page, 'error');
+  test('SET-020 keeps Account settings from presenting sync as opt-in', async ({
+    authenticatedPage: page,
+  }, testInfo) => {
     await openAccount(page);
-    await attachScenarioEvidence(page, testInfo, 'SET-020-start-sync-now-error');
+    await attachScenarioEvidence(page, testInfo, 'SET-020-start-sync-opt-in-copy-removed');
 
-    const syncButton = await enableSyncAndGetButton(page);
-    await syncButton.click();
+    await expectAccountSyncControlsRemoved(page);
+    await expect(page.getByRole('button', { name: 'Edit Profile' })).toBeVisible();
 
-    await expect(page.getByText('Error').first()).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByText(/Mock sync failure/)).toBeVisible();
-
-    await attachScenarioEvidence(page, testInfo, 'SET-020-terminal-sync-now-error');
+    await attachScenarioEvidence(page, testInfo, 'SET-020-terminal-sync-opt-in-copy-removed');
   });
 
   test('SET-022 cancels Delete Account confirmation', async ({

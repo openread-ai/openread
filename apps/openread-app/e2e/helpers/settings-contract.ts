@@ -97,7 +97,6 @@ export async function expectAccountSettings(page: Page) {
   await expectSettingsShell(page);
   await expect(page.getByText('Profile').first()).toBeVisible();
   await expect(page.getByText('Cloud Storage').first()).toBeVisible();
-  await expect(page.getByText('Sync').first()).toBeVisible();
   await expect(page.getByText('Danger Zone').first()).toBeVisible();
 }
 

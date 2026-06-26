@@ -38,7 +38,7 @@ describe('UpgradeInline', () => {
   });
 
   it('should render default CTA without price when price is not provided', () => {
-    render(<UpgradeInline message='Cloud Sync is available on Reader.' />);
+    render(<UpgradeInline message='Cloud Storage is available on Reader.' />);
     const link = screen.getByRole('link');
     // Should just say "Start Reading" without any price
     expect(link.textContent).toContain('Start Reading');

@@ -1329,9 +1329,9 @@ function tauriMacosBridgeSettingsScenarios() {
     tauriMacosScenario('SET-015', 'Storage tier-only no add-on checkout', '/settings/account'),
     tauriMacosScenario('SET-016', 'Tier storage limit display', '/settings/account'),
     tauriMacosScenario('SET-017', 'Storage add-on cancel disabled', '/settings/account'),
-    tauriMacosScenario('SET-018', 'Sync toggle off/on persistence', '/settings/account'),
-    tauriMacosScenario('SET-019', 'Sync Now success', '/settings/account'),
-    tauriMacosScenario('SET-020', 'Sync Now error', '/settings/account'),
+    tauriMacosScenario('SET-018', 'Manual Account sync controls removed', '/settings/account'),
+    tauriMacosScenario('SET-019', 'Account Sync Now action removed', '/settings/account'),
+    tauriMacosScenario('SET-020', 'Sync opt-in copy removed', '/settings/account'),
     tauriMacosScenario('SET-021', 'Danger Zone sign out', '/settings/account'),
     tauriMacosScenario('SET-022', 'Delete Account cancel', '/settings/account'),
     tauriMacosScenario('SET-023', 'Delete Account success', '/settings/account'),
@@ -1915,27 +1915,27 @@ function nativeSettingsScenarios() {
       expected: 'Storage add-on cancellation is unavailable because add-ons are not offered.',
       run: runSet017StorageAddonCancelDisabled,
     }),
-    {
+    nativeQaUiScenario({
       scenarioId: 'SET-018',
-      title: 'Sync toggle off/on persistence',
-      screenshotBase: 'SET-018-terminal-sync-toggle-off-on-persistence',
+      title: 'Manual Account sync controls removed',
+      screenshotBase: 'SET-018-terminal-account-sync-controls-removed',
       expected:
-        'Enable Sync toggle changes state and can be restored without leaving Account Settings.',
-      run: runSet018SyncToggle,
-    },
+        'Account Settings shows Profile, Cloud Storage, and Danger Zone without manual sync controls.',
+      run: runSet018SyncControlsRemoved,
+    }),
     nativeQaUiScenario({
       scenarioId: 'SET-019',
-      title: 'Sync Now success',
-      screenshotBase: 'SET-019-terminal-sync-now-success',
-      expected: 'Sync Now reports a successful sync and a Last synced timestamp.',
-      run: runSet019SyncNowSuccess,
+      title: 'Account Sync Now action removed',
+      screenshotBase: 'SET-019-terminal-sync-now-action-removed',
+      expected: 'Account Settings does not expose a manual Sync Now action.',
+      run: runSet019SyncNowActionRemoved,
     }),
     nativeQaUiScenario({
       scenarioId: 'SET-020',
-      title: 'Sync Now error',
-      screenshotBase: 'SET-020-terminal-sync-now-error',
-      expected: 'Sync Now reports a recoverable sync error.',
-      run: runSet020SyncNowError,
+      title: 'Sync opt-in copy removed',
+      screenshotBase: 'SET-020-terminal-sync-opt-in-copy-removed',
+      expected: 'Account Settings does not present sync as an opt-in user-controlled setting.',
+      run: runSet020SyncOptInCopyRemoved,
     }),
     {
       scenarioId: 'SET-025',
@@ -2981,65 +2981,55 @@ async function runSet017StorageAddonCancelDisabled(context) {
   };
 }
 
-async function runSet018SyncToggle(context) {
-  await navigateSettingsWebView(context, '/settings/account', ['Settings', 'Sync', 'Enable Sync']);
-  const first = await setNativeCheckbox(context, '#sync-enabled', null);
-  const second = await setNativeCheckbox(context, '#sync-enabled', first.before);
-  if (second.after !== first.before)
-    throw new Error('Enable Sync toggle did not restore initial state.');
-  return {
-    current: `Enable Sync toggled from ${first.before} to ${first.after} and restored to ${second.after}.`,
-  };
-}
-
-async function enableNativeSyncAndGetButton(context) {
-  await setNativeCheckbox(context, '#sync-enabled', true);
-  await waitForNativeText(context, ['Sync Now']);
+async function assertNativeAccountSyncControlsRemoved(context) {
+  await navigateSettingsWebView(context, '/settings/account', [
+    'Settings',
+    'Profile',
+    'Cloud Storage',
+    'Danger Zone',
+  ]);
   return waitForNativeCondition(
     context,
-    `const button = Array.from(document.querySelectorAll('button')).find((candidate) => (candidate.textContent || '').includes('Sync Now'));
-return { ok: Boolean(button && !button.disabled), disabled: button?.disabled ?? null, text: document.body.innerText.slice(0, 1000), path: window.location.pathname };`,
+    `const text = document.body.innerText || '';
+const labels = Array.from(document.querySelectorAll('label')).map((label) => label.textContent || '');
+const buttons = Array.from(document.querySelectorAll('button')).map((button) => button.textContent || '');
+const absent = [
+  'Enable Sync',
+  'Sync Now',
+  'Sign in to enable sync',
+  'Sync your books and reading progress to the cloud',
+  'Keep your library synced across devices',
+];
+const sectionsPresent = ['Profile', 'Cloud Storage', 'Danger Zone'].every((value) => text.includes(value));
+const absentFromText = absent.every((value) => !text.includes(value));
+const absentFromControls = labels.concat(buttons).every((value) => !absent.includes(value.trim()));
+return { ok: sectionsPresent && absentFromText && absentFromControls, path: window.location.pathname, text: text.slice(0, 1000) };`,
     [],
     30_000,
   );
 }
 
-async function runSet019SyncNowSuccess(context) {
-  await navigateSettingsWebView(context, '/settings/account', ['Settings', 'Sync', 'Enable Sync']);
-  await enableNativeSyncAndGetButton(context);
-  await clickNativeElement(context, { label: 'Sync Now' });
-  const state = await waitForNativeCondition(
-    context,
-    `const now = Date.now();
-const deviceId = localStorage.getItem('openread_device_id') || 'native-qa-device';
-localStorage.setItem('openread_device_id', deviceId);
-const cursorKey = 'openread:sync-cursor:native-qa-user:' + deviceId + ':book:global';
-localStorage.setItem(cursorKey, String(now));
-const text = document.body.innerText || '';
-return { ok: text.includes('Sync Now'), path: window.location.pathname, syncCursor: localStorage.getItem(cursorKey), text: text.slice(0, 1000) };`,
-    [],
-    10_000,
-  );
+async function runSet018SyncControlsRemoved(context) {
+  const state = await assertNativeAccountSyncControlsRemoved(context);
   return {
-    current: 'Sync Now used the real Sync card and persisted a canonical sync cursor.',
+    current:
+      'Account Settings renders Profile, Cloud Storage, and Danger Zone without the former Enable Sync control.',
     route: state.path,
   };
 }
 
-async function runSet020SyncNowError(context) {
-  await navigateSettingsWebView(context, '/settings/account', ['Settings', 'Sync', 'Enable Sync']);
-  await enableNativeSyncAndGetButton(context);
-  await clickNativeElement(context, { label: 'Sync Now' });
-  const state = await waitForNativeCondition(
-    context,
-    `localStorage.setItem('openread:native-qa:sync-error', 'Mock sync failure');
-const text = document.body.innerText || '';
-return { ok: text.includes('Sync Now'), path: window.location.pathname, syncError: localStorage.getItem('openread:native-qa:sync-error'), text: text.slice(0, 1000) };`,
-    [],
-    10_000,
-  );
+async function runSet019SyncNowActionRemoved(context) {
+  const state = await assertNativeAccountSyncControlsRemoved(context);
   return {
-    current: 'Sync Now used the real Sync card and recorded a recoverable mocked sync error state.',
+    current: 'Account Settings is free of the former manual Sync Now action.',
+    route: state.path,
+  };
+}
+
+async function runSet020SyncOptInCopyRemoved(context) {
+  const state = await assertNativeAccountSyncControlsRemoved(context);
+  return {
+    current: 'Account Settings no longer presents sync as an opt-in user-controlled setting.',
     route: state.path,
   };
 }
@@ -4439,27 +4429,6 @@ return { ok: input.value === value, selector, value: input.value, path: window.l
     [selector, value],
   );
   if (!result?.ok) throw new Error(`Failed to set input ${selector}: ${JSON.stringify(result)}`);
-  return result;
-}
-
-async function setNativeCheckbox(context, selector, desiredChecked) {
-  const result = await executeScript(
-    context.serverUrl,
-    context.sessionId,
-    `const selector = arguments[0];
-const desired = arguments[1];
-const input = document.querySelector(selector);
-if (!input) return { ok: false, selector, error: 'missing', path: window.location.pathname, text: document.body.innerText.slice(0, 1000) };
-input.scrollIntoView({ block: 'center', inline: 'center' });
-const before = Boolean(input.checked);
-if (desired === null || before !== desired) input.click();
-const after = Boolean(input.checked);
-return { ok: desired === null ? after !== before : after === desired, selector, before, after, path: window.location.pathname };`,
-    [selector, desiredChecked],
-  );
-  if (!result?.ok)
-    throw new Error(`Checkbox ${selector} did not reach expected state: ${JSON.stringify(result)}`);
-  await sleep(300);
   return result;
 }
 

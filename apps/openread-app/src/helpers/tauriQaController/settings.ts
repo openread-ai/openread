@@ -43,9 +43,9 @@ const SETTINGS_SCENARIOS: Record<string, TauriQaScenario> = {
   'SET-015': { expectedText: ['Cloud Storage', 'Up to'], actions: assertStorageCheckoutDisabled },
   'SET-016': { expectedText: ACCOUNT_STORAGE_TEXT },
   'SET-017': { expectedText: ACCOUNT_STORAGE_TEXT, actions: assertStorageCancelDisabled },
-  'SET-018': { expectedText: ['Sync', 'Enable Sync'] },
-  'SET-019': { expectedText: ['Sync'], actions: assertSyncControls },
-  'SET-020': { expectedText: ['Sync'], actions: assertSyncControls },
+  'SET-018': { expectedText: ACCOUNT_TEXT, actions: assertAccountSyncControlsRemoved },
+  'SET-019': { expectedText: ACCOUNT_TEXT, actions: assertAccountSyncControlsRemoved },
+  'SET-020': { expectedText: ACCOUNT_TEXT, actions: assertAccountSyncControlsRemoved },
   'SET-021': { expectedText: ['Danger Zone', 'Sign Out'] },
   'SET-022': { expectedText: ['Danger Zone', 'Delete Account'] },
   'SET-023': { expectedText: ['Danger Zone', 'Delete Account'] },
@@ -412,10 +412,14 @@ async function openEditProfileDialog(_target: ActivityCaptureTarget, result: Mut
   addAssertion(result, 'Edit Profile dialog opened from real Account UI', true);
 }
 
-async function assertSyncControls(_target: ActivityCaptureTarget, result: MutableTauriQaResult) {
+async function assertAccountSyncControlsRemoved(
+  _target: ActivityCaptureTarget,
+  result: MutableTauriQaResult,
+) {
   const text = bodyText().toLowerCase();
-  addAssertion(result, 'Sync section visible', text.includes('sync'));
-  addAssertion(result, 'Sync control visible', /enable sync|sync now/.test(text));
+  const removed = !/enable sync|sync now|sign in to enable sync/.test(text);
+  addAssertion(result, 'manual Account sync controls are absent', removed);
+  if (!removed) throw new Error('Manual Account sync controls are still rendered.');
 }
 
 async function assertThemeControls(_target: ActivityCaptureTarget, result: MutableTauriQaResult) {

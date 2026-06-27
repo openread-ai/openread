@@ -37,6 +37,10 @@ import { ANNOTATION_ACTION_EVENT } from '@/services/annotation/menuConfig';
 import { parseBookRefFromReaderBookKey } from '@/utils/readerBookKey';
 import type { AnnotationActionEvent } from '@/services/annotation/menuConfig';
 import { annotationToolButtons } from './AnnotationTools';
+import {
+  isHighlightActionDisabledForFormat,
+  shouldSuppressWebAnnotationPopupForSelection,
+} from '@/services/annotation/selectionMenuContract';
 import AnnotationRangeEditor from './AnnotationRangeEditor';
 import AnnotationPopup from './AnnotationPopup';
 import {
@@ -585,8 +589,9 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
       }
       return;
     }
-    // On other mobile platforms, let native menu handle new selections only.
-    if (appService?.isMobile && !selection?.annotated) return;
+    // Native mobile apps own new-selection actions through the platform menu/bridge.
+    // Mobile web browsers are mobile form-factor only and must keep using this web popup.
+    if (shouldSuppressWebAnnotationPopupForSelection({ appService, selection })) return;
 
     containerRef.current?.focus();
     setShowAnnotPopup(true);
@@ -936,7 +941,7 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
           tooltipText: selectionAnnotated ? _('Delete Highlight') : _(label),
           Icon: selectionAnnotated ? RiDeleteBinLine : Icon,
           onClick: handleHighlight,
-          disabled: bookData.book?.format === 'pdf',
+          disabled: isHighlightActionDisabledForFormat(bookData.book?.format),
         };
       case 'annotate':
         return {

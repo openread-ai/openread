@@ -4,6 +4,7 @@ import React, { useState, useCallback, useRef } from 'react';
 import { ArrowUpIcon, BookOpenIcon, XIcon } from 'lucide-react';
 
 import { AI_COMPOSER_PLACEHOLDER } from '@/components/assistant/constants';
+import { MobileReadAIComposerChrome } from '@/components/assistant/MobileReadAIComposerChrome';
 import { useAIChatStore } from '@/store/aiChatStore';
 import { useNotebookStore } from '@/store/notebookStore';
 import { useReaderStore } from '@/store/readerStore';
@@ -175,10 +176,7 @@ const InlineQuestionBar: React.FC<InlineQuestionBarProps> = ({ bookKey }) => {
         className={cn(
           'relative flex overflow-visible',
           useMobileWebDock
-            ? cn(
-                'border-base-content/10 bg-base-100/95 pointer-events-auto w-[92vw] max-w-md items-end gap-2 rounded-[1.75rem] border px-3 py-2 shadow-xl backdrop-blur-2xl',
-                question.includes(' ') && 'rounded-[2rem]',
-              )
+            ? 'pointer-events-auto w-[calc(100vw-2rem)] max-w-md'
             : appService?.isMobile
               ? cn(
                   'border-base-content/10 bg-base-200/80 rounded-full border shadow-lg backdrop-blur-2xl',
@@ -191,7 +189,9 @@ const InlineQuestionBar: React.FC<InlineQuestionBarProps> = ({ bookKey }) => {
         )}
       >
         {useMobileWebDock ? (
-          <>
+          <MobileReadAIComposerChrome
+            className={question.includes(' ') ? 'rounded-[2rem]' : undefined}
+          >
             <textarea
               ref={mobileTextareaRef}
               value={question}
@@ -212,7 +212,7 @@ const InlineQuestionBar: React.FC<InlineQuestionBarProps> = ({ bookKey }) => {
                 <ArrowUpIcon className='size-5' />
               </button>
             )}
-          </>
+          </MobileReadAIComposerChrome>
         ) : (
           <>
             <BookOpenIcon className='text-base-content/40 size-4 shrink-0' />

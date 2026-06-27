@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useCallback, useMemo, useRef } from 'react';
+import { useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react';
 import {
   AssistantRuntimeProvider,
   useAssistantRuntime,
@@ -97,6 +97,8 @@ interface AIAssistantProps {
   bookKey: string;
   initialQuestion?: string;
   initialQuestionConversationId?: string;
+  surface?: 'default' | 'mobile-web-anchored';
+  mobileWebHeader?: ReactNode;
 }
 
 const scheduledInitialQuestionKeys = new Set<string>();
@@ -120,6 +122,8 @@ const AIAssistantChat = ({
   readerLocation,
   initialQuestion,
   initialQuestionConversationId,
+  surface = 'default',
+  mobileWebHeader,
 }: {
   aiSettings: AISettings;
   bookHash: string;
@@ -140,6 +144,8 @@ const AIAssistantChat = ({
   readerLocation: CanonicalReaderLocation;
   initialQuestion?: string;
   initialQuestionConversationId?: string;
+  surface?: 'default' | 'mobile-web-anchored';
+  mobileWebHeader?: ReactNode;
 }) => {
   const { getChapters, getVisualContextImages } = useBookChapters(bookDoc, readerLocation);
   const {
@@ -351,6 +357,8 @@ const AIAssistantChat = ({
       initialQuestion={initialQuestion}
       initialQuestionConversationId={initialQuestionConversationId}
       bindNextUserMessageToConversation={bindNextUserMessageToConversation}
+      surface={surface}
+      mobileWebHeader={mobileWebHeader}
     />
   );
 };
@@ -368,6 +376,8 @@ const AIAssistantWithRuntime = ({
   initialQuestion,
   initialQuestionConversationId,
   bindNextUserMessageToConversation,
+  surface = 'default',
+  mobileWebHeader,
 }: {
   adapter: NonNullable<ReturnType<typeof createAgenticAdapter>>;
   historyAdapter: ThreadHistoryAdapter;
@@ -381,6 +391,8 @@ const AIAssistantWithRuntime = ({
   initialQuestion?: string;
   initialQuestionConversationId?: string;
   bindNextUserMessageToConversation: (conversationId: string) => void;
+  surface?: 'default' | 'mobile-web-anchored';
+  mobileWebHeader?: ReactNode;
 }) => {
   const runtime = useLocalRuntime(adapter, {
     adapters: { history: historyAdapter },
@@ -401,6 +413,8 @@ const AIAssistantWithRuntime = ({
         initialQuestion={initialQuestion}
         initialQuestionConversationId={initialQuestionConversationId}
         bindNextUserMessageToConversation={bindNextUserMessageToConversation}
+        surface={surface}
+        mobileWebHeader={mobileWebHeader}
       />
     </AssistantRuntimeProvider>
   );
@@ -417,6 +431,8 @@ const ThreadWrapper = ({
   initialQuestion,
   initialQuestionConversationId,
   bindNextUserMessageToConversation,
+  surface = 'default',
+  mobileWebHeader,
 }: {
   bookKey: string;
   isLoadingHistory: boolean;
@@ -428,6 +444,8 @@ const ThreadWrapper = ({
   initialQuestion?: string;
   initialQuestionConversationId?: string;
   bindNextUserMessageToConversation: (conversationId: string) => void;
+  surface?: 'default' | 'mobile-web-anchored';
+  mobileWebHeader?: ReactNode;
 }) => {
   const _ = useTranslation();
   const { appService } = useEnv();
@@ -535,6 +553,8 @@ const ThreadWrapper = ({
       byokModel={byokModel}
       onSelectModel={onSelectModel}
       composerKeyboardAvoidance={!!appService?.isIOSApp}
+      surface={surface}
+      mobileWebHeader={mobileWebHeader}
     />
   );
 };
@@ -543,6 +563,8 @@ const AIAssistant = ({
   bookKey,
   initialQuestion,
   initialQuestionConversationId,
+  surface = 'default',
+  mobileWebHeader,
 }: AIAssistantProps) => {
   const _ = useTranslation();
   const { appService } = useEnv();
@@ -685,6 +707,8 @@ const AIAssistant = ({
       readerLocation={readerLocation}
       initialQuestion={initialQuestion}
       initialQuestionConversationId={initialQuestionConversationId}
+      surface={surface}
+      mobileWebHeader={mobileWebHeader}
     />
   );
 };

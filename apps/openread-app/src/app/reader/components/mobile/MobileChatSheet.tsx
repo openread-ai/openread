@@ -148,6 +148,7 @@ export function MobileChatContent({
   const createConversation = useAIChatStore((s) => s.createConversation);
   const messages = useAIChatStore((s) => s.messages);
   const clearInitialQuestion = useMobileReaderPanelStore((s) => s.clearInitialQuestion);
+  const openMobileReaderPanel = useMobileReaderPanelStore((s) => s.openMobileReaderPanel);
   const { primaryBookHash, getParallelHashes } = usePrimaryBookHash(bookKey);
   const isMobileWeb = layout === 'mobile-web';
   const submittedInitialQuestion =
@@ -164,16 +165,41 @@ export function MobileChatContent({
     if (submittedInitialQuestion) clearInitialQuestion();
   }, [clearInitialQuestion, submittedInitialQuestion]);
 
+  const showActiveChat = () => {
+    setShowHistory(false);
+    if (isMobileWeb) {
+      openMobileReaderPanel(bookKey, 'ai-chat-history', { initialAIChatView: 'active' });
+    }
+  };
+
+  const showChatHistory = () => {
+    setShowHistory(true);
+    if (isMobileWeb) {
+      openMobileReaderPanel(bookKey, 'ai-chat-history', { initialAIChatView: 'history' });
+    }
+  };
+
   const handleNewConversation = async () => {
     if (!primaryBookHash) return;
-    setShowHistory(false);
+    showActiveChat();
     await createConversation(primaryBookHash, _('New conversation'), getParallelHashes());
   };
 
   const handleConversationSelected = () => {
-    setShowHistory(false);
+    showActiveChat();
     onConversationSelected?.();
   };
+
+  const mobileWebActiveHeader = isMobileWeb ? (
+    <MobileWebReadAIHeader
+      showHistory={false}
+      isExpanded
+      onClose={() => onClose?.()}
+      onShowHistory={showChatHistory}
+      onBackToChat={showActiveChat}
+      onNewConversation={handleNewConversation}
+    />
+  ) : undefined;
 
   const activeChat = (
     <div className='flex min-h-0 flex-1 flex-col overflow-hidden'>
@@ -182,6 +208,8 @@ export function MobileChatContent({
         bookKey={bookKey}
         initialQuestion={initialQuestion}
         initialQuestionConversationId={initialQuestionConversationId}
+        surface={isMobileWeb ? 'mobile-web-anchored' : 'default'}
+        mobileWebHeader={mobileWebActiveHeader}
       />
     </div>
   );
@@ -219,19 +247,19 @@ export function MobileChatContent({
     );
   }
 
+  if (!showHistory) return activeChat;
+
   return (
     <section className='flex h-full min-h-0 w-full flex-col overflow-hidden'>
       <MobileWebReadAIHeader
         showHistory={showHistory}
         isExpanded={isExpanded}
         onClose={() => onClose?.()}
-        onShowHistory={() => setShowHistory(true)}
-        onBackToChat={() => setShowHistory(false)}
+        onShowHistory={showChatHistory}
+        onBackToChat={showActiveChat}
         onNewConversation={handleNewConversation}
       />
-      <div className='min-h-0 flex-1 overflow-hidden px-3 pb-3'>
-        {showHistory ? history : activeChat}
-      </div>
+      <div className='min-h-0 flex-1 overflow-hidden px-3 pb-3'>{history}</div>
     </section>
   );
 }

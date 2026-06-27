@@ -17,7 +17,8 @@ interface HalfSheetProps {
   children: ReactNode | ((state: { isExpanded: boolean }) => ReactNode);
   sheetClassName?: string;
   contentClassName?: string;
-  chrome?: 'default' | 'drag-handle';
+  overlayClassName?: string;
+  chrome?: 'default' | 'drag-handle' | 'none';
 }
 
 function HalfSheet({
@@ -27,6 +28,7 @@ function HalfSheet({
   children,
   sheetClassName,
   contentClassName,
+  overlayClassName,
   chrome = 'default',
 }: HalfSheetProps) {
   const { appService } = useEnv();
@@ -148,7 +150,10 @@ function HalfSheet({
     <div className='fixed inset-0 z-40' role='none' onClick={(e) => e.stopPropagation()}>
       <div
         ref={overlayRef}
-        className='animate-in fade-in absolute inset-0 bg-black/20 duration-200'
+        className={clsx(
+          'animate-in fade-in absolute inset-0 bg-black/20 duration-200',
+          overlayClassName,
+        )}
         onClick={onClose}
         role='none'
       />
@@ -171,7 +176,7 @@ function HalfSheet({
           transition: 'max-height 0.3s ease-out, height 0.3s ease-out, border-radius 0.3s ease-out',
         }}
       >
-        {chrome === 'default' && isExpanded ? (
+        {chrome === 'none' ? null : chrome === 'default' && isExpanded ? (
           <div className='flex items-center gap-2 px-4 pb-2 pt-2'>
             <button onClick={onClose} className='text-base-content/70 p-1'>
               <PiCaretLeftBold size={18} />

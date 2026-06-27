@@ -59,16 +59,19 @@ function MobileReaderPanelHost({ bookKey }: MobileReaderPanelHostProps) {
     <HalfSheet
       isOpen={isOpen}
       onClose={handleClose}
+      chrome={useMobileWebAIChat ? 'drag-handle' : 'default'}
       sheetClassName={
-        useMobileWebAIChat ? 'bg-transparent shadow-none backdrop-blur-0 px-3 pb-3' : undefined
+        useMobileWebAIChat
+          ? 'mx-3 mb-3 h-[52vh] overflow-hidden rounded-[2rem] border border-black/5 bg-base-100/95 shadow-2xl ring-1 ring-black/5 backdrop-blur-2xl dark:border-white/10 dark:ring-white/10'
+          : undefined
       }
-      contentClassName={useMobileWebAIChat ? 'overflow-visible' : undefined}
+      contentClassName={useMobileWebAIChat ? 'flex min-h-0 overflow-hidden' : undefined}
     >
       {({ isExpanded }) => (
         <div
           className={
             useMobileWebAIChat
-              ? 'flex h-full min-h-[40vh] w-full overflow-visible'
+              ? 'flex h-full min-h-0 w-full overflow-hidden'
               : 'min-h-[40vh] flex-1 overflow-y-auto'
           }
         >
@@ -85,7 +88,7 @@ function MobileReaderPanelHost({ bookKey }: MobileReaderPanelHostProps) {
               initialQuestion={activePanel?.initialQuestion}
               initialQuestionConversationId={activePanel?.initialQuestionConversationId}
               initialView={activePanel?.initialAIChatView}
-              variant={useMobileWebAIChat ? 'mobile-web-card' : 'default'}
+              layout={useMobileWebAIChat ? 'mobile-web' : 'default'}
               onConversationSelected={handleConversationSelected}
               onClose={handleClose}
             />

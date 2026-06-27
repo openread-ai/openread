@@ -1,4 +1,3 @@
-import clsx from 'clsx';
 import Image from 'next/image';
 import { useEffect, useState, type ReactNode } from 'react';
 import { LuChevronLeft, LuHistory, LuPlus, LuSquarePen, LuX } from 'react-icons/lu';
@@ -14,7 +13,7 @@ import type { MobileAIChatInitialView } from '@/app/reader/utils/mobileReaderPan
 const OPENREAD_AI_ICON_LIGHT = '/assets/openread-ai/icon-light.svg';
 const OPENREAD_AI_ICON_DARK = '/assets/openread-ai/icon-dark.svg';
 
-export type MobileAIChatVariant = 'default' | 'mobile-web-card';
+export type MobileAIChatLayout = 'default' | 'mobile-web';
 
 function OpenReadAILogo() {
   return (
@@ -64,36 +63,6 @@ function ReadAIHeader({ onNewConversation }: { onNewConversation: () => void }) 
   );
 }
 
-function OpenReadAIIdentity() {
-  const _ = useTranslation();
-
-  return (
-    <div className='pointer-events-none absolute left-1/2 top-5 z-30 flex -translate-x-1/2 flex-col items-center'>
-      <span className='relative z-10 flex size-16 items-center justify-center overflow-hidden rounded-full border border-black/5 bg-white shadow-sm dark:border-white/10 dark:bg-neutral-950'>
-        <Image
-          src={OPENREAD_AI_ICON_LIGHT}
-          alt=''
-          width={40}
-          height={40}
-          className='block dark:hidden'
-          priority={false}
-        />
-        <Image
-          src={OPENREAD_AI_ICON_DARK}
-          alt=''
-          width={40}
-          height={40}
-          className='hidden dark:block'
-          priority={false}
-        />
-      </span>
-      <span className='-mt-2 rounded-full bg-neutral-100/95 px-6 py-1.5 text-sm font-medium text-neutral-950 shadow-sm ring-1 ring-black/5 backdrop-blur dark:bg-neutral-900/95 dark:text-neutral-50 dark:ring-white/10'>
-        {_('Read AI')}
-      </span>
-    </div>
-  );
-}
-
 function HeaderIconButton({
   label,
   onClick,
@@ -108,10 +77,49 @@ function HeaderIconButton({
       type='button'
       aria-label={label}
       onClick={onClick}
-      className='flex size-12 items-center justify-center rounded-full bg-neutral-100/90 text-neutral-950 shadow-sm ring-1 ring-black/5 backdrop-blur transition-transform active:scale-95 dark:bg-neutral-900/90 dark:text-neutral-50 dark:ring-white/10'
+      className='bg-base-200/80 text-base-content hover:bg-base-200 flex size-11 items-center justify-center rounded-full shadow-sm ring-1 ring-black/5 backdrop-blur transition-transform active:scale-95 dark:ring-white/10'
     >
       {children}
     </button>
+  );
+}
+
+function MobileWebReadAIHeader({
+  showHistory,
+  isExpanded,
+  onClose,
+  onShowHistory,
+  onBackToChat,
+  onNewConversation,
+}: {
+  showHistory: boolean;
+  isExpanded: boolean;
+  onClose: () => void;
+  onShowHistory: () => void;
+  onBackToChat: () => void;
+  onNewConversation: () => void;
+}) {
+  const _ = useTranslation();
+
+  const leftButton = showHistory
+    ? { label: _('Back to chat'), onClick: onBackToChat, icon: <LuChevronLeft size={22} /> }
+    : isExpanded
+      ? { label: _('Chat history'), onClick: onShowHistory, icon: <LuHistory size={20} /> }
+      : { label: _('Close Read AI'), onClick: onClose, icon: <LuX size={22} /> };
+
+  return (
+    <header className='grid shrink-0 grid-cols-[3rem_minmax(0,1fr)_3rem] items-center gap-2 px-4 pb-2 pt-1'>
+      <HeaderIconButton label={leftButton.label} onClick={leftButton.onClick}>
+        {leftButton.icon}
+      </HeaderIconButton>
+      <div className='flex min-w-0 items-center justify-center gap-2'>
+        <OpenReadAILogo />
+        <span className='text-base-content truncate text-base font-semibold'>{_('Read AI')}</span>
+      </div>
+      <HeaderIconButton label={_('New Chat')} onClick={onNewConversation}>
+        <LuSquarePen size={20} />
+      </HeaderIconButton>
+    </header>
   );
 }
 
@@ -121,7 +129,7 @@ export function MobileChatContent({
   initialQuestion,
   initialQuestionConversationId,
   initialView = 'history',
-  variant = 'default',
+  layout = 'default',
   onConversationSelected,
   onClose,
 }: {
@@ -130,7 +138,7 @@ export function MobileChatContent({
   initialQuestion?: string;
   initialQuestionConversationId?: string;
   initialView?: MobileAIChatInitialView;
-  variant?: MobileAIChatVariant;
+  layout?: MobileAIChatLayout;
   onConversationSelected?: () => void;
   onClose?: () => void;
 }) {
@@ -141,18 +149,20 @@ export function MobileChatContent({
   const messages = useAIChatStore((s) => s.messages);
   const clearInitialQuestion = useMobileReaderPanelStore((s) => s.clearInitialQuestion);
   const { primaryBookHash, getParallelHashes } = usePrimaryBookHash(bookKey);
-  const isMobileWebCard = variant === 'mobile-web-card';
-
-  useEffect(() => {
-    if (!initialQuestion || !initialQuestionConversationId) return;
-    const submittedInitialQuestion = messages.some(
+  const isMobileWeb = layout === 'mobile-web';
+  const submittedInitialQuestion =
+    !!initialQuestion &&
+    !!initialQuestionConversationId &&
+    messages.some(
       (message) =>
         message.conversationId === initialQuestionConversationId &&
         message.role === 'user' &&
         message.content === initialQuestion,
     );
+
+  useEffect(() => {
     if (submittedInitialQuestion) clearInitialQuestion();
-  }, [clearInitialQuestion, initialQuestion, initialQuestionConversationId, messages]);
+  }, [clearInitialQuestion, submittedInitialQuestion]);
 
   const handleNewConversation = async () => {
     if (!primaryBookHash) return;
@@ -168,7 +178,7 @@ export function MobileChatContent({
   const activeChat = (
     <div
       data-testid='mobile-ai-chat-active-panel'
-      className={clsx('flex min-h-0 flex-1 flex-col overflow-hidden', isMobileWebCard && 'pt-32')}
+      className='flex min-h-0 flex-1 flex-col overflow-hidden'
     >
       <AIAssistant
         key={activeConversationId ?? 'new'}
@@ -182,7 +192,7 @@ export function MobileChatContent({
   const history = (
     <div
       data-testid='mobile-ai-chat-history-panel'
-      className={clsx('flex min-h-0 flex-1 flex-col overflow-hidden', isMobileWebCard && 'pt-32')}
+      className='flex min-h-0 flex-1 flex-col overflow-hidden'
     >
       <ChatHistoryView
         bookKey={bookKey}
@@ -192,7 +202,7 @@ export function MobileChatContent({
     </div>
   );
 
-  if (!isMobileWebCard) {
+  if (!isMobileWeb) {
     return (
       <div className='flex h-full min-h-[40vh] flex-col overflow-hidden'>
         <ReadAIHeader onNewConversation={handleNewConversation} />
@@ -216,34 +226,19 @@ export function MobileChatContent({
     <section
       data-testid='mobile-ai-chat-shell'
       data-expanded={isExpanded ? 'true' : 'false'}
-      className={clsx(
-        'relative flex min-h-[40vh] w-full flex-col overflow-hidden border border-black/5 bg-white/95 text-neutral-950 shadow-2xl ring-1 ring-black/5 backdrop-blur-2xl dark:border-white/10 dark:bg-neutral-950/95 dark:text-neutral-50 dark:ring-white/10',
-        isExpanded ? 'h-full rounded-[2rem]' : 'h-[52vh] rounded-[2rem]',
-      )}
+      className='flex h-full min-h-0 w-full flex-col overflow-hidden'
     >
-      <div className='absolute left-5 right-5 top-5 z-20 flex items-start justify-between'>
-        {showHistory ? (
-          <HeaderIconButton label={_('Back to chat')} onClick={() => setShowHistory(false)}>
-            <LuChevronLeft size={24} />
-          </HeaderIconButton>
-        ) : isExpanded ? (
-          <HeaderIconButton label={_('Chat history')} onClick={() => setShowHistory(true)}>
-            <LuHistory size={22} />
-          </HeaderIconButton>
-        ) : (
-          <HeaderIconButton label={_('Close Read AI')} onClick={() => onClose?.()}>
-            <LuX size={24} />
-          </HeaderIconButton>
-        )}
-
-        <HeaderIconButton label={_('New Chat')} onClick={handleNewConversation}>
-          <LuSquarePen size={22} />
-        </HeaderIconButton>
+      <MobileWebReadAIHeader
+        showHistory={showHistory}
+        isExpanded={isExpanded}
+        onClose={() => onClose?.()}
+        onShowHistory={() => setShowHistory(true)}
+        onBackToChat={() => setShowHistory(false)}
+        onNewConversation={handleNewConversation}
+      />
+      <div className='min-h-0 flex-1 overflow-hidden px-3 pb-3'>
+        {showHistory ? history : activeChat}
       </div>
-
-      <OpenReadAIIdentity />
-
-      {showHistory ? history : activeChat}
     </section>
   );
 }

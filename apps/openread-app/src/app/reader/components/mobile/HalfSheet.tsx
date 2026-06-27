@@ -17,6 +17,7 @@ interface HalfSheetProps {
   children: ReactNode | ((state: { isExpanded: boolean }) => ReactNode);
   sheetClassName?: string;
   contentClassName?: string;
+  chrome?: 'default' | 'drag-handle';
 }
 
 function HalfSheet({
@@ -26,6 +27,7 @@ function HalfSheet({
   children,
   sheetClassName,
   contentClassName,
+  chrome = 'default',
 }: HalfSheetProps) {
   const { appService } = useEnv();
   const { safeAreaInsets } = useThemeStore();
@@ -169,8 +171,7 @@ function HalfSheet({
           transition: 'max-height 0.3s ease-out, height 0.3s ease-out, border-radius 0.3s ease-out',
         }}
       >
-        {/* Expanded: back button header */}
-        {isExpanded ? (
+        {chrome === 'default' && isExpanded ? (
           <div className='flex items-center gap-2 px-4 pb-2 pt-2'>
             <button onClick={onClose} className='text-base-content/70 p-1'>
               <PiCaretLeftBold size={18} />
@@ -178,7 +179,6 @@ function HalfSheet({
             {title && <h2 className='text-base-content text-sm font-semibold'>{title}</h2>}
           </div>
         ) : (
-          /* Half: drag handle */
           <div
             className='flex w-full cursor-grab items-center justify-center pb-1 pt-3 active:cursor-grabbing'
             onMouseDown={handleDragStart}
@@ -189,7 +189,7 @@ function HalfSheet({
           </div>
         )}
 
-        {!isExpanded && title && (
+        {chrome === 'default' && !isExpanded && title && (
           <div className='px-4 pb-2'>
             <h2 className='text-base-content text-sm font-semibold'>{title}</h2>
           </div>

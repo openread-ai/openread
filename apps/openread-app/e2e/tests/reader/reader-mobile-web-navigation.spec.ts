@@ -376,7 +376,7 @@ test.describe('Mobile web reader navigation regression', () => {
     await attachScreenshot(page, testInfo, 'mobile-web-reader-kebab-chat-history-sheet');
   });
 
-  test('mobile web AI composer sends into canonical response sheet and expands history layout', async ({
+  test('mobile web AI composer sends into one canonical half-sheet card', async ({
     authenticatedPage: page,
   }, testInfo) => {
     test.skip(!isMobileProject(testInfo), 'Mobile web AI composer contract only.');
@@ -411,6 +411,9 @@ test.describe('Mobile web reader navigation regression', () => {
     const agenticChatRequestsAfterInitialResponse = getAgenticChatRequestCount();
     expect(agenticChatRequestsAfterInitialResponse).toBeGreaterThan(0);
     await expect(page.getByTestId('mobile-ai-inline-composer-input')).toHaveCount(0);
+    await expect(page.getByTestId('assistant-composer')).toHaveCount(1);
+    await expect(page.getByText('AI is responding')).toHaveCount(0);
+    await expect(page.getByTestId('mobile-ai-chat-history-panel')).toHaveCount(0);
     await attachScreenshot(page, testInfo, 'mobile-web-ai-half-sheet-response');
 
     await expandMobileSheet(page);
@@ -435,7 +438,7 @@ test.describe('Mobile web reader navigation regression', () => {
     await attachScreenshot(page, testInfo, 'mobile-web-ai-full-sheet-new-chat-card');
   });
 
-  test('mobile web AI composer consumes inline prompt before fast New Chat remount', async ({
+  test('mobile web AI composer does not replay inline prompt after New Chat remount', async ({
     authenticatedPage: page,
   }, testInfo) => {
     test.skip(!isMobileProject(testInfo), 'Mobile web AI composer contract only.');
@@ -449,19 +452,19 @@ test.describe('Mobile web reader navigation regression', () => {
     await page.getByTestId('mobile-ai-inline-composer-send').click();
 
     await expect(page.getByText('Read AI', { exact: true })).toBeVisible({ timeout: 10_000 });
-    await page.getByRole('button', { name: 'New Chat' }).first().click();
-
     await expect
       .poll(() => getAgenticChatRequestCount(), {
-        message: 'fast New Chat remount must not replay stale inline prompt',
+        message: 'inline prompt must be consumed exactly once before remount checks',
         timeout: 10_000,
       })
       .toBe(1);
+
+    await page.getByRole('button', { name: 'New Chat' }).first().click();
     await page.waitForTimeout(500);
     expect(getAgenticChatRequestCount()).toBe(1);
     await expect(
       page.locator('[data-message-role="user"]').filter({ hasText: 'What is this book about?' }),
-      'fast New Chat must not attach the inline prompt to the new active conversation',
+      'New Chat remount must not attach the inline prompt to the new active conversation',
     ).toHaveCount(0);
 
     await expandMobileSheet(page);

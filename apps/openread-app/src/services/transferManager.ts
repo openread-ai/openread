@@ -19,13 +19,19 @@ export type TransferErrorReason =
   | 'storage-not-available'
   | 'library-limit-reached'
   | 'local-file-missing'
+  | 'network-error'
+  | 'backend-error'
   | 'unknown';
 
 export function classifyTransferError(errorMessage: string): {
   reason: TransferErrorReason;
   retryable: boolean;
 } {
-  if (errorMessage.includes('Not authenticated')) {
+  if (
+    errorMessage.includes('Not authenticated') ||
+    errorMessage.includes('UNAUTHORIZED') ||
+    /HTTP 401\b/.test(errorMessage)
+  ) {
     return { reason: 'not-authenticated', retryable: false };
   }
   if (
@@ -43,6 +49,16 @@ export function classifyTransferError(errorMessage: string): {
   }
   if (errorMessage.includes('Book file not uploaded')) {
     return { reason: 'local-file-missing', retryable: false };
+  }
+  if (/Failed to fetch|NetworkError|network|Load failed/i.test(errorMessage)) {
+    return { reason: 'network-error', retryable: true };
+  }
+  if (
+    errorMessage.includes('STORAGE_SCHEMA_UNAVAILABLE') ||
+    errorMessage.includes('INTERNAL_ERROR') ||
+    /HTTP 5\d\d\b/.test(errorMessage)
+  ) {
+    return { reason: 'backend-error', retryable: true };
   }
 
   return { reason: 'unknown', retryable: true };
@@ -342,6 +358,10 @@ class TransferManager {
             'library-limit-reached': _('Library limit reached. Upgrade for unlimited library.'),
             'local-file-missing': _(
               'Book file is not available on this device. Re-download or re-import it before cloud upload.',
+            ),
+            'network-error': _('Network error. Check your connection and try again.'),
+            'backend-error': _(
+              'Cloud storage is temporarily unavailable. Please try again shortly.',
             ),
             unknown:
               transfer.type === 'upload'

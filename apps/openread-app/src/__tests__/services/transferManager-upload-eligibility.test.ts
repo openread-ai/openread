@@ -74,8 +74,14 @@ describe('TransferManager upload eligibility', () => {
       reason: 'local-file-missing',
       retryable: false,
     });
-    expect(classifyTransferError('Network timeout')).toEqual({
-      reason: 'unknown',
+    expect(classifyTransferError('TypeError: Failed to fetch')).toEqual({
+      reason: 'network-error',
+      retryable: true,
+    });
+    expect(
+      classifyTransferError('STORAGE_SCHEMA_UNAVAILABLE: Request failed with HTTP 503'),
+    ).toEqual({
+      reason: 'backend-error',
       retryable: true,
     });
   });

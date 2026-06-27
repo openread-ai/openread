@@ -1,13 +1,136 @@
+import Image from 'next/image';
+import { useEffect } from 'react';
+import { LuPlus } from 'react-icons/lu';
+
+import AIAssistant from '../notebook/AIAssistant';
 import ChatHistoryView from '../sidebar/ChatHistoryView';
+import { useTranslation } from '@/hooks/useTranslation';
+import { useAIChatStore } from '@/store/aiChatStore';
+import { usePrimaryBookHash } from '@/app/reader/hooks/usePrimaryBookHash';
+import { useMobileReaderPanelStore } from '@/store/mobileReaderPanelStore';
+
+const OPENREAD_AI_ICON_LIGHT = '/assets/openread-ai/icon-light.svg';
+const OPENREAD_AI_ICON_DARK = '/assets/openread-ai/icon-dark.svg';
+
+function OpenReadAILogo() {
+  return (
+    <span className='bg-base-content/10 relative flex size-8 shrink-0 overflow-hidden rounded-xl'>
+      <Image
+        src={OPENREAD_AI_ICON_LIGHT}
+        alt=''
+        width={32}
+        height={32}
+        className='block dark:hidden'
+        priority={false}
+      />
+      <Image
+        src={OPENREAD_AI_ICON_DARK}
+        alt=''
+        width={32}
+        height={32}
+        className='hidden dark:block'
+        priority={false}
+      />
+    </span>
+  );
+}
+
+function ReadAIHeader({ onNewConversation }: { onNewConversation: () => void }) {
+  const _ = useTranslation();
+
+  return (
+    <div className='border-base-content/10 flex items-center justify-between border-b px-4 py-3'>
+      <div className='flex min-w-0 items-center gap-2'>
+        <OpenReadAILogo />
+        <div className='min-w-0'>
+          <h2 className='text-base-content truncate text-sm font-semibold'>{_('Read AI')}</h2>
+          <p className='text-base-content/50 truncate text-xs'>{_('Ask about this book')}</p>
+        </div>
+      </div>
+      <button
+        type='button'
+        onClick={onNewConversation}
+        className='bg-base-content text-base-100 flex min-h-11 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-transform active:scale-95'
+        aria-label={_('New Chat')}
+      >
+        <LuPlus size={14} />
+        <span>{_('New')}</span>
+      </button>
+    </div>
+  );
+}
 
 export function MobileChatContent({
   bookKey,
+  isExpanded = false,
+  initialQuestion,
+  initialQuestionConversationId,
   onConversationSelected,
 }: {
   bookKey: string;
+  isExpanded?: boolean;
+  initialQuestion?: string;
+  initialQuestionConversationId?: string;
   onConversationSelected?: () => void;
 }) {
-  return <ChatHistoryView bookKey={bookKey} onConversationSelected={onConversationSelected} />;
+  const _ = useTranslation();
+  const activeConversationId = useAIChatStore((s) => s.activeConversationId);
+  const createConversation = useAIChatStore((s) => s.createConversation);
+  const messages = useAIChatStore((s) => s.messages);
+  const clearInitialQuestion = useMobileReaderPanelStore((s) => s.clearInitialQuestion);
+  const { primaryBookHash, getParallelHashes } = usePrimaryBookHash(bookKey);
+
+  useEffect(() => {
+    if (!initialQuestion || !initialQuestionConversationId) return;
+    const submittedInitialQuestion = messages.some(
+      (message) =>
+        message.conversationId === initialQuestionConversationId &&
+        message.role === 'user' &&
+        message.content === initialQuestion,
+    );
+    if (submittedInitialQuestion) clearInitialQuestion();
+  }, [clearInitialQuestion, initialQuestion, initialQuestionConversationId, messages]);
+
+  const handleNewConversation = async () => {
+    if (!primaryBookHash) return;
+    await createConversation(primaryBookHash, _('New conversation'), getParallelHashes());
+  };
+
+  const history = (
+    <ChatHistoryView
+      bookKey={bookKey}
+      onConversationSelected={onConversationSelected}
+      openNotebookOnSelect={false}
+    />
+  );
+  const activeChat = (
+    <div className='flex min-h-0 flex-1 flex-col overflow-hidden'>
+      <AIAssistant
+        key={activeConversationId ?? 'new'}
+        bookKey={bookKey}
+        initialQuestion={initialQuestion}
+        initialQuestionConversationId={initialQuestionConversationId}
+      />
+    </div>
+  );
+
+  return (
+    <div className='flex h-full min-h-[40vh] flex-col overflow-hidden'>
+      <ReadAIHeader onNewConversation={handleNewConversation} />
+      {isExpanded ? (
+        <div className='grid min-h-0 flex-1 grid-cols-[minmax(12rem,0.9fr)_minmax(0,1.4fr)] overflow-hidden'>
+          <aside className='border-base-content/10 bg-base-200/70 min-h-0 overflow-hidden border-r'>
+            {history}
+          </aside>
+          <section className='min-h-0 overflow-hidden'>{activeChat}</section>
+        </div>
+      ) : activeConversationId ? (
+        activeChat
+      ) : (
+        <div className='min-h-0 flex-1 overflow-hidden'>{history}</div>
+      )}
+    </div>
+  );
 }
 
 export default MobileChatContent;

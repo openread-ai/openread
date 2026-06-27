@@ -48,24 +48,31 @@ function MobileReaderPanelHost({ bookKey }: MobileReaderPanelHostProps) {
   };
 
   const handleConversationSelected = () => {
-    closeMobileReaderPanel();
-    setHoveredBookKey(null);
+    setHoveredBookKey(bookKey);
   };
 
   return (
     <HalfSheet isOpen={isOpen} onClose={handleClose}>
-      <div className='min-h-[40vh] flex-1 overflow-y-auto'>
-        {activeDestination && tocTabByDestination[activeDestination] && (
-          <MobileTOCContent bookKey={bookKey} initialTab={tocTabByDestination[activeDestination]} />
-        )}
-        {activeDestination === 'ai-chat-history' && (
-          <MobileChatContent
-            bookKey={bookKey}
-            onConversationSelected={handleConversationSelected}
-          />
-        )}
-        {activeDestination === 'settings' && <MobileSettingsContent bookKey={bookKey} />}
-      </div>
+      {({ isExpanded }) => (
+        <div className='min-h-[40vh] flex-1 overflow-y-auto'>
+          {activeDestination && tocTabByDestination[activeDestination] && (
+            <MobileTOCContent
+              bookKey={bookKey}
+              initialTab={tocTabByDestination[activeDestination]}
+            />
+          )}
+          {activeDestination === 'ai-chat-history' && (
+            <MobileChatContent
+              bookKey={bookKey}
+              isExpanded={isExpanded}
+              initialQuestion={activePanel?.initialQuestion}
+              initialQuestionConversationId={activePanel?.initialQuestionConversationId}
+              onConversationSelected={handleConversationSelected}
+            />
+          )}
+          {activeDestination === 'settings' && <MobileSettingsContent bookKey={bookKey} />}
+        </div>
+      )}
     </HalfSheet>
   );
 }

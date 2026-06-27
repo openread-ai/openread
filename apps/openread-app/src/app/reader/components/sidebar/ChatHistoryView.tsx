@@ -97,9 +97,14 @@ const BookBadge: React.FC<{
 interface ChatHistoryViewProps {
   bookKey: string;
   onConversationSelected?: () => void;
+  openNotebookOnSelect?: boolean;
 }
 
-const ChatHistoryView: React.FC<ChatHistoryViewProps> = ({ bookKey, onConversationSelected }) => {
+const ChatHistoryView: React.FC<ChatHistoryViewProps> = ({
+  bookKey,
+  onConversationSelected,
+  openNotebookOnSelect = true,
+}) => {
   const _ = useTranslation();
   const { appService, envConfig } = useEnv();
   const {
@@ -138,8 +143,10 @@ const ChatHistoryView: React.FC<ChatHistoryViewProps> = ({ bookKey, onConversati
     async (conversation: AIConversation) => {
       await setActiveConversation(conversation.id);
       onConversationSelected?.();
-      setNotebookVisible(true);
-      setNotebookActiveTab('ai');
+      if (openNotebookOnSelect) {
+        setNotebookVisible(true);
+        setNotebookActiveTab('ai');
+      }
 
       // Restore parallel read session if this conversation had parallel books
       if (conversation.parallelBookHashes?.length) {
@@ -170,6 +177,7 @@ const ChatHistoryView: React.FC<ChatHistoryViewProps> = ({ bookKey, onConversati
     [
       setActiveConversation,
       onConversationSelected,
+      openNotebookOnSelect,
       setNotebookVisible,
       setNotebookActiveTab,
       bookKeys,
@@ -183,13 +191,16 @@ const ChatHistoryView: React.FC<ChatHistoryViewProps> = ({ bookKey, onConversati
   const handleNewConversation = useCallback(async () => {
     if (!primaryBookHash) return;
     await createConversation(primaryBookHash, _('New conversation'), getParallelHashes());
-    setNotebookVisible(true);
-    setNotebookActiveTab('ai');
+    if (openNotebookOnSelect) {
+      setNotebookVisible(true);
+      setNotebookActiveTab('ai');
+    }
   }, [
     primaryBookHash,
     _,
     createConversation,
     getParallelHashes,
+    openNotebookOnSelect,
     setNotebookVisible,
     setNotebookActiveTab,
   ]);

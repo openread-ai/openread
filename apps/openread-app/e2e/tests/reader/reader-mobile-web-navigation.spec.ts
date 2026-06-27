@@ -1,3 +1,5 @@
+import { copyFile, mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
 import type { Page, TestInfo } from '@playwright/test';
 import { test, expect } from '../../fixtures';
 import { LibraryPage } from '../../pages/LibraryPage';
@@ -86,6 +88,12 @@ const FIXTURES = {
     title: 'openread-e2e-mobile-fixed',
   },
 };
+
+const MOCK_AI_RESPONSE_TEXT = 'Mobile Read AI answer.';
+const MOCK_AI_NDJSON = `${JSON.stringify({
+  type: 'text',
+  text: MOCK_AI_RESPONSE_TEXT,
+})}\n`;
 
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -225,6 +233,12 @@ async function attachScreenshot(page: Page, testInfo: TestInfo, name: string) {
   const path = testInfo.outputPath(`${name}.png`);
   await page.screenshot({ path, fullPage: false });
   await testInfo.attach(name, { path, contentType: 'image/png' });
+
+  const evidenceDir = process.env.OPENREAD_E2E_EVIDENCE_DIR;
+  if (evidenceDir) {
+    await mkdir(evidenceDir, { recursive: true });
+    await copyFile(path, join(evidenceDir, `${name}.png`));
+  }
 }
 
 async function closeMobileSheet(page: Page) {
@@ -235,6 +249,34 @@ async function closeMobileSheet(page: Page) {
     .first()
     .click({ position: { x: 8, y: 8 } });
   await expect(sheet).toBeHidden({ timeout: 10_000 });
+}
+
+async function mockAgenticChat(page: Page) {
+  let requestCount = 0;
+
+  await page.route('**/api/ai/agentic-chat', async (route) => {
+    requestCount += 1;
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/plain',
+      body: MOCK_AI_NDJSON,
+    });
+  });
+
+  return () => requestCount;
+}
+
+async function expandMobileSheet(page: Page) {
+  const handle = page.locator('.cursor-grab').first();
+  await expect(handle).toBeVisible({ timeout: 10_000 });
+  const box = await handle.boundingBox();
+  if (!box) throw new Error('Mobile sheet drag handle has no bounding box');
+  const startX = box.x + box.width / 2;
+  const startY = box.y + box.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX, startY - 180, { steps: 8 });
+  await page.mouse.up();
 }
 
 test.describe('Mobile web reader navigation regression', () => {
@@ -325,8 +367,94 @@ test.describe('Mobile web reader navigation regression', () => {
 
     viewMenu = await openMenu();
     await viewMenu.getByText('AI Chat History', { exact: true }).click();
+    await expect(page.getByText('Read AI', { exact: true })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText('Recents', { exact: true })).toBeVisible({ timeout: 10_000 });
     await attachScreenshot(page, testInfo, 'mobile-web-reader-kebab-chat-history-sheet');
+  });
+
+  test('mobile web AI composer sends into canonical response sheet and expands history layout', async ({
+    authenticatedPage: page,
+  }, testInfo) => {
+    test.skip(!isMobileProject(testInfo), 'Mobile web AI composer contract only.');
+
+    const getAgenticChatRequestCount = await mockAgenticChat(page);
+    await openFixtureInReader(page, FIXTURES.reflowable);
+
+    const inlineComposer = page.getByTestId('mobile-ai-inline-composer-input');
+    await expect(inlineComposer).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('mobile-ai-inline-composer-send')).toHaveCount(0);
+    await attachScreenshot(page, testInfo, 'mobile-web-ai-collapsed-composer-empty');
+
+    await inlineComposer.fill('Line one\nLine two\nLine three\nLine four\nLine five\nLine six');
+    await expect(page.getByTestId('mobile-ai-inline-composer-send')).toBeVisible();
+    const textareaMetrics = await inlineComposer.evaluate((element) => {
+      const textarea = element as HTMLTextAreaElement;
+      return {
+        scrollHeight: textarea.scrollHeight,
+        clientHeight: textarea.clientHeight,
+        overflowY: getComputedStyle(textarea).overflowY,
+      };
+    });
+    expect(textareaMetrics.scrollHeight).toBeGreaterThanOrEqual(textareaMetrics.clientHeight);
+    await attachScreenshot(page, testInfo, 'mobile-web-ai-multiline-threshold');
+
+    await inlineComposer.fill('What is this book about?');
+    await page.getByTestId('mobile-ai-inline-composer-send').click();
+
+    await expect(page.getByText('Read AI', { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('What is this book about?')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(MOCK_AI_RESPONSE_TEXT)).toBeVisible({ timeout: 30_000 });
+    const agenticChatRequestsAfterInitialResponse = getAgenticChatRequestCount();
+    expect(agenticChatRequestsAfterInitialResponse).toBeGreaterThan(0);
+    await expect(page.getByTestId('mobile-ai-inline-composer-input')).toHaveCount(0);
+    await attachScreenshot(page, testInfo, 'mobile-web-ai-half-sheet-response');
+
+    await expandMobileSheet(page);
+    await expect(page.getByText('Recents', { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(MOCK_AI_RESPONSE_TEXT).first()).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: 'New Chat' }).first().click();
+    await expect(page.getByText('No conversations yet')).toHaveCount(0);
+    await page.waitForTimeout(500);
+    expect(getAgenticChatRequestCount()).toBe(agenticChatRequestsAfterInitialResponse);
+    await attachScreenshot(page, testInfo, 'mobile-web-ai-full-sheet-history-active');
+  });
+
+  test('mobile web AI composer consumes inline prompt before fast New Chat remount', async ({
+    authenticatedPage: page,
+  }, testInfo) => {
+    test.skip(!isMobileProject(testInfo), 'Mobile web AI composer contract only.');
+
+    const getAgenticChatRequestCount = await mockAgenticChat(page);
+    await openFixtureInReader(page, FIXTURES.reflowable);
+
+    const inlineComposer = page.getByTestId('mobile-ai-inline-composer-input');
+    await expect(inlineComposer).toBeVisible({ timeout: 10_000 });
+    await inlineComposer.fill('What is this book about?');
+    await page.getByTestId('mobile-ai-inline-composer-send').click();
+
+    await expect(page.getByText('Read AI', { exact: true })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: 'New Chat' }).first().click();
+
+    await expect
+      .poll(() => getAgenticChatRequestCount(), {
+        message: 'fast New Chat remount must not replay stale inline prompt',
+        timeout: 10_000,
+      })
+      .toBe(1);
+    await page.waitForTimeout(500);
+    expect(getAgenticChatRequestCount()).toBe(1);
+    await expect(
+      page.locator('[data-message-role="user"]').filter({ hasText: 'What is this book about?' }),
+      'fast New Chat must not attach the inline prompt to the new active conversation',
+    ).toHaveCount(0);
+
+    await expandMobileSheet(page);
+    await page
+      .getByRole('button', { name: /What is this book about\?/ })
+      .first()
+      .click();
+    await page.waitForTimeout(500);
+    expect(getAgenticChatRequestCount()).toBe(1);
   });
 
   test('repeated touch scroll advances reflowable reader position', async ({

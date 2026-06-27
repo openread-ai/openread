@@ -1,28 +1,18 @@
 'use client';
 
 import React, { useState, useCallback, useRef } from 'react';
-import {
-  ArrowUpIcon,
-  BookOpenIcon,
-  CompassIcon,
-  MessageCircleIcon,
-  MicIcon,
-  PlusIcon,
-  UploadIcon,
-  XIcon,
-} from 'lucide-react';
+import { ArrowUpIcon, BookOpenIcon, XIcon } from 'lucide-react';
 
 import { AI_COMPOSER_PLACEHOLDER } from '@/components/assistant/constants';
 import { useAIChatStore } from '@/store/aiChatStore';
 import { useNotebookStore } from '@/store/notebookStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useSidebarStore } from '@/store/sidebarStore';
+import { useMobileReaderPanelStore } from '@/store/mobileReaderPanelStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useThemeStore } from '@/store/themeStore';
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
-import { appendSpeechText, useSpeechToText } from '@/hooks/useSpeechToText';
-import { useDismissableLayer } from '@/hooks/useDismissableLayer';
 import { usePrimaryBookHash } from '@/app/reader/hooks/usePrimaryBookHash';
 import { isMobileWebReader } from '@/app/reader/utils/mobileReaderPanels';
 import { cn } from '@/utils/tailwind';
@@ -35,15 +25,8 @@ const InlineQuestionBar: React.FC<InlineQuestionBarProps> = ({ bookKey }) => {
   const _ = useTranslation();
   const [question, setQuestion] = useState('');
   const [dismissed, setDismissed] = useState(false);
-  const [actionMenuOpen, setActionMenuOpen] = useState(false);
-  const actionMenuRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const {
-    isSupported: speechSupported,
-    isListening: speechListening,
-    start: startSpeech,
-    stop: stopSpeech,
-  } = useSpeechToText();
+  const mobileTextareaRef = useRef<HTMLTextAreaElement>(null);
   const { appService } = useEnv();
   const { settings } = useSettingsStore();
   const { safeAreaInsets } = useThemeStore();
@@ -51,6 +34,7 @@ const InlineQuestionBar: React.FC<InlineQuestionBarProps> = ({ bookKey }) => {
   const setHoveredBookKey = useReaderStore((s) => s.setHoveredBookKey);
 
   const { createConversation, setPendingQuestion } = useAIChatStore();
+  const { activePanel, openMobileReaderPanel } = useMobileReaderPanelStore();
   const { setNotebookVisible, setNotebookActiveTab, isNotebookVisible } = useNotebookStore();
   const notebookPinned = useNotebookStore((s) => s.isNotebookPinned);
   const notebookWidth = useNotebookStore((s) => s.notebookWidth);
@@ -70,53 +54,46 @@ const InlineQuestionBar: React.FC<InlineQuestionBarProps> = ({ bookKey }) => {
   const leftOffset = sideBarVisible && sideBarPinned && sideBarWidth ? sideBarWidth : '0px';
   const rightOffset = isNotebookVisible && notebookPinned && notebookWidth ? notebookWidth : '0px';
 
-  const openAIChat = useCallback(() => {
-    setActionMenuOpen(false);
-    setNotebookVisible(true);
-    setNotebookActiveTab('ai');
-    setHoveredBookKey('');
-  }, [setHoveredBookKey, setNotebookActiveTab, setNotebookVisible]);
+  const openAIChat = useCallback(
+    (initialQuestion: string, initialQuestionConversationId?: string) => {
+      if (useMobileWebDock) {
+        openMobileReaderPanel(bookKey, 'ai-chat-history', {
+          initialQuestion,
+          initialQuestionConversationId,
+        });
+        setHoveredBookKey(bookKey);
+        return;
+      }
 
-  const handleToggleAIChat = useCallback(() => {
-    if (isNotebookVisible && notebookOnAI) {
-      setNotebookVisible(false);
-      return;
-    }
-    openAIChat();
-  }, [isNotebookVisible, notebookOnAI, openAIChat, setNotebookVisible]);
+      setNotebookVisible(true);
+      setNotebookActiveTab('ai');
+      setHoveredBookKey('');
+    },
+    [
+      bookKey,
+      openMobileReaderPanel,
+      setHoveredBookKey,
+      setNotebookActiveTab,
+      setNotebookVisible,
+      useMobileWebDock,
+    ],
+  );
 
-  const handleGoToLibrary = useCallback(() => {
-    window.location.assign('/library');
+  const resizeMobileComposer = useCallback((element: HTMLTextAreaElement | null) => {
+    if (!element) return;
+    const maxHeight = 128;
+    element.style.height = 'auto';
+    element.style.height = `${Math.min(element.scrollHeight, maxHeight)}px`;
+    element.style.overflowY = element.scrollHeight > maxHeight ? 'auto' : 'hidden';
   }, []);
 
-  const handleGoToExplore = useCallback(() => {
-    window.location.assign('/explore');
-  }, []);
-
-  const handleSpeechToText = useCallback(() => {
-    if (speechListening) {
-      stopSpeech();
-      return;
-    }
-
-    const started = startSpeech((transcript) => {
-      setQuestion((currentQuestion) => appendSpeechText(currentQuestion, transcript));
-      requestAnimationFrame(() => inputRef.current?.focus());
-    });
-    if (!started) inputRef.current?.focus();
-  }, [speechListening, startSpeech, stopSpeech]);
-
-  const speechButtonLabel = speechSupported
-    ? speechListening
-      ? _('Stop dictation')
-      : _('Start speech to text')
-    : _('Focus message input');
-
-  useDismissableLayer({
-    enabled: actionMenuOpen,
-    layerRef: actionMenuRef,
-    onDismiss: () => setActionMenuOpen(false),
-  });
+  const handleMobileQuestionChange = useCallback(
+    (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+      setQuestion(event.target.value);
+      resizeMobileComposer(event.target);
+    },
+    [resizeMobileComposer],
+  );
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -124,16 +101,22 @@ const InlineQuestionBar: React.FC<InlineQuestionBarProps> = ({ bookKey }) => {
       const trimmed = question.trim();
       if (!trimmed) return;
 
-      // Store the question so AIAssistant auto-sends it when it mounts
-      setPendingQuestion(trimmed);
-
       if (!primaryBookHash) return;
 
-      // Create conversation under the primary book
-      await createConversation(primaryBookHash, trimmed.slice(0, 50), getParallelHashes());
-      openAIChat();
+      // Create conversation under the primary book, then hand off the question
+      // once to the canonical assistant runtime.
+      const conversationId = await createConversation(
+        primaryBookHash,
+        trimmed.slice(0, 50),
+        getParallelHashes(),
+      );
+      setPendingQuestion(trimmed);
+      openAIChat(trimmed, conversationId);
 
       setQuestion('');
+      requestAnimationFrame(() => {
+        resizeMobileComposer(mobileTextareaRef.current);
+      });
     },
     [
       question,
@@ -142,11 +125,23 @@ const InlineQuestionBar: React.FC<InlineQuestionBarProps> = ({ bookKey }) => {
       getParallelHashes,
       setPendingQuestion,
       openAIChat,
+      resizeMobileComposer,
     ],
   );
 
-  // Don't show if AI is not enabled, dismissed, or notebook AI tab is already visible.
-  if (!aiEnabled || dismissed || (!useMobileWebDock && isNotebookVisible && notebookOnAI)) {
+  const mobileAISheetOpen =
+    useMobileWebDock &&
+    activePanel?.bookKey === bookKey &&
+    activePanel.destination === 'ai-chat-history';
+
+  // Don't show if AI is not enabled, dismissed, owned by the mobile AI sheet,
+  // or the desktop/native notebook AI tab is already visible.
+  if (
+    !aiEnabled ||
+    dismissed ||
+    mobileAISheetOpen ||
+    (!useMobileWebDock && isNotebookVisible && notebookOnAI)
+  ) {
     return null;
   }
 
@@ -181,8 +176,8 @@ const InlineQuestionBar: React.FC<InlineQuestionBarProps> = ({ bookKey }) => {
           'relative flex overflow-visible',
           useMobileWebDock
             ? cn(
-                'border-base-content/10 bg-base-200/90 pointer-events-auto w-[92vw] max-w-md flex-col items-stretch gap-3 rounded-[2rem] border px-4 pb-4 pt-3 shadow-xl backdrop-blur-2xl',
-                'transition-[width,opacity,padding] duration-300 ease-in-out',
+                'border-base-content/10 bg-base-100/95 pointer-events-auto w-[92vw] max-w-md items-end gap-2 rounded-[1.75rem] border px-3 py-2 shadow-xl backdrop-blur-2xl',
+                question.includes(' ') && 'rounded-[2rem]',
               )
             : appService?.isMobile
               ? cn(
@@ -197,93 +192,26 @@ const InlineQuestionBar: React.FC<InlineQuestionBarProps> = ({ bookKey }) => {
       >
         {useMobileWebDock ? (
           <>
-            <input
-              ref={inputRef}
-              type='text'
+            <textarea
+              ref={mobileTextareaRef}
               value={question}
-              onChange={(e) => setQuestion(e.target.value)}
+              onChange={handleMobileQuestionChange}
+              onFocus={(event) => resizeMobileComposer(event.currentTarget)}
               placeholder={composerPlaceholder}
-              className='text-base-content placeholder:text-base-content/45 min-h-8 w-full min-w-0 bg-transparent text-xl leading-8 outline-none'
+              rows={1}
+              className='text-base-content placeholder:text-base-content/45 max-h-32 min-h-11 min-w-0 flex-1 resize-none overflow-hidden bg-transparent py-2.5 text-base leading-6 outline-none focus-visible:ring-0'
+              data-testid='mobile-ai-inline-composer-input'
             />
-
-            <div className='flex items-center gap-3'>
-              <div ref={actionMenuRef} className='relative shrink-0'>
-                {actionMenuOpen && (
-                  <div
-                    className='bg-base-100 border-base-content/10 absolute bottom-full left-0 mb-2 w-44 overflow-hidden rounded-2xl border p-1 shadow-xl'
-                    role='menu'
-                  >
-                    <button
-                      type='button'
-                      onClick={handleGoToLibrary}
-                      className='hover:bg-base-200 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm'
-                      role='menuitem'
-                    >
-                      <UploadIcon className='size-4' />
-                      {_('Import books')}
-                    </button>
-                    <button
-                      type='button'
-                      onClick={handleGoToExplore}
-                      className='hover:bg-base-200 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm'
-                      role='menuitem'
-                    >
-                      <CompassIcon className='size-4' />
-                      {_('Explore catalog')}
-                    </button>
-                  </div>
-                )}
-                <button
-                  type='button'
-                  onClick={() => setActionMenuOpen((open) => !open)}
-                  className='bg-base-content text-base-100 flex size-11 items-center justify-center rounded-full transition-transform active:scale-95'
-                  aria-label={_('Import or explore books')}
-                  aria-expanded={actionMenuOpen}
-                >
-                  <PlusIcon className='size-6' />
-                </button>
-              </div>
-
+            {question.trim() && (
               <button
-                type='button'
-                onClick={handleToggleAIChat}
-                className='bg-base-content text-base-100 flex h-11 w-12 shrink-0 items-center justify-center rounded-2xl transition-transform active:scale-95'
-                aria-label={
-                  isNotebookVisible && notebookOnAI ? _('Back to Book') : _('Open AI Chat')
-                }
+                type='submit'
+                className='bg-base-content text-base-100 flex size-11 shrink-0 items-center justify-center rounded-full transition-transform active:scale-95 motion-reduce:transition-none'
+                aria-label={_('Ask')}
+                data-testid='mobile-ai-inline-composer-send'
               >
-                {isNotebookVisible && notebookOnAI ? (
-                  <BookOpenIcon className='size-5' />
-                ) : (
-                  <MessageCircleIcon className='size-5' />
-                )}
+                <ArrowUpIcon className='size-5' />
               </button>
-
-              <div className='flex-1' />
-
-              {question.trim() ? (
-                <button
-                  type='submit'
-                  className='bg-base-content text-base-100 flex size-11 shrink-0 items-center justify-center rounded-full transition-transform active:scale-95'
-                  aria-label={_('Ask')}
-                >
-                  <ArrowUpIcon className='size-5' />
-                </button>
-              ) : (
-                <button
-                  type='button'
-                  onClick={handleSpeechToText}
-                  className={cn(
-                    'bg-base-content text-base-100 flex size-11 shrink-0 items-center justify-center rounded-full transition-transform active:scale-95',
-                    speechListening && 'animate-pulse',
-                  )}
-                  aria-label={speechButtonLabel}
-                  aria-pressed={speechListening}
-                >
-                  <MicIcon className='size-6' />
-                </button>
-              )}
-            </div>
+            )}
           </>
         ) : (
           <>

@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { impactFeedback } from '@tauri-apps/plugin-haptics';
 import { PiCaretLeftBold } from 'react-icons/pi';
@@ -14,7 +14,7 @@ interface HalfSheetProps {
   isOpen: boolean;
   onClose: () => void;
   title?: string;
-  children: React.ReactNode;
+  children: ReactNode | ((state: { isExpanded: boolean }) => ReactNode);
 }
 
 function HalfSheet({ isOpen, onClose, title, children }: HalfSheetProps) {
@@ -131,6 +131,8 @@ function HalfSheet({ isOpen, onClose, title, children }: HalfSheetProps) {
     return null;
   }
 
+  const content = typeof children === 'function' ? children({ isExpanded }) : children;
+
   return createPortal(
     <div className='fixed inset-0 z-40' role='none' onClick={(e) => e.stopPropagation()}>
       <div
@@ -183,7 +185,7 @@ function HalfSheet({ isOpen, onClose, title, children }: HalfSheetProps) {
           </div>
         )}
 
-        <div className='flex-1 overflow-y-auto overscroll-contain'>{children}</div>
+        <div className='flex-1 overflow-y-auto overscroll-contain'>{content}</div>
       </div>
     </div>,
     document.body,

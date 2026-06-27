@@ -14,6 +14,7 @@ import { useThemeStore } from '@/store/themeStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useNotebookStore } from '@/store/notebookStore';
 import { useSidebarStore } from '@/store/sidebarStore';
+import { useMobileReaderPanelStore } from '@/store/mobileReaderPanelStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useTrafficLightStore } from '@/store/trafficLightStore';
@@ -65,6 +66,7 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
   const isNotebookVisible = useNotebookStore((s) => s.isNotebookVisible);
   const notebookOnAI = useNotebookStore((s) => s.notebookActiveTab === 'ai');
   const { getView, getViewSettings, setHoveredBookKey } = useReaderStore();
+  const { openMobileReaderPanel } = useMobileReaderPanelStore();
   const viewSettings = getViewSettings(bookKey);
 
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -234,6 +236,12 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
                     isNotebookVisible && notebookOnAI && 'bg-base-300/50',
                   )}
                   onClick={() => {
+                    if (useMobileWebHeader) {
+                      openMobileReaderPanel(bookKey, 'ai-chat-history');
+                      setHoveredBookKey(bookKey);
+                      return;
+                    }
+
                     const { setNotebookVisible, setNotebookActiveTab } =
                       useNotebookStore.getState();
                     if (isNotebookVisible && notebookOnAI) {

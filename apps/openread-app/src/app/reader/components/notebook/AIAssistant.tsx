@@ -95,13 +95,18 @@ function convertToExportedMessages(
 
 interface AIAssistantProps {
   bookKey: string;
+  initialQuestion?: string;
+  initialQuestionConversationId?: string;
 }
+
+const scheduledInitialQuestionKeys = new Set<string>();
 
 // inner component that uses the runtime hook
 const AIAssistantChat = ({
   aiSettings,
   bookHash,
   bookKey,
+  chatBookHash,
   bookTitle,
   sourceTitle,
   metadataTitle,
@@ -113,10 +118,13 @@ const AIAssistantChat = ({
   bookFormat,
   bookDoc,
   readerLocation,
+  initialQuestion,
+  initialQuestionConversationId,
 }: {
   aiSettings: AISettings;
   bookHash: string;
   bookKey: string;
+  chatBookHash: string;
   bookTitle: string;
   sourceTitle?: string;
   metadataTitle?: string;
@@ -130,6 +138,8 @@ const AIAssistantChat = ({
   bookFormat?: string;
   bookDoc: import('@/libs/document').BookDoc | null;
   readerLocation: CanonicalReaderLocation;
+  initialQuestion?: string;
+  initialQuestionConversationId?: string;
 }) => {
   const { getChapters, getVisualContextImages } = useBookChapters(bookDoc, readerLocation);
   const {
@@ -203,28 +213,35 @@ const AIAssistantChat = ({
     return createAgenticAdapter(() => optionsRef.current);
   }, []);
 
+  const nextUserMessageConversationIdRef = useRef<string | null>(null);
+  const messageConversationIdsRef = useRef<Map<string, string>>(new Map());
+
+  const bindNextUserMessageToConversation = useCallback((conversationId: string) => {
+    nextUserMessageConversationIdRef.current = conversationId;
+  }, []);
+
   // Auto-load existing conversations when the AI tab mounts and select the
   // most recent one if the reader has no active conversation. This keeps
   // persistence available even when the user opens the AI tab before clicking
   // "New chat".
   const autoLoadedBookHash = useRef<string | null>(null);
   useEffect(() => {
-    if (!bookHash || autoLoadedBookHash.current === bookHash) return;
-    autoLoadedBookHash.current = bookHash;
+    if (!chatBookHash || autoLoadedBookHash.current === chatBookHash) return;
+    autoLoadedBookHash.current = chatBookHash;
 
-    loadConversations(bookHash).then(() => {
+    loadConversations(chatBookHash).then(() => {
       const state = useAIChatStore.getState();
       const activeConversation = state.conversations.find(
         (conversation) => conversation.id === state.activeConversationId,
       );
-      if (activeConversation?.bookHash === bookHash) return;
+      if (activeConversation?.bookHash === chatBookHash) return;
 
       const mostRecent = state.conversations.find(
-        (conversation) => conversation.bookHash === bookHash,
+        (conversation) => conversation.bookHash === chatBookHash,
       );
       void setActiveConversation(mostRecent?.id ?? null);
     });
-  }, [bookHash, loadConversations, setActiveConversation]);
+  }, [chatBookHash, loadConversations, setActiveConversation]);
 
   // Create history adapter to load/persist messages. Always define the
   // adapter and create the backing conversation on first append if needed;
@@ -252,13 +269,38 @@ const AIAssistantChat = ({
         if (!textContent) return;
 
         const state = useAIChatStore.getState();
+        const explicitConversationId =
+          (msg.role === 'user' ? nextUserMessageConversationIdRef.current : null) ??
+          (item.parentId ? messageConversationIdsRef.current.get(item.parentId) : null) ??
+          messageConversationIdsRef.current.get(msg.id) ??
+          null;
+        const explicitConversation = explicitConversationId
+          ? state.conversations.find((conversation) => conversation.id === explicitConversationId)
+          : null;
         const activeConversation = state.conversations.find(
           (conversation) => conversation.id === state.activeConversationId,
         );
         let conversationId =
-          activeConversation?.bookHash === bookHash ? activeConversation.id : null;
+          explicitConversation?.bookHash === chatBookHash
+            ? explicitConversation.id
+            : activeConversation?.bookHash === chatBookHash
+              ? activeConversation.id
+              : null;
         if (!conversationId) {
-          conversationId = await createConversation(bookHash, textContent.slice(0, 50));
+          conversationId = await createConversation(chatBookHash, textContent.slice(0, 50));
+        }
+
+        if (
+          msg.role === 'user' &&
+          nextUserMessageConversationIdRef.current &&
+          nextUserMessageConversationIdRef.current === conversationId
+        ) {
+          nextUserMessageConversationIdRef.current = null;
+        }
+        messageConversationIdsRef.current.set(msg.id, conversationId);
+        if (messageConversationIdsRef.current.size > 200) {
+          const oldestKey = messageConversationIdsRef.current.keys().next().value;
+          if (oldestKey) messageConversationIdsRef.current.delete(oldestKey);
         }
 
         // Deduplicate: skip if this exact message ID already exists in store
@@ -273,7 +315,7 @@ const AIAssistantChat = ({
         });
       },
     };
-  }, [addMessage, createConversation, bookHash]);
+  }, [addMessage, createConversation, chatBookHash]);
 
   // BYOK: determine if user has a BYOK provider selected
   const byokProvider = LAUNCH_BYOK_ENABLED ? aiSettings.byokProvider : undefined;
@@ -306,6 +348,9 @@ const AIAssistantChat = ({
       byokProvider={byokProvider}
       byokModel={byokModel}
       onSelectModel={byokProvider ? handleSelectModel : undefined}
+      initialQuestion={initialQuestion}
+      initialQuestionConversationId={initialQuestionConversationId}
+      bindNextUserMessageToConversation={bindNextUserMessageToConversation}
     />
   );
 };
@@ -320,6 +365,9 @@ const AIAssistantWithRuntime = ({
   byokProvider,
   byokModel,
   onSelectModel,
+  initialQuestion,
+  initialQuestionConversationId,
+  bindNextUserMessageToConversation,
 }: {
   adapter: NonNullable<ReturnType<typeof createAgenticAdapter>>;
   historyAdapter: ThreadHistoryAdapter;
@@ -330,6 +378,9 @@ const AIAssistantWithRuntime = ({
   byokProvider?: string;
   byokModel?: string;
   onSelectModel?: (modelId: string) => void;
+  initialQuestion?: string;
+  initialQuestionConversationId?: string;
+  bindNextUserMessageToConversation: (conversationId: string) => void;
 }) => {
   const runtime = useLocalRuntime(adapter, {
     adapters: { history: historyAdapter },
@@ -347,6 +398,9 @@ const AIAssistantWithRuntime = ({
         byokProvider={byokProvider}
         byokModel={byokModel}
         onSelectModel={onSelectModel}
+        initialQuestion={initialQuestion}
+        initialQuestionConversationId={initialQuestionConversationId}
+        bindNextUserMessageToConversation={bindNextUserMessageToConversation}
       />
     </AssistantRuntimeProvider>
   );
@@ -360,6 +414,9 @@ const ThreadWrapper = ({
   byokProvider,
   byokModel,
   onSelectModel,
+  initialQuestion,
+  initialQuestionConversationId,
+  bindNextUserMessageToConversation,
 }: {
   bookKey: string;
   isLoadingHistory: boolean;
@@ -368,29 +425,100 @@ const ThreadWrapper = ({
   byokProvider?: string;
   byokModel?: string;
   onSelectModel?: (modelId: string) => void;
+  initialQuestion?: string;
+  initialQuestionConversationId?: string;
+  bindNextUserMessageToConversation: (conversationId: string) => void;
 }) => {
   const _ = useTranslation();
   const { appService } = useEnv();
   const assistantRuntime = useAssistantRuntime();
-  const { createConversation, pendingQuestion, setPendingQuestion } = useAIChatStore();
+  const assistantRuntimeRef = useRef(assistantRuntime);
+  const {
+    activeConversationId,
+    createConversation,
+    pendingQuestion,
+    setActiveConversation,
+    setPendingQuestion,
+  } = useAIChatStore();
   const { primaryBookHash, getParallelHashes } = usePrimaryBookHash(bookKey);
 
-  // Auto-submit pending question from inline bar.
+  useEffect(() => {
+    assistantRuntimeRef.current = assistantRuntime;
+  }, [assistantRuntime]);
+
+  // Auto-submit pending question from inline/mobile composer after the runtime is mounted.
   // Read directly from store to avoid strict-mode double-fire with stale closure values.
   const pendingQuestionHandled = useRef(false);
   useEffect(() => {
-    const q = useAIChatStore.getState().pendingQuestion;
-    if (q && !pendingQuestionHandled.current) {
+    const initialQuestionKey =
+      initialQuestion && initialQuestionConversationId
+        ? `${initialQuestionConversationId}\u0000${initialQuestion}`
+        : null;
+    const canUseInitialQuestion =
+      !!initialQuestionKey &&
+      activeConversationId === initialQuestionConversationId &&
+      !scheduledInitialQuestionKeys.has(initialQuestionKey);
+
+    if (
+      initialQuestionKey &&
+      initialQuestionConversationId &&
+      activeConversationId !== initialQuestionConversationId &&
+      !scheduledInitialQuestionKeys.has(initialQuestionKey) &&
+      !pendingQuestionHandled.current
+    ) {
+      void setActiveConversation(initialQuestionConversationId);
+      return;
+    }
+
+    const q = canUseInitialQuestion
+      ? initialQuestion
+      : initialQuestionKey
+        ? null
+        : useAIChatStore.getState().pendingQuestion;
+    if (!q || pendingQuestionHandled.current) return;
+
+    if (initialQuestionKey && canUseInitialQuestion) {
       pendingQuestionHandled.current = true;
-      setPendingQuestion(null);
-      requestAnimationFrame(() => {
-        assistantRuntime.thread.append({
+      scheduledInitialQuestionKeys.add(initialQuestionKey);
+      if (scheduledInitialQuestionKeys.size > 100) {
+        const oldestKey = scheduledInitialQuestionKeys.values().next().value;
+        if (oldestKey) scheduledInitialQuestionKeys.delete(oldestKey);
+      }
+
+      bindNextUserMessageToConversation(initialQuestionConversationId);
+
+      window.setTimeout(() => {
+        assistantRuntimeRef.current.thread.append({
           role: 'user',
           content: [{ type: 'text', text: q }],
         });
-      });
+        setPendingQuestion(null);
+      }, 0);
+
+      return;
     }
-  }, [pendingQuestion, setPendingQuestion, assistantRuntime]);
+
+    const timeoutId = window.setTimeout(() => {
+      if (pendingQuestionHandled.current) return;
+      pendingQuestionHandled.current = true;
+
+      assistantRuntimeRef.current.thread.append({
+        role: 'user',
+        content: [{ type: 'text', text: q }],
+      });
+      setPendingQuestion(null);
+    }, 100);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    activeConversationId,
+    initialQuestion,
+    initialQuestionConversationId,
+    pendingQuestion,
+    setActiveConversation,
+    setPendingQuestion,
+    bindNextUserMessageToConversation,
+  ]);
 
   const handleNewChat = useCallback(async () => {
     if (!primaryBookHash) return;
@@ -411,7 +539,11 @@ const ThreadWrapper = ({
   );
 };
 
-const AIAssistant = ({ bookKey }: AIAssistantProps) => {
+const AIAssistant = ({
+  bookKey,
+  initialQuestion,
+  initialQuestionConversationId,
+}: AIAssistantProps) => {
   const _ = useTranslation();
   const { appService } = useEnv();
   const { settings } = useSettingsStore();
@@ -422,6 +554,7 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
   const userId = user?.id;
   const bookData = getBookDataByReaderKey(bookKey);
   const progress = getProgress(bookKey);
+  const { primaryBookHash } = usePrimaryBookHash(bookKey);
 
   const bookHash = bookData?.book?.platformHash || parseBookRefFromReaderBookKey(bookKey);
   const bookTitle = bookData?.book?.title || 'Unknown';
@@ -529,6 +662,8 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
     );
   }
 
+  const chatBookHash = primaryBookHash ?? bookHash;
+
   // Always render chat immediately — the agentic adapter uses tools to access
   // book content on demand. No indexing or pre-fetching needed.
   return (
@@ -536,6 +671,7 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
       aiSettings={aiSettings}
       bookHash={bookHash}
       bookKey={bookKey}
+      chatBookHash={chatBookHash}
       bookTitle={bookTitle}
       sourceTitle={sourceTitle}
       metadataTitle={metadataTitle}
@@ -547,6 +683,8 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
       bookFormat={bookFormat}
       bookDoc={bookData?.bookDoc ?? null}
       readerLocation={readerLocation}
+      initialQuestion={initialQuestion}
+      initialQuestionConversationId={initialQuestionConversationId}
     />
   );
 };

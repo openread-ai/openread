@@ -15,7 +15,7 @@ interface HalfSheetProps {
   onClose: () => void;
   title?: string;
   children: ReactNode | ((state: { isExpanded: boolean }) => ReactNode);
-  sheetClassName?: string;
+  sheetClassName?: string | ((state: { isExpanded: boolean }) => string | undefined);
   contentClassName?: string;
   overlayClassName?: string;
   chrome?: 'default' | 'drag-handle' | 'none';
@@ -144,7 +144,10 @@ function HalfSheet({
     return null;
   }
 
-  const content = typeof children === 'function' ? children({ isExpanded }) : children;
+  const state = { isExpanded };
+  const content = typeof children === 'function' ? children(state) : children;
+  const resolvedSheetClassName =
+    typeof sheetClassName === 'function' ? sheetClassName(state) : sheetClassName;
 
   return createPortal(
     <div className='fixed inset-0 z-40' role='none' onClick={(e) => e.stopPropagation()}>
@@ -165,8 +168,8 @@ function HalfSheet({
           'bg-base-200/90 shadow-2xl backdrop-blur-xl',
           'flex flex-col',
           'animate-in slide-in-from-bottom duration-200',
+          resolvedSheetClassName,
           isExpanded ? 'rounded-none' : 'rounded-t-2xl',
-          sheetClassName,
         )}
         style={{
           maxHeight: isExpanded ? '100vh' : '60vh',

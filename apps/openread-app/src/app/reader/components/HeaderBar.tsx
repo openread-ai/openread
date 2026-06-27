@@ -77,6 +77,8 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
   // On Windows/Linux, show HTML buttons since there are no native decorations.
   const windowButtonVisible = appService?.hasWindowBar && !appService?.hasTrafficLight;
   const useMobileWebHeader = isMobileWebReader(appService);
+  const aiEnabled = settings?.aiSettings?.enabled ?? true;
+  const showHeaderViewMenu = !useMobileWebHeader || !aiEnabled;
 
   const docs = view?.renderer.getContents() ?? [];
   const pointerInDoc = docs.some(({ doc }) => doc?.body?.style.cursor === 'pointer');
@@ -256,15 +258,17 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
                   <PiChatCircleBold size={iconSize16} />
                 </button>
               )}
-              <Dropdown
-                label={_('More Options')}
-                className='exclude-title-bar-mousedown dropdown-bottom dropdown-end'
-                buttonClassName='btn btn-ghost h-8 min-h-8 w-8 p-0'
-                toggleButton={<PiDotsThreeVerticalBold size={iconSize16} />}
-                onToggle={handleToggleDropdown}
-              >
-                <ViewMenu bookKey={bookKey} />
-              </Dropdown>
+              {showHeaderViewMenu && (
+                <Dropdown
+                  label={_('More Options')}
+                  className='exclude-title-bar-mousedown dropdown-bottom dropdown-end'
+                  buttonClassName='btn btn-ghost h-8 min-h-8 w-8 p-0'
+                  toggleButton={<PiDotsThreeVerticalBold size={iconSize16} />}
+                  onToggle={handleToggleDropdown}
+                >
+                  <ViewMenu bookKey={bookKey} />
+                </Dropdown>
+              )}
             </div>
           </>
         ) : (

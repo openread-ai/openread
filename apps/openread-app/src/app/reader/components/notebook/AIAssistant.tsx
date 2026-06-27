@@ -97,7 +97,7 @@ interface AIAssistantProps {
   bookKey: string;
   initialQuestion?: string;
   initialQuestionConversationId?: string;
-  surface?: 'default' | 'mobile-web-anchored';
+  surface?: 'default' | 'mobile-web-sheet';
   mobileWebHeader?: ReactNode;
 }
 
@@ -144,7 +144,7 @@ const AIAssistantChat = ({
   readerLocation: CanonicalReaderLocation;
   initialQuestion?: string;
   initialQuestionConversationId?: string;
-  surface?: 'default' | 'mobile-web-anchored';
+  surface?: 'default' | 'mobile-web-sheet';
   mobileWebHeader?: ReactNode;
 }) => {
   const { getChapters, getVisualContextImages } = useBookChapters(bookDoc, readerLocation);
@@ -391,7 +391,7 @@ const AIAssistantWithRuntime = ({
   initialQuestion?: string;
   initialQuestionConversationId?: string;
   bindNextUserMessageToConversation: (conversationId: string) => void;
-  surface?: 'default' | 'mobile-web-anchored';
+  surface?: 'default' | 'mobile-web-sheet';
   mobileWebHeader?: ReactNode;
 }) => {
   const runtime = useLocalRuntime(adapter, {
@@ -444,7 +444,7 @@ const ThreadWrapper = ({
   initialQuestion?: string;
   initialQuestionConversationId?: string;
   bindNextUserMessageToConversation: (conversationId: string) => void;
-  surface?: 'default' | 'mobile-web-anchored';
+  surface?: 'default' | 'mobile-web-sheet';
   mobileWebHeader?: ReactNode;
 }) => {
   const _ = useTranslation();

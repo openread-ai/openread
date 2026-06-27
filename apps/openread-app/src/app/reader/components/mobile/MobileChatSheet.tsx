@@ -193,7 +193,7 @@ export function MobileChatContent({
   const mobileWebActiveHeader = isMobileWeb ? (
     <MobileWebReadAIHeader
       showHistory={false}
-      isExpanded
+      isExpanded={isExpanded}
       onClose={() => onClose?.()}
       onShowHistory={showChatHistory}
       onBackToChat={showActiveChat}
@@ -208,7 +208,7 @@ export function MobileChatContent({
         bookKey={bookKey}
         initialQuestion={initialQuestion}
         initialQuestionConversationId={initialQuestionConversationId}
-        surface={isMobileWeb ? 'mobile-web-anchored' : 'default'}
+        surface={isMobileWeb ? 'mobile-web-sheet' : 'default'}
         mobileWebHeader={mobileWebActiveHeader}
       />
     </div>
@@ -244,6 +244,42 @@ export function MobileChatContent({
           <div className='min-h-0 flex-1 overflow-hidden'>{history}</div>
         )}
       </div>
+    );
+  }
+
+  if (!showHistory && isExpanded) {
+    return (
+      <section
+        className='flex h-full min-h-0 w-full flex-col overflow-hidden'
+        data-testid='mobile-read-ai-expanded-history'
+      >
+        <MobileWebReadAIHeader
+          showHistory={false}
+          isExpanded={isExpanded}
+          onClose={() => onClose?.()}
+          onShowHistory={showChatHistory}
+          onBackToChat={showActiveChat}
+          onNewConversation={handleNewConversation}
+        />
+        <div className='grid min-h-0 flex-1 grid-rows-[minmax(8rem,0.45fr)_minmax(0,1fr)] overflow-hidden'>
+          <aside
+            className='border-base-content/10 bg-base-content/[0.03] min-h-0 overflow-hidden border-b px-3 pb-2'
+            aria-label={_('Recents')}
+          >
+            <div className='text-base-content/60 px-1 pb-2 text-xs font-semibold uppercase tracking-wide'>
+              {_('Recents')}
+            </div>
+            {history}
+          </aside>
+          <section className='min-h-0 overflow-hidden'>
+            <AIAssistant
+              key={activeConversationId ?? 'new'}
+              bookKey={bookKey}
+              surface='mobile-web-sheet'
+            />
+          </section>
+        </div>
+      </section>
     );
   }
 

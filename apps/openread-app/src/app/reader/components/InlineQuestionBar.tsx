@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useRef } from 'react';
-import { ArrowUpIcon, BookOpenIcon, XIcon } from 'lucide-react';
+import { ArrowUpIcon, BookOpenIcon, MenuIcon, XIcon } from 'lucide-react';
 
 import { AI_COMPOSER_PLACEHOLDER } from '@/components/assistant/constants';
 import { MobileReadAIComposerChrome } from '@/components/assistant/MobileReadAIComposerChrome';
@@ -17,6 +17,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { usePrimaryBookHash } from '@/app/reader/hooks/usePrimaryBookHash';
 import { isMobileWebReader } from '@/app/reader/utils/mobileReaderPanels';
 import { cn } from '@/utils/tailwind';
+import ViewMenu from './ViewMenu';
 
 interface InlineQuestionBarProps {
   bookKey: string;
@@ -26,6 +27,7 @@ const InlineQuestionBar: React.FC<InlineQuestionBarProps> = ({ bookKey }) => {
   const _ = useTranslation();
   const [question, setQuestion] = useState('');
   const [dismissed, setDismissed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const mobileTextareaRef = useRef<HTMLTextAreaElement>(null);
   const { appService } = useEnv();
@@ -99,6 +101,13 @@ const InlineQuestionBar: React.FC<InlineQuestionBarProps> = ({ bookKey }) => {
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
+      const submitter = (e.nativeEvent as SubmitEvent).submitter;
+      if (
+        submitter instanceof HTMLElement &&
+        submitter.closest('[data-openread-mobile-read-ai-menu]')
+      ) {
+        return;
+      }
       const trimmed = question.trim();
       if (!trimmed) return;
 
@@ -189,30 +198,59 @@ const InlineQuestionBar: React.FC<InlineQuestionBarProps> = ({ bookKey }) => {
         )}
       >
         {useMobileWebDock ? (
-          <MobileReadAIComposerChrome
-            className={question.includes(' ') ? 'rounded-[2rem]' : undefined}
-          >
-            <textarea
-              ref={mobileTextareaRef}
-              value={question}
-              onChange={handleMobileQuestionChange}
-              onFocus={(event) => resizeMobileComposer(event.currentTarget)}
-              placeholder={composerPlaceholder}
-              rows={1}
-              className='text-base-content placeholder:text-base-content/45 max-h-32 min-h-11 min-w-0 flex-1 resize-none overflow-hidden bg-transparent py-2.5 text-base leading-6 outline-none focus-visible:ring-0'
-              data-testid='mobile-ai-inline-composer-input'
-            />
-            {question.trim() && (
+          <div className='relative w-full'>
+            {mobileMenuOpen && (
               <button
-                type='submit'
-                className='bg-base-content text-base-100 flex size-11 shrink-0 items-center justify-center rounded-full transition-transform active:scale-95 motion-reduce:transition-none'
-                aria-label={_('Ask')}
-                data-testid='mobile-ai-inline-composer-send'
-              >
-                <ArrowUpIcon className='size-5' />
-              </button>
+                type='button'
+                className='fixed inset-0 z-40 cursor-default bg-transparent'
+                aria-label={_('Close reader menu')}
+                onClick={() => setMobileMenuOpen(false)}
+              />
             )}
-          </MobileReadAIComposerChrome>
+            {mobileMenuOpen && (
+              <div
+                className='absolute bottom-full left-0 z-50 mb-3'
+                data-openread-mobile-read-ai-menu
+                data-testid='mobile-read-ai-composer-menu-content'
+              >
+                <ViewMenu bookKey={bookKey} setIsDropdownOpen={setMobileMenuOpen} />
+              </div>
+            )}
+            <MobileReadAIComposerChrome
+              className={cn('!overflow-visible', question.includes(' ') && 'rounded-[2rem]')}
+            >
+              <button
+                type='button'
+                aria-label={_('Reader menu')}
+                data-testid='mobile-read-ai-composer-menu-button'
+                aria-expanded={mobileMenuOpen}
+                className='text-base-content/70 hover:bg-base-content/10 flex size-11 shrink-0 items-center justify-center rounded-full transition-colors active:scale-95'
+                onClick={() => setMobileMenuOpen((open) => !open)}
+              >
+                <MenuIcon className='size-5' />
+              </button>
+              <textarea
+                ref={mobileTextareaRef}
+                value={question}
+                onChange={handleMobileQuestionChange}
+                onFocus={(event) => resizeMobileComposer(event.currentTarget)}
+                placeholder={composerPlaceholder}
+                rows={1}
+                className='text-base-content placeholder:text-base-content/45 max-h-32 min-h-11 min-w-0 flex-1 resize-none overflow-hidden bg-transparent py-2.5 text-base leading-6 outline-none focus-visible:ring-0'
+                data-testid='mobile-ai-inline-composer-input'
+              />
+              {question.trim() && (
+                <button
+                  type='submit'
+                  className='bg-base-content text-base-100 flex size-11 shrink-0 items-center justify-center rounded-full transition-transform active:scale-95 motion-reduce:transition-none'
+                  aria-label={_('Ask')}
+                  data-testid='mobile-ai-inline-composer-send'
+                >
+                  <ArrowUpIcon className='size-5' />
+                </button>
+              )}
+            </MobileReadAIComposerChrome>
+          </div>
         ) : (
           <>
             <BookOpenIcon className='text-base-content/40 size-4 shrink-0' />

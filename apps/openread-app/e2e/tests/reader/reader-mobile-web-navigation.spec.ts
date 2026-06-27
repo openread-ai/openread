@@ -269,20 +269,6 @@ async function mockAgenticChat(page: Page, options: { delayMs?: number } = {}) {
   return () => requestCount;
 }
 
-function expectBoxesWithinTolerance(
-  actual: { x: number; y: number; width: number; height: number },
-  expected: { x: number; y: number; width: number; height: number },
-  viewportHeight: number,
-) {
-  expect(Math.abs(actual.x - expected.x)).toBeLessThanOrEqual(4);
-  expect(Math.abs(actual.width - expected.width)).toBeLessThanOrEqual(4);
-  expect(Math.abs(actual.height - expected.height)).toBeLessThanOrEqual(8);
-  expect(Math.abs(actual.y + actual.height - (expected.y + expected.height))).toBeLessThanOrEqual(
-    8,
-  );
-  expect(actual.y + actual.height).toBeGreaterThan(viewportHeight - 56);
-}
-
 test.describe('Mobile web reader navigation regression', () => {
   test('touch scroll advances reflowable content and keeps header/menu contract', async ({
     authenticatedPage: page,
@@ -300,15 +286,16 @@ test.describe('Mobile web reader navigation regression', () => {
       })
       .toBeGreaterThan(before.scrollTop + 100);
 
-    const header = await revealMobileHeader(page);
-    await header.getByLabel('More Options').click();
+    await revealMobileHeader(page);
+    await expect(page.getByLabel('More Options')).toHaveCount(0);
+    await page.getByTestId('mobile-read-ai-composer-menu-button').press('Enter');
     const viewMenu = page.locator('.view-menu').first();
     await expect(viewMenu).toBeVisible({ timeout: 10_000 });
     await expect(viewMenu.getByText('Continuous', { exact: true }).first()).toBeHidden();
     await expect(viewMenu.getByText('Paragraph Mode', { exact: true }).first()).toBeHidden();
   });
 
-  test('mobile web kebab exposes current-book destinations and opens shared sheets', async ({
+  test('mobile web composer hamburger exposes current-book destinations and opens shared sheets', async ({
     authenticatedPage: page,
   }, testInfo) => {
     test.skip(!isMobileProject(testInfo), 'Mobile web destination proof only.');
@@ -316,8 +303,9 @@ test.describe('Mobile web reader navigation regression', () => {
     await openFixtureInReader(page, FIXTURES.reflowable);
 
     const openMenu = async () => {
-      const header = await revealMobileHeader(page);
-      await header.getByLabel('More Options').click();
+      await revealMobileHeader(page);
+      await expect(page.getByLabel('More Options')).toHaveCount(0);
+      await page.getByTestId('mobile-read-ai-composer-menu-button').press('Enter');
       const viewMenu = page.locator('.view-menu').first();
       await expect(viewMenu).toBeVisible({ timeout: 10_000 });
       return viewMenu;
@@ -377,7 +365,38 @@ test.describe('Mobile web reader navigation regression', () => {
     await attachScreenshot(page, testInfo, 'mobile-web-reader-kebab-chat-history-sheet');
   });
 
-  test('mobile web AI composer sends into one anchored composer sheet', async ({
+  test('mobile web reader menu remains available when AI is disabled', async ({
+    authenticatedPage: page,
+  }, testInfo) => {
+    test.skip(!isMobileProject(testInfo), 'Mobile web AI-disabled menu proof only.');
+
+    const setAIEnabledThroughSettings = async (enabled: boolean) => {
+      await page.goto('/settings/preferences', { waitUntil: 'domcontentloaded', timeout: 30_000 });
+      const toggle = page.getByTestId('ai-enabled-toggle');
+      await expect(toggle).toBeVisible({ timeout: 30_000 });
+      if ((await toggle.isChecked()) !== enabled) {
+        await toggle.click();
+        await expect(toggle).toBeChecked({ checked: enabled });
+      }
+    };
+
+    await setAIEnabledThroughSettings(false);
+    try {
+      await openFixtureInReader(page, FIXTURES.reflowable);
+      await expect(page.getByTestId('mobile-ai-inline-composer-input')).toHaveCount(0);
+      const header = await revealMobileHeader(page);
+      await header.getByLabel('More Options').click();
+      const viewMenu = page.locator('.view-menu').first();
+      await expect(viewMenu).toBeVisible({ timeout: 10_000 });
+      await expect(viewMenu.getByText('Table of Contents', { exact: true })).toBeVisible();
+      await expect(viewMenu.getByText('Highlights', { exact: true })).toBeVisible();
+      await expect(viewMenu.getByText('Bookmarks', { exact: true })).toBeVisible();
+    } finally {
+      await setAIEnabledThroughSettings(true).catch(() => undefined);
+    }
+  });
+
+  test('mobile web AI composer sends into one unified composer sheet', async ({
     authenticatedPage: page,
   }, testInfo) => {
     test.skip(!isMobileProject(testInfo), 'Mobile web AI composer contract only.');
@@ -388,7 +407,8 @@ test.describe('Mobile web reader navigation regression', () => {
     const inlineComposer = page.getByTestId('mobile-ai-inline-composer-input');
     await expect(inlineComposer).toBeVisible({ timeout: 10_000 });
     await expect(page.getByTestId('mobile-ai-inline-composer-send')).toHaveCount(0);
-    await attachScreenshot(page, testInfo, 'mobile-web-ai-anchored-composer-empty');
+    await expect(page.getByTestId('mobile-read-ai-composer-menu-button')).toBeVisible();
+    await attachScreenshot(page, testInfo, 'mobile-web-ai-unified-composer-empty');
 
     await inlineComposer.fill('Line one\nLine two\nLine three\nLine four\nLine five\nLine six');
     await expect(page.getByTestId('mobile-ai-inline-composer-send')).toBeVisible();
@@ -401,14 +421,9 @@ test.describe('Mobile web reader navigation regression', () => {
       };
     });
     expect(textareaMetrics.scrollHeight).toBeGreaterThanOrEqual(textareaMetrics.clientHeight);
-    await attachScreenshot(page, testInfo, 'mobile-web-ai-anchored-multiline-threshold');
+    await attachScreenshot(page, testInfo, 'mobile-web-ai-unified-multiline-threshold');
 
     await inlineComposer.fill('What is this book about?');
-    const idleComposerFrame = page.locator('[data-openread-mobile-read-ai-composer-frame]').first();
-    const idleComposerBox = await idleComposerFrame.boundingBox();
-    const viewport = page.viewportSize();
-    expect(idleComposerBox).not.toBeNull();
-    expect(viewport).not.toBeNull();
     await page.getByTestId('mobile-ai-inline-composer-send').click();
 
     await expect(page.getByText('Read AI', { exact: true })).toBeVisible({ timeout: 10_000 });
@@ -417,52 +432,70 @@ test.describe('Mobile web reader navigation regression', () => {
       timeout: 10_000,
     });
     await expect(page.getByTestId('mobile-ai-inline-composer-input')).toHaveCount(0);
+    const unifiedSurface = page.locator('[data-openread-mobile-read-ai-unified-surface]').first();
+    await expect(unifiedSurface).toBeVisible();
     const assistantComposer = page.getByTestId('assistant-composer');
     await expect(assistantComposer).toHaveCount(1);
-    const runningComposerBox = await page
-      .locator('[data-openread-mobile-read-ai-composer-frame]')
-      .first()
-      .boundingBox();
-    expect(runningComposerBox).not.toBeNull();
-    expectBoxesWithinTolerance(runningComposerBox!, idleComposerBox!, viewport!.height);
-    await attachScreenshot(page, testInfo, 'mobile-web-ai-anchored-running');
+    await expect(page.locator('[data-openread-mobile-read-ai-integrated-composer]')).toBeVisible();
+    await expect(unifiedSurface.locator('[data-testid="assistant-composer"]')).toHaveCount(1);
+    await expect(page.locator('[data-openread-mobile-read-ai-composer-frame]')).toHaveCount(0);
+    await attachScreenshot(page, testInfo, 'mobile-web-ai-unified-running');
 
     await expect(page.getByText(MOCK_AI_RESPONSE_TEXT)).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId('assistant-composer-inline-cancel')).toBeHidden();
     const agenticChatRequestsAfterInitialResponse = getAgenticChatRequestCount();
     expect(agenticChatRequestsAfterInitialResponse).toBeGreaterThan(0);
     await expect(page.getByText('Recents', { exact: true })).toHaveCount(0);
-    await expect(page.locator('.cursor-grab')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Close Read AI' })).toBeVisible();
     await expect(
       page.getByText(/messages left (today|this week|this month|this window)/),
     ).toHaveCount(0);
 
     const completedComposerBox = await page
-      .locator('[data-openread-mobile-read-ai-composer-frame]')
+      .locator('[data-openread-mobile-read-ai-integrated-composer]')
       .first()
       .boundingBox();
     const responseBox = await page.getByText(MOCK_AI_RESPONSE_TEXT).first().boundingBox();
+    const surfaceBox = await unifiedSurface.boundingBox();
     expect(completedComposerBox).not.toBeNull();
     expect(responseBox).not.toBeNull();
-    expectBoxesWithinTolerance(completedComposerBox!, idleComposerBox!, viewport!.height);
+    expect(surfaceBox).not.toBeNull();
+    expect(completedComposerBox!.y + completedComposerBox!.height).toBeLessThanOrEqual(
+      surfaceBox!.y + surfaceBox!.height + 1,
+    );
     expect(responseBox!.y + responseBox!.height).toBeLessThan(completedComposerBox!.y);
-    await attachScreenshot(page, testInfo, 'mobile-web-ai-anchored-sheet-response');
+    await attachScreenshot(page, testInfo, 'mobile-web-ai-unified-sheet-response');
 
-    await expect(page.getByRole('button', { name: 'Chat history' })).toBeVisible({
+    const handle = page.locator('.cursor-grab').first();
+    const handleBox = await handle.boundingBox();
+    expect(handleBox).not.toBeNull();
+    await simulateMobileTouch(
+      page,
+      { x: handleBox!.x + handleBox!.width / 2, y: handleBox!.y + handleBox!.height / 2 },
+      { x: handleBox!.x + handleBox!.width / 2, y: Math.max(40, handleBox!.y - 180) },
+    );
+    await expect(page.getByTestId('mobile-read-ai-expanded-history')).toBeVisible({
       timeout: 10_000,
     });
-    await page.getByRole('button', { name: 'Chat history' }).click();
-    await expect(page.getByText('Recents', { exact: true })).toBeVisible({ timeout: 10_000 });
-    await page
-      .getByRole('button', { name: /What is this book about\?/ })
-      .first()
-      .click();
-    await expect(page.getByText(MOCK_AI_RESPONSE_TEXT).first()).toBeVisible({ timeout: 10_000 });
+    const expandedViewport = page.viewportSize();
+    expect(expandedViewport).not.toBeNull();
+    await expect
+      .poll(async () => (await unifiedSurface.boundingBox())?.height ?? 0, {
+        message: 'expanded mobile-web Read AI surface should fill the viewport',
+      })
+      .toBeGreaterThan(expandedViewport!.height * 0.9);
+    await expect(
+      page
+        .getByTestId('mobile-read-ai-expanded-history')
+        .getByText('Recents', { exact: true })
+        .first(),
+    ).toBeVisible({ timeout: 10_000 });
+    await attachScreenshot(page, testInfo, 'mobile-web-ai-unified-expanded-history-full');
+
     await page.getByRole('button', { name: 'New Chat' }).first().click();
-    await expect(page.getByText('Recents', { exact: true })).toHaveCount(0);
     await page.waitForTimeout(500);
     expect(getAgenticChatRequestCount()).toBe(agenticChatRequestsAfterInitialResponse);
-    await attachScreenshot(page, testInfo, 'mobile-web-ai-anchored-new-chat');
+    await attachScreenshot(page, testInfo, 'mobile-web-ai-unified-new-chat');
   });
 
   test('mobile web AI composer does not replay inline prompt after New Chat remount', async ({
@@ -495,8 +528,8 @@ test.describe('Mobile web reader navigation regression', () => {
     ).toHaveCount(0);
 
     await closeMobileSheet(page);
-    const header = await revealMobileHeader(page);
-    await header.getByLabel('More Options').click();
+    await revealMobileHeader(page);
+    await page.getByTestId('mobile-read-ai-composer-menu-button').press('Enter');
     const viewMenu = page.locator('.view-menu').first();
     await expect(viewMenu).toBeVisible({ timeout: 10_000 });
     await viewMenu.getByText('AI Chat History', { exact: true }).click();

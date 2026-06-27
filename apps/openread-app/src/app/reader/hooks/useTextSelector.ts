@@ -5,6 +5,7 @@ import { useBookDataStore } from '@/store/bookDataStore';
 import { normalizeReaderLayout } from '@/app/reader/utils/readerLayoutContract';
 import { getOSPlatform } from '@/utils/misc';
 import { eventDispatcher } from '@/utils/event';
+import { makeAnnotationTargetFromSelection } from '@/services/annotation/annotationTargetContract';
 import { isPointerInsideSelection, TextSelection } from '@/utils/sel';
 import { useInstantAnnotation } from './useInstantAnnotation';
 export const useTextSelector = (
@@ -18,6 +19,7 @@ export const useTextSelector = (
   const { getView, getViewSettings } = useReaderStore();
   const { getBookDataByReaderKey } = useBookDataStore();
   const view = getView(bookKey);
+  const bookFormat = getBookDataByReaderKey(bookKey)?.book?.format;
   const osPlatform = getOSPlatform();
 
   const isPopuped = useRef(false);
@@ -48,10 +50,15 @@ export const useTextSelector = (
       sel.removeAllRanges();
       sel.addRange(range);
     }
+    const text = await getAnnotationText(range);
+    const cfi = view?.getCFI(index, range);
     setSelection({
       key: bookKey,
-      text: await getAnnotationText(range),
-      cfi: view?.getCFI(index, range),
+      text,
+      target:
+        makeAnnotationTargetFromSelection({ format: bookFormat, cfi, range, index, text }) ??
+        undefined,
+      cfi,
       range,
       index,
     });
@@ -65,10 +72,15 @@ export const useTextSelector = (
     requestAnimationFrame(async () => {
       if (!isTextSelected.current) return;
       sel.addRange(range);
+      const text = await getAnnotationText(range);
+      const cfi = view?.getCFI(index, range);
       setSelection({
         key: bookKey,
-        text: await getAnnotationText(range),
-        cfi: view?.getCFI(index, range),
+        text,
+        target:
+          makeAnnotationTargetFromSelection({ format: bookFormat, cfi, range, index, text }) ??
+          undefined,
+        cfi,
         range,
         index,
       });

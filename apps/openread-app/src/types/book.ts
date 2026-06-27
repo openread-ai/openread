@@ -13,6 +13,49 @@ export type { BookFormat, BookCore } from '@openread/types';
 export type BookNoteType = 'bookmark' | 'annotation' | 'excerpt';
 export type ReadingStatus = 'unread' | 'reading' | 'finished';
 export type HighlightStyle = 'highlight' | 'underline' | 'squiggly';
+
+export type AnnotationPageRect = { x: number; y: number; width: number; height: number };
+export type AnnotationPageQuad = {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  x3: number;
+  y3: number;
+  x4: number;
+  y4: number;
+};
+export type CanonicalAnnotationTarget =
+  | {
+      kind: 'text-cfi';
+      cfi: string;
+      href?: string;
+      index?: number;
+      textQuote?: string;
+      textPosition?: { start: number; end: number };
+    }
+  | {
+      kind: 'pdf-text-quad';
+      pageIndex: number;
+      pageWidth: number;
+      pageHeight: number;
+      rotation: number;
+      quads: AnnotationPageQuad[];
+      textQuote?: string;
+      textPosition?: { start: number; end: number };
+    }
+  | {
+      kind: 'page-region';
+      pageIndex: number;
+      pageWidth: number;
+      pageHeight: number;
+      rotation: number;
+      rects: AnnotationPageRect[];
+      source: 'manual-region' | 'image-selection' | 'text-selection' | 'imported';
+    };
+
+export type AnnotationTarget = CanonicalAnnotationTarget;
+
 // Predefined highlight colors, can be extended with custom hex colors
 export type HighlightColor = 'red' | 'yellow' | 'green' | 'blue' | 'violet' | string;
 export type ReadingRulerColor = 'transparent' | 'yellow' | 'green' | 'blue' | 'rose';
@@ -79,7 +122,12 @@ export interface BookNote {
   metaHash?: MetaHash | null;
   id: string;
   type: BookNoteType;
-  cfi: string;
+  target?: AnnotationTarget;
+  /**
+   * @deprecated Use target.kind === 'text-cfi'.cfi for new code. This remains only for
+   * bounded legacy read/write compatibility with existing Foliate/text annotations.
+   */
+  cfi?: string;
   text?: string;
   style?: HighlightStyle;
   color?: HighlightColor;

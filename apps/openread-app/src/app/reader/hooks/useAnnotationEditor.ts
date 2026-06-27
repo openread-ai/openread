@@ -6,6 +6,7 @@ import { useReaderStore } from '@/store/readerStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { createLogger } from '@/utils/logger';
+import { makeAnnotationTargetFromSelection } from '@/services/annotation/annotationTargetContract';
 import { parseBookRefFromReaderBookKey } from '@/utils/readerBookKey';
 
 const logger = createLogger('annotation-editor');
@@ -30,7 +31,7 @@ export const useAnnotationEditor = ({
 }: UseAnnotationEditorProps) => {
   const { envConfig } = useEnv();
   const { settings } = useSettingsStore();
-  const { getConfig, saveConfig, updateBooknotes } = useBookDataStore();
+  const { getConfig, saveConfig, updateBooknotes, getBookDataByReaderKey } = useBookDataStore();
   const { getView, getViewsById } = useReaderStore();
 
   const view = getView(bookKey);
@@ -143,8 +144,16 @@ export const useAnnotationEditor = ({
 
       const newCfi = view.getCFI(targetIndex, newRange);
       const newText = await getAnnotationText(newRange);
+      const format = getBookDataByReaderKey(bookKey)?.book?.format;
+      const target = makeAnnotationTargetFromSelection({
+        format,
+        cfi: newCfi,
+        range: newRange,
+        index: targetIndex,
+        text: newText,
+      });
 
-      if (newCfi && newText) {
+      if (target && newText) {
         const config = getConfig(bookKey)!;
         const { booknotes: annotations = [] } = config;
         const existingIndex = annotations.findIndex(
@@ -154,7 +163,8 @@ export const useAnnotationEditor = ({
         if (existingIndex !== -1) {
           const updatedAnnotation: BookNote = {
             ...annotations[existingIndex]!,
-            cfi: newCfi,
+            target,
+            cfi: target.kind === 'text-cfi' ? target.cfi : undefined,
             text: newText,
             updatedAt: Date.now(),
           };
@@ -177,7 +187,8 @@ export const useAnnotationEditor = ({
               key: bookKey,
               annotated: true,
               text: newText,
-              cfi: newCfi,
+              target,
+              cfi: target.kind === 'text-cfi' ? target.cfi : newCfi,
               range: newRange,
               index: targetIndex,
             });

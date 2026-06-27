@@ -45,6 +45,50 @@ describe('bookDataStore reader identity boundaries', () => {
     expect(useBookDataStore.getState().getBookDataByRef(LOCAL_HASH)?.id).toBe(LOCAL_HASH);
   });
 
+  it('dedupes booknotes by canonical target key rather than naked cfi', () => {
+    const bookKey = createReaderBookKey(LOCAL_HASH, 'session-a');
+    useBookDataStore.setState({
+      booksData: {
+        [LOCAL_HASH]: {
+          id: LOCAL_HASH,
+          book: { hash: LOCAL_HASH, title: 'Book' } as never,
+          file: null,
+          config: { updatedAt: 1, booknotes: [] } as never,
+          bookDoc: null,
+          isFixedLayout: false,
+        },
+      },
+    });
+
+    const result = useBookDataStore.getState().updateBooknotes(bookKey, [
+      {
+        id: 'same-id',
+        type: 'annotation',
+        target: { kind: 'text-cfi', cfi: 'epubcfi(/6/2)' },
+        note: '',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      {
+        id: 'same-id',
+        type: 'annotation',
+        target: {
+          kind: 'pdf-text-quad',
+          pageIndex: 0,
+          pageWidth: 600,
+          pageHeight: 800,
+          rotation: 0,
+          quads: [{ x1: 0.1, y1: 0.1, x2: 0.2, y2: 0.1, x3: 0.2, y3: 0.2, x4: 0.1, y4: 0.2 }],
+        },
+        note: '',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ]);
+
+    expect(result?.booknotes).toHaveLength(2);
+  });
+
   it('rejects plain DB UUID reader identity and invalid mutation state without throwing', () => {
     expect(useBookDataStore.getState().getBookDataByReaderKey(DB_UUID)).toBeNull();
     expect(useBookDataStore.getState().getBookDataByRef(DB_UUID)).toBeNull();

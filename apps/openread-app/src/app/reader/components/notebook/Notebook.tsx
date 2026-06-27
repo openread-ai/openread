@@ -11,6 +11,13 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { useThemeStore } from '@/store/themeStore';
 import { useEnv } from '@/context/EnvContext';
 import { DragKey, useDrag } from '@/hooks/useDrag';
+import {
+  getAnnotationTargetKey,
+  getBookNoteTarget,
+  getBookNoteTargetKey,
+  getBookNoteTextCfi,
+  makeAnnotationTargetFromSelection,
+} from '@/services/annotation/annotationTargetContract';
 import { TextSelection } from '@/utils/sel';
 import { usePrimaryBookHash } from '@/app/reader/hooks/usePrimaryBookHash';
 import { BookNote } from '@/types/book';
@@ -134,19 +141,36 @@ const Notebook: React.FC = ({}) => {
     const config = getConfig(sideBarBookKey)!;
 
     const cfi = view?.getCFI(selection.index, selection.range);
-    if (!cfi) return;
+    const format = getBookDataByReaderKey(sideBarBookKey)?.book?.format;
+    const target =
+      selection.target ??
+      makeAnnotationTargetFromSelection({
+        format,
+        cfi,
+        range: selection.range,
+        index: selection.index,
+        text: selection.text,
+      });
+    if (!target) return;
 
     const { booknotes: annotations = [] } = config;
     const annotation: BookNote = {
       id: uniqueId(),
       type: 'annotation',
-      cfi,
+      target,
+      ...(target.kind === 'text-cfi' ? { cfi: target.cfi } : {}),
       note,
       text: selection.text,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
-    view?.addAnnotation({ ...annotation, value: `${NOTE_PREFIX}${annotation.cfi}` });
+    view?.addAnnotation({
+      ...annotation,
+      value:
+        target.kind === 'text-cfi'
+          ? `${NOTE_PREFIX}${target.cfi}`
+          : (getAnnotationTargetKey(target) ?? undefined),
+    });
     annotations.push(annotation);
     const updatedConfig = updateBooknotes(sideBarBookKey, annotations);
     if (updatedConfig) {
@@ -168,7 +192,10 @@ const Notebook: React.FC = ({}) => {
       note.deletedAt = now;
     }
     annotations[existingIndex] = note;
-    view?.addAnnotation({ ...note, value: `${NOTE_PREFIX}${note.cfi}` }, true);
+    const cfi = getBookNoteTextCfi(note);
+    const targetKey = getAnnotationTargetKey(getBookNoteTarget(note));
+    if (cfi) view?.addAnnotation({ ...note, cfi, value: `${NOTE_PREFIX}${cfi}` }, true);
+    else if (targetKey) view?.addAnnotation({ ...note, value: targetKey }, true);
     const updatedConfig = updateBooknotes(sideBarBookKey, annotations);
     if (updatedConfig) {
       saveConfig(envConfig, sideBarBookKey, updatedConfig, settings);
@@ -423,7 +450,11 @@ const Notebook: React.FC = ({}) => {
             )}
             <ul>
               {filteredAnnotationNotes.map((item, index) => (
-                <BooknoteItem key={`${index}-${item.cfi}`} bookKey={sideBarBookKey} item={item} />
+                <BooknoteItem
+                  key={`${index}-${getBookNoteTargetKey(item)}`}
+                  bookKey={sideBarBookKey}
+                  item={item}
+                />
               ))}
             </ul>
           </div>

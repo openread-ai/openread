@@ -1,3 +1,5 @@
+import type { AnnotationTarget } from '@/types/book';
+
 export interface DBBook {
   user_id: string;
   book_hash: string;
@@ -45,7 +47,8 @@ export interface DBBookNote {
   meta_hash?: string;
   id: string;
   type: string;
-  cfi: string;
+  target?: AnnotationTarget | null;
+  cfi?: string;
   text?: string;
   style?: string;
   color?: string;

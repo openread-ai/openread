@@ -1,12 +1,43 @@
 import { useCallback, useMemo } from 'react';
 import * as CFI from 'foliate-js/epubcfi.js';
+import {
+  getBookNoteNavigationIndex,
+  getBookNoteTarget,
+  getBookNoteTargetKey,
+  getBookNoteTextCfi,
+  isFixedPageAnnotationTarget,
+} from '@/services/annotation/annotationTargetContract';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { isCfiInLocation } from '@/utils/cfi';
 import { findTocItemBS } from '@/utils/toc';
-import { BookNoteType } from '@/types/book';
+import { BookNote, BookNoteType } from '@/types/book';
 import { TOCItem } from '@/libs/document';
+
+function compareBooknotesByTarget(a: BookNote, b: BookNote) {
+  const aCfi = getBookNoteTextCfi(a);
+  const bCfi = getBookNoteTextCfi(b);
+  if (aCfi && bCfi) return CFI.compare(aCfi, bCfi);
+
+  const aIndex = getBookNoteNavigationIndex(a);
+  const bIndex = getBookNoteNavigationIndex(b);
+  if (aIndex != null && bIndex != null && aIndex !== bIndex) return aIndex - bIndex;
+
+  return getBookNoteTargetKey(a).localeCompare(getBookNoteTargetKey(b));
+}
+
+function isBooknoteOnCurrentTarget(
+  note: BookNote,
+  currentLocation: string | null | undefined,
+  currentPageIndex: number | null,
+) {
+  const target = getBookNoteTarget(note);
+  if (target?.kind === 'text-cfi') return isCfiInLocation(target.cfi, currentLocation);
+  return isFixedPageAnnotationTarget(target) && currentPageIndex != null
+    ? target.pageIndex === currentPageIndex
+    : false;
+}
 
 export function useBooknotesNav(bookKey: string, toc: TOCItem[]) {
   const { getView, getProgress } = useReaderStore();
@@ -25,6 +56,7 @@ export function useBooknotesNav(bookKey: string, toc: TOCItem[]) {
 
   const progress = getProgress(bookKey);
   const currentLocation = progress?.location;
+  const currentPageIndex = progress?.section?.current ?? progress?.pageinfo?.current ?? null;
 
   // Get booknotes from config and filter by type
   const allBooknotes = useMemo(() => {
@@ -32,10 +64,9 @@ export function useBooknotesNav(bookKey: string, toc: TOCItem[]) {
     return config?.booknotes?.filter((note) => !note.deletedAt) || [];
   }, [bookKey, getConfig]);
 
-  // Sort booknotes by CFI order
   const sortedBooknotes = useMemo(() => {
     if (!booknoteResults) return [];
-    return [...booknoteResults].sort((a, b) => CFI.compare(a.cfi, b.cfi));
+    return [...booknoteResults].sort(compareBooknotesByTarget);
   }, [booknoteResults]);
 
   const totalResults = sortedBooknotes.length;
@@ -47,20 +78,23 @@ export function useBooknotesNav(bookKey: string, toc: TOCItem[]) {
     if (!sortedBooknotes.length || booknoteIndex >= sortedBooknotes.length) return '';
     const currentNote = sortedBooknotes[booknoteIndex];
     if (!currentNote) return '';
-    const tocItem = findTocItemBS(toc, currentNote.cfi);
-    return tocItem?.label || '';
+    const cfi = getBookNoteTextCfi(currentNote);
+    const tocItem = cfi ? findTocItemBS(toc, cfi) : null;
+    if (tocItem?.label) return tocItem.label;
+    const target = getBookNoteTarget(currentNote);
+    return isFixedPageAnnotationTarget(target) ? `Page ${target.pageIndex + 1}` : '';
   }, [sortedBooknotes, booknoteIndex, toc]);
 
   // Find booknotes on the current page
   const currentPageResults = useMemo(() => {
-    if (!sortedBooknotes.length || !currentLocation) return { firstIndex: -1, lastIndex: -1 };
+    if (!sortedBooknotes.length) return { firstIndex: -1, lastIndex: -1 };
 
     let firstIndex = -1;
     let lastIndex = -1;
 
     for (let i = 0; i < sortedBooknotes.length; i++) {
       const note = sortedBooknotes[i];
-      if (note && isCfiInLocation(note.cfi, currentLocation)) {
+      if (note && isBooknoteOnCurrentTarget(note, currentLocation, currentPageIndex)) {
         if (firstIndex === -1) firstIndex = i;
         lastIndex = i;
       }
@@ -70,7 +104,7 @@ export function useBooknotesNav(bookKey: string, toc: TOCItem[]) {
     }
 
     return { firstIndex, lastIndex };
-  }, [sortedBooknotes, currentLocation, bookKey, setBooknoteIndex]);
+  }, [sortedBooknotes, currentLocation, currentPageIndex, bookKey, setBooknoteIndex]);
 
   // Navigate to a specific booknote
   const navigateToBooknote = useCallback(
@@ -81,7 +115,14 @@ export function useBooknotesNav(bookKey: string, toc: TOCItem[]) {
       const note = sortedBooknotes[index];
       if (note) {
         setBooknoteIndex(bookKey, index);
-        getView(bookKey)?.goTo(note.cfi);
+        const view = getView(bookKey);
+        const cfi = getBookNoteTextCfi(note);
+        if (cfi) {
+          view?.goTo(cfi);
+          return;
+        }
+        const target = getBookNoteTarget(note);
+        if (isFixedPageAnnotationTarget(target)) view?.select(target.pageIndex);
       }
     },
     [bookKey, sortedBooknotes, setBooknoteIndex, getView],
@@ -93,14 +134,22 @@ export function useBooknotesNav(bookKey: string, toc: TOCItem[]) {
       const filtered = allBooknotes.filter((note) => note.type === type);
       if (filtered.length === 0) return;
 
-      const sorted = [...filtered].sort((a, b) => CFI.compare(a.cfi, b.cfi));
+      const sorted = [...filtered].sort(compareBooknotesByTarget);
       setActiveBooknoteType(bookKey, type);
       setBooknoteResults(bookKey, sorted);
       setBooknoteIndex(bookKey, 0);
 
       // Navigate to first booknote
       if (sorted.length > 0) {
-        getView(bookKey)?.goTo(sorted[0]!.cfi);
+        const view = getView(bookKey);
+        const firstNote = sorted[0]!;
+        const cfi = getBookNoteTextCfi(firstNote);
+        if (cfi) {
+          view?.goTo(cfi);
+          return;
+        }
+        const target = getBookNoteTarget(firstNote);
+        if (isFixedPageAnnotationTarget(target)) view?.select(target.pageIndex);
       }
     },
     [allBooknotes, bookKey, setActiveBooknoteType, setBooknoteResults, setBooknoteIndex, getView],

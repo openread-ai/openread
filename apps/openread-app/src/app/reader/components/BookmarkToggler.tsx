@@ -10,6 +10,10 @@ import { BookNote } from '@/types/book';
 import { uniqueId } from '@/utils/misc';
 import Button from '@/components/Button';
 import { getCurrentPage } from '@/utils/book';
+import {
+  getBookNoteTextCfi,
+  withTextCfiTarget,
+} from '@/services/annotation/annotationTargetContract';
 import { eventDispatcher } from '@/utils/event';
 import { isCfiInLocation } from '@/utils/cfi';
 
@@ -41,17 +45,19 @@ const BookmarkToggler: React.FC<BookmarkTogglerProps> = ({ bookKey }) => {
       setIsBookmarked(true);
       const text = range?.startContainer.textContent?.slice(0, 128) || '';
       const truncatedText = text.length === 128 ? text + '...' : text;
-      const bookmark: BookNote = {
-        id: uniqueId(),
-        type: 'bookmark',
+      const bookmark: BookNote = withTextCfiTarget(
+        {
+          id: uniqueId(),
+          type: 'bookmark',
+          text: truncatedText ? truncatedText : `${getCurrentPage(bookData.book!, progress)}`,
+          note: '',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        },
         cfi,
-        text: truncatedText ? truncatedText : `${getCurrentPage(bookData.book!, progress)}`,
-        note: '',
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      };
+      );
       const existingBookmark = bookmarks.find(
-        (item) => item.type === 'bookmark' && item.cfi === cfi,
+        (item) => item.type === 'bookmark' && getBookNoteTextCfi(item) === cfi,
       );
       if (existingBookmark) {
         existingBookmark.deletedAt = null;
@@ -67,7 +73,7 @@ const BookmarkToggler: React.FC<BookmarkTogglerProps> = ({ bookKey }) => {
     } else {
       setIsBookmarked(false);
       bookmarks.forEach((item) => {
-        if (item.type === 'bookmark' && isCfiInLocation(item.cfi, cfi)) {
+        if (item.type === 'bookmark' && isCfiInLocation(getBookNoteTextCfi(item), cfi)) {
           const now = Date.now();
           item.deletedAt = now;
           item.updatedAt = now;
@@ -100,7 +106,7 @@ const BookmarkToggler: React.FC<BookmarkTogglerProps> = ({ bookKey }) => {
 
     const locationBookmarked = booknotes
       .filter((booknote) => booknote.type === 'bookmark' && !booknote.deletedAt)
-      .some((item) => isCfiInLocation(item.cfi, cfi));
+      .some((item) => isCfiInLocation(getBookNoteTextCfi(item), cfi));
     setIsBookmarked(locationBookmarked);
     setBookmarkRibbonVisibility(bookKey, locationBookmarked);
     // eslint-disable-next-line react-hooks/exhaustive-deps

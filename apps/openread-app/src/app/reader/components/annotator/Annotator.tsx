@@ -38,6 +38,14 @@ import { parseBookRefFromReaderBookKey } from '@/utils/readerBookKey';
 import type { AnnotationActionEvent } from '@/services/annotation/menuConfig';
 import { annotationToolButtons } from './AnnotationTools';
 import {
+  getAnnotationTargetKey,
+  getBookNoteTarget,
+  getBookNoteTargetKey,
+  getBookNoteTextCfi,
+  makeAnnotationTargetFromSelection,
+  makeTextCfiAnnotationTarget,
+} from '@/services/annotation/annotationTargetContract';
+import {
   isHighlightActionDisabledForFormat,
   shouldSuppressWebAnnotationPopupForSelection,
 } from '@/services/annotation/selectionMenuContract';
@@ -304,7 +312,22 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
             const range = sel.getRangeAt(0);
             const text = sel.toString();
             if (text.trim()) {
-              setSelection({ key: bookKey, text, range, index, cfi: view?.getCFI(index, range) });
+              const cfi = view?.getCFI(index, range);
+              setSelection({
+                key: bookKey,
+                text,
+                range,
+                index,
+                target:
+                  makeAnnotationTargetFromSelection({
+                    format: bookData.book?.format,
+                    cfi,
+                    range,
+                    index,
+                    text,
+                  }) ?? undefined,
+                cfi,
+              });
               // Show translation popup preferentially for PDF right-click
               setShowAnnotPopup(false);
               setShowDeepLPopup(true);
@@ -369,15 +392,24 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     const { value, index, range } = detail;
     const { booknotes = [] } = getConfig(bookKey)!;
     const isNote = value.startsWith(NOTE_PREFIX);
-    const cfi = isNote ? value.replace(NOTE_PREFIX, '') : value;
-    const annotations = booknotes.filter(
-      (booknote) => booknote.type === 'annotation' && !booknote.deletedAt && booknote.cfi === cfi,
-    );
+    const cfi = isNote ? value.replace(NOTE_PREFIX, '') : undefined;
+    const annotations = booknotes.filter((booknote) => {
+      if (booknote.type !== 'annotation' || booknote.deletedAt) return false;
+      const noteTarget = getBookNoteTarget(booknote);
+      return (
+        getAnnotationTargetKey(noteTarget) === value ||
+        getBookNoteTextCfi(booknote) === (cfi ?? value)
+      );
+    });
     const annotation = annotations.find(
       (annotation) => (!isNote && annotation.style) || (isNote && annotation.note),
     );
     if (!annotation) return;
 
+    const target =
+      getBookNoteTarget(annotation) ?? (cfi ? makeTextCfiAnnotationTarget({ cfi, index }) : null);
+    if (!target) return;
+    const textCfi = getBookNoteTextCfi(annotation) ?? cfi;
     const { style, color, text, note } = annotation;
     const selection = {
       key: bookKey,
@@ -385,7 +417,8 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
       text: text ?? '',
       note: note ?? '',
       rect: isNote ? detail.rect : undefined,
-      cfi,
+      target,
+      cfi: textCfi,
       range,
       index,
     };
@@ -545,7 +578,7 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
         !item.deletedAt &&
         item.type === 'annotation' &&
         item.style &&
-        isCfiInLocation(item.cfi, location),
+        isCfiInLocation(getBookNoteTextCfi(item), location),
     );
     const notes = booknotes.filter(
       (item) =>
@@ -553,12 +586,15 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
         item.type === 'annotation' &&
         item.note &&
         item.note.trim().length > 0 &&
-        isCfiInLocation(item.cfi, location),
+        isCfiInLocation(getBookNoteTextCfi(item), location),
     );
     try {
       Promise.all(annotations.map((annotation) => view?.addAnnotation(annotation)));
       Promise.all(
-        notes.map((note) => view?.addAnnotation({ ...note, value: `${NOTE_PREFIX}${note.cfi}` })),
+        notes.map((note) => {
+          const cfi = getBookNoteTextCfi(note);
+          return cfi ? view?.addAnnotation({ ...note, cfi, value: `${NOTE_PREFIX}${cfi}` }) : null;
+        }),
       );
     } catch (e) {
       logger.warn('Failed to add annotations', e);
@@ -570,14 +606,17 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   }, [progress, config.booknotes]);
 
   useEffect(() => {
-    if (!config.booknotes || !selection?.cfi || !showAnnotationNotes) return;
+    const selectionCfi = selection ? getBookNoteTextCfi(selection) : null;
+    if (!config.booknotes || !selectionCfi || !showAnnotationNotes) return;
     const annotations = config.booknotes.filter(
       (booknote) =>
-        booknote.type === 'annotation' && !booknote.deletedAt && booknote.cfi === selection.cfi,
+        booknote.type === 'annotation' &&
+        !booknote.deletedAt &&
+        getBookNoteTextCfi(booknote) === selectionCfi,
     );
     const notes = annotations.filter((item) => item.note && item.note.trim().length > 0);
     setAnnotationNotes(notes);
-  }, [selection?.cfi, showAnnotationNotes, config.booknotes]);
+  }, [selection, showAnnotationNotes, config.booknotes]);
 
   const handleShowAnnotPopup = () => {
     // On iOS, show the native UIKit color picker when tapping existing highlights.
@@ -621,11 +660,22 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
 
     const { booknotes: annotations = [] } = config;
     const cfi = view?.getCFI(selection.index, selection.range);
-    if (!cfi) return;
+    const target =
+      selection.target ??
+      makeAnnotationTargetFromSelection({
+        format: bookData.book?.format,
+        cfi,
+        range: selection.range,
+        index: selection.index,
+        text: selection.text,
+      });
+    if (!target) return;
+    const targetKey = getAnnotationTargetKey(target);
     const annotation: BookNote = {
       id: uniqueId(),
       type: 'excerpt',
-      cfi,
+      target,
+      ...(target.kind === 'text-cfi' ? { cfi: target.cfi } : {}),
       text: selection.text,
       note: '',
       createdAt: Date.now(),
@@ -634,7 +684,9 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
 
     const existingIndex = annotations.findIndex(
       (annotation) =>
-        annotation.cfi === cfi && annotation.type === 'excerpt' && !annotation.deletedAt,
+        getAnnotationTargetKey(getBookNoteTarget(annotation)) === targetKey &&
+        annotation.type === 'excerpt' &&
+        !annotation.deletedAt,
     );
     if (existingIndex !== -1) {
       annotations[existingIndex] = annotation;
@@ -659,13 +711,24 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     setHighlightOptionsVisible(true);
     const { booknotes: annotations = [] } = config;
     const cfi = view?.getCFI(selection.index, selection.range);
-    if (!cfi) return;
+    const target =
+      selection.target ??
+      makeAnnotationTargetFromSelection({
+        format: bookData.book?.format,
+        cfi,
+        range: selection.range,
+        index: selection.index,
+        text: selection.text,
+      });
+    if (!target) return;
+    const targetKey = getAnnotationTargetKey(target);
     const style = highlightStyle || settings.globalReadSettings.highlightStyle;
     const color = highlightColor || settings.globalReadSettings.highlightStyles[style];
     const annotation: BookNote = {
       id: uniqueId(),
       type: 'annotation',
-      cfi,
+      target,
+      ...(target.kind === 'text-cfi' ? { cfi: target.cfi } : {}),
       style,
       color,
       text: selection.text,
@@ -675,7 +738,7 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     };
     const existingIndex = annotations.findIndex(
       (annotation) =>
-        annotation.cfi === cfi &&
+        getAnnotationTargetKey(getBookNoteTarget(annotation)) === targetKey &&
         annotation.type === 'annotation' &&
         annotation.style &&
         !annotation.deletedAt,
@@ -698,7 +761,12 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     } else {
       annotations.push(annotation);
       views.forEach((view) => view?.addAnnotation(annotation));
-      setSelection({ ...selection, cfi, annotated: true });
+      setSelection({
+        ...selection,
+        target,
+        cfi: target.kind === 'text-cfi' ? target.cfi : cfi,
+        annotated: true,
+      });
     }
 
     const updatedConfig = updateBooknotes(bookKey, annotations);
@@ -885,7 +953,10 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     // Organize booknotes into groups by chapter
     const booknoteGroups: { [href: string]: BooknoteGroup } = {};
     for (const booknote of booknotes) {
-      const tocItem = findTocItemBS(bookDoc.toc ?? [], booknote.cfi);
+      const cfi = getBookNoteTextCfi(booknote);
+      const tocItem: ReturnType<typeof findTocItemBS> = cfi
+        ? findTocItemBS(bookDoc.toc ?? [], cfi)
+        : null;
       const href = tocItem?.href || '';
       const label = tocItem?.label || '';
       const id = tocItem?.id || 0;
@@ -897,7 +968,10 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
 
     Object.values(booknoteGroups).forEach((group) => {
       group.booknotes.sort((a, b) => {
-        return CFI.compare(a.cfi, b.cfi);
+        const aCfi = getBookNoteTextCfi(a);
+        const bCfi = getBookNoteTextCfi(b);
+        if (aCfi && bCfi) return CFI.compare(aCfi, bCfi);
+        return getBookNoteTargetKey(a).localeCompare(getBookNoteTargetKey(b));
       });
     });
 

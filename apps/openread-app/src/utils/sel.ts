@@ -22,11 +22,15 @@ export interface Position {
   dir?: PositionDir;
 }
 
+import type { AnnotationTarget } from '@/types/book';
+
 export interface TextSelection {
   key: string;
   text: string;
   range: Range;
   index: number;
+  target?: AnnotationTarget;
+  /** @deprecated Use target.kind === 'text-cfi'.cfi. */
   cfi?: string;
   href?: string;
   annotated?: boolean;

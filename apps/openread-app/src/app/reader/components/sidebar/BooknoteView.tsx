@@ -1,5 +1,9 @@
 import React from 'react';
 import * as CFI from 'foliate-js/epubcfi.js';
+import {
+  getBookNoteTargetKey,
+  getBookNoteTextCfi,
+} from '@/services/annotation/annotationTargetContract';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { findTocItemBS } from '@/utils/toc';
@@ -21,7 +25,8 @@ const BooknoteView: React.FC<{
 
   const booknoteGroups: { [href: string]: BooknoteGroup } = {};
   for (const booknote of booknotes) {
-    const tocItem = findTocItemBS(toc ?? [], booknote.cfi);
+    const cfi = getBookNoteTextCfi(booknote);
+    const tocItem = cfi ? findTocItemBS(toc ?? [], cfi) : null;
     const href = tocItem?.href || '';
     const label = tocItem?.label || '';
     const id = tocItem?.id || 0;
@@ -33,7 +38,10 @@ const BooknoteView: React.FC<{
 
   Object.values(booknoteGroups).forEach((group) => {
     group.booknotes.sort((a, b) => {
-      return CFI.compare(a.cfi, b.cfi);
+      const aCfi = getBookNoteTextCfi(a);
+      const bCfi = getBookNoteTextCfi(b);
+      if (aCfi && bCfi) return CFI.compare(aCfi, bCfi);
+      return getBookNoteTargetKey(a).localeCompare(getBookNoteTargetKey(b));
     });
   });
 
@@ -44,7 +52,12 @@ const BooknoteView: React.FC<{
   const handleBrowseBookNotes = () => {
     if (booknotes.length === 0) return;
 
-    const sorted = [...booknotes].sort((a, b) => CFI.compare(a.cfi, b.cfi));
+    const sorted = [...booknotes].sort((a, b) => {
+      const aCfi = getBookNoteTextCfi(a);
+      const bCfi = getBookNoteTextCfi(b);
+      if (aCfi && bCfi) return CFI.compare(aCfi, bCfi);
+      return getBookNoteTargetKey(a).localeCompare(getBookNoteTargetKey(b));
+    });
     setActiveBooknoteType(bookKey, type);
     setBooknoteResults(bookKey, sorted);
   };
@@ -58,7 +71,7 @@ const BooknoteView: React.FC<{
             <ul>
               {group.booknotes.map((item, index) => (
                 <BooknoteItem
-                  key={`${index}-${item.cfi}`}
+                  key={`${index}-${getBookNoteTargetKey(item)}`}
                   bookKey={bookKey}
                   item={item}
                   onClick={handleBrowseBookNotes}

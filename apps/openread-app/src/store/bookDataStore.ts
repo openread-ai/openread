@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { SystemSettings } from '@/types/settings';
 import { Book, BookConfig, BookNote } from '@/types/book';
 import { EnvConfigType } from '@/services/environment';
+import { getBookNoteTargetKey } from '@/services/annotation/annotationTargetContract';
 import { BookDoc } from '@/libs/document';
 import { useLibraryStore } from './libraryStore';
 import { parseBookRefFromReaderBookKey, normalizeBookReference } from '@/utils/readerBookKey';
@@ -159,7 +160,9 @@ export const useBookDataStore = create<BookDataState>((set, get) => ({
       const book = state.booksData[id];
       if (!book) return state;
       const dedupedBooknotes = Array.from(
-        new Map(booknotes.map((item) => [`${item.id}-${item.type}-${item.cfi}`, item])).values(),
+        new Map(
+          booknotes.map((item) => [`${item.id}-${item.type}-${getBookNoteTargetKey(item)}`, item]),
+        ).values(),
       );
       const now = Date.now();
       updatedConfig = {

@@ -1,4 +1,10 @@
 import { useCallback, useRef } from 'react';
+import {
+  getAnnotationTargetKey,
+  getBookNoteTarget,
+  makeAnnotationTargetFromSelection,
+  makePageRegionAnnotationTargetFromViewportRect,
+} from '@/services/annotation/annotationTargetContract';
 import { BookNote } from '@/types/book';
 import { Point, TextSelection } from '@/utils/sel';
 import { useEnv } from '@/context/EnvContext';
@@ -20,7 +26,7 @@ interface UseInstantAnnotationProps {
 export const useInstantAnnotation = ({ bookKey, getAnnotationText }: UseInstantAnnotationProps) => {
   const { envConfig } = useEnv();
   const { settings } = useSettingsStore();
-  const { getConfig, saveConfig, updateBooknotes } = useBookDataStore();
+  const { getConfig, saveConfig, updateBooknotes, getBookDataByReaderKey } = useBookDataStore();
   const { getView, getViewsById, getViewSettings } = useReaderStore();
 
   const startPointRef = useRef<Point | null>(null);
@@ -135,23 +141,72 @@ export const useInstantAnnotation = ({ bookKey, getAnnotationText }: UseInstantA
     [findPositionAtPoint],
   );
 
-  const createAnnotation = useCallback((cfi: string, text?: string) => {
-    const style = settings.globalReadSettings.highlightStyle;
-    const color = settings.globalReadSettings.highlightStyles[style];
-    const annotation: BookNote = {
-      id: annotationIdRef.current,
-      type: 'annotation',
+  const createAnnotation = useCallback(
+    ({
       cfi,
-      style,
-      color,
-      text: text ?? '',
-      note: '',
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-    return annotation;
+      range,
+      index,
+      text,
+    }: {
+      cfi?: string | null;
+      range: Range;
+      index: number;
+      text?: string;
+    }) => {
+      const style = settings.globalReadSettings.highlightStyle;
+      const color = settings.globalReadSettings.highlightStyles[style];
+      const format = getBookDataByReaderKey(bookKey)?.book?.format;
+      const target = makeAnnotationTargetFromSelection({ format, cfi, range, index, text });
+      if (!target) return null;
+      const annotation: BookNote = {
+        id: annotationIdRef.current,
+        type: 'annotation',
+        target,
+        ...(target.kind === 'text-cfi' ? { cfi: target.cfi } : {}),
+        style,
+        color,
+        text: text ?? '',
+        note: '',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      return annotation;
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    [bookKey],
+  );
+
+  const createRegionAnnotation = useCallback(
+    (doc: Document, index: number, startPoint: Point, endPoint: Point) => {
+      const style = settings.globalReadSettings.highlightStyle;
+      const color = settings.globalReadSettings.highlightStyles[style];
+      const rect = {
+        x: Math.min(startPoint.x, endPoint.x),
+        y: Math.min(startPoint.y, endPoint.y),
+        width: Math.abs(endPoint.x - startPoint.x),
+        height: Math.abs(endPoint.y - startPoint.y),
+      };
+      if (rect.width < 4 || rect.height < 4) return null;
+      const target = makePageRegionAnnotationTargetFromViewportRect({
+        pageIndex: index,
+        doc,
+        rect,
+      });
+      if (!target) return null;
+      return {
+        id: annotationIdRef.current,
+        type: 'annotation',
+        target,
+        style,
+        color,
+        text: '',
+        note: '',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      } satisfies BookNote;
+    },
+    [settings.globalReadSettings.highlightStyle, settings.globalReadSettings.highlightStyles],
+  );
 
   const handleInstantAnnotationPointerDown = useCallback(
     (doc: Document, index: number, ev: PointerEvent) => {
@@ -160,7 +215,10 @@ export const useInstantAnnotation = ({ bookKey, getAnnotationText }: UseInstantA
       // Only handle primary button (left click / touch / stylus)
       if (ev.button !== 0) return false;
 
-      if (!isSelectableContent(doc, ev.clientX, ev.clientY)) return false;
+      const format = getBookDataByReaderKey(bookKey)?.book?.format;
+      const isFixedPageTargetFormat = format === 'pdf' || format === 'cbz';
+      if (!isSelectableContent(doc, ev.clientX, ev.clientY) && !isFixedPageTargetFormat)
+        return false;
 
       startPointRef.current = { x: ev.clientX, y: ev.clientY };
       startDocRef.current = doc;
@@ -169,7 +227,7 @@ export const useInstantAnnotation = ({ bookKey, getAnnotationText }: UseInstantA
       annotationIdRef.current = uniqueId();
       return true;
     },
-    [isInstantAnnotationEnabled, isSelectableContent],
+    [bookKey, getBookDataByReaderKey, isInstantAnnotationEnabled, isSelectableContent],
   );
 
   const handleInstantAnnotationPointerMove = useCallback(
@@ -193,13 +251,26 @@ export const useInstantAnnotation = ({ bookKey, getAnnotationText }: UseInstantA
       }
 
       const newRange = createRangeFromPoints(doc, startPoint, endPoint);
-      if (!newRange) return false;
+      if (!newRange) {
+        clearPreviewAnnotation();
+        const annotation = createRegionAnnotation(doc, index, startPoint, endPoint);
+        if (!annotation) return false;
+        const bookRef = parseBookRefFromReaderBookKey(bookKey);
+        if (!bookRef) return false;
+        const views = getViewsById(bookRef);
+        views.forEach((v) => v?.addAnnotation(annotation));
+        previewAnnotationRef.current = annotation;
+        return true;
+      }
 
-      const cfi = view.getCFI(index, newRange);
-      if (!cfi) return false;
+      const format = getBookDataByReaderKey(bookKey)?.book?.format;
+      const isFixedPageTargetFormat = format === 'pdf' || format === 'cbz';
+      const cfi = isFixedPageTargetFormat ? null : view.getCFI(index, newRange);
+      if (!isFixedPageTargetFormat && !cfi) return false;
 
       clearPreviewAnnotation();
-      const annotation = createAnnotation(cfi);
+      const annotation = createAnnotation({ cfi, range: newRange, index });
+      if (!annotation) return false;
       const bookRef = parseBookRefFromReaderBookKey(bookKey);
       if (!bookRef) return false;
       const views = getViewsById(bookRef);
@@ -209,7 +280,15 @@ export const useInstantAnnotation = ({ bookKey, getAnnotationText }: UseInstantA
       return true;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [isInstantAnnotationEnabled, createRangeFromPoints],
+    [
+      isInstantAnnotationEnabled,
+      createRangeFromPoints,
+      createAnnotation,
+      createRegionAnnotation,
+      bookKey,
+      getViewsById,
+      clearPreviewAnnotation,
+    ],
   );
 
   const handleInstantAnnotationPointerCancel = useCallback(() => {
@@ -248,21 +327,24 @@ export const useInstantAnnotation = ({ bookKey, getAnnotationText }: UseInstantA
       }
 
       const newRange = createRangeFromPoints(doc, startPoint, endPoint);
-      if (!newRange) {
-        clearPreviewAnnotation();
-        return false;
-      }
+      let annotation: BookNote | null = null;
+      if (newRange) {
+        const text = await getAnnotationText(newRange);
+        const format = getBookDataByReaderKey(bookKey)?.book?.format;
+        const isFixedPageTargetFormat = format === 'pdf' || format === 'cbz';
+        const cfi = isFixedPageTargetFormat ? null : view.getCFI(index, newRange);
 
-      const text = await getAnnotationText(newRange);
-      const cfi = view.getCFI(index, newRange);
-
-      if (!text || !cfi || text.trim().length === 0) {
-        clearPreviewAnnotation();
-        return false;
+        if (!text || text.trim().length === 0 || (!isFixedPageTargetFormat && !cfi)) {
+          clearPreviewAnnotation();
+          return false;
+        }
+        annotation = createAnnotation({ cfi, range: newRange, index, text });
+      } else {
+        annotation = createRegionAnnotation(doc, index, startPoint, endPoint);
       }
 
       clearPreviewAnnotation();
-      const annotation = createAnnotation(cfi, text);
+      if (!annotation) return false;
       const bookRef = parseBookRefFromReaderBookKey(bookKey);
       if (!bookRef) return false;
       const views = getViewsById(bookRef);
@@ -270,8 +352,13 @@ export const useInstantAnnotation = ({ bookKey, getAnnotationText }: UseInstantA
 
       const config = getConfig(bookKey)!;
       const { booknotes: annotations = [] } = config;
+      const targetKey = getAnnotationTargetKey(getBookNoteTarget(annotation));
       const existingIndex = annotations.findIndex(
-        (a) => a.cfi === cfi && a.type === 'annotation' && a.style && !a.deletedAt,
+        (a) =>
+          getAnnotationTargetKey(getBookNoteTarget(a)) === targetKey &&
+          a.type === 'annotation' &&
+          a.style &&
+          !a.deletedAt,
       );
 
       if (existingIndex !== -1) {

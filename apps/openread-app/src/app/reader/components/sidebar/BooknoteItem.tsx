@@ -13,6 +13,11 @@ import { useBookDataStore } from '@/store/bookDataStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import { eventDispatcher } from '@/utils/event';
+import {
+  getAnnotationTargetKey,
+  getBookNoteTarget,
+  getBookNoteTextCfi,
+} from '@/services/annotation/annotationTargetContract';
 import { NOTE_PREFIX } from '@/types/view';
 import useScrollToItem from '../../hooks/useScrollToItem';
 import TextButton from '@/components/TextButton';
@@ -33,7 +38,9 @@ const BooknoteItem: React.FC<BooknoteItemProps> = ({ bookKey, item, onClick }) =
   const { getProgress, getView, getViewsById } = useReaderStore();
   const { setNotebookEditAnnotation, setNotebookVisible } = useNotebookStore();
 
-  const { text, cfi, note } = item;
+  const { text, note } = item;
+  const target = getBookNoteTarget(item);
+  const cfi = getBookNoteTextCfi(item);
   const editorRef = useRef<TextEditorRef>(null);
   const [editorDraft, setEditorDraft] = useState(text || '');
   const [inlineEditMode, setInlineEditMode] = useState(false);
@@ -44,10 +51,13 @@ const BooknoteItem: React.FC<BooknoteItemProps> = ({ bookKey, item, onClick }) =
 
   const handleClickItem = (event: React.MouseEvent | React.KeyboardEvent) => {
     event.preventDefault();
-    eventDispatcher.dispatch('navigate', { bookKey, cfi });
+    if (!cfi && target?.kind !== 'pdf-text-quad' && target?.kind !== 'page-region') return;
+    if (cfi) eventDispatcher.dispatch('navigate', { bookKey, cfi });
 
     onClick?.();
-    getView(bookKey)?.goTo(cfi);
+    if (cfi) getView(bookKey)?.goTo(cfi);
+    else if (target?.kind === 'pdf-text-quad' || target?.kind === 'page-region')
+      getView(bookKey)?.select(target.pageIndex);
     if (note) {
       setNotebookVisible(true);
     }
@@ -66,9 +76,15 @@ const BooknoteItem: React.FC<BooknoteItemProps> = ({ bookKey, item, onClick }) =
         const bookRef = parseBookRefFromReaderBookKey(bookKey);
         if (!bookRef) return;
         const views = getViewsById(bookRef);
-        views.forEach((view) =>
-          view?.addAnnotation({ ...item, value: `${NOTE_PREFIX}${item.cfi}` }, true),
-        );
+        const cfi = getBookNoteTextCfi(item);
+        const targetKey = getAnnotationTargetKey(getBookNoteTarget(item));
+        if (cfi) {
+          views.forEach((view) =>
+            view?.addAnnotation({ ...item, cfi, value: `${NOTE_PREFIX}${cfi}` }, true),
+          );
+        } else if (targetKey) {
+          views.forEach((view) => view?.addAnnotation({ ...item, value: targetKey }, true));
+        }
       }
     });
     const updatedConfig = updateBooknotes(bookKey, booknotes);

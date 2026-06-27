@@ -306,6 +306,32 @@ describe('remote sync apply layer', () => {
             deleted_at: null,
           },
         },
+        {
+          note: {
+            bookHash,
+            id: 'note-3',
+            type: 'annotation',
+            target: {
+              kind: 'page-region',
+              pageIndex: 0,
+              pageWidth: 600,
+              pageHeight: 800,
+              rotation: 0,
+              rects: [{ x: 0.1, y: 0.2, width: 0.3, height: 0.4 }],
+              source: 'manual-region',
+            },
+            note: 'region',
+            createdAt: 1600,
+            updatedAt: 1600,
+          },
+          record: {
+            id: 'note-3',
+            book_hash: mocks.book.hash,
+            user_id: 'user-1',
+            updated_at: 1600,
+            deleted_at: null,
+          },
+        },
       ],
       [],
     );
@@ -328,6 +354,10 @@ describe('remote sync apply layer', () => {
       expect.arrayContaining([
         expect.objectContaining({ id: 'note-1', note: 'new', updatedAt: 3000, deletedAt: 3000 }),
         expect.objectContaining({ id: 'note-2', type: 'bookmark' }),
+        expect.objectContaining({
+          id: 'note-3',
+          target: expect.objectContaining({ kind: 'page-region', pageIndex: 0 }),
+        }),
       ]),
     );
   });

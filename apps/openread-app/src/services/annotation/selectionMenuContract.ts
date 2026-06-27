@@ -28,4 +28,4 @@ export const shouldSuppressWebAnnotationPopupForSelection = ({
   selection?: AnnotationPopupSelection;
 }) => usesNativeAnnotationSelectionMenu(appService) && !selection?.annotated;
 
-export const isHighlightActionDisabledForFormat = (format?: BookFormat | null) => format === 'pdf';
+export const isHighlightActionDisabledForFormat = (_format?: BookFormat | null) => false;

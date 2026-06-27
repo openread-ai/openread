@@ -1,6 +1,10 @@
 import type { SyncTombstone } from '@openread/sync';
 import type { MetaHash, SyncableBookRef } from '@openread/types';
 
+import {
+  getBookNoteLegacyCfi,
+  normalizeAnnotationTarget,
+} from '@/services/annotation/annotationTargetContract';
 import envConfig from '@/services/environment';
 import { settingsService } from '@/services/settings/settingsService';
 import { parseSyncableBookRef } from '@/utils/bookHash';
@@ -264,7 +268,12 @@ export async function applyRemoteBookNoteRows(
     const changedNotes: BookNote[] = [];
 
     for (const row of rows) {
-      const note = { ...row.note, metaHash: row.note.metaHash ?? book.metaHash };
+      const note = {
+        ...row.note,
+        target: normalizeAnnotationTarget(row.note.target, row.note.cfi) ?? undefined,
+        cfi: getBookNoteLegacyCfi(row.note),
+        metaHash: row.note.metaHash ?? book.metaHash,
+      };
       const idx = noteIdxMap.get(note.id);
       if (idx !== undefined) {
         const remoteTime = latestModelTime(note);

@@ -61,9 +61,10 @@ describe('annotation selection menu contract', () => {
     ).toBe(false);
   });
 
-  it('preserves the existing PDF highlight disable guard', () => {
-    expect(isHighlightActionDisabledForFormat('pdf')).toBe(true);
+  it('allows Highlight across canonical target-backed formats', () => {
+    expect(isHighlightActionDisabledForFormat('pdf')).toBe(false);
     expect(isHighlightActionDisabledForFormat('epub')).toBe(false);
     expect(isHighlightActionDisabledForFormat('txt')).toBe(false);
+    expect(isHighlightActionDisabledForFormat('cbz')).toBe(false);
   });
 });

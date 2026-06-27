@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { BookProgress } from '@/types/book';
 import { isCfiInLocation } from '@/utils/cfi';
 
-const useScrollToItem = (cfi: string, progress: BookProgress | null) => {
+const useScrollToItem = (cfi: string | null, progress: BookProgress | null) => {
   const viewRef = useRef<HTMLLIElement | null>(null);
 
   const isCurrent = useMemo(() => isCfiInLocation(cfi, progress?.location), [cfi, progress]);

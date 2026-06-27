@@ -8,6 +8,10 @@ import {
 
 import { CLOUD_BOOKS_SUBDIR } from '@/services/constants';
 import type { AIConversation, AIMessage } from '@/services/ai/types';
+import {
+  getBookNoteLegacyCfi,
+  getBookNoteTarget,
+} from '@/services/annotation/annotationTargetContract';
 import type { Book, BookConfig, BookNote } from '@/types/book';
 import type { SystemSettings } from '@/types/settings';
 import { getCoverFilename, getRemoteBookFilename } from '@/utils/book';
@@ -170,7 +174,8 @@ export function buildBookNoteMutation(
     bookHash,
     metaHash: optionalMetaHash(note.metaHash, 'bookNote.metaHash'),
     type: note.type,
-    cfi: note.cfi,
+    target: getBookNoteTarget(note),
+    cfi: optionalString(getBookNoteLegacyCfi(note)),
     text: optionalString(note.text),
     style: optionalString(note.style),
     color: optionalString(note.color),

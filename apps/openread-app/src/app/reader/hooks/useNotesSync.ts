@@ -6,6 +6,11 @@ import { useReaderStore } from '@/store/readerStore';
 import { SYNC_NOTES_INTERVAL_SEC } from '@/services/constants';
 import { throttle } from '@/utils/throttle';
 import { enqueueBookNotesForSync } from '@/services/sync/helpers';
+import {
+  getAnnotationTargetKey,
+  getBookNoteTarget,
+  getBookNoteTextCfi,
+} from '@/services/annotation/annotationTargetContract';
 import { remoteApplyEventMatchesBook, subscribeRemoteApply } from '@/services/sync/remoteApply';
 import { NOTE_PREFIX } from '@/types/view';
 import { parseSyncableBookRef } from '@openread/types';
@@ -117,17 +122,28 @@ export const useNotesSync = (bookKey: string) => {
         const previous = event.previousNotes.find((item) => item.id === note.id);
         if (previous) {
           views.forEach((view) => view?.addAnnotation(previous, true));
-          if (previous.note?.trim()) {
+          const previousCfi = getBookNoteTextCfi(previous);
+          if (previousCfi && previous.note?.trim()) {
             views.forEach((view) =>
-              view?.addAnnotation({ ...previous, value: `${NOTE_PREFIX}${previous.cfi}` }, true),
+              view?.addAnnotation(
+                { ...previous, cfi: previousCfi, value: `${NOTE_PREFIX}${previousCfi}` },
+                true,
+              ),
             );
           }
         }
         if (note.deletedAt) continue;
-        if (note.style) views.forEach((view) => view?.addAnnotation(note));
-        if (note.note?.trim()) {
+        const noteTarget = getBookNoteTarget(note);
+        const noteTargetKey = getAnnotationTargetKey(noteTarget);
+        if (note.style || (noteTargetKey && note.note?.trim())) {
           views.forEach((view) =>
-            view?.addAnnotation({ ...note, value: `${NOTE_PREFIX}${note.cfi}` }),
+            view?.addAnnotation(noteTargetKey ? { ...note, value: noteTargetKey } : note),
+          );
+        }
+        const noteCfi = getBookNoteTextCfi(note);
+        if (noteCfi && note.note?.trim()) {
+          views.forEach((view) =>
+            view?.addAnnotation({ ...note, cfi: noteCfi, value: `${NOTE_PREFIX}${noteCfi}` }),
           );
         }
       }

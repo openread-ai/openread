@@ -10,6 +10,11 @@ import {
   ReadingStatus,
   ViewSettings,
 } from '@/types/book';
+import {
+  getBookNoteLegacyCfi,
+  getBookNoteTarget,
+  normalizeAnnotationTarget,
+} from '@/services/annotation/annotationTargetContract';
 import type { BookMetadata } from '@/libs/document';
 import type { SystemSettings } from '@/types/settings';
 import { DBBookConfig, DBBook, DBBookNote } from '@/types/records';
@@ -212,7 +217,6 @@ export const transformBookNoteToDB = (bookNote: unknown, userId: string): DBBook
     metaHash,
     id,
     type,
-    cfi,
     text,
     style,
     color,
@@ -228,7 +232,8 @@ export const transformBookNoteToDB = (bookNote: unknown, userId: string): DBBook
     meta_hash: metaHash ?? undefined,
     id,
     type,
-    cfi,
+    target: getBookNoteTarget(bookNote as BookNote),
+    cfi: getBookNoteLegacyCfi(bookNote as BookNote),
     text: sanitizeString(text),
     style,
     color,
@@ -247,6 +252,7 @@ export const transformBookNoteFromDB = (dbBookNote: DBBookNote): BookNote => {
     id,
     type,
     cfi,
+    target,
     text,
     style,
     color,
@@ -262,6 +268,7 @@ export const transformBookNoteFromDB = (dbBookNote: DBBookNote): BookNote => {
     metaHash: optionalMetaHash(meta_hash, 'bookNote.meta_hash'),
     id,
     type: type as BookNoteType,
+    target: normalizeAnnotationTarget(target, cfi) ?? undefined,
     cfi,
     text,
     style: style as HighlightStyle,

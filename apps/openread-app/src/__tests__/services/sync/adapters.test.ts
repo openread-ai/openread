@@ -52,6 +52,7 @@ const note = (overrides: Partial<BookNote> = {}): BookNote => ({
   bookHash: testSyncableBookRef('d41d8cd98f00b204e9800998ecf8427e'),
   metaHash: testMetaHash('b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9'),
   type: 'annotation',
+  target: { kind: 'text-cfi', cfi: 'epubcfi(/6/4)' },
   cfi: 'epubcfi(/6/4)',
   text: 'Highlighted text',
   style: 'highlight',
@@ -115,10 +116,36 @@ describe('canonical sync mutation adapters', () => {
         id: 'note-1',
         bookHash: testSyncableBookRef('d41d8cd98f00b204e9800998ecf8427e'),
         type: 'annotation',
+        target: { kind: 'text-cfi', cfi: 'epubcfi(/6/4)' },
         cfi: 'epubcfi(/6/4)',
         deletedAt: 3_000,
       },
     });
+  });
+
+  it('preserves fixed-page annotation targets in note mutations', () => {
+    const mutation = buildBookNoteMutation(
+      note({
+        cfi: undefined,
+        target: {
+          kind: 'pdf-text-quad',
+          pageIndex: 0,
+          pageWidth: 600,
+          pageHeight: 800,
+          rotation: 0,
+          quads: [{ x1: 0.1, y1: 0.1, x2: 0.2, y2: 0.1, x3: 0.2, y3: 0.2, x4: 0.1, y4: 0.2 }],
+          textQuote: 'Highlighted text',
+        },
+      }),
+      context,
+    );
+
+    expect(validateSyncMutation(mutation).ok).toBe(true);
+    const payload = (mutation as SyncUpsertMutation<'bookNote'>).payload;
+    expect(payload).toMatchObject({
+      target: { kind: 'pdf-text-quad', pageIndex: 0 },
+    });
+    expect(payload.cfi).toBeNull();
   });
 
   it('builds valid settings mutations from roaming settings', () => {

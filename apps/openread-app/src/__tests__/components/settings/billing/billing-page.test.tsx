@@ -19,6 +19,11 @@ vi.mock('@/utils/tailwind', () => ({
   cn: (...args: unknown[]) => args.filter(Boolean).join(' '),
 }));
 
+const { mockInvoiceList, mockPlanCards } = vi.hoisted(() => ({
+  mockInvoiceList: vi.fn(),
+  mockPlanCards: vi.fn(),
+}));
+
 const mockUseSubscription = vi.fn();
 vi.mock('@/hooks/useSubscription', () => ({
   useSubscription: () => mockUseSubscription(),
@@ -28,11 +33,17 @@ vi.mock('@/hooks/useSubscription', () => ({
 vi.mock('@/components/settings/billing', () => ({
   CurrentPlanCard: () => <div data-testid='current-plan'>current-plan</div>,
   PaymentMethod: () => <div data-testid='payment-method'>payment-method</div>,
-  InvoiceList: () => <div data-testid='invoice-list'>invoice-list</div>,
+  InvoiceList: (props: Record<string, unknown>) => {
+    mockInvoiceList(props);
+    return <div data-testid='invoice-list'>invoice-list</div>;
+  },
 }));
 
 vi.mock('@/components/settings/plan-cards', () => ({
-  PlanCards: () => <div data-testid='plan-cards'>plan-cards</div>,
+  PlanCards: (props: Record<string, unknown>) => {
+    mockPlanCards(props);
+    return <div data-testid='plan-cards'>plan-cards</div>;
+  },
 }));
 
 vi.mock('@/components/admin/BusinessHealthCard', () => ({
@@ -44,6 +55,8 @@ vi.mock('@/components/admin/BusinessHealthCard', () => ({
 describe('BillingPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockInvoiceList.mockClear();
+    mockPlanCards.mockClear();
   });
 
   afterEach(() => {
@@ -137,6 +150,58 @@ describe('BillingPage', () => {
 
     render(<BillingPage />);
     expect(screen.getByText('Available Plans')).toBeTruthy();
+  });
+
+  it('renders paid billing shell while invoices are still loading', () => {
+    mockUseSubscription.mockReturnValue({
+      subscription: {
+        planId: 'reader',
+        planName: 'Reader',
+        status: 'active',
+        currentPeriodEnd: null,
+        cancelAtPeriodEnd: false,
+      },
+      plans: [],
+      invoices: [],
+      isLoading: false,
+      invoicesLoading: true,
+      plansLoading: false,
+      error: null,
+      upgradeToPlan: vi.fn(),
+      openPortal: vi.fn(),
+    });
+
+    render(<BillingPage />);
+
+    expect(screen.getByTestId('current-plan')).toBeTruthy();
+    expect(screen.getByTestId('payment-method')).toBeTruthy();
+    expect(screen.getByTestId('invoice-list')).toBeTruthy();
+    expect(mockInvoiceList).toHaveBeenLastCalledWith(expect.objectContaining({ isLoading: true }));
+  });
+
+  it('renders free billing shell while plan products are still loading', () => {
+    mockUseSubscription.mockReturnValue({
+      subscription: {
+        planId: 'free',
+        planName: 'Free',
+        status: 'active',
+        currentPeriodEnd: null,
+        cancelAtPeriodEnd: false,
+      },
+      plans: [],
+      invoices: [],
+      isLoading: false,
+      plansLoading: true,
+      error: null,
+      upgradeToPlan: vi.fn(),
+      openPortal: vi.fn(),
+    });
+
+    render(<BillingPage />);
+
+    expect(screen.getByText("You're on the Free plan")).toBeTruthy();
+    expect(screen.getByTestId('plan-cards')).toBeTruthy();
+    expect(mockPlanCards).toHaveBeenLastCalledWith(expect.objectContaining({ isLoading: true }));
   });
 
   it('should show free user simplified view for free planId', () => {

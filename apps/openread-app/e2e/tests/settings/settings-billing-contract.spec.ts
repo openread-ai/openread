@@ -132,6 +132,113 @@ async function openBilling(page: Page) {
 }
 
 test.describe('Settings billing contract', () => {
+  test('SET-061 mobile-web Billing fast path does not wait on storage stats or Stripe plans', async ({
+    authenticatedPage: page,
+  }, testInfo) => {
+    let filesStatsRequests = 0;
+    let releasePlans!: () => void;
+    const delayedPlans = new Promise<void>((resolve) => {
+      releasePlans = resolve;
+    });
+
+    await page.route('**/billing/subscription', async (route) => {
+      await route.fulfill({ json: { plan: 'free', provider: null } });
+    });
+
+    await page.route('**/files/stats', async (route) => {
+      filesStatsRequests += 1;
+      await route.fulfill({ status: 503, json: { error: 'files stats must not gate billing' } });
+    });
+
+    await page.route('**/stripe/plans', async (route) => {
+      await delayedPlans;
+      await route.fulfill({ json: [] });
+    });
+
+    await page.goto('/settings/billing', { waitUntil: 'domcontentloaded' });
+    await expect(page).toHaveURL(/\/settings\/billing\/?$/);
+    await expect(page.getByText("You're on the Free plan")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText('Available Plans')).toBeVisible();
+    expect(filesStatsRequests).toBe(0);
+
+    await setScenarioEvidenceNote(page, 'SET-061 mobile-web billing fast path', [
+      'Billing subscription summary returned Free while /stripe/plans stayed delayed.',
+      '/files/stats was not requested from the Billing path.',
+      `files/stats requests observed: ${filesStatsRequests}`,
+    ]);
+    await attachViewportEvidence(page, testInfo, 'SET-061-mobile-web-billing-fast-path');
+    releasePlans();
+  });
+
+  test('SET-062 mobile-web paid Billing shell does not wait on Stripe receipts', async ({
+    authenticatedPage: page,
+  }, testInfo) => {
+    let filesStatsRequests = 0;
+    let invoiceRequests = 0;
+    let releaseInvoices!: () => void;
+    const delayedInvoices = new Promise<void>((resolve) => {
+      releaseInvoices = resolve;
+    });
+
+    await page.route('**/billing/subscription', async (route) => {
+      await route.fulfill({
+        json: {
+          plan: 'reader',
+          provider: 'stripe',
+          status: 'active',
+          currentPeriodEnd: '2030-01-01T00:00:00.000Z',
+          cancelAtPeriodEnd: false,
+        },
+      });
+    });
+
+    await page.route('**/files/stats', async (route) => {
+      filesStatsRequests += 1;
+      await route.fulfill({ status: 503, json: { error: 'files stats must not gate billing' } });
+    });
+
+    await page.route('**/stripe/plans', async (route) => {
+      await route.fulfill({
+        json: [
+          {
+            plan: 'reader',
+            productId: 'price_reader_monthly_qa',
+            price: 999,
+            currency: 'USD',
+            interval: 'month',
+            productName: 'Reader Monthly',
+          },
+        ],
+      });
+    });
+
+    await page.route('**/stripe/invoices', async (route) => {
+      invoiceRequests += 1;
+      await delayedInvoices;
+      await route.fulfill({ json: [] });
+    });
+
+    await page.goto('/settings/billing', { waitUntil: 'domcontentloaded' });
+    await expect(page).toHaveURL(/\/settings\/billing\/?$/);
+    await expect(page.getByText('Current Plan').first()).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText('Reader Plan')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Manage Plan' })).toBeVisible();
+    expect(invoiceRequests).toBe(1);
+    expect(filesStatsRequests).toBe(0);
+
+    await setScenarioEvidenceNote(page, 'SET-062 mobile-web paid billing invoice fast path', [
+      'Billing subscription summary returned paid Reader/Stripe while /stripe/invoices stayed delayed.',
+      'Current Plan, Reader Plan, and Manage Plan rendered before receipts resolved.',
+      '/files/stats was not requested from the paid Billing path.',
+      `files/stats requests observed: ${filesStatsRequests}`,
+      `stripe/invoices requests observed: ${invoiceRequests}`,
+    ]);
+    await attachViewportEvidence(page, testInfo, 'SET-062-paid-billing-shell-before-receipts');
+
+    releaseInvoices();
+    await expect(page.getByText('No paid receipts yet')).toBeVisible();
+  });
+
   test('SET-055 renders Free billing view and upgrade path', async ({
     authenticatedPage: page,
   }, testInfo) => {

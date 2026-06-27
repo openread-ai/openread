@@ -271,7 +271,7 @@ describe('PlanCards', () => {
       expect(mockOnUpgrade).not.toHaveBeenCalled();
     });
 
-    it('should show error toast when plan has no productId', async () => {
+    it('should disable paid plan CTAs when product IDs are unavailable', async () => {
       const plansWithoutProductId = mockPlans.map((p) => ({
         ...p,
         productId: p.plan === 'reader' ? undefined : p.productId,
@@ -282,14 +282,11 @@ describe('PlanCards', () => {
       );
 
       const switchButtons = screen.getAllByText('Switch Plan');
+      expect(switchButtons[0]!.closest('button')).toHaveProperty('disabled', true);
       fireEvent.click(switchButtons[0]!);
 
-      await waitFor(() => {
-        expect(mockDispatch).toHaveBeenCalledWith('toast', {
-          type: 'error',
-          message: 'No product available for this plan',
-        });
-      });
+      expect(mockOnUpgrade).not.toHaveBeenCalled();
+      expect(mockDispatch).not.toHaveBeenCalled();
     });
 
     it('should show Processing state when upgrade is in progress', async () => {

@@ -176,10 +176,7 @@ export function MobileChatContent({
   };
 
   const activeChat = (
-    <div
-      data-testid='mobile-ai-chat-active-panel'
-      className='flex min-h-0 flex-1 flex-col overflow-hidden'
-    >
+    <div className='flex min-h-0 flex-1 flex-col overflow-hidden'>
       <AIAssistant
         key={activeConversationId ?? 'new'}
         bookKey={bookKey}
@@ -190,10 +187,7 @@ export function MobileChatContent({
   );
 
   const history = (
-    <div
-      data-testid='mobile-ai-chat-history-panel'
-      className='flex min-h-0 flex-1 flex-col overflow-hidden'
-    >
+    <div className='flex min-h-0 flex-1 flex-col overflow-hidden'>
       <ChatHistoryView
         bookKey={bookKey}
         onConversationSelected={handleConversationSelected}
@@ -203,6 +197,9 @@ export function MobileChatContent({
   );
 
   if (!isMobileWeb) {
+    // Native/default mobile keeps the existing expanded chat+history split.
+    // Mobile web cannot reach this branch: MobileReaderPanelHost passes
+    // layout="mobile-web" when isMobileWebReader(appService) is true.
     return (
       <div className='flex h-full min-h-[40vh] flex-col overflow-hidden'>
         <ReadAIHeader onNewConversation={handleNewConversation} />
@@ -223,11 +220,7 @@ export function MobileChatContent({
   }
 
   return (
-    <section
-      data-testid='mobile-ai-chat-shell'
-      data-expanded={isExpanded ? 'true' : 'false'}
-      className='flex h-full min-h-0 w-full flex-col overflow-hidden'
-    >
+    <section className='flex h-full min-h-0 w-full flex-col overflow-hidden'>
       <MobileWebReadAIHeader
         showHistory={showHistory}
         isExpanded={isExpanded}

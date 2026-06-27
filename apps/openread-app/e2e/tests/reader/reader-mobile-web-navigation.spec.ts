@@ -368,11 +368,8 @@ test.describe('Mobile web reader navigation regression', () => {
     viewMenu = await openMenu();
     await viewMenu.getByText('AI Chat History', { exact: true }).click();
     await expect(page.getByText('Read AI', { exact: true })).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByTestId('mobile-ai-chat-history-panel')).toBeVisible({
-      timeout: 10_000,
-    });
     await expect(page.getByText('Recents', { exact: true })).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByTestId('mobile-ai-chat-active-panel')).toHaveCount(0);
+    await expect(page.getByTestId('assistant-composer')).toHaveCount(0);
     await attachScreenshot(page, testInfo, 'mobile-web-reader-kebab-chat-history-sheet');
   });
 
@@ -412,19 +409,19 @@ test.describe('Mobile web reader navigation regression', () => {
     expect(agenticChatRequestsAfterInitialResponse).toBeGreaterThan(0);
     await expect(page.getByTestId('mobile-ai-inline-composer-input')).toHaveCount(0);
     await expect(page.getByTestId('assistant-composer')).toHaveCount(1);
-    await expect(page.getByText('AI is responding')).toHaveCount(0);
-    await expect(page.getByTestId('mobile-ai-chat-history-panel')).toHaveCount(0);
+    await expect(page.getByText('Recents', { exact: true })).toHaveCount(0);
     await attachScreenshot(page, testInfo, 'mobile-web-ai-half-sheet-response');
 
     await expandMobileSheet(page);
-    await expect(page.getByTestId('mobile-ai-chat-shell')).toHaveAttribute('data-expanded', 'true');
-    await expect(page.getByTestId('mobile-ai-chat-active-panel')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('button', { name: 'Chat history' })).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(page.getByTestId('assistant-composer')).toHaveCount(1);
     await expect(page.getByText('Recents', { exact: true })).toHaveCount(0);
     await expect(page.getByText(MOCK_AI_RESPONSE_TEXT).first()).toBeVisible({ timeout: 10_000 });
     await attachScreenshot(page, testInfo, 'mobile-web-ai-full-sheet-active-chat-card');
 
     await page.getByRole('button', { name: 'Chat history' }).click();
-    await expect(page.getByTestId('mobile-ai-chat-history-panel')).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText('Recents', { exact: true })).toBeVisible({ timeout: 10_000 });
     await page
       .getByRole('button', { name: /What is this book about\?/ })

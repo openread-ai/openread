@@ -7,6 +7,8 @@ export type MobileReaderPanelDestination =
   | 'ai-chat-history'
   | 'settings';
 
+export type MobileAIChatInitialView = 'active' | 'history';
+
 export type MobileWebKebabDestination = Exclude<MobileReaderPanelDestination, 'settings'>;
 
 export const isMobileWebReader = (

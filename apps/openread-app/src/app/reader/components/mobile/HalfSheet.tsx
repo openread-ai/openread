@@ -15,9 +15,18 @@ interface HalfSheetProps {
   onClose: () => void;
   title?: string;
   children: ReactNode | ((state: { isExpanded: boolean }) => ReactNode);
+  sheetClassName?: string;
+  contentClassName?: string;
 }
 
-function HalfSheet({ isOpen, onClose, title, children }: HalfSheetProps) {
+function HalfSheet({
+  isOpen,
+  onClose,
+  title,
+  children,
+  sheetClassName,
+  contentClassName,
+}: HalfSheetProps) {
   const { appService } = useEnv();
   const { safeAreaInsets } = useThemeStore();
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -150,6 +159,7 @@ function HalfSheet({ isOpen, onClose, title, children }: HalfSheetProps) {
           'flex flex-col',
           'animate-in slide-in-from-bottom duration-200',
           isExpanded ? 'rounded-none' : 'rounded-t-2xl',
+          sheetClassName,
         )}
         style={{
           maxHeight: isExpanded ? '100vh' : '60vh',
@@ -185,7 +195,9 @@ function HalfSheet({ isOpen, onClose, title, children }: HalfSheetProps) {
           </div>
         )}
 
-        <div className='flex-1 overflow-y-auto overscroll-contain'>{content}</div>
+        <div className={clsx('flex-1 overflow-y-auto overscroll-contain', contentClassName)}>
+          {content}
+        </div>
       </div>
     </div>,
     document.body,

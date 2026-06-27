@@ -368,7 +368,11 @@ test.describe('Mobile web reader navigation regression', () => {
     viewMenu = await openMenu();
     await viewMenu.getByText('AI Chat History', { exact: true }).click();
     await expect(page.getByText('Read AI', { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('mobile-ai-chat-history-panel')).toBeVisible({
+      timeout: 10_000,
+    });
     await expect(page.getByText('Recents', { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('mobile-ai-chat-active-panel')).toHaveCount(0);
     await attachScreenshot(page, testInfo, 'mobile-web-reader-kebab-chat-history-sheet');
   });
 
@@ -410,13 +414,25 @@ test.describe('Mobile web reader navigation regression', () => {
     await attachScreenshot(page, testInfo, 'mobile-web-ai-half-sheet-response');
 
     await expandMobileSheet(page);
+    await expect(page.getByTestId('mobile-ai-chat-shell')).toHaveAttribute('data-expanded', 'true');
+    await expect(page.getByTestId('mobile-ai-chat-active-panel')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('Recents', { exact: true })).toHaveCount(0);
+    await expect(page.getByText(MOCK_AI_RESPONSE_TEXT).first()).toBeVisible({ timeout: 10_000 });
+    await attachScreenshot(page, testInfo, 'mobile-web-ai-full-sheet-active-chat-card');
+
+    await page.getByRole('button', { name: 'Chat history' }).click();
+    await expect(page.getByTestId('mobile-ai-chat-history-panel')).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText('Recents', { exact: true })).toBeVisible({ timeout: 10_000 });
+    await page
+      .getByRole('button', { name: /What is this book about\?/ })
+      .first()
+      .click();
     await expect(page.getByText(MOCK_AI_RESPONSE_TEXT).first()).toBeVisible({ timeout: 10_000 });
     await page.getByRole('button', { name: 'New Chat' }).first().click();
-    await expect(page.getByText('No conversations yet')).toHaveCount(0);
+    await expect(page.getByText('Recents', { exact: true })).toHaveCount(0);
     await page.waitForTimeout(500);
     expect(getAgenticChatRequestCount()).toBe(agenticChatRequestsAfterInitialResponse);
-    await attachScreenshot(page, testInfo, 'mobile-web-ai-full-sheet-history-active');
+    await attachScreenshot(page, testInfo, 'mobile-web-ai-full-sheet-new-chat-card');
   });
 
   test('mobile web AI composer consumes inline prompt before fast New Chat remount', async ({
@@ -449,6 +465,7 @@ test.describe('Mobile web reader navigation regression', () => {
     ).toHaveCount(0);
 
     await expandMobileSheet(page);
+    await page.getByRole('button', { name: 'Chat history' }).click();
     await page
       .getByRole('button', { name: /What is this book about\?/ })
       .first()

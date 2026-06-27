@@ -1,11 +1,15 @@
 import { create } from 'zustand';
-import type { MobileReaderPanelDestination } from '@/app/reader/utils/mobileReaderPanels';
+import type {
+  MobileAIChatInitialView,
+  MobileReaderPanelDestination,
+} from '@/app/reader/utils/mobileReaderPanels';
 
 interface ActiveMobileReaderPanel {
   bookKey: string;
   destination: MobileReaderPanelDestination;
   initialQuestion?: string;
   initialQuestionConversationId?: string;
+  initialAIChatView?: MobileAIChatInitialView;
 }
 
 interface MobileReaderPanelState {
@@ -13,7 +17,11 @@ interface MobileReaderPanelState {
   openMobileReaderPanel: (
     bookKey: string,
     destination: MobileReaderPanelDestination,
-    options?: { initialQuestion?: string; initialQuestionConversationId?: string },
+    options?: {
+      initialQuestion?: string;
+      initialQuestionConversationId?: string;
+      initialAIChatView?: MobileAIChatInitialView;
+    },
   ) => void;
   closeMobileReaderPanel: () => void;
   clearInitialQuestion: () => void;
@@ -28,6 +36,8 @@ export const useMobileReaderPanelStore = create<MobileReaderPanelState>((set) =>
         destination,
         initialQuestion: options?.initialQuestion,
         initialQuestionConversationId: options?.initialQuestionConversationId,
+        initialAIChatView:
+          options?.initialAIChatView ?? (options?.initialQuestion ? 'active' : 'history'),
       },
     }),
   closeMobileReaderPanel: () => set({ activePanel: null }),

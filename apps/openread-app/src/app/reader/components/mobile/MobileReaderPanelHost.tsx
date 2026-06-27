@@ -4,6 +4,7 @@ import { useReaderStore } from '@/store/readerStore';
 import { useMobileReaderPanelStore } from '@/store/mobileReaderPanelStore';
 import { setNativeFooterActiveTab } from '@/services/annotation/nativeMenuBridge';
 import {
+  isMobileWebReader,
   mobileReaderDestinationToFooterTab,
   type MobileReaderPanelDestination,
 } from '../../utils/mobileReaderPanels';
@@ -51,10 +52,26 @@ function MobileReaderPanelHost({ bookKey }: MobileReaderPanelHostProps) {
     setHoveredBookKey(bookKey);
   };
 
+  const isAIChat = activeDestination === 'ai-chat-history';
+  const useMobileWebAIChat = isAIChat && isMobileWebReader(appService);
+
   return (
-    <HalfSheet isOpen={isOpen} onClose={handleClose}>
+    <HalfSheet
+      isOpen={isOpen}
+      onClose={handleClose}
+      sheetClassName={
+        useMobileWebAIChat ? 'bg-transparent shadow-none backdrop-blur-0 px-3 pb-3' : undefined
+      }
+      contentClassName={useMobileWebAIChat ? 'overflow-visible' : undefined}
+    >
       {({ isExpanded }) => (
-        <div className='min-h-[40vh] flex-1 overflow-y-auto'>
+        <div
+          className={
+            useMobileWebAIChat
+              ? 'flex h-full min-h-[40vh] w-full overflow-visible'
+              : 'min-h-[40vh] flex-1 overflow-y-auto'
+          }
+        >
           {activeDestination && tocTabByDestination[activeDestination] && (
             <MobileTOCContent
               bookKey={bookKey}
@@ -67,7 +84,10 @@ function MobileReaderPanelHost({ bookKey }: MobileReaderPanelHostProps) {
               isExpanded={isExpanded}
               initialQuestion={activePanel?.initialQuestion}
               initialQuestionConversationId={activePanel?.initialQuestionConversationId}
+              initialView={activePanel?.initialAIChatView}
+              variant={useMobileWebAIChat ? 'mobile-web-card' : 'default'}
               onConversationSelected={handleConversationSelected}
+              onClose={handleClose}
             />
           )}
           {activeDestination === 'settings' && <MobileSettingsContent bookKey={bookKey} />}

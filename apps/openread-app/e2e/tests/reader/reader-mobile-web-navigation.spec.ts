@@ -288,14 +288,14 @@ test.describe('Mobile web reader navigation regression', () => {
 
     await revealMobileHeader(page);
     await expect(page.getByLabel('More Options')).toHaveCount(0);
-    await page.getByTestId('mobile-read-ai-composer-menu-button').press('Enter');
+    await page.getByTestId('mobile-reader-menu-button').press('Enter');
     const viewMenu = page.locator('.view-menu').first();
     await expect(viewMenu).toBeVisible({ timeout: 10_000 });
     await expect(viewMenu.getByText('Continuous', { exact: true }).first()).toBeHidden();
     await expect(viewMenu.getByText('Paragraph Mode', { exact: true }).first()).toBeHidden();
   });
 
-  test('mobile web composer hamburger exposes current-book destinations and opens shared sheets', async ({
+  test('mobile web standalone reader menu exposes current-book destinations and opens shared sheets', async ({
     authenticatedPage: page,
   }, testInfo) => {
     test.skip(!isMobileProject(testInfo), 'Mobile web destination proof only.');
@@ -305,7 +305,7 @@ test.describe('Mobile web reader navigation regression', () => {
     const openMenu = async () => {
       await revealMobileHeader(page);
       await expect(page.getByLabel('More Options')).toHaveCount(0);
-      await page.getByTestId('mobile-read-ai-composer-menu-button').press('Enter');
+      await page.getByTestId('mobile-reader-menu-button').press('Enter');
       const viewMenu = page.locator('.view-menu').first();
       await expect(viewMenu).toBeVisible({ timeout: 10_000 });
       return viewMenu;
@@ -412,7 +412,7 @@ test.describe('Mobile web reader navigation regression', () => {
     const inlineComposer = page.getByTestId('mobile-ai-inline-composer-input');
     await expect(inlineComposer).toBeVisible({ timeout: 10_000 });
     await expect(page.getByTestId('mobile-ai-inline-composer-send')).toHaveCount(0);
-    await expect(page.getByTestId('mobile-read-ai-composer-menu-button')).toBeVisible();
+    await expect(page.getByTestId('mobile-reader-menu-button')).toBeVisible();
     await attachScreenshot(page, testInfo, 'mobile-web-ai-unified-composer-empty');
 
     await inlineComposer.fill('Line one\nLine two\nLine three\nLine four\nLine five\nLine six');
@@ -561,7 +561,7 @@ test.describe('Mobile web reader navigation regression', () => {
 
     await closeMobileSheet(page);
     await revealMobileHeader(page);
-    await page.getByTestId('mobile-read-ai-composer-menu-button').press('Enter');
+    await page.getByTestId('mobile-reader-menu-button').press('Enter');
     const viewMenu = page.locator('.view-menu').first();
     await expect(viewMenu).toBeVisible({ timeout: 10_000 });
     await viewMenu.getByText('AI Chat History', { exact: true }).click();

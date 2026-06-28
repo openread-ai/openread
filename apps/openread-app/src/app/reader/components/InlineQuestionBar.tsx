@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useRef } from 'react';
-import { ArrowUpIcon, BookOpenIcon, MenuIcon, XIcon } from 'lucide-react';
+import { ArrowUpIcon, BookOpenIcon, XIcon } from 'lucide-react';
 
 import { AI_COMPOSER_PLACEHOLDER } from '@/components/assistant/constants';
 import { MobileReadAIComposerChrome } from '@/components/assistant/MobileReadAIComposerChrome';
@@ -17,7 +17,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { usePrimaryBookHash } from '@/app/reader/hooks/usePrimaryBookHash';
 import { isMobileWebReader } from '@/app/reader/utils/mobileReaderPanels';
 import { cn } from '@/utils/tailwind';
-import ViewMenu from './ViewMenu';
+import { MobileReaderMenuLauncher } from './mobile/MobileReaderMenuLauncher';
 
 interface InlineQuestionBarProps {
   bookKey: string;
@@ -27,7 +27,6 @@ const InlineQuestionBar: React.FC<InlineQuestionBarProps> = ({ bookKey }) => {
   const _ = useTranslation();
   const [question, setQuestion] = useState('');
   const [dismissed, setDismissed] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const mobileTextareaRef = useRef<HTMLTextAreaElement>(null);
   const { appService } = useEnv();
@@ -101,13 +100,6 @@ const InlineQuestionBar: React.FC<InlineQuestionBarProps> = ({ bookKey }) => {
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
-      const submitter = (e.nativeEvent as SubmitEvent).submitter;
-      if (
-        submitter instanceof HTMLElement &&
-        submitter.closest('[data-openread-mobile-read-ai-menu]')
-      ) {
-        return;
-      }
       const trimmed = question.trim();
       if (!trimmed) return;
 
@@ -164,71 +156,21 @@ const InlineQuestionBar: React.FC<InlineQuestionBarProps> = ({ bookKey }) => {
   // On desktop, unmount entirely when not needed
   if (!appService?.isMobile && hoveredBookKey) return null;
 
-  return (
-    <div
-      className={cn(
-        'pointer-events-none fixed z-30 flex justify-center',
-        appService?.isMobile
-          ? 'transition-none'
-          : 'animate-in fade-in slide-in-from-bottom-4 transition-[left,right] duration-300',
-      )}
-      style={{
-        left: appService?.isMobile ? 0 : leftOffset,
-        right: appService?.isMobile ? 0 : rightOffset,
-        bottom: appService?.isMobile
-          ? `${Math.max((safeAreaInsets?.bottom || 0) - 10, 8)}px`
-          : `${24 + (safeAreaInsets?.bottom || 0)}px`,
-      }}
-    >
-      <form
-        onSubmit={handleSubmit}
-        className={cn(
-          'relative flex overflow-visible',
-          useMobileWebDock
-            ? 'pointer-events-auto w-[calc(100vw-2rem)] max-w-md'
-            : appService?.isMobile
-              ? cn(
-                  'border-base-content/10 bg-base-200/80 rounded-full border shadow-lg backdrop-blur-2xl',
-                  'transition-[width,opacity,padding] duration-300 ease-in-out',
-                  mobileCollapsed
-                    ? 'pointer-events-none w-0 px-0 opacity-0'
-                    : 'pointer-events-auto w-[85vw] max-w-xs px-4 py-2.5 opacity-100',
-                )
-              : 'border-base-content/10 bg-base-100/95 pointer-events-auto w-[85%] max-w-sm items-center gap-2 rounded-2xl border px-3 py-2 shadow-lg backdrop-blur-xl',
-        )}
+  if (useMobileWebDock) {
+    return (
+      <div
+        className='pointer-events-none fixed left-0 right-0 z-30 flex justify-center transition-none'
+        style={{ bottom: `${Math.max((safeAreaInsets?.bottom || 0) - 10, 8)}px` }}
       >
-        {useMobileWebDock ? (
-          <div className='relative w-full'>
-            {mobileMenuOpen && (
-              <button
-                type='button'
-                className='fixed inset-0 z-40 cursor-default bg-transparent'
-                aria-label={_('Close reader menu')}
-                onClick={() => setMobileMenuOpen(false)}
-              />
-            )}
-            {mobileMenuOpen && (
-              <div
-                className='absolute bottom-full left-0 z-50 mb-3'
-                data-openread-mobile-read-ai-menu
-                data-testid='mobile-read-ai-composer-menu-content'
-              >
-                <ViewMenu bookKey={bookKey} setIsDropdownOpen={setMobileMenuOpen} />
-              </div>
-            )}
+        <div
+          className='pointer-events-auto flex w-[calc(100vw-2rem)] max-w-md items-end gap-3'
+          data-testid='mobile-reader-dock'
+        >
+          <MobileReaderMenuLauncher bookKey={bookKey} />
+          <form onSubmit={handleSubmit} className='min-w-0 flex-1 overflow-visible'>
             <MobileReadAIComposerChrome
               className={cn('!overflow-visible', question.includes(' ') && 'rounded-[2rem]')}
             >
-              <button
-                type='button'
-                aria-label={_('Reader menu')}
-                data-testid='mobile-read-ai-composer-menu-button'
-                aria-expanded={mobileMenuOpen}
-                className='text-base-content/70 hover:bg-base-content/10 flex size-11 shrink-0 items-center justify-center rounded-full transition-colors active:scale-95'
-                onClick={() => setMobileMenuOpen((open) => !open)}
-              >
-                <MenuIcon className='size-5' />
-              </button>
               <textarea
                 ref={mobileTextareaRef}
                 value={question}
@@ -250,42 +192,74 @@ const InlineQuestionBar: React.FC<InlineQuestionBarProps> = ({ bookKey }) => {
                 </button>
               )}
             </MobileReadAIComposerChrome>
-          </div>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        'pointer-events-none fixed z-30 flex justify-center',
+        appService?.isMobile
+          ? 'transition-none'
+          : 'animate-in fade-in slide-in-from-bottom-4 transition-[left,right] duration-300',
+      )}
+      style={{
+        left: appService?.isMobile ? 0 : leftOffset,
+        right: appService?.isMobile ? 0 : rightOffset,
+        bottom: appService?.isMobile
+          ? `${Math.max((safeAreaInsets?.bottom || 0) - 10, 8)}px`
+          : `${24 + (safeAreaInsets?.bottom || 0)}px`,
+      }}
+    >
+      <form
+        onSubmit={handleSubmit}
+        className={cn(
+          'relative flex overflow-visible',
+          appService?.isMobile
+            ? cn(
+                'border-base-content/10 bg-base-200/80 rounded-full border shadow-lg backdrop-blur-2xl',
+                'transition-[width,opacity,padding] duration-300 ease-in-out',
+                mobileCollapsed
+                  ? 'pointer-events-none w-0 px-0 opacity-0'
+                  : 'pointer-events-auto w-[85vw] max-w-xs px-4 py-2.5 opacity-100',
+              )
+            : 'border-base-content/10 bg-base-100/95 pointer-events-auto w-[85%] max-w-sm items-center gap-2 rounded-2xl border px-3 py-2 shadow-lg backdrop-blur-xl',
+        )}
+      >
+        <BookOpenIcon className='text-base-content/40 size-4 shrink-0' />
+        <input
+          ref={inputRef}
+          type='text'
+          value={question}
+          onChange={(e) => setQuestion(e.target.value)}
+          placeholder={composerPlaceholder}
+          className={cn(
+            'min-w-0 flex-1 bg-transparent text-sm outline-none',
+            appService?.isMobile
+              ? 'text-base-content placeholder:text-base-content/50'
+              : 'text-base-content placeholder:text-base-content/55',
+          )}
+        />
+        {question.trim() ? (
+          <button
+            type='submit'
+            className='bg-base-content text-base-100 flex size-7 shrink-0 items-center justify-center rounded-full transition-transform active:scale-95'
+            aria-label={_('Ask')}
+          >
+            <ArrowUpIcon className='size-3.5' />
+          </button>
         ) : (
-          <>
-            <BookOpenIcon className='text-base-content/40 size-4 shrink-0' />
-            <input
-              ref={inputRef}
-              type='text'
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-              placeholder={composerPlaceholder}
-              className={cn(
-                'min-w-0 flex-1 bg-transparent text-sm outline-none',
-                appService?.isMobile
-                  ? 'text-base-content placeholder:text-base-content/50'
-                  : 'text-base-content placeholder:text-base-content/55',
-              )}
-            />
-            {question.trim() ? (
-              <button
-                type='submit'
-                className='bg-base-content text-base-100 flex size-7 shrink-0 items-center justify-center rounded-full transition-transform active:scale-95'
-                aria-label={_('Ask')}
-              >
-                <ArrowUpIcon className='size-3.5' />
-              </button>
-            ) : (
-              <button
-                type='button'
-                onClick={() => setDismissed(true)}
-                className='text-base-content/40 hover:text-base-content flex size-7 shrink-0 items-center justify-center rounded-full transition-colors'
-                aria-label={_('Dismiss')}
-              >
-                <XIcon className='size-3.5' />
-              </button>
-            )}
-          </>
+          <button
+            type='button'
+            onClick={() => setDismissed(true)}
+            className='text-base-content/40 hover:text-base-content flex size-7 shrink-0 items-center justify-center rounded-full transition-colors'
+            aria-label={_('Dismiss')}
+          >
+            <XIcon className='size-3.5' />
+          </button>
         )}
       </form>
     </div>

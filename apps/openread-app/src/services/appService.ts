@@ -21,6 +21,7 @@ import {
 import {
   getDir,
   getLocalBookFilename,
+  getRemoteBookFilename,
   getCoverFilename,
   getConfigFilename,
   getLibraryFilename,
@@ -56,6 +57,7 @@ import {
   DEFAULT_MOBILE_SYSTEM_SETTINGS,
   DEFAULT_ANNOTATOR_CONFIG,
   DEFAULT_EINK_VIEW_SETTINGS,
+  CLOUD_BOOKS_SUBDIR,
 } from './constants';
 import { DEFAULT_AI_SETTINGS } from './ai/constants';
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
@@ -616,6 +618,22 @@ export abstract class BaseAppService implements AppService {
     book.downloadedAt = Date.now();
   }
 
+  private async downloadFileMetadataBackedBook(book: Book): Promise<void> {
+    const localPath = getLocalBookFilename(book);
+    if (!(await this.fs.exists(getDir(book), 'Books'))) {
+      await this.fs.createDir(getDir(book), 'Books');
+    }
+
+    await downloadFile({
+      appService: this,
+      dst: `${this.localBooksDir}/${localPath}`,
+      cfp: `${CLOUD_BOOKS_SUBDIR}/${getRemoteBookFilename(book)}`,
+      bookHash: book.hash,
+      kind: 'user_book_file',
+    });
+    book.downloadedAt = Date.now();
+  }
+
   async exportBook(book: Book): Promise<boolean> {
     const { file } = await this.loadBookContent(book);
     const content = await file.arrayBuffer();
@@ -658,29 +676,40 @@ export abstract class BaseAppService implements AppService {
     } else if (book.storagePath) {
       await this.downloadStorageBackedBook(book);
       file = await this.fs.openFile(fp, 'Books');
-    } else if (book.url) {
-      file = await this.fs.openFile(book.url, 'None');
     } else {
-      // 0.9.64 has a bug that book.title might be modified but the filename is not updated
-      const bookDir = getDir(book);
-      const files = await this.fs.readDir(getDir(book), 'Books');
-      if (files.length > 0) {
-        const bookFile = files.find((f) => f.path.endsWith(`.${EXTS[book.format]}`));
-        if (bookFile) {
-          file = await this.fs.openFile(`${bookDir}/${bookFile.path}`, 'Books');
-        } else if (book.uploadedAt) {
-          logger.info('Book file not found locally, downloading from cloud', book.hash);
-          await this.downloadBook(book);
-          file = await this.fs.openFile(fp, 'Books');
-        } else {
-          throw new Error(BOOK_FILE_NOT_FOUND_ERROR);
-        }
-      } else if (book.uploadedAt) {
-        logger.info('Book directory empty, downloading from cloud', book.hash);
-        await this.downloadBook(book);
+      try {
+        await this.downloadFileMetadataBackedBook(book);
         file = await this.fs.openFile(fp, 'Books');
-      } else {
-        throw new Error(BOOK_FILE_NOT_FOUND_ERROR);
+      } catch (metadataError) {
+        logger.info('Book active file metadata download unavailable', {
+          hash: book.hash,
+          error: metadataError,
+        });
+        if (book.url) {
+          file = await this.fs.openFile(book.url, 'None');
+        } else {
+          // 0.9.64 has a bug that book.title might be modified but the filename is not updated
+          const bookDir = getDir(book);
+          const files = await this.fs.readDir(getDir(book), 'Books');
+          if (files.length > 0) {
+            const bookFile = files.find((f) => f.path.endsWith(`.${EXTS[book.format]}`));
+            if (bookFile) {
+              file = await this.fs.openFile(`${bookDir}/${bookFile.path}`, 'Books');
+            } else if (book.uploadedAt) {
+              logger.info('Book file not found locally, downloading from cloud', book.hash);
+              await this.downloadBook(book);
+              file = await this.fs.openFile(fp, 'Books');
+            } else {
+              throw new Error(BOOK_FILE_NOT_FOUND_ERROR);
+            }
+          } else if (book.uploadedAt) {
+            logger.info('Book directory empty, downloading from cloud', book.hash);
+            await this.downloadBook(book);
+            file = await this.fs.openFile(fp, 'Books');
+          } else {
+            throw new Error(BOOK_FILE_NOT_FOUND_ERROR);
+          }
+        }
       }
     }
     return { book, file };

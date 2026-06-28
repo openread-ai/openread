@@ -2,29 +2,31 @@ import { testOpenReadBookRef } from '../utils/bookIdentityFixtures';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Use vi.hoisted so these are available inside hoisted vi.mock factories
-const { mockQueueUpload, mockIsReady, mockGetState, MockDocumentLoader } = vi.hoisted(() => {
-  // Must use a regular function (not arrow) so it can be called with `new`
-  class FakeDocumentLoader {
-    async open() {
-      return {
-        book: {
-          metadata: { title: 'Test Book', author: 'Author', language: 'en' },
-          getCover: async () => null,
-        },
-        format: 'epub',
-      };
+const { mockQueueUpload, mockIsReady, mockGetState, mockGetDownloadUrl, MockDocumentLoader } =
+  vi.hoisted(() => {
+    // Must use a regular function (not arrow) so it can be called with `new`
+    class FakeDocumentLoader {
+      async open() {
+        return {
+          book: {
+            metadata: { title: 'Test Book', author: 'Author', language: 'en' },
+            getCover: async () => null,
+          },
+          format: 'epub',
+        };
+      }
     }
-  }
 
-  return {
-    mockQueueUpload: vi.fn(),
-    mockIsReady: vi.fn(),
-    mockGetState: vi.fn(() => ({
-      settings: { autoUpload: true },
-    })),
-    MockDocumentLoader: FakeDocumentLoader,
-  };
-});
+    return {
+      mockQueueUpload: vi.fn(),
+      mockIsReady: vi.fn(),
+      mockGetState: vi.fn(() => ({
+        settings: { autoUpload: true },
+      })),
+      mockGetDownloadUrl: vi.fn(async () => ({ downloadUrl: 'https://signed.example/book.epub' })),
+      MockDocumentLoader: FakeDocumentLoader,
+    };
+  });
 
 vi.mock('@/services/transferManager', () => ({
   transferManager: {
@@ -52,6 +54,14 @@ vi.mock('@/utils/md5', () => ({
 
 vi.mock('@/services/platform/storage', () => ({
   computeFileHash: vi.fn(() => 'b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9'),
+}));
+
+vi.mock('@/services/platform/client', () => ({
+  platform: {
+    catalog: {
+      getDownloadUrl: mockGetDownloadUrl,
+    },
+  },
 }));
 
 vi.mock('@/utils/book', () => ({
@@ -161,7 +171,7 @@ vi.mock('uuid', () => ({
 import type { Book, BookFormat } from '@/types/book';
 import { BaseAppService } from '@/services/appService';
 import { CloudSyncService } from '@/services/cloudSync';
-import { deleteFile } from '@/libs/storage';
+import { deleteFile, downloadFile } from '@/libs/storage';
 import type { FileSystem, BaseDir, ResolvedPath, SelectDirectoryMode } from '@/types/system';
 
 class TestAppService extends BaseAppService {
@@ -273,6 +283,74 @@ describe('appService deleteBook storage lifecycle', () => {
     expect(book.downloadedAt).toBeNull();
     expect(book.coverDownloadedAt).toBeNull();
     expect(book.uploadedAt).toBeNull();
+  });
+});
+
+describe('appService book content loading', () => {
+  let appService: TestAppService;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    appService = new TestAppService();
+  });
+
+  it('keeps storagePath-backed books on the catalog signing path', async () => {
+    const fs = (appService as unknown as { fs: FileSystem }).fs;
+    vi.mocked(fs.exists).mockResolvedValue(false);
+    vi.mocked(downloadFile).mockResolvedValue({});
+
+    const book = createMockBook({
+      hash: testOpenReadBookRef('d41d8cd98f00b204e9800998ecf8427e'),
+      storagePath: 'catalog/books/test.epub',
+      downloadedAt: null,
+    });
+
+    const content = await appService.loadBookContent(book);
+
+    expect(mockGetDownloadUrl).toHaveBeenCalledWith(book.hash);
+    expect(downloadFile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appService,
+        dst: '/mock-local-filename',
+        cfp: 'catalog/books/test.epub',
+        url: 'https://signed.example/book.epub',
+      }),
+    );
+    expect(downloadFile).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        bookHash: book.hash,
+        kind: 'user_book_file',
+      }),
+    );
+    expect(content.file).toBeInstanceOf(File);
+    expect(book.downloadedAt).toEqual(expect.any(Number));
+  });
+
+  it('downloads a remote book from active file metadata when book storagePath is missing', async () => {
+    const fs = (appService as unknown as { fs: FileSystem }).fs;
+    vi.mocked(fs.exists).mockResolvedValue(false);
+    vi.mocked(downloadFile).mockResolvedValue({});
+
+    const book = createMockBook({
+      hash: testOpenReadBookRef('d41d8cd98f00b204e9800998ecf8427e'),
+      storagePath: null,
+      uploadedAt: null,
+      downloadedAt: null,
+    });
+
+    const content = await appService.loadBookContent(book);
+
+    expect(downloadFile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appService,
+        dst: '/mock-local-filename',
+        cfp: 'books/mock-remote-filename',
+        bookHash: book.hash,
+        kind: 'user_book_file',
+      }),
+    );
+    expect(content.file).toBeInstanceOf(File);
+    expect(book.downloadedAt).toEqual(expect.any(Number));
   });
 });
 

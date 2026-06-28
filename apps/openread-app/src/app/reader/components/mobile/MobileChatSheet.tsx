@@ -15,22 +15,30 @@ const OPENREAD_AI_ICON_DARK = '/assets/openread-ai/icon-dark.svg';
 
 export type MobileAIChatLayout = 'default' | 'mobile-web';
 
-function OpenReadAILogo() {
+function OpenReadAILogo({ variant = 'default' }: { variant?: 'default' | 'hero' }) {
+  const size = variant === 'hero' ? 64 : 32;
+
   return (
-    <span className='bg-base-content/10 relative flex size-8 shrink-0 overflow-hidden rounded-xl'>
+    <span
+      className={
+        variant === 'hero'
+          ? 'bg-base-content/10 relative flex size-16 shrink-0 overflow-hidden rounded-[1.35rem] shadow-sm ring-1 ring-black/5 dark:ring-white/10'
+          : 'bg-base-content/10 relative flex size-8 shrink-0 overflow-hidden rounded-xl'
+      }
+    >
       <Image
         src={OPENREAD_AI_ICON_LIGHT}
         alt=''
-        width={32}
-        height={32}
+        width={size}
+        height={size}
         className='block dark:hidden'
         priority={false}
       />
       <Image
         src={OPENREAD_AI_ICON_DARK}
         alt=''
-        width={32}
-        height={32}
+        width={size}
+        height={size}
         className='hidden dark:block'
         priority={false}
       />
@@ -107,8 +115,33 @@ function MobileWebReadAIHeader({
       ? { label: _('Chat history'), onClick: onShowHistory, icon: <LuHistory size={20} /> }
       : { label: _('Close Read AI'), onClick: onClose, icon: <LuX size={22} /> };
 
+  if (isExpanded) {
+    return (
+      <header
+        className='grid shrink-0 grid-cols-[3rem_minmax(0,1fr)_3rem] items-start gap-2 px-4 pb-5 pt-3'
+        data-testid='mobile-read-ai-expanded-header'
+      >
+        <HeaderIconButton label={leftButton.label} onClick={leftButton.onClick}>
+          {leftButton.icon}
+        </HeaderIconButton>
+        <div className='flex min-w-0 flex-col items-center gap-2'>
+          <OpenReadAILogo variant='hero' />
+          <span className='bg-base-100/85 text-base-content truncate rounded-full px-7 py-2 text-base font-medium shadow-sm ring-1 ring-black/5 backdrop-blur dark:ring-white/10'>
+            {_('Read AI')}
+          </span>
+        </div>
+        <HeaderIconButton label={_('New Chat')} onClick={onNewConversation}>
+          <LuSquarePen size={20} />
+        </HeaderIconButton>
+      </header>
+    );
+  }
+
   return (
-    <header className='grid shrink-0 grid-cols-[3rem_minmax(0,1fr)_3rem] items-center gap-2 px-4 pb-2 pt-1'>
+    <header
+      className='grid shrink-0 grid-cols-[3rem_minmax(0,1fr)_3rem] items-center gap-2 px-4 pb-2 pt-1'
+      data-testid='mobile-read-ai-header'
+    >
       <HeaderIconButton label={leftButton.label} onClick={leftButton.onClick}>
         {leftButton.icon}
       </HeaderIconButton>
@@ -220,6 +253,7 @@ export function MobileChatContent({
         bookKey={bookKey}
         onConversationSelected={handleConversationSelected}
         openNotebookOnSelect={false}
+        showNewConversationAction={!isMobileWeb}
       />
     </div>
   );

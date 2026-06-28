@@ -60,11 +60,12 @@ function MobileReaderPanelHost({ bookKey }: MobileReaderPanelHostProps) {
       isOpen={isOpen}
       onClose={handleClose}
       chrome={useMobileWebAIChat ? 'drag-handle' : 'default'}
+      expandedRounding={useMobileWebAIChat ? 'top' : undefined}
       sheetClassName={
         useMobileWebAIChat
           ? ({ isExpanded }) =>
               isExpanded
-                ? 'h-dvh overflow-hidden border-0 bg-base-100 shadow-none backdrop-blur-none'
+                ? 'mx-1 h-dvh overflow-hidden border border-black/5 bg-base-100 shadow-none backdrop-blur-none dark:border-white/10'
                 : 'mx-3 mb-3 h-[52vh] overflow-hidden rounded-[2rem] border border-black/5 bg-base-100/95 shadow-2xl ring-1 ring-black/5 backdrop-blur-2xl dark:border-white/10 dark:ring-white/10'
           : undefined
       }

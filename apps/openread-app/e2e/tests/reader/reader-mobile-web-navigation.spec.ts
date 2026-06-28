@@ -359,8 +359,12 @@ test.describe('Mobile web reader navigation regression', () => {
 
     viewMenu = await openMenu();
     await viewMenu.getByText('AI Chat History', { exact: true }).click();
-    await expect(page.getByText('Read AI', { exact: true })).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText('Recents', { exact: true })).toBeVisible({ timeout: 10_000 });
+    const historySheet = page.getByTestId('mobile-read-ai-history-view');
+    await expect(historySheet).toBeVisible({ timeout: 10_000 });
+    await expect(historySheet.getByText('Read AI', { exact: true })).toBeVisible();
+    await expect(historySheet.getByText('Recents', { exact: true })).toBeVisible();
+    await expect(historySheet.getByRole('button', { name: 'New Chat' })).toHaveCount(1);
+    await expect(historySheet.getByText('New Chat', { exact: true })).toHaveCount(0);
     await expect(page.getByTestId('assistant-composer')).toHaveCount(0);
     await attachScreenshot(page, testInfo, 'mobile-web-reader-kebab-chat-history-sheet');
   });
@@ -484,6 +488,11 @@ test.describe('Mobile web reader navigation regression', () => {
         message: 'expanded mobile-web Read AI surface should fill the viewport',
       })
       .toBeGreaterThan(expandedViewport!.height * 0.9);
+    const expandedActiveHeader = expandedActiveChat.getByTestId('mobile-read-ai-expanded-header');
+    await expect(expandedActiveHeader).toBeVisible();
+    await expect(expandedActiveChat.getByRole('button', { name: 'Chat history' })).toBeVisible();
+    await expect(expandedActiveChat.getByRole('button', { name: 'New Chat' })).toHaveCount(1);
+    await expect(expandedActiveChat.getByText('New Chat', { exact: true })).toHaveCount(0);
     await expect(expandedActiveChat.getByText('Recents', { exact: true })).toHaveCount(0);
     await expect(expandedActiveChat.getByText(MOCK_AI_RESPONSE_TEXT)).toBeVisible();
     await attachScreenshot(page, testInfo, 'mobile-web-ai-unified-expanded-active-chat');
@@ -491,9 +500,21 @@ test.describe('Mobile web reader navigation regression', () => {
     await page.getByRole('button', { name: 'Chat history' }).click();
     const historyView = page.getByTestId('mobile-read-ai-history-view');
     await expect(historyView).toBeVisible({ timeout: 10_000 });
+    const expandedHistoryHeader = historyView.getByTestId('mobile-read-ai-expanded-header');
+    await expect(expandedHistoryHeader).toBeVisible();
+    const historyHeaderBox = await expandedHistoryHeader.boundingBox();
+    const expandedSurfaceBox = await unifiedSurface.boundingBox();
+    expect(historyHeaderBox).not.toBeNull();
+    expect(expandedSurfaceBox).not.toBeNull();
+    expect(historyHeaderBox!.y).toBeGreaterThanOrEqual(expandedSurfaceBox!.y - 1);
+    expect(historyHeaderBox!.y + historyHeaderBox!.height).toBeLessThanOrEqual(
+      expandedSurfaceBox!.y + expandedSurfaceBox!.height,
+    );
     await expect(historyView.getByText('Recents', { exact: true }).first()).toBeVisible({
       timeout: 10_000,
     });
+    await expect(historyView.getByRole('button', { name: 'New Chat' })).toHaveCount(1);
+    await expect(historyView.getByText('New Chat', { exact: true })).toHaveCount(0);
     await expect(historyView.getByTestId('assistant-composer')).toHaveCount(0);
     await attachScreenshot(page, testInfo, 'mobile-web-ai-unified-explicit-history-view');
 

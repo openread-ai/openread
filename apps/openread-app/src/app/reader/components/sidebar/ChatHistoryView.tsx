@@ -98,12 +98,14 @@ interface ChatHistoryViewProps {
   bookKey: string;
   onConversationSelected?: () => void;
   openNotebookOnSelect?: boolean;
+  showNewConversationAction?: boolean;
 }
 
 const ChatHistoryView: React.FC<ChatHistoryViewProps> = ({
   bookKey,
   onConversationSelected,
   openNotebookOnSelect = true,
+  showNewConversationAction = true,
 }) => {
   const _ = useTranslation();
   const { appService, envConfig } = useEnv();
@@ -230,21 +232,23 @@ const ChatHistoryView: React.FC<ChatHistoryViewProps> = ({
         <span className='text-base-content/60 text-xs font-semibold uppercase tracking-wider'>
           {_('Recents')}
         </span>
-        <button
-          onClick={handleNewConversation}
-          className={clsx(
-            'flex items-center gap-1.5 rounded-lg px-2.5 py-1',
-            'bg-base-300 text-base-content',
-            'hover:bg-base-content/10',
-            'border-base-content/10 border',
-            'transition-all duration-200 ease-out',
-            'active:scale-[0.97]',
-          )}
-          aria-label={_('New Chat')}
-        >
-          <LuPlus size={14} />
-          <span className='text-xs font-medium'>{_('New Chat')}</span>
-        </button>
+        {showNewConversationAction && (
+          <button
+            onClick={handleNewConversation}
+            className={clsx(
+              'flex items-center gap-1.5 rounded-lg px-2.5 py-1',
+              'bg-base-300 text-base-content',
+              'hover:bg-base-content/10',
+              'border-base-content/10 border',
+              'transition-all duration-200 ease-out',
+              'active:scale-[0.97]',
+            )}
+            aria-label={_('New Chat')}
+          >
+            <LuPlus size={14} />
+            <span className='text-xs font-medium'>{_('New Chat')}</span>
+          </button>
+        )}
       </div>
 
       {/* Conversation list */}

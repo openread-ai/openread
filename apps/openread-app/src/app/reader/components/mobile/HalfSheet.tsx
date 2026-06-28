@@ -19,6 +19,7 @@ interface HalfSheetProps {
   contentClassName?: string;
   overlayClassName?: string;
   chrome?: 'default' | 'drag-handle' | 'none';
+  expandedRounding?: 'none' | 'top';
 }
 
 function HalfSheet({
@@ -30,6 +31,7 @@ function HalfSheet({
   contentClassName,
   overlayClassName,
   chrome = 'default',
+  expandedRounding = 'none',
 }: HalfSheetProps) {
   const { appService } = useEnv();
   const { safeAreaInsets } = useThemeStore();
@@ -148,6 +150,8 @@ function HalfSheet({
   const content = typeof children === 'function' ? children(state) : children;
   const resolvedSheetClassName =
     typeof sheetClassName === 'function' ? sheetClassName(state) : sheetClassName;
+  const safeAreaTop = safeAreaInsets?.top ?? 0;
+  const safeAreaBottom = safeAreaInsets?.bottom ?? 0;
 
   return createPortal(
     <div className='fixed inset-0 z-40' role='none' onClick={(e) => e.stopPropagation()}>
@@ -169,13 +173,19 @@ function HalfSheet({
           'flex flex-col',
           'animate-in slide-in-from-bottom duration-200',
           resolvedSheetClassName,
-          isExpanded ? 'rounded-none' : 'rounded-t-2xl',
+          isExpanded
+            ? expandedRounding === 'top'
+              ? 'rounded-t-[2rem]'
+              : 'rounded-none'
+            : 'rounded-t-2xl',
         )}
         style={{
-          maxHeight: isExpanded ? '100vh' : '60vh',
-          height: isExpanded ? '100vh' : undefined,
-          paddingBottom: `${safeAreaInsets?.bottom || 0}px`,
-          paddingTop: isExpanded ? `${safeAreaInsets?.top || 0}px` : undefined,
+          maxHeight: isExpanded ? '100dvh' : '60vh',
+          height: isExpanded ? '100dvh' : undefined,
+          paddingBottom: `max(${safeAreaBottom}px, env(safe-area-inset-bottom, 0px))`,
+          paddingTop: isExpanded
+            ? `max(${safeAreaTop}px, env(safe-area-inset-top, 0px))`
+            : undefined,
           transition: 'max-height 0.3s ease-out, height 0.3s ease-out, border-radius 0.3s ease-out',
         }}
       >

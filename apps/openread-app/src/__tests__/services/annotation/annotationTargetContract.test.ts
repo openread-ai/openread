@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  denormalizeAnnotationTargetRects,
   denormalizePageQuad,
   getAnnotationTargetKey,
   getBookNoteLegacyCfi,
@@ -8,6 +9,8 @@ import {
   getBookNoteTarget,
   getBookNoteTargetKey,
   getBookNoteTextCfi,
+  getCurrentFixedPageIndex,
+  isAnnotationTargetOnCurrentFixedPage,
   makeAnnotationTargetFromSelection,
   makePageRegionAnnotationTarget,
   makePageRegionAnnotationTargetFromViewportRect,
@@ -108,13 +111,20 @@ describe('annotation target contract', () => {
     expect(denormalized?.height).toBeCloseTo(viewportRect.height);
   });
 
-  it('creates pdf-text-quad targets from text ranges without requiring a CFI', () => {
+  it('creates pdf-text-quad targets from the selected text-layer coordinate frame', () => {
     const canvas = document.createElement('canvas');
     canvas.getBoundingClientRect = () =>
-      ({ left: 10, top: 20, width: 200, height: 400, right: 210, bottom: 420 }) as DOMRect;
+      ({ left: 0, top: 0, width: 1000, height: 1000, right: 1000, bottom: 1000 }) as DOMRect;
     document.body.append(canvas);
+
+    const textLayer = document.createElement('div');
+    textLayer.className = 'textLayer';
+    textLayer.getBoundingClientRect = () =>
+      ({ left: 10, top: 20, width: 200, height: 400, right: 210, bottom: 420 }) as DOMRect;
+    document.body.append(textLayer);
+
     const textNode = document.createTextNode('selected pdf text');
-    document.body.append(textNode);
+    textLayer.append(textNode);
     const range = document.createRange();
     range.selectNodeContents(textNode);
     range.getClientRects = () =>
@@ -122,15 +132,15 @@ describe('annotation target contract', () => {
         { left: 30, top: 100, width: 80, height: 40, right: 110, bottom: 140 },
       ] as unknown as DOMRectList;
 
-    expect(
-      makeAnnotationTargetFromSelection({
-        format: 'pdf',
-        cfi: null,
-        range,
-        index: 7,
-        text: 'selected pdf text',
-      }),
-    ).toMatchObject({
+    const target = makeAnnotationTargetFromSelection({
+      format: 'pdf',
+      cfi: null,
+      range,
+      index: 7,
+      text: 'selected pdf text',
+    });
+
+    expect(target).toMatchObject({
       kind: 'pdf-text-quad',
       pageIndex: 7,
       pageWidth: 200,
@@ -138,10 +148,46 @@ describe('annotation target contract', () => {
       textQuote: 'selected pdf text',
       quads: [{ x1: 0.1, y1: 0.2, x2: 0.5, y2: 0.2, x3: 0.5, y3: 0.3, x4: 0.1, y4: 0.3 }],
     });
+    const [denormalized] = target ? denormalizeAnnotationTargetRects(target, document) : [];
+    expect(denormalized?.x).toBeCloseTo(30);
+    expect(denormalized?.y).toBeCloseTo(100);
+    expect(denormalized?.width).toBeCloseTo(80);
+    expect(denormalized?.height).toBeCloseTo(40);
 
     range.detach();
-    textNode.remove();
+    textLayer.remove();
     canvas.remove();
+  });
+
+  it('matches fixed-page targets against canonical page progress instead of sectionId', () => {
+    const quads = [{ x1: 0.1, y1: 0.2, x2: 0.4, y2: 0.2, x3: 0.4, y3: 0.25, x4: 0.1, y4: 0.25 }];
+    const target = makePdfTextQuadAnnotationTarget({
+      pageIndex: 7,
+      pageWidth: 600,
+      pageHeight: 800,
+      quads,
+    });
+    const sectionIdTarget = makePdfTextQuadAnnotationTarget({
+      pageIndex: 42,
+      pageWidth: 600,
+      pageHeight: 800,
+      quads,
+    });
+    const progress = {
+      sectionId: 42,
+      section: { current: 7, total: 10 },
+      pageinfo: { current: 3, total: 10 },
+    };
+
+    expect(getCurrentFixedPageIndex(progress)).toBe(7);
+    expect(isAnnotationTargetOnCurrentFixedPage(target, progress)).toBe(true);
+    expect(isAnnotationTargetOnCurrentFixedPage(sectionIdTarget, progress)).toBe(false);
+    expect(
+      isAnnotationTargetOnCurrentFixedPage(target, {
+        section: null,
+        pageinfo: { current: 7 },
+      }),
+    ).toBe(true);
   });
 
   it('creates page-region targets from viewport rectangles for image/scanned pages', () => {

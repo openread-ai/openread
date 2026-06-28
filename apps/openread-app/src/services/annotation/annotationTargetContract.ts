@@ -1,5 +1,5 @@
 import type { BookFormat } from '@openread/types';
-import type { AnnotationTarget, BookNote } from '@/types/book';
+import type { AnnotationTarget, BookNote, PageInfo } from '@/types/book';
 
 const TEXT_CFI_PREFIX = 'epubcfi(';
 
@@ -95,14 +95,54 @@ function parseQuad(value: unknown): PageQuad | null {
   return { x1, y1, x2, y2, x3, y3, x4, y4 } as PageQuad;
 }
 
-function getRangePageBox(range: Range): PageRect | null {
-  const doc = range.commonAncestorContainer.ownerDocument;
-  if (!doc) return null;
-  const canvas = doc.querySelector('canvas');
-  const pageElement = canvas ?? doc.body ?? doc.documentElement;
-  const rect = pageElement.getBoundingClientRect();
+function elementFromNode(node: Node | null | undefined): Element | null {
+  if (!node) return null;
+  return node.nodeType === 1 ? (node as Element) : node.parentElement;
+}
+
+function rectFromElement(element: Element | null | undefined): PageRect | null {
+  if (!element) return null;
+  const rect = element.getBoundingClientRect();
   if (!rect.width || !rect.height) return null;
   return { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
+}
+
+function getPageBoxElement(
+  doc: Document,
+  anchor?: Node | null,
+  targetKind?: 'pdf-text-quad' | 'page-region',
+): Element | null {
+  const anchorElement = elementFromNode(anchor);
+
+  if (targetKind === 'pdf-text-quad') {
+    const textLayer = anchorElement?.closest('.textLayer') ?? doc.querySelector('.textLayer');
+    if (textLayer) return textLayer;
+  }
+
+  if (targetKind === 'page-region') {
+    const pageRegionElement =
+      anchorElement?.closest('#canvas, canvas, img, svg') ??
+      doc.querySelector('canvas') ??
+      doc.querySelector('#canvas') ??
+      doc.querySelector('img, svg');
+    if (pageRegionElement) return pageRegionElement;
+  }
+
+  return (
+    doc.querySelector('.textLayer') ??
+    doc.querySelector('canvas') ??
+    doc.body ??
+    doc.documentElement
+  );
+}
+
+function getRangePageBox(
+  range: Range,
+  targetKind?: 'pdf-text-quad' | 'page-region',
+): PageRect | null {
+  const doc = range.commonAncestorContainer.ownerDocument;
+  if (!doc) return null;
+  return rectFromElement(getPageBoxElement(doc, range.commonAncestorContainer, targetKind));
 }
 
 export function makePageRegionAnnotationTargetFromViewportRect({
@@ -128,12 +168,11 @@ export function makePageRegionAnnotationTargetFromViewportRect({
   });
 }
 
-function getDocumentPageBox(doc: Document): PageRect | null {
-  const canvas = doc.querySelector('canvas');
-  const pageElement = canvas ?? doc.body ?? doc.documentElement;
-  const rect = pageElement.getBoundingClientRect();
-  if (!rect.width || !rect.height) return null;
-  return { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
+function getDocumentPageBox(
+  doc: Document,
+  targetKind?: 'pdf-text-quad' | 'page-region',
+): PageRect | null {
+  return rectFromElement(getPageBoxElement(doc, null, targetKind));
 }
 
 export function isTextCfi(value: unknown): value is string {
@@ -204,7 +243,8 @@ export function makeFixedPageAnnotationTargetFromRange({
   range: Range;
   text?: string;
 }): AnnotationTarget | null {
-  const pageBox = getRangePageBox(range);
+  const targetKind = format === 'pdf' ? 'pdf-text-quad' : 'page-region';
+  const pageBox = getRangePageBox(range, targetKind);
   if (!pageBox) return null;
   const rects = Array.from(range.getClientRects())
     .map((rect) => ({ x: rect.left, y: rect.top, width: rect.width, height: rect.height }))
@@ -271,6 +311,30 @@ export function isFixedPageAnnotationTarget(
   target: AnnotationTarget | null | undefined,
 ): target is Extract<AnnotationTarget, { kind: 'pdf-text-quad' | 'page-region' }> {
   return target?.kind === 'pdf-text-quad' || target?.kind === 'page-region';
+}
+
+type FixedPageProgress = {
+  section?: Pick<PageInfo, 'current'> | null;
+  pageinfo?: Pick<PageInfo, 'current'> | null;
+};
+
+export function getCurrentFixedPageIndex(
+  progress: FixedPageProgress | null | undefined,
+): number | null {
+  const sectionCurrent = progress?.section?.current;
+  if (isFiniteNumber(sectionCurrent)) return sectionCurrent;
+  const pageCurrent = progress?.pageinfo?.current;
+  if (isFiniteNumber(pageCurrent)) return pageCurrent;
+  return null;
+}
+
+export function isAnnotationTargetOnCurrentFixedPage(
+  target: AnnotationTarget | null | undefined,
+  progress: FixedPageProgress | null | undefined,
+): boolean {
+  if (!isFixedPageAnnotationTarget(target)) return false;
+  const currentPageIndex = getCurrentFixedPageIndex(progress);
+  return currentPageIndex != null && target.pageIndex === currentPageIndex;
 }
 
 export function normalizeAnnotationTarget(
@@ -418,7 +482,8 @@ export function denormalizeAnnotationTargetRects(
   target: AnnotationTarget,
   doc: Document,
 ): PageRect[] {
-  const pageBox = getDocumentPageBox(doc);
+  if (target.kind === 'text-cfi') return [];
+  const pageBox = getDocumentPageBox(doc, target.kind);
   if (!pageBox) return [];
   if (target.kind === 'pdf-text-quad') {
     return target.quads.map((quad) => denormalizePageQuad(quad, pageBox));

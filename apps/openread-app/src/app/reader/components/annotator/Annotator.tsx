@@ -42,10 +42,13 @@ import {
   getBookNoteTarget,
   getBookNoteTargetKey,
   getBookNoteTextCfi,
+  isAnnotationTargetInLocation,
+  isAnnotationTargetOnCurrentFixedPage,
   makeAnnotationTargetFromSelection,
   makeTextCfiAnnotationTarget,
 } from '@/services/annotation/annotationTargetContract';
 import {
+  getPdfContextMenuSelectionAction,
   isHighlightActionDisabledForFormat,
   shouldSuppressWebAnnotationPopupForSelection,
 } from '@/services/annotation/selectionMenuContract';
@@ -303,9 +306,21 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     detail.doc?.addEventListener('pointerup', handlePointerUp.bind(null, doc, index));
     detail.doc?.addEventListener('selectionchange', handleSelectionchange.bind(null, doc, index));
 
-    // For PDF selections, enable right-click context menu to directly open translator popup.
+    // For desktop web PDF selections, right-click opens the translator shortcut.
+    // Mobile web and native app ownership is delegated to selectionMenuContract.
     if (bookData.book?.format === 'pdf') {
       detail.doc?.addEventListener('contextmenu', (e: Event) => {
+        const pointerType =
+          'pointerType' in e && typeof (e as PointerEvent).pointerType === 'string'
+            ? (e as PointerEvent).pointerType
+            : null;
+        const action = getPdfContextMenuSelectionAction({
+          appService,
+          pointerType,
+          hasDesktopNativeMenu: Boolean(showNativeMenu),
+        });
+        if (action === 'allow-native') return;
+
         try {
           const sel = doc.getSelection?.();
           if (sel && !sel.isCollapsed) {
@@ -328,17 +343,17 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
                   }) ?? undefined,
                 cfi,
               });
-              // Show translation popup preferentially for PDF right-click
-              setShowAnnotPopup(false);
-              setShowDeepLPopup(true);
-              setShowWiktionaryPopup(false);
-              setShowWikipediaPopup(false);
+              if (action === 'open-translation') {
+                setShowAnnotPopup(false);
+                setShowDeepLPopup(true);
+                setShowWiktionaryPopup(false);
+                setShowWikipediaPopup(false);
+              }
             }
           }
         } catch (err) {
-          logger.warn('PDF context menu translation failed', err);
+          logger.warn('PDF context menu selection handling failed', err);
         }
-        // Prevent native menu to keep experience consistent
         e.preventDefault();
         e.stopPropagation();
         return false;
@@ -573,12 +588,20 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     if (!progress) return;
     const { location } = progress;
     const { booknotes = [] } = config;
+    const isBooknoteInCurrentLocation = (item: BookNote) => {
+      const target = getBookNoteTarget(item);
+      return (
+        isAnnotationTargetInLocation(target, location) ||
+        isAnnotationTargetOnCurrentFixedPage(target, progress) ||
+        isCfiInLocation(getBookNoteTextCfi(item), location)
+      );
+    };
     const annotations = booknotes.filter(
       (item) =>
         !item.deletedAt &&
         item.type === 'annotation' &&
         item.style &&
-        isCfiInLocation(getBookNoteTextCfi(item), location),
+        isBooknoteInCurrentLocation(item),
     );
     const notes = booknotes.filter(
       (item) =>
@@ -586,7 +609,7 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
         item.type === 'annotation' &&
         item.note &&
         item.note.trim().length > 0 &&
-        isCfiInLocation(getBookNoteTextCfi(item), location),
+        isBooknoteInCurrentLocation(item),
     );
     try {
       Promise.all(annotations.map((annotation) => view?.addAnnotation(annotation)));

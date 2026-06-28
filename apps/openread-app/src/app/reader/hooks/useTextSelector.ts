@@ -6,6 +6,7 @@ import { normalizeReaderLayout } from '@/app/reader/utils/readerLayoutContract';
 import { getOSPlatform } from '@/utils/misc';
 import { eventDispatcher } from '@/utils/event';
 import { makeAnnotationTargetFromSelection } from '@/services/annotation/annotationTargetContract';
+import { shouldSuppressBrowserSelectionMenuForSelection } from '@/services/annotation/selectionMenuContract';
 import { isPointerInsideSelection, TextSelection } from '@/utils/sel';
 import { useInstantAnnotation } from './useInstantAnnotation';
 export const useTextSelector = (
@@ -239,12 +240,12 @@ export const useTextSelector = (
   };
 
   const handleContextmenu = (event: Event) => {
-    // On mobile, allow the native iOS/Android context menu (Copy, Writing Tools,
-    // Look Up, Translate, Share, Speak) — don't suppress it.
-    if (appService?.isMobile) {
-      return;
-    }
-    if (lastPointerType.current === 'touch' || lastPointerType.current === 'pen') {
+    if (
+      shouldSuppressBrowserSelectionMenuForSelection({
+        appService,
+        pointerType: lastPointerType.current,
+      })
+    ) {
       event.preventDefault();
       event.stopPropagation();
       return false;

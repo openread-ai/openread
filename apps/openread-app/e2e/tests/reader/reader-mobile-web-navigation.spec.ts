@@ -315,6 +315,17 @@ test.describe('Mobile web reader navigation regression', () => {
     await expect(popover).toBeVisible({ timeout: 10_000 });
     await expect(popover).toHaveClass(/left-1\/2/);
     await expect(popover).toHaveClass(/-translate-x-1\/2/);
+    await expect(popover).toHaveClass(/top-\[calc\(env\(safe-area-inset-top\)\+3\.0625rem\)\]/);
+    const headerGapPx = await page.evaluate(() => {
+      const header = document.querySelector('.header-bar')?.getBoundingClientRect();
+      const bookInfoPopover = document
+        .querySelector('[data-testid="mobile-reader-book-info-popover"]')
+        ?.getBoundingClientRect();
+      if (!header || !bookInfoPopover) return null;
+      return Math.round(bookInfoPopover.top - header.bottom);
+    });
+    expect(headerGapPx).toBeGreaterThanOrEqual(0);
+    expect(headerGapPx).toBeLessThanOrEqual(8);
     await expect(popover.getByRole('heading', { name: FIXTURES.reflowable.title })).toBeVisible();
     await expect(popover.getByText('Progress', { exact: true })).toHaveCount(0);
     await expect(popover.getByText('Location', { exact: true })).toHaveCount(0);

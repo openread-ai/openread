@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 
 import HeaderBar from '@/app/reader/components/HeaderBar';
+import { MOBILE_BOOK_INFO_POPOVER_TOP_OFFSET_CLASS } from '@/app/reader/components/mobile/MobileBookInfoPopover';
 
 const mockState = vi.hoisted(() => {
   const appService = {
@@ -236,6 +237,7 @@ describe('mobile web reader header title info popover', () => {
     expect(popover.className).toContain('fixed');
     expect(popover.className).toContain('left-1/2');
     expect(popover.className).toContain('-translate-x-1/2');
+    expect(popover.className).toContain(MOBILE_BOOK_INFO_POPOVER_TOP_OFFSET_CLASS);
     expect(screen.getByText('Herman Melville')).toBeTruthy();
     expect(screen.getByAltText('Moby-Dick').getAttribute('src')).toBe('/catalog-cover.jpg');
     expect(screen.queryByText('Progress')).toBeNull();

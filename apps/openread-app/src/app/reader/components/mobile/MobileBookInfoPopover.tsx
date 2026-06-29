@@ -20,6 +20,9 @@ interface MobileBookInfoPopoverProps {
 
 const hasValue = (value: string | null | undefined): value is string => !!value?.trim();
 
+export const MOBILE_BOOK_INFO_POPOVER_TOP_OFFSET_CLASS =
+  'top-[calc(env(safe-area-inset-top)+3.0625rem)]';
+
 const MobileBookInfoPopover: React.FC<MobileBookInfoPopoverProps> = ({
   data,
   onClose,
@@ -58,7 +61,8 @@ const MobileBookInfoPopover: React.FC<MobileBookInfoPopoverProps> = ({
       aria-modal='false'
       aria-label={_('{{title}} book information', { title: data.title })}
       className={clsx(
-        'bg-base-100 text-base-content border-base-300 fixed left-1/2 top-[calc(env(safe-area-inset-top)+4rem)] z-50 w-[min(calc(100vw-2rem),20rem)] -translate-x-1/2 rounded-2xl border p-4 shadow-2xl',
+        'bg-base-100 text-base-content border-base-300 fixed left-1/2 z-50 w-[min(calc(100vw-2rem),20rem)] -translate-x-1/2 rounded-2xl border p-4 shadow-2xl',
+        MOBILE_BOOK_INFO_POPOVER_TOP_OFFSET_CLASS,
         className,
       )}
       data-testid='mobile-reader-book-info-popover'

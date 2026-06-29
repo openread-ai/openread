@@ -195,7 +195,6 @@ describe('mobile web reader menu grouping dividers', () => {
       'Parallel Read',
       'divider',
       'Export Annotations',
-      'Sort TOC by Page',
       'divider',
       'Dark Mode',
       'Invert Image In Dark Mode',
@@ -214,6 +213,7 @@ describe('mobile web reader menu grouping dividers', () => {
     expect(screen.queryByText('Navigation destinations')).toBeNull();
     expect(screen.queryByText('Reading tools')).toBeNull();
     expect(screen.queryByText('Display settings')).toBeNull();
+    expect(screen.queryByText('Sort TOC by Page')).toBeNull();
   });
 
   it('preserves representative menu actions and toggles', () => {
@@ -232,12 +232,9 @@ describe('mobile web reader menu grouping dividers', () => {
     fireEvent.click(screen.getByText('Parallel Read'));
     expect(mockState.setParallel).toHaveBeenCalledWith(['book-1', 'book-2']);
 
-    fireEvent.click(screen.getByText('Sort TOC by Page'));
-    expect(mockState.setViewSettings).toHaveBeenCalledWith(
-      'book-1',
-      expect.objectContaining({ sortedTOC: true }),
-    );
-    expect(mockState.dispatch).toHaveBeenCalledWith('toc-updated', { bookKey: 'book-1' });
+    fireEvent.click(screen.getByText('Export Annotations'));
+    expect(mockState.dispatch).toHaveBeenCalledWith('export-annotations', { bookKey: 'book-1' });
+    expect(mockState.setViewSettings).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByText('Dark Mode'));
     expect(mockState.setThemeMode).toHaveBeenCalledWith('auto');

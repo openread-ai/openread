@@ -46,7 +46,6 @@ import { tauriHandleToggleFullScreen } from '@/utils/window';
 import { LAUNCH_TTS_ENABLED, LAUNCH_TRANSLATION_ENABLED } from '@/services/launchFeatures';
 import { getParallelReadMenuBooks } from '../utils/parallelReadEligibility';
 import { parseBookRefFromReaderBookKey } from '@/utils/readerBookKey';
-import { sortTocItems } from '@/utils/toc';
 import MenuItem from '@/components/MenuItem';
 import Menu from '@/components/Menu';
 import { BookMenuItems } from './sidebar/BookMenu';
@@ -245,22 +244,6 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
     setIsDropdownOpen?.(false);
   };
 
-  const handleToggleSortTOC = () => {
-    const nextSortedTOC = !viewSettings.sortedTOC;
-    const nextViewSettings = { ...viewSettings, sortedTOC: nextSortedTOC };
-    setViewSettings(bookKey, nextViewSettings);
-    const toc = bookData.bookDoc?.toc;
-    if (toc) {
-      if (nextSortedTOC) {
-        sortTocItems(toc);
-      } else {
-        toc.sort((a, b) => (a.id ?? 0) - (b.id ?? 0));
-      }
-      eventDispatcher.dispatch('toc-updated', { bookKey });
-    }
-    setIsDropdownOpen?.(false);
-  };
-
   const handleReloadPage = () => {
     window.location.reload();
     setIsDropdownOpen?.(false);
@@ -348,12 +331,6 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
           key='export-annotations'
           label={_('Export Annotations')}
           onClick={handleExportAnnotations}
-        />,
-        <MenuItem
-          key='sort-toc-by-page'
-          label={_('Sort TOC by Page')}
-          Icon={viewSettings.sortedTOC ? MdCheck : undefined}
-          onClick={handleToggleSortTOC}
         />,
       ],
       [

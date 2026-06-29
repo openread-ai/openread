@@ -200,7 +200,6 @@ describe('mobile web reader menu grouping dividers', () => {
       'Invert Image In Dark Mode',
       'divider',
       expect.stringMatching(/^Synced at /),
-      'Reload PageShift+R',
     ]);
 
     expect(screen.getAllByTestId('mobile-reader-menu-group-divider')).toHaveLength(5);
@@ -218,6 +217,7 @@ describe('mobile web reader menu grouping dividers', () => {
     expect(screen.queryByText('Reading tools')).toBeNull();
     expect(screen.queryByText('Display settings')).toBeNull();
     expect(screen.queryByText('Sort TOC by Page')).toBeNull();
+    expect(screen.queryByText('Reload Page')).toBeNull();
   });
 
   it('preserves representative menu actions and toggles', () => {

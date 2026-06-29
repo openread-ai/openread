@@ -246,11 +246,6 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
     setIsDropdownOpen?.(false);
   };
 
-  const handleReloadPage = () => {
-    window.location.reload();
-    setIsDropdownOpen?.(false);
-  };
-
   if (isMobileWeb) {
     const parallelReadMenuItem =
       bookKeys.length < 2 && eligibleParallelBooks.length > 0 ? (
@@ -363,12 +358,6 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
           Icon={user ? MdSync : MdSyncProblem}
           iconClassName={user && viewState?.syncing ? 'animate-reverse-spin' : ''}
           onClick={handleSync}
-        />,
-        <MenuItem
-          key='reload-page'
-          label={_('Reload Page')}
-          shortcut='Shift+R'
-          onClick={handleReloadPage}
         />,
       ],
     ];

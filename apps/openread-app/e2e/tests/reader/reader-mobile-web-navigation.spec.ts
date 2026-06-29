@@ -386,6 +386,32 @@ test.describe('Mobile web reader navigation regression', () => {
     expect(menuPlacement?.gap).toBeGreaterThanOrEqual(6);
     expect(menuPlacement?.gap).toBeLessThanOrEqual(8);
 
+    const menuHeightContract = await page.evaluate(() => {
+      const header = document.querySelector('.header-bar')?.getBoundingClientRect();
+      const menuOverlay = document
+        .querySelector('[data-testid="mobile-reader-menu-content"]')
+        ?.getBoundingClientRect();
+      const viewMenuElement = document.querySelector('.view-menu');
+      if (!header || !menuOverlay || !viewMenuElement) return null;
+      const styles = window.getComputedStyle(viewMenuElement);
+      return {
+        clientHeight: viewMenuElement.clientHeight,
+        expectedMaxHeight: Math.floor(
+          Math.min(window.innerHeight * 0.8, menuOverlay.bottom - header.bottom),
+        ),
+        maxHeight: Math.round(Number.parseFloat(styles.maxHeight)),
+        overflowY: styles.overflowY,
+      };
+    });
+    expect(menuHeightContract).not.toBeNull();
+    expect(menuHeightContract?.maxHeight).toBeLessThanOrEqual(
+      (menuHeightContract?.expectedMaxHeight ?? 0) + 1,
+    );
+    expect(menuHeightContract?.clientHeight).toBeLessThanOrEqual(
+      (menuHeightContract?.maxHeight ?? 0) + 1,
+    );
+    expect(menuHeightContract?.overflowY).toBe('auto');
+
     const topLevelLabels = await viewMenu.evaluate((menu) =>
       Array.from(menu.children)
         .map((child) => {
@@ -395,8 +421,8 @@ test.describe('Mobile web reader navigation regression', () => {
         .filter(Boolean),
     );
 
-    expect(topLevelLabels).toHaveLength(12);
-    expect(topLevelLabels.slice(0, 8)).toEqual([
+    expect(topLevelLabels).toHaveLength(11);
+    expect(topLevelLabels.slice(0, 7)).toEqual([
       'Table of Contents',
       'Highlights',
       'Bookmarks',
@@ -404,13 +430,12 @@ test.describe('Mobile web reader navigation regression', () => {
       'Speed Reading Mode',
       'Parallel Read',
       'Export Annotations',
-      'Sort TOC by Page',
     ]);
-    expect(topLevelLabels[8]).toMatch(/^(Dark|Light|Auto) Mode$/);
-    expect(topLevelLabels[9]).toBe('Invert Image In Dark Mode');
-    expect(topLevelLabels[10]).toMatch(/^(Sign in to Sync|Synced at|Never synced)/);
-    expect(topLevelLabels[11]).toBe('Reload PageShift+R');
-    await attachScreenshot(page, testInfo, 'mobile-web-reader-kebab-12-options');
+    expect(topLevelLabels[7]).toMatch(/^(Dark|Light|Auto) Mode$/);
+    expect(topLevelLabels[8]).toBe('Invert Image In Dark Mode');
+    expect(topLevelLabels[9]).toMatch(/^(Sign in to Sync|Synced at|Never synced)/);
+    expect(topLevelLabels[10]).toBe('Reload PageShift+R');
+    await attachScreenshot(page, testInfo, 'mobile-web-reader-kebab-11-options');
 
     await viewMenu.getByText('Table of Contents', { exact: true }).click();
     await expect(page.getByRole('button', { name: 'Chapters' })).toHaveClass(/bg-base-content\/10/);

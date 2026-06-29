@@ -4,6 +4,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import InlineQuestionBar from '@/app/reader/components/InlineQuestionBar';
 import {
   MOBILE_READER_MENU_BUTTON_SIZE_PX,
+  MOBILE_READER_MENU_MAX_HEIGHT_CAP_RATIO,
+  MOBILE_READER_MENU_MAX_HEIGHT_CSS_VAR,
   MOBILE_READER_MENU_OVERLAY_GAP_PX,
   MobileReaderMenuLauncher,
 } from '@/app/reader/components/mobile/MobileReaderMenuLauncher';
@@ -225,5 +227,52 @@ describe('MobileReaderMenuLauncher', () => {
 
     fireEvent.pointerDown(screen.getByText('Outside'));
     expect(screen.queryByTestId('mock-view-menu')).toBeNull();
+  });
+
+  it('derives max height from the active reader header to dock space capped at 80dvh', async () => {
+    const dockBottomOffsetPx = 8;
+    const viewportHeight = 360;
+    const headerBottom = 80;
+    const expectedMaxHeight = Math.floor(
+      Math.min(
+        viewportHeight * MOBILE_READER_MENU_MAX_HEIGHT_CAP_RATIO,
+        viewportHeight -
+          (dockBottomOffsetPx +
+            MOBILE_READER_MENU_BUTTON_SIZE_PX +
+            MOBILE_READER_MENU_OVERLAY_GAP_PX) -
+          headerBottom,
+      ),
+    );
+    const rectSpy = vi
+      .spyOn(Element.prototype, 'getBoundingClientRect')
+      .mockImplementation(function getBoundingClientRect(this: Element) {
+        if ((this as HTMLElement).classList.contains('header-bar')) {
+          return { bottom: headerBottom } as DOMRect;
+        }
+        return { bottom: 0 } as DOMRect;
+      });
+    Object.defineProperty(window, 'innerHeight', {
+      configurable: true,
+      value: viewportHeight,
+    });
+
+    render(
+      <div>
+        <div className='header-bar' />
+        <MobileReaderMenuLauncher bookKey='book-1' dockBottomOffsetPx={dockBottomOffsetPx} />
+      </div>,
+    );
+
+    fireEvent.click(screen.getByTestId('mobile-reader-menu-button'));
+
+    await waitFor(() => {
+      expect(
+        screen
+          .getByTestId('mobile-reader-menu-content')
+          .style.getPropertyValue(MOBILE_READER_MENU_MAX_HEIGHT_CSS_VAR),
+      ).toBe(`${expectedMaxHeight}px`);
+    });
+
+    rectSpy.mockRestore();
   });
 });

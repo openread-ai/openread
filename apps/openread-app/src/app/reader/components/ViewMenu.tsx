@@ -58,6 +58,8 @@ interface ViewMenuProps {
 
 type ViewMenuGroup = React.ReactNode[];
 
+const MOBILE_READER_MENU_MAX_HEIGHT = 'var(--mobile-reader-menu-max-height, 80dvh)';
+
 const ViewMenuGroupDivider = () => (
   <div
     aria-hidden='true'
@@ -374,7 +376,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
     return (
       <Menu
         className='view-menu dropdown-content no-triangle dropdown-end bgcolor-base-200 z-20 mt-1 border shadow-2xl'
-        style={{ width: '100%', maxWidth: '100%' }}
+        style={{ width: '100%', maxWidth: '100%', maxHeight: MOBILE_READER_MENU_MAX_HEIGHT }}
         onCancel={() => setIsDropdownOpen?.(false)}
       >
         {renderViewMenuGroups(mobileWebMenuGroups)}

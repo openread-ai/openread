@@ -210,6 +210,10 @@ describe('mobile web reader menu grouping dividers', () => {
       expect(divider.className).toContain('bg-base-content/15');
     });
 
+    const menu = container.querySelector('.view-menu') as HTMLElement;
+    expect(menu.style.maxHeight).toBe('var(--mobile-reader-menu-max-height, 80dvh)');
+    expect(menu.className).toContain('overflow-y-auto');
+
     expect(screen.queryByText('Navigation destinations')).toBeNull();
     expect(screen.queryByText('Reading tools')).toBeNull();
     expect(screen.queryByText('Display settings')).toBeNull();

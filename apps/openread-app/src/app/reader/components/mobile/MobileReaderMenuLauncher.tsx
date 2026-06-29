@@ -1,6 +1,13 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { MenuIcon } from 'lucide-react';
 
 import { useTranslation } from '@/hooks/useTranslation';
@@ -9,6 +16,8 @@ import ViewMenu from '../ViewMenu';
 
 export const MOBILE_READER_MENU_BUTTON_SIZE_PX = 56;
 export const MOBILE_READER_MENU_OVERLAY_GAP_PX = 8;
+export const MOBILE_READER_MENU_MAX_HEIGHT_CAP_RATIO = 0.8;
+export const MOBILE_READER_MENU_MAX_HEIGHT_CSS_VAR = '--mobile-reader-menu-max-height';
 
 interface MobileReaderMenuLauncherProps {
   bookKey: string;
@@ -28,8 +37,40 @@ export function MobileReaderMenuLauncher({
   const _ = useTranslation();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
   const overlayBottomOffsetPx =
     dockBottomOffsetPx + MOBILE_READER_MENU_BUTTON_SIZE_PX + MOBILE_READER_MENU_OVERLAY_GAP_PX;
+
+  const updateMenuMaxHeight = useCallback(() => {
+    const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+    const headerBottom =
+      document.querySelector<HTMLElement>('.header-bar')?.getBoundingClientRect().bottom ?? 0;
+    const overlayBottomY = viewportHeight - overlayBottomOffsetPx;
+    const availableHeight = overlayBottomY - headerBottom;
+    const viewportCap = viewportHeight * MOBILE_READER_MENU_MAX_HEIGHT_CAP_RATIO;
+
+    overlayRef.current?.style.setProperty(
+      MOBILE_READER_MENU_MAX_HEIGHT_CSS_VAR,
+      `${Math.max(0, Math.floor(Math.min(availableHeight, viewportCap)))}px`,
+    );
+  }, [overlayBottomOffsetPx]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+
+    updateMenuMaxHeight();
+
+    const visualViewport = window.visualViewport;
+    window.addEventListener('resize', updateMenuMaxHeight);
+    visualViewport?.addEventListener('resize', updateMenuMaxHeight);
+    visualViewport?.addEventListener('scroll', updateMenuMaxHeight);
+
+    return () => {
+      window.removeEventListener('resize', updateMenuMaxHeight);
+      visualViewport?.removeEventListener('resize', updateMenuMaxHeight);
+      visualViewport?.removeEventListener('scroll', updateMenuMaxHeight);
+    };
+  }, [open, updateMenuMaxHeight]);
 
   useEffect(() => {
     if (!open) return;
@@ -59,11 +100,17 @@ export function MobileReaderMenuLauncher({
     >
       {open && (
         <div
+          ref={overlayRef}
           className={cn(
             'fixed left-1/2 z-50 w-[calc(100vw-2rem)] max-w-md -translate-x-1/2',
             popoverClassName,
           )}
-          style={{ bottom: overlayBottomOffsetPx }}
+          style={
+            {
+              bottom: overlayBottomOffsetPx,
+              [MOBILE_READER_MENU_MAX_HEIGHT_CSS_VAR]: '80dvh',
+            } as CSSProperties
+          }
           data-openread-mobile-reader-menu-content
           data-testid='mobile-reader-menu-content'
         >

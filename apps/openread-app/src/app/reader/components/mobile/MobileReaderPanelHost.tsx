@@ -33,10 +33,6 @@ function MobileReaderPanelHost({ bookKey }: MobileReaderPanelHostProps) {
   useEffect(() => {
     if (!isOpen) return;
     setHoveredBookKey(bookKey);
-    (window as unknown as Record<string, unknown>).__sheetOpen = true;
-    return () => {
-      (window as unknown as Record<string, unknown>).__sheetOpen = false;
-    };
   }, [bookKey, isOpen, setHoveredBookKey]);
 
   useEffect(() => {

@@ -4,7 +4,7 @@ import type {
   MobileReaderPanelDestination,
 } from '@/app/reader/utils/mobileReaderPanels';
 
-interface ActiveMobileReaderPanel {
+export interface ActiveMobileReaderPanel {
   bookKey: string;
   destination: MobileReaderPanelDestination;
   initialQuestion?: string;
@@ -12,7 +12,7 @@ interface ActiveMobileReaderPanel {
   initialAIChatView?: MobileAIChatInitialView;
 }
 
-interface MobileReaderPanelState {
+export interface MobileReaderPanelState {
   activePanel: ActiveMobileReaderPanel | null;
   openMobileReaderPanel: (
     bookKey: string,
@@ -26,6 +26,25 @@ interface MobileReaderPanelState {
   closeMobileReaderPanel: () => void;
   clearInitialQuestion: () => void;
 }
+
+export const selectIsAnyMobileReaderPanelOpen = (
+  state: Pick<MobileReaderPanelState, 'activePanel'>,
+) => state.activePanel !== null;
+
+export const selectIsMobileReaderPanelOpenForBook = (bookKey: string) =>
+  function isMobileReaderPanelOpenForBook(state: Pick<MobileReaderPanelState, 'activePanel'>) {
+    return state.activePanel?.bookKey === bookKey;
+  };
+
+export const selectIsMobileReaderPanelDestinationOpenForBook = (
+  bookKey: string,
+  destination: MobileReaderPanelDestination,
+) =>
+  function isMobileReaderPanelDestinationOpenForBook(
+    state: Pick<MobileReaderPanelState, 'activePanel'>,
+  ) {
+    return state.activePanel?.bookKey === bookKey && state.activePanel.destination === destination;
+  };
 
 export const useMobileReaderPanelStore = create<MobileReaderPanelState>((set) => ({
   activePanel: null,

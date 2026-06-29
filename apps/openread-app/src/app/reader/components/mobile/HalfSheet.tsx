@@ -22,8 +22,7 @@ interface HalfSheetProps {
   expandedRounding?: 'none' | 'top';
 }
 
-function HalfSheet({
-  isOpen,
+function OpenHalfSheet({
   onClose,
   title,
   children,
@@ -32,7 +31,7 @@ function HalfSheet({
   overlayClassName,
   chrome = 'default',
   expandedRounding = 'none',
-}: HalfSheetProps) {
+}: Omit<HalfSheetProps, 'isOpen'>) {
   const { appService } = useEnv();
   const { safeAreaInsets } = useThemeStore();
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -140,12 +139,6 @@ function HalfSheet({
   const noop = useCallback(() => {}, []);
   const { handleDragStart } = useDrag(handleDragMove, noop, handleDragEnd);
 
-  // Reset to half-sheet when closed so it opens as half next time
-  if (!isOpen) {
-    if (isExpanded) setIsExpanded(false);
-    return null;
-  }
-
   const state = { isExpanded };
   const content = typeof children === 'function' ? children(state) : children;
   const resolvedSheetClassName =
@@ -220,6 +213,11 @@ function HalfSheet({
     </div>,
     document.body,
   );
+}
+
+function HalfSheet({ isOpen, ...props }: HalfSheetProps) {
+  if (!isOpen) return null;
+  return <OpenHalfSheet {...props} />;
 }
 
 export default HalfSheet;

@@ -4,6 +4,10 @@ import { useReaderStore } from '@/store/readerStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useNotebookStore } from '@/store/notebookStore';
 import { useSidebarStore } from '@/store/sidebarStore';
+import {
+  selectIsAnyMobileReaderPanelOpen,
+  useMobileReaderPanelStore,
+} from '@/store/mobileReaderPanelStore';
 import { debounce } from '@/utils/debounce';
 import { ScrollSource } from './usePagination';
 import { eventDispatcher } from '@/utils/event';
@@ -83,6 +87,9 @@ export const useTouchEvent = (bookKey: string, handlePageFlip: (msg: CustomEvent
   const touchEndTimeRef = useRef<number | null>(null);
   const touchMovedRef = useRef(false);
 
+  const isAnyMobileReaderPanelOpen = () =>
+    selectIsAnyMobileReaderPanelOpen(useMobileReaderPanelStore.getState());
+
   const resetTouchState = () => {
     touchStartRef.current = null;
     touchEndRef.current = null;
@@ -120,7 +127,7 @@ export const useTouchEvent = (bookKey: string, handlePageFlip: (msg: CustomEvent
         return;
       const deltaY = touchEnd.screenY - touchStart.screenY;
       const deltaX = touchEnd.screenX - touchStart.screenX;
-      if (!(window as unknown as Record<string, unknown>).__sheetOpen) {
+      if (!isAnyMobileReaderPanelOpen()) {
         const viewSettings = getViewSettings(bookKey);
         if (!viewSettings) return;
         const layoutState = normalizeReaderLayout({
@@ -201,7 +208,7 @@ export const useTouchEvent = (bookKey: string, handlePageFlip: (msg: CustomEvent
         hoveredBookKey &&
         !useNotebookStore.getState().isNotebookVisible &&
         !useSidebarStore.getState().isSideBarVisible &&
-        !(window as unknown as Record<string, unknown>).__sheetOpen
+        !isAnyMobileReaderPanelOpen()
       ) {
         setHoveredBookKey(null);
       }

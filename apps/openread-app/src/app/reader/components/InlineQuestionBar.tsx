@@ -9,7 +9,10 @@ import { useAIChatStore } from '@/store/aiChatStore';
 import { useNotebookStore } from '@/store/notebookStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useSidebarStore } from '@/store/sidebarStore';
-import { useMobileReaderPanelStore } from '@/store/mobileReaderPanelStore';
+import {
+  selectIsAnyMobileReaderPanelOpen,
+  useMobileReaderPanelStore,
+} from '@/store/mobileReaderPanelStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useThemeStore } from '@/store/themeStore';
 import { useEnv } from '@/context/EnvContext';
@@ -37,6 +40,7 @@ const InlineQuestionBar: React.FC<InlineQuestionBarProps> = ({ bookKey }) => {
 
   const { createConversation, setPendingQuestion } = useAIChatStore();
   const { activePanel, openMobileReaderPanel } = useMobileReaderPanelStore();
+  const isAnyMobileReaderPanelOpen = useMobileReaderPanelStore(selectIsAnyMobileReaderPanelOpen);
   const { setNotebookVisible, setNotebookActiveTab, isNotebookVisible } = useNotebookStore();
   const notebookPinned = useNotebookStore((s) => s.isNotebookPinned);
   const notebookWidth = useNotebookStore((s) => s.notebookWidth);
@@ -147,11 +151,10 @@ const InlineQuestionBar: React.FC<InlineQuestionBarProps> = ({ bookKey }) => {
     return null;
   }
 
-  // On mobile: keep mounted but collapse when footer bar or sheet is active.
+  // On mobile: keep mounted but collapse when footer bar or reader panel is active.
   // This enables the smooth expand/shrink morph transition.
-  const isSheetOpen = !!(window as unknown as Record<string, unknown>).__sheetOpen;
   const mobileCollapsed =
-    appService?.isMobile && !useMobileWebDock && (!!hoveredBookKey || isSheetOpen);
+    appService?.isMobile && !useMobileWebDock && (!!hoveredBookKey || isAnyMobileReaderPanelOpen);
 
   // On desktop, unmount entirely when not needed
   if (!appService?.isMobile && hoveredBookKey) return null;

@@ -74,12 +74,20 @@ vi.mock('@/store/sidebarStore', () => ({
   }),
 }));
 
-vi.mock('@/store/mobileReaderPanelStore', () => ({
-  useMobileReaderPanelStore: () => ({
+vi.mock('@/store/mobileReaderPanelStore', () => {
+  const getState = () => ({
     activePanel: mockState.activePanel,
     openMobileReaderPanel: mockState.openMobileReaderPanel,
-  }),
-}));
+  });
+  return {
+    selectIsAnyMobileReaderPanelOpen: (value: ReturnType<typeof getState>) =>
+      value.activePanel !== null,
+    useMobileReaderPanelStore: (selector?: (value: ReturnType<typeof getState>) => unknown) => {
+      const state = getState();
+      return selector ? selector(state) : state;
+    },
+  };
+});
 
 vi.mock('@/store/aiChatStore', () => ({
   useAIChatStore: () => ({

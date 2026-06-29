@@ -37,23 +37,27 @@ const mockState = vi.hoisted(() => {
     setHoveredBookKey: vi.fn(),
   };
 
+  const book = {
+    title: 'Moby-Dick',
+    author: 'Herman Melville',
+    format: 'epub',
+    coverImageUrl: '/book-cover.jpg',
+    progress: [5, 120] as [number, number],
+    catalogBookId: 'catalog-1',
+    metadata: { coverImageUrl: '/catalog-cover.jpg' },
+  };
+
   const bookDataStore = {
     getBookDataByReaderKey: () => ({
-      book: {
-        title: 'Moby-Dick',
-        author: 'Herman Melville',
-        format: 'epub',
-        coverImageUrl: '/cover.jpg',
-        progress: [5, 120] as [number, number],
-        catalogBookId: 'catalog-1',
-      },
-      bookDoc: { metadata: { coverImageUrl: '/metadata-cover.jpg' } },
+      book,
+      bookDoc: { metadata: { coverImageUrl: '/document-cover.jpg' } },
     }),
   };
 
   return {
     appService,
     readerStore,
+    book,
     bookDataStore,
     openMobileReaderPanel: vi.fn(),
     dispatch: vi.fn(),
@@ -207,6 +211,9 @@ describe('mobile web reader header title info popover', () => {
     mockState.appService.isMobile = true;
     mockState.appService.isIOSApp = false;
     mockState.appService.isAndroidApp = false;
+    mockState.book.coverImageUrl = '/book-cover.jpg';
+    mockState.book.catalogBookId = 'catalog-1';
+    mockState.book.metadata = { coverImageUrl: '/catalog-cover.jpg' };
     vi.clearAllMocks();
   });
 
@@ -214,7 +221,7 @@ describe('mobile web reader header title info popover', () => {
     cleanup();
   });
 
-  it('renders the mobile-web title as a left-aligned button and opens dynamic book info', () => {
+  it('renders the mobile-web title as a left-aligned button and opens centered identity-only book info', () => {
     renderHeader();
 
     const titleButton = screen.getByRole('button', {
@@ -225,12 +232,20 @@ describe('mobile web reader header title info popover', () => {
 
     fireEvent.click(titleButton);
 
-    expect(screen.getByRole('dialog', { name: 'Moby-Dick book information' })).toBeTruthy();
+    const popover = screen.getByRole('dialog', { name: 'Moby-Dick book information' });
+    expect(popover.className).toContain('fixed');
+    expect(popover.className).toContain('left-1/2');
+    expect(popover.className).toContain('-translate-x-1/2');
     expect(screen.getByText('Herman Melville')).toBeTruthy();
-    expect(screen.getByText('Page 5 of 120')).toBeTruthy();
-    expect(screen.getByText('Chapter 1')).toBeTruthy();
-    expect(screen.getByText('EPUB')).toBeTruthy();
-    expect(screen.getByText('Openread Catalog')).toBeTruthy();
+    expect(screen.getByAltText('Moby-Dick').getAttribute('src')).toBe('/catalog-cover.jpg');
+    expect(screen.queryByText('Progress')).toBeNull();
+    expect(screen.queryByText('Location')).toBeNull();
+    expect(screen.queryByText('Format')).toBeNull();
+    expect(screen.queryByText('Source')).toBeNull();
+    expect(screen.queryByText('Page 5 of 120')).toBeNull();
+    expect(screen.queryByText('Chapter 1')).toBeNull();
+    expect(screen.queryByText('EPUB')).toBeNull();
+    expect(screen.queryByText('Openread Catalog')).toBeNull();
   });
 
   it('closes the popover with outside tap, Escape, and X button', () => {

@@ -1,18 +1,15 @@
 import clsx from 'clsx';
-import Image from 'next/image';
 import React, { useEffect, useRef } from 'react';
 import { PiXBold } from 'react-icons/pi';
 
+import BookCover from '@/components/BookCover';
 import { useTranslation } from '@/hooks/useTranslation';
+import type { Book } from '@/types/book';
 
 export interface MobileBookInfoPopoverData {
   title: string;
   author?: string | null;
-  coverImageUrl?: string | null;
-  progressLabel?: string | null;
-  locationLabel?: string | null;
-  formatLabel?: string | null;
-  sourceLabel?: string | null;
+  book?: Book | null;
 }
 
 interface MobileBookInfoPopoverProps {
@@ -61,28 +58,19 @@ const MobileBookInfoPopover: React.FC<MobileBookInfoPopoverProps> = ({
       aria-modal='false'
       aria-label={_('{{title}} book information', { title: data.title })}
       className={clsx(
-        'bg-base-100 text-base-content border-base-300 absolute left-0 top-[calc(100%+0.5rem)] z-50 w-[min(calc(100vw-3rem),22rem)] rounded-2xl border p-3 shadow-2xl',
+        'bg-base-100 text-base-content border-base-300 fixed left-1/2 top-[calc(env(safe-area-inset-top)+4rem)] z-50 w-[min(calc(100vw-2rem),20rem)] -translate-x-1/2 rounded-2xl border p-4 shadow-2xl',
         className,
       )}
       data-testid='mobile-reader-book-info-popover'
     >
-      <div className='flex items-start gap-3'>
-        <div className='bg-base-200 relative h-20 w-14 flex-shrink-0 overflow-hidden rounded-lg shadow-sm'>
-          {data.coverImageUrl ? (
-            <Image
-              src={data.coverImageUrl}
-              alt=''
-              fill
-              sizes='56px'
-              className='object-cover'
-              onError={(event) => {
-                (event.currentTarget as HTMLImageElement).style.display = 'none';
-              }}
-            />
+      <div className='flex items-start gap-4'>
+        <div className='bg-base-200 relative h-24 w-16 flex-shrink-0 overflow-hidden rounded-xl shadow-sm'>
+          {data.book ? (
+            <BookCover book={data.book} className='h-full w-full' imageClassName='rounded-xl' />
           ) : (
             <div
               aria-hidden='true'
-              className='flex h-full w-full items-center justify-center text-xs font-semibold opacity-60'
+              className='flex h-full w-full items-center justify-center text-lg font-semibold opacity-60'
             >
               {data.title.slice(0, 1).toUpperCase()}
             </div>
@@ -91,8 +79,8 @@ const MobileBookInfoPopover: React.FC<MobileBookInfoPopoverProps> = ({
         <div className='min-w-0 flex-1'>
           <div className='flex items-start gap-2'>
             <div className='min-w-0 flex-1'>
-              <h2 className='line-clamp-2 text-sm font-semibold leading-snug'>{data.title}</h2>
-              <p className='mt-0.5 line-clamp-1 text-xs opacity-70'>
+              <h2 className='line-clamp-3 text-base font-semibold leading-snug'>{data.title}</h2>
+              <p className='mt-1 line-clamp-2 text-sm opacity-70'>
                 {hasValue(data.author) ? data.author : _('Unknown author')}
               </p>
             </div>
@@ -105,32 +93,6 @@ const MobileBookInfoPopover: React.FC<MobileBookInfoPopoverProps> = ({
               <PiXBold size={14} />
             </button>
           </div>
-          <dl className='mt-3 grid grid-cols-[auto,minmax(0,1fr)] gap-x-2 gap-y-1 text-xs'>
-            {hasValue(data.progressLabel) && (
-              <>
-                <dt className='opacity-60'>{_('Progress')}</dt>
-                <dd className='truncate font-medium'>{data.progressLabel}</dd>
-              </>
-            )}
-            {hasValue(data.locationLabel) && (
-              <>
-                <dt className='opacity-60'>{_('Location')}</dt>
-                <dd className='truncate font-medium'>{data.locationLabel}</dd>
-              </>
-            )}
-            {hasValue(data.formatLabel) && (
-              <>
-                <dt className='opacity-60'>{_('Format')}</dt>
-                <dd className='truncate font-medium'>{data.formatLabel}</dd>
-              </>
-            )}
-            {hasValue(data.sourceLabel) && (
-              <>
-                <dt className='opacity-60'>{_('Source')}</dt>
-                <dd className='truncate font-medium'>{data.sourceLabel}</dd>
-              </>
-            )}
-          </dl>
         </div>
       </div>
     </div>

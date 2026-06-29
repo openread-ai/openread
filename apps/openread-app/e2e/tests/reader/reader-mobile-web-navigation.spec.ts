@@ -313,9 +313,14 @@ test.describe('Mobile web reader navigation regression', () => {
     await titleButton.click();
     const popover = page.getByTestId('mobile-reader-book-info-popover');
     await expect(popover).toBeVisible({ timeout: 10_000 });
-    await expect(popover.getByText(FIXTURES.reflowable.title)).toBeVisible();
-    await expect(popover.getByText(/EPUB|TXT/i)).toBeVisible();
-    await attachScreenshot(page, testInfo, 'mobile-web-reader-header-title-info-popover-open');
+    await expect(popover).toHaveClass(/left-1\/2/);
+    await expect(popover).toHaveClass(/-translate-x-1\/2/);
+    await expect(popover.getByRole('heading', { name: FIXTURES.reflowable.title })).toBeVisible();
+    await expect(popover.getByText('Progress', { exact: true })).toHaveCount(0);
+    await expect(popover.getByText('Location', { exact: true })).toHaveCount(0);
+    await expect(popover.getByText('Format', { exact: true })).toHaveCount(0);
+    await expect(popover.getByText('Source', { exact: true })).toHaveCount(0);
+    await attachScreenshot(page, testInfo, 'mobile-web-reader-header-title-info-popover-centered');
 
     await page.keyboard.press('Escape');
     await expect(popover).toHaveCount(0);

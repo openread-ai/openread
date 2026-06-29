@@ -443,7 +443,7 @@ test.describe('Mobile web reader navigation regression', () => {
     await expect(assistantComposer).toHaveCount(1);
     await expect(page.locator('[data-openread-mobile-read-ai-integrated-composer]')).toBeVisible();
     await expect(unifiedSurface.locator('[data-testid="assistant-composer"]')).toHaveCount(1);
-    await expect(page.locator('[data-openread-mobile-read-ai-composer-frame]')).toHaveCount(0);
+    await expect(page.locator('[data-openread-mobile-read-ai-composer-frame]')).toHaveCount(1);
     await attachScreenshot(page, testInfo, 'mobile-web-ai-unified-running');
 
     await expect(page.getByText(MOCK_AI_RESPONSE_TEXT)).toBeVisible({ timeout: 30_000 });
@@ -452,6 +452,13 @@ test.describe('Mobile web reader navigation regression', () => {
     expect(agenticChatRequestsAfterInitialResponse).toBeGreaterThan(0);
     await expect(page.getByText('Recents', { exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Close Read AI' })).toBeVisible();
+    const compactActiveHeaderMetrics = await page
+      .getByTestId('mobile-read-ai-header')
+      .evaluate((header) => ({
+        headerClass: header.className,
+        titleClass: header.querySelector('span.text-base-content')?.className,
+        logoClass: header.querySelector('img')?.parentElement?.className,
+      }));
     await expect(
       page.getByText(/messages left (today|this week|this month|this window)/),
     ).toHaveCount(0);
@@ -490,6 +497,12 @@ test.describe('Mobile web reader navigation regression', () => {
       .toBeGreaterThan(expandedViewport!.height * 0.9);
     const expandedActiveHeader = expandedActiveChat.getByTestId('mobile-read-ai-expanded-header');
     await expect(expandedActiveHeader).toBeVisible();
+    const expandedActiveHeaderMetrics = await expandedActiveHeader.evaluate((header) => ({
+      headerClass: header.className,
+      titleClass: header.querySelector('span.text-base-content')?.className,
+      logoClass: header.querySelector('img')?.parentElement?.className,
+    }));
+    expect(expandedActiveHeaderMetrics).toEqual(compactActiveHeaderMetrics);
     await expect(expandedActiveChat.getByRole('button', { name: 'Chat history' })).toBeVisible();
     await expect(expandedActiveChat.getByRole('button', { name: 'New Chat' })).toHaveCount(1);
     await expect(expandedActiveChat.getByText('New Chat', { exact: true })).toHaveCount(0);
@@ -527,6 +540,15 @@ test.describe('Mobile web reader navigation regression', () => {
     await page.getByRole('button', { name: 'New Chat' }).first().click();
     await page.waitForTimeout(500);
     expect(getAgenticChatRequestCount()).toBe(agenticChatRequestsAfterInitialResponse);
+    const newChatComposerBox = await page.getByTestId('assistant-composer').boundingBox();
+    const newChatSurfaceBox = await unifiedSurface.boundingBox();
+    expect(newChatComposerBox).not.toBeNull();
+    expect(newChatSurfaceBox).not.toBeNull();
+    expect(newChatComposerBox!.width).toBeGreaterThan(newChatSurfaceBox!.width * 0.75);
+    expect(newChatComposerBox!.x).toBeGreaterThanOrEqual(newChatSurfaceBox!.x - 1);
+    expect(newChatComposerBox!.x + newChatComposerBox!.width).toBeLessThanOrEqual(
+      newChatSurfaceBox!.x + newChatSurfaceBox!.width + 1,
+    );
     await attachScreenshot(page, testInfo, 'mobile-web-ai-unified-new-chat');
   });
 

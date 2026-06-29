@@ -295,6 +295,32 @@ test.describe('Mobile web reader navigation regression', () => {
     await expect(viewMenu.getByText('Paragraph Mode', { exact: true }).first()).toBeHidden();
   });
 
+  test('mobile web reader header title opens lightweight book info popover', async ({
+    authenticatedPage: page,
+  }, testInfo) => {
+    test.skip(!isMobileProject(testInfo), 'Mobile web header popover proof only.');
+
+    await openFixtureInReader(page, FIXTURES.reflowable);
+    await revealMobileHeader(page);
+
+    const titleButton = page.getByRole('button', {
+      name: `Show book information for ${FIXTURES.reflowable.title}`,
+    });
+    await expect(titleButton).toBeVisible({ timeout: 10_000 });
+    await expect(titleButton).toHaveClass(/justify-start/);
+    await attachScreenshot(page, testInfo, 'mobile-web-reader-header-title-left-aligned');
+
+    await titleButton.click();
+    const popover = page.getByTestId('mobile-reader-book-info-popover');
+    await expect(popover).toBeVisible({ timeout: 10_000 });
+    await expect(popover.getByText(FIXTURES.reflowable.title)).toBeVisible();
+    await expect(popover.getByText(/EPUB|TXT/i)).toBeVisible();
+    await attachScreenshot(page, testInfo, 'mobile-web-reader-header-title-info-popover-open');
+
+    await page.keyboard.press('Escape');
+    await expect(popover).toHaveCount(0);
+  });
+
   test('mobile web standalone reader menu exposes current-book destinations and opens shared sheets', async ({
     authenticatedPage: page,
   }, testInfo) => {

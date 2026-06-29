@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   PiDotsThreeVerticalBold,
   PiCaretLeftBold,
@@ -9,12 +9,14 @@ import {
 import { RxSlider } from 'react-icons/rx';
 
 import { Insets } from '@/types/misc';
+import type { BookProgress } from '@/types/book';
 import { useEnv } from '@/context/EnvContext';
 import { useThemeStore } from '@/store/themeStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useNotebookStore } from '@/store/notebookStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useMobileReaderPanelStore } from '@/store/mobileReaderPanelStore';
+import { useBookDataStore } from '@/store/bookDataStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useTrafficLightStore } from '@/store/trafficLightStore';
@@ -36,6 +38,7 @@ import TranslationToggler from './TranslationToggler';
 import ViewMenu from './ViewMenu';
 import { LAUNCH_TRANSLATION_ENABLED } from '@/services/launchFeatures';
 import { isMobileWebReader } from '../utils/mobileReaderPanels';
+import MobileBookInfoPopover, { MobileBookInfoPopoverData } from './mobile/MobileBookInfoPopover';
 
 interface HeaderBarProps {
   bookKey: string;
@@ -46,6 +49,40 @@ interface HeaderBarProps {
   onCloseBook: (bookKey: string) => void;
   onToggleProgress?: () => void;
 }
+
+const formatReaderProgressLabel = (
+  _: ReturnType<typeof useTranslation>,
+  liveProgress: BookProgress | null,
+  savedProgress?: [number, number],
+) => {
+  const pageInfo = liveProgress?.pageinfo;
+  if (pageInfo && pageInfo.total > 0) {
+    return _('Page {{current}} of {{total}}', {
+      current: String(pageInfo.current + 1),
+      total: String(pageInfo.total),
+    });
+  }
+
+  if (savedProgress && savedProgress[1] > 0) {
+    return _('Page {{current}} of {{total}}', {
+      current: String(savedProgress[0]),
+      total: String(savedProgress[1]),
+    });
+  }
+
+  return null;
+};
+
+const getBookSourceLabel = (
+  _: ReturnType<typeof useTranslation>,
+  book?: { catalogBookId?: string | null; storagePath?: string | null; url?: string },
+) => {
+  if (!book) return null;
+  if (book.catalogBookId) return _('Openread Catalog');
+  if (book.storagePath) return _('Cloud Library');
+  if (book.url) return _('Remote File');
+  return null;
+};
 
 const HeaderBar: React.FC<HeaderBarProps> = ({
   bookKey,
@@ -66,10 +103,13 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
   const isNotebookVisible = useNotebookStore((s) => s.isNotebookVisible);
   const notebookOnAI = useNotebookStore((s) => s.notebookActiveTab === 'ai');
   const { getView, getViewSettings, setHoveredBookKey } = useReaderStore();
+  const progress = useReaderStore((state) => state.getProgress(bookKey));
+  const bookData = useBookDataStore((state) => state.getBookDataByReaderKey(bookKey));
   const { openMobileReaderPanel } = useMobileReaderPanelStore();
   const viewSettings = getViewSettings(bookKey);
 
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [bookInfoOpen, setBookInfoOpen] = useState(false);
   const view = getView(bookKey);
   const iconSize16 = useResponsiveSize(16);
   const headerRef = useRef<HTMLDivElement>(null);
@@ -79,6 +119,20 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
   const useMobileWebHeader = isMobileWebReader(appService);
   const aiEnabled = settings?.aiSettings?.enabled ?? true;
   const showHeaderViewMenu = !useMobileWebHeader || !aiEnabled;
+  const bookInfoData = useMemo<MobileBookInfoPopoverData>(() => {
+    const book = bookData?.book;
+    const metadataCover = bookData?.bookDoc?.metadata?.coverImageUrl;
+
+    return {
+      title: bookTitle || book?.title || _('Untitled Book'),
+      author: book?.author,
+      coverImageUrl: book?.coverImageUrl ?? metadataCover ?? null,
+      progressLabel: formatReaderProgressLabel(_, progress, book?.progress),
+      locationLabel: progress?.sectionLabel || progress?.sectionHref || null,
+      formatLabel: book?.format ? book.format.toUpperCase() : null,
+      sourceLabel: getBookSourceLabel(_, book ?? undefined),
+    };
+  }, [_, bookData, bookTitle, progress]);
 
   const docs = view?.renderer.getContents() ?? [];
   const pointerInDoc = docs.some(({ doc }) => doc?.body?.style.cursor === 'pointer');
@@ -103,6 +157,10 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
     if (viewSettings?.annotationQuickAction === action) action = null;
     saveViewSettings(envConfig, bookKey, 'annotationQuickAction', action, false, true);
   };
+
+  useEffect(() => {
+    setBookInfoOpen(false);
+  }, [bookKey, useMobileWebHeader]);
 
   useEffect(() => {
     if (!appService?.hasTrafficLight) return;
@@ -185,9 +243,9 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
       >
         {appService?.isMobile ? (
           <>
-            <div className='bg-base-100 z-20 flex h-full items-center gap-x-2'>
+            <div className='bg-base-100 z-20 flex h-full min-w-0 flex-1 items-center gap-x-2'>
               <button
-                className='btn btn-ghost h-8 min-h-8 w-8 p-0'
+                className='btn btn-ghost h-8 min-h-8 w-8 flex-shrink-0 p-0'
                 onClick={() => {
                   setHoveredBookKey(null);
                   onCloseBook(bookKey);
@@ -196,22 +254,37 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
               >
                 <PiCaretLeftBold size={iconSize16} />
               </button>
-              {!useMobileWebHeader && (
+              {useMobileWebHeader ? (
+                <div className='relative min-w-0 flex-1'>
+                  <button
+                    type='button'
+                    className={clsx(
+                      'btn btn-ghost h-8 min-h-8 w-full min-w-0 justify-start px-2 text-left normal-case',
+                      bookInfoOpen && 'bg-base-200/80',
+                    )}
+                    onClick={() => setBookInfoOpen(true)}
+                    aria-label={_('Show book information for {{title}}', {
+                      title: bookInfoData.title,
+                    })}
+                    aria-expanded={bookInfoOpen}
+                    aria-haspopup='dialog'
+                  >
+                    <span className='line-clamp-1 min-w-0 max-w-full text-sm font-semibold'>
+                      {bookInfoData.title}
+                    </span>
+                  </button>
+                  {bookInfoOpen && (
+                    <MobileBookInfoPopover
+                      data={bookInfoData}
+                      onClose={() => setBookInfoOpen(false)}
+                    />
+                  )}
+                </div>
+              ) : (
                 <span className='line-clamp-1 max-w-[40vw] text-xs font-semibold'>{bookTitle}</span>
               )}
             </div>
-            {useMobileWebHeader && (
-              <div
-                role='contentinfo'
-                aria-label={_('Title') + ' - ' + bookTitle}
-                className='pointer-events-none absolute inset-x-16 top-0 z-10 flex h-full items-center justify-center'
-              >
-                <span className='line-clamp-1 max-w-full text-center text-base font-semibold'>
-                  {bookTitle}
-                </span>
-              </div>
-            )}
-            <div className='bg-base-100 z-20 ms-auto flex h-full items-center gap-x-3'>
+            <div className='bg-base-100 z-20 ms-auto flex h-full flex-shrink-0 items-center gap-x-3'>
               <button
                 className='btn btn-ghost h-8 min-h-8 w-8 p-0'
                 onClick={() => {

@@ -155,6 +155,7 @@ const InlineQuestionBar: React.FC<InlineQuestionBarProps> = ({ bookKey }) => {
   // This enables the smooth expand/shrink morph transition.
   const mobileCollapsed =
     appService?.isMobile && !useMobileWebDock && (!!hoveredBookKey || isAnyMobileReaderPanelOpen);
+  const mobileDockBottomOffsetPx = Math.max((safeAreaInsets?.bottom || 0) - 10, 8);
 
   // On desktop, unmount entirely when not needed
   if (!appService?.isMobile && hoveredBookKey) return null;
@@ -163,13 +164,16 @@ const InlineQuestionBar: React.FC<InlineQuestionBarProps> = ({ bookKey }) => {
     return (
       <div
         className='pointer-events-none fixed left-0 right-0 z-30 flex justify-center transition-none'
-        style={{ bottom: `${Math.max((safeAreaInsets?.bottom || 0) - 10, 8)}px` }}
+        style={{ bottom: `${mobileDockBottomOffsetPx}px` }}
       >
         <div
           className='pointer-events-auto flex w-[calc(100vw-2rem)] max-w-md items-end gap-3'
           data-testid='mobile-reader-dock'
         >
-          <MobileReaderMenuLauncher bookKey={bookKey} />
+          <MobileReaderMenuLauncher
+            bookKey={bookKey}
+            dockBottomOffsetPx={mobileDockBottomOffsetPx}
+          />
           <form onSubmit={handleSubmit} className='min-w-0 flex-1 overflow-visible'>
             <MobileReadAIComposerChrome
               className={cn('!overflow-visible', question.includes(' ') && 'rounded-[2rem]')}

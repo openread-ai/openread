@@ -354,15 +354,49 @@ test.describe('Mobile web reader navigation regression', () => {
     };
 
     let viewMenu = await openMenu();
+    const menuContent = page.getByTestId('mobile-reader-menu-content');
+    await expect(menuContent).toHaveClass(/fixed/);
+    await expect(menuContent).toHaveClass(/left-1\/2/);
+    await expect(menuContent).toHaveClass(/-translate-x-1\/2/);
+    await expect(menuContent).toHaveClass(/w-\[calc\(100vw-2rem\)\]/);
+    await expect(menuContent).toHaveClass(/max-w-md/);
+
+    const menuPlacement = await page.evaluate(() => {
+      const dock = document
+        .querySelector('[data-testid="mobile-reader-dock"]')
+        ?.getBoundingClientRect();
+      const menuButton = document
+        .querySelector('[data-testid="mobile-reader-menu-button"]')
+        ?.getBoundingClientRect();
+      const menuOverlay = document
+        .querySelector('[data-testid="mobile-reader-menu-content"]')
+        ?.getBoundingClientRect();
+      if (!dock || !menuButton || !menuOverlay) return null;
+      return {
+        centerDelta: Math.round(
+          Math.abs(menuOverlay.left + menuOverlay.width / 2 - window.innerWidth / 2),
+        ),
+        dockWidthDelta: Math.round(Math.abs(menuOverlay.width - dock.width)),
+        gap: Math.round(menuButton.top - menuOverlay.bottom),
+      };
+    });
+    expect(menuPlacement).not.toBeNull();
+    expect(menuPlacement?.centerDelta).toBeLessThanOrEqual(1);
+    expect(menuPlacement?.dockWidthDelta).toBeLessThanOrEqual(1);
+    expect(menuPlacement?.gap).toBeGreaterThanOrEqual(6);
+    expect(menuPlacement?.gap).toBeLessThanOrEqual(8);
+
     const topLevelLabels = await viewMenu.evaluate((menu) =>
-      Array.from(menu.children).map((child) => {
-        const labelElement = child.querySelector('summary,button');
-        return (labelElement?.textContent ?? '').replace(/\s+/g, ' ').trim();
-      }),
+      Array.from(menu.children)
+        .map((child) => {
+          const labelElement = child.querySelector('summary,button');
+          return (labelElement?.textContent ?? '').replace(/\s+/g, ' ').trim();
+        })
+        .filter(Boolean),
     );
 
     expect(topLevelLabels).toHaveLength(12);
-    expect(topLevelLabels.slice(0, 9)).toEqual([
+    expect(topLevelLabels.slice(0, 8)).toEqual([
       'Table of Contents',
       'Highlights',
       'Bookmarks',
@@ -371,11 +405,11 @@ test.describe('Mobile web reader navigation regression', () => {
       'Parallel Read',
       'Export Annotations',
       'Sort TOC by Page',
-      'Reload PageShift+R',
     ]);
-    expect(topLevelLabels[9]).toMatch(/^(Sign in to Sync|Synced at|Never synced)/);
-    expect(topLevelLabels[10]).toMatch(/^(Dark|Light|Auto) Mode$/);
-    expect(topLevelLabels[11]).toBe('Invert Image In Dark Mode');
+    expect(topLevelLabels[8]).toMatch(/^(Dark|Light|Auto) Mode$/);
+    expect(topLevelLabels[9]).toBe('Invert Image In Dark Mode');
+    expect(topLevelLabels[10]).toMatch(/^(Sign in to Sync|Synced at|Never synced)/);
+    expect(topLevelLabels[11]).toBe('Reload PageShift+R');
     await attachScreenshot(page, testInfo, 'mobile-web-reader-kebab-12-options');
 
     await viewMenu.getByText('Table of Contents', { exact: true }).click();

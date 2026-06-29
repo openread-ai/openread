@@ -397,7 +397,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
     return (
       <Menu
         className='view-menu dropdown-content no-triangle dropdown-end bgcolor-base-200 z-20 mt-1 border shadow-2xl'
-        style={{ width: 'calc(100vw - 32px)', maxWidth: 'calc(100vw - 32px)', right: 0 }}
+        style={{ width: '100%', maxWidth: '100%' }}
         onCancel={() => setIsDropdownOpen?.(false)}
       >
         {renderViewMenuGroups(mobileWebMenuGroups)}

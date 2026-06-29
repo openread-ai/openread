@@ -2,7 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import InlineQuestionBar from '@/app/reader/components/InlineQuestionBar';
-import { MobileReaderMenuLauncher } from '@/app/reader/components/mobile/MobileReaderMenuLauncher';
+import {
+  MOBILE_READER_MENU_BUTTON_SIZE_PX,
+  MOBILE_READER_MENU_OVERLAY_GAP_PX,
+  MobileReaderMenuLauncher,
+} from '@/app/reader/components/mobile/MobileReaderMenuLauncher';
 
 const mockState = vi.hoisted(() => ({
   createConversation: vi.fn(),
@@ -190,13 +194,31 @@ describe('MobileReaderMenuLauncher', () => {
     cleanup();
   });
 
-  it('owns menu open state and closes on outside pointer interaction', () => {
+  it('owns menu open state, centers the overlay above the dock, and closes accessibly', () => {
+    const dockBottomOffsetPx = 12;
+
     render(
       <div>
-        <MobileReaderMenuLauncher bookKey='book-1' />
+        <MobileReaderMenuLauncher bookKey='book-1' dockBottomOffsetPx={dockBottomOffsetPx} />
         <button type='button'>Outside</button>
       </div>,
     );
+
+    fireEvent.click(screen.getByTestId('mobile-reader-menu-button'));
+    expect(screen.getByTestId('mock-view-menu')).toBeTruthy();
+
+    const menuContent = screen.getByTestId('mobile-reader-menu-content');
+    expect(menuContent.className).toContain('fixed');
+    expect(menuContent.className).toContain('left-1/2');
+    expect(menuContent.className).toContain('-translate-x-1/2');
+    expect(menuContent.className).toContain('w-[calc(100vw-2rem)]');
+    expect(menuContent.className).toContain('max-w-md');
+    expect(menuContent.style.bottom).toBe(
+      `${dockBottomOffsetPx + MOBILE_READER_MENU_BUTTON_SIZE_PX + MOBILE_READER_MENU_OVERLAY_GAP_PX}px`,
+    );
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByTestId('mock-view-menu')).toBeNull();
 
     fireEvent.click(screen.getByTestId('mobile-reader-menu-button'));
     expect(screen.getByTestId('mock-view-menu')).toBeTruthy();

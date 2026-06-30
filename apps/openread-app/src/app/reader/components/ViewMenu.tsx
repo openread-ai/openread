@@ -331,6 +331,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
         />,
       ],
       [
+        <MenuItem key='font-layout' label={_('Font & Layout')} onClick={openFontLayoutMenu} />,
         <MenuItem
           key='invert-images-dark-mode'
           label={_('Invert Image In Dark Mode')}

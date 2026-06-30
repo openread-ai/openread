@@ -196,6 +196,7 @@ describe('mobile web reader menu grouping dividers', () => {
       'divider',
       'Export Annotations',
       'divider',
+      'Font & Layout',
       'Invert Image In Dark Mode',
     ]);
 
@@ -243,6 +244,11 @@ describe('mobile web reader menu grouping dividers', () => {
     fireEvent.click(screen.getByText('Export Annotations'));
     expect(mockState.dispatch).toHaveBeenCalledWith('export-annotations', { bookKey: 'book-1' });
     expect(mockState.setViewSettings).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText('Font & Layout'));
+    expect(mockState.setIsDropdownOpen).toHaveBeenCalledWith(false);
+    expect(mockState.setSettingsDialogBookKey).toHaveBeenCalledWith('book-1');
+    expect(mockState.setSettingsDialogOpen).toHaveBeenCalledWith(true);
 
     expect(screen.queryByText('Dark Mode')).toBeNull();
     expect(mockState.setThemeMode).not.toHaveBeenCalled();

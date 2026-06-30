@@ -423,7 +423,7 @@ test.describe('Mobile web reader navigation regression', () => {
         .filter(Boolean),
     );
 
-    expect(topLevelLabels).toHaveLength(8);
+    expect(topLevelLabels).toHaveLength(9);
     expect(topLevelLabels).toEqual([
       'Table of Contents',
       'Highlights',
@@ -432,6 +432,7 @@ test.describe('Mobile web reader navigation regression', () => {
       'Speed Reading Mode',
       'Parallel Read',
       'Export Annotations',
+      'Font & Layout',
       'Invert Image In Dark Mode',
     ]);
     expect(topLevelLabels).not.toContain('AI Chat History');
@@ -439,7 +440,7 @@ test.describe('Mobile web reader navigation regression', () => {
     expect(topLevelLabels).not.toContain('Never synced');
     expect(topLevelLabels.some((label) => label.startsWith('Synced at '))).toBe(false);
     expect(topLevelLabels.some((label) => /^(Dark|Light|Auto) Mode$/.test(label))).toBe(false);
-    await attachScreenshot(page, testInfo, 'mobile-web-reader-kebab-8-options');
+    await attachScreenshot(page, testInfo, 'mobile-web-reader-kebab-9-options');
 
     await page
       .getByTestId('mobile-reader-menu-dismiss-layer')
@@ -449,6 +450,16 @@ test.describe('Mobile web reader navigation regression', () => {
     viewMenu = await openMenu();
     await page.getByTestId('mobile-reader-menu-button').click();
     await expect(page.getByTestId('mobile-reader-menu-content')).toHaveCount(0);
+
+    viewMenu = await openMenu();
+    await viewMenu.getByText('Font & Layout', { exact: true }).click();
+    await expect(page.getByTestId('mobile-reader-menu-content')).toHaveCount(0);
+    await expect(page.getByRole('group', { name: /Font - Settings/ })).toBeVisible({
+      timeout: 10_000,
+    });
+    await attachScreenshot(page, testInfo, 'mobile-web-reader-kebab-font-layout-settings');
+    await page.getByRole('button', { name: 'Close' }).first().click();
+    await expect(page.getByRole('group', { name: /Font - Settings/ })).toHaveCount(0);
 
     viewMenu = await openMenu();
     await viewMenu.getByText('Table of Contents', { exact: true }).click();

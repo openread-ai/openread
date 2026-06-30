@@ -50,6 +50,8 @@ import { shouldUseNativeChapterPull } from '../utils/mobileScroll';
 import {
   applyReaderLayoutToRenderer,
   getEffectiveReaderChromeVisibility,
+  getEffectiveReaderViewInsets,
+  getEffectiveReaderViewportStyles,
   normalizeReaderLayout,
 } from '../utils/readerLayoutContract';
 import { getMaxInlineSize } from '@/utils/config';
@@ -64,7 +66,6 @@ import { useBookCoverAutoSave } from '../hooks/useAutoSaveBookCover';
 import { LAUNCH_TRANSLATION_ENABLED } from '@/services/launchFeatures';
 import { useDiscordPresence } from '@/hooks/useDiscordPresence';
 import { manageSyntaxHighlighting } from '@/utils/highlightjs';
-import { getViewInsets } from '@/utils/insets';
 import { removeTabIndex } from '@/utils/a11y';
 import { isCJKLang } from '@/utils/lang';
 import { getLocale } from '@/utils/misc';
@@ -535,8 +536,16 @@ const FoliateViewer: React.FC<{
       book: readerLayoutBook,
       platform: readerLayoutPlatform,
     });
-    const effectiveChromeViewSettings = { ...viewSettings, ...effectiveChrome };
-    const viewInsets = getViewInsets(effectiveChromeViewSettings);
+    const viewInsets = getEffectiveReaderViewInsets({
+      settings: viewSettings,
+      book: readerLayoutBook,
+      platform: readerLayoutPlatform,
+    });
+    const viewportStyles = getEffectiveReaderViewportStyles({
+      settings: viewSettings,
+      book: readerLayoutBook,
+      platform: readerLayoutPlatform,
+    });
     const showDoubleBorder = viewSettings.vertical && viewSettings.doubleBorder;
     const showDoubleBorderHeader = showDoubleBorder && effectiveChrome.showHeader;
     const showDoubleBorderFooter = showDoubleBorder && effectiveChrome.showFooter;
@@ -556,11 +565,16 @@ const FoliateViewer: React.FC<{
     const leftMargin = insets.left + moreLeftInset;
     const viewMargins = viewSettings.showMarginsOnScroll && isContinuousLayout;
 
-    viewRef.current?.renderer.setAttribute('margin-top', `${viewMargins ? 0 : topMargin}px`);
-    viewRef.current?.renderer.setAttribute('margin-right', `${rightMargin}px`);
-    viewRef.current?.renderer.setAttribute('margin-bottom', `${viewMargins ? 0 : bottomMargin}px`);
-    viewRef.current?.renderer.setAttribute('margin-left', `${leftMargin}px`);
-    viewRef.current?.renderer.setAttribute('gap', `${viewSettings.gapPercent}%`);
+    const renderer = viewRef.current?.renderer;
+    renderer?.setAttribute('margin-top', `${viewMargins ? 0 : topMargin}px`);
+    renderer?.setAttribute('margin-right', `${rightMargin}px`);
+    renderer?.setAttribute('margin-bottom', `${viewMargins ? 0 : bottomMargin}px`);
+    renderer?.setAttribute('margin-left', `${leftMargin}px`);
+    renderer?.setAttribute('gap', `${viewSettings.gapPercent}%`);
+    if (renderer) {
+      const rendererElement = renderer as typeof renderer & { style: CSSStyleDeclaration };
+      rendererElement.style.backgroundColor = viewportStyles.backgroundColor ?? '';
+    }
     applyReaderLayoutToRenderer(
       viewRef.current?.renderer,
       viewSettings,

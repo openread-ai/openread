@@ -164,6 +164,9 @@ async function getReaderMetrics(page: Page) {
       scrollHeight: container?.scrollHeight ?? 0,
       clientHeight: container?.clientHeight ?? 0,
       rendererTag: renderer?.tagName.toLowerCase() ?? '',
+      marginTop: renderer?.getAttribute('margin-top') ?? '',
+      marginBottom: renderer?.getAttribute('margin-bottom') ?? '',
+      letterboxBackground: renderer ? getComputedStyle(renderer).backgroundColor : '',
     };
   });
 }
@@ -750,7 +753,13 @@ test.describe('Mobile web reader navigation regression', () => {
     await openFixtureInReader(page, FIXTURES.fixed);
     await expect(page.locator('.sectioninfo')).toHaveCount(0);
     await expect(page.locator('.progressinfo')).toHaveCount(0);
-    await attachScreenshot(page, testInfo, 'mobile-web-fixed-layout-legacy-chrome-hidden');
+    await expect
+      .poll(async () => {
+        const { marginTop, marginBottom, letterboxBackground } = await getReaderMetrics(page);
+        return `${marginTop}|${marginBottom}|${letterboxBackground}`;
+      })
+      .toBe('0px|0px|rgb(255, 255, 255)');
+    await attachScreenshot(page, testInfo, 'mobile-web-fixed-layout-zero-edge-bars');
     const before = await getReaderMetrics(page);
 
     await dragBookContent(page, { xRatio: 0.85, yRatio: 0.5 }, { xRatio: 0.15, yRatio: 0.5 });

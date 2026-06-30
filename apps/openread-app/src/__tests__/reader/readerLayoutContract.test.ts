@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { ViewSettings } from '@/types/book';
 import {
   getEffectiveReaderChromeVisibility,
+  getEffectiveReaderViewInsets,
+  getEffectiveReaderViewportStyles,
   getInitialReaderViewSettings,
   getReaderBookCapability,
   mergeViewSettingsWithLegacyLayout,
@@ -24,6 +26,23 @@ const settings = (overrides: Partial<ViewSettings> = {}) =>
     paragraphMode: { enabled: false },
     ...overrides,
   }) as ViewSettings;
+
+const insetSettings = (overrides: Partial<ViewSettings> = {}) =>
+  settings({
+    showHeader: true,
+    showFooter: true,
+    vertical: false,
+    writingMode: 'horizontal-tb',
+    marginTopPx: 44,
+    marginBottomPx: 48,
+    marginLeftPx: 20,
+    marginRightPx: 22,
+    compactMarginTopPx: 16,
+    compactMarginBottomPx: 18,
+    compactMarginLeftPx: 6,
+    compactMarginRightPx: 8,
+    ...overrides,
+  });
 
 describe('readerLayoutContract', () => {
   it('keeps desktop text books paged by default', () => {
@@ -112,6 +131,67 @@ describe('readerLayoutContract', () => {
         platform: { isMobile: true, isIOSApp: false, isAndroidApp: false },
       }),
     ).toEqual({ showHeader: false, showFooter: false });
+  });
+
+  it('zeros legacy top and bottom view insets for mobile-web page-capability books', () => {
+    const insets = getEffectiveReaderViewInsets({
+      settings: insetSettings(),
+      book: { format: 'pdf' },
+      platform: { isMobile: true, isIOSApp: false, isAndroidApp: false },
+    });
+
+    expect(insets).toEqual({ top: 0, right: 8, bottom: 0, left: 6 });
+  });
+
+  it('preserves compact/full view insets outside mobile-web page books', () => {
+    const visible = insetSettings();
+    const hidden = insetSettings({ showHeader: false, showFooter: false });
+
+    expect(
+      getEffectiveReaderViewInsets({
+        settings: visible,
+        book: { format: 'epub' },
+        platform: { isMobile: true, isIOSApp: false, isAndroidApp: false },
+      }),
+    ).toEqual({ top: 44, right: 8, bottom: 48, left: 6 });
+    expect(
+      getEffectiveReaderViewInsets({
+        settings: visible,
+        book: { format: 'pdf' },
+        platform: { isMobile: false },
+      }),
+    ).toEqual({ top: 44, right: 8, bottom: 48, left: 6 });
+    expect(
+      getEffectiveReaderViewInsets({
+        settings: hidden,
+        book: { format: 'epub' },
+        platform: { isMobile: true, isIOSApp: false, isAndroidApp: false },
+      }),
+    ).toEqual({ top: 16, right: 8, bottom: 18, left: 6 });
+  });
+
+  it('uses a page-colored viewport background only for mobile-web page books', () => {
+    expect(
+      getEffectiveReaderViewportStyles({
+        settings: insetSettings(),
+        book: { format: 'pdf' },
+        platform: { isMobile: true, isIOSApp: false, isAndroidApp: false },
+      }),
+    ).toEqual({ backgroundColor: '#ffffff' });
+    expect(
+      getEffectiveReaderViewportStyles({
+        settings: insetSettings(),
+        book: { format: 'epub' },
+        platform: { isMobile: true, isIOSApp: false, isAndroidApp: false },
+      }),
+    ).toEqual({});
+    expect(
+      getEffectiveReaderViewportStyles({
+        settings: insetSettings(),
+        book: { format: 'pdf' },
+        platform: { isMobile: false },
+      }),
+    ).toEqual({});
   });
 
   it('migrates legacy layout fields into canonical fields', () => {

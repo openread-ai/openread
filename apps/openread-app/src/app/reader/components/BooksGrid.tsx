@@ -8,10 +8,10 @@ import { useSidebarStore } from '@/store/sidebarStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { getGridTemplate, getInsetEdges } from '@/utils/grid';
-import { getViewInsets } from '@/utils/insets';
 import { viewPagination } from '../hooks/usePagination';
 import {
   getEffectiveReaderChromeVisibility,
+  getEffectiveReaderViewInsets,
   normalizeReaderLayout,
 } from '../utils/readerLayoutContract';
 import { debounce } from '@/utils/debounce';
@@ -179,8 +179,11 @@ const BooksGrid: React.FC<BooksGridProps> = ({ bookKeys, onCloseBook }) => {
           book: readerLayoutBook,
           platform: readerLayoutPlatform,
         });
-        const effectiveChromeViewSettings = { ...viewSettings, ...effectiveChrome };
-        const viewInsets = getViewInsets(effectiveChromeViewSettings);
+        const viewInsets = getEffectiveReaderViewInsets({
+          settings: viewSettings,
+          book: readerLayoutBook,
+          platform: readerLayoutPlatform,
+        });
         const contentInsets = {
           top: gridInsets.top + viewInsets.top,
           right: gridInsets.right + viewInsets.right,

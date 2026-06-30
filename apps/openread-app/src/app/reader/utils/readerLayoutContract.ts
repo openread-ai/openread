@@ -1,7 +1,9 @@
 import type { EnvConfigType } from '@/services/environment';
 import type { ViewSettings } from '@/types/book';
+import type { Insets } from '@/types/misc';
 import type { FoliateView } from '@/types/view';
 import { getMaxInlineSize } from '@/utils/config';
+import { getViewInsets } from '@/utils/insets';
 import { getStyles } from '@/utils/style';
 
 export type ReaderBookCapability = 'text' | 'page';
@@ -42,6 +44,12 @@ export type ReaderChromeVisibility = {
   showHeader: boolean;
   showFooter: boolean;
 };
+
+export type ReaderViewportStyles = {
+  backgroundColor?: string;
+};
+
+export const MOBILE_WEB_PAGE_VIEWPORT_BACKGROUND = '#ffffff';
 
 export type LegacyReaderLayoutSettings = Partial<ViewSettings> & {
   scrolled?: boolean;
@@ -228,6 +236,37 @@ export function getEffectiveReaderChromeVisibility(input: {
     showHeader: suppressLegacyChrome ? false : !!settings.showHeader,
     showFooter: suppressLegacyChrome ? false : !!settings.showFooter,
   };
+}
+
+export function getEffectiveReaderViewInsets(input: {
+  settings: ViewSettings | Partial<ViewSettings> | LegacyReaderLayoutSettings;
+  book: ReaderLayoutBookInput;
+  platform: ReaderLayoutPlatformInput;
+}): Insets {
+  const settings = normalizeLegacyReaderLayoutSettings(input.settings);
+  const state = normalizeReaderLayout(input);
+  const effectiveChrome = getEffectiveReaderChromeVisibility(input);
+  const insets = getViewInsets({ ...settings, ...effectiveChrome } as ViewSettings);
+
+  if (state.bookCapability === 'page' && isMobileWebReaderPlatform(input.platform)) {
+    return { ...insets, top: 0, bottom: 0 };
+  }
+
+  return insets;
+}
+
+export function getEffectiveReaderViewportStyles(input: {
+  settings: ViewSettings | Partial<ViewSettings> | LegacyReaderLayoutSettings;
+  book: ReaderLayoutBookInput;
+  platform: ReaderLayoutPlatformInput;
+}): ReaderViewportStyles {
+  const state = normalizeReaderLayout(input);
+
+  if (state.bookCapability === 'page' && isMobileWebReaderPlatform(input.platform)) {
+    return { backgroundColor: MOBILE_WEB_PAGE_VIEWPORT_BACKGROUND };
+  }
+
+  return {};
 }
 
 export function setReaderLayoutMode(settings: ViewSettings, mode: ReaderLayoutMode): ViewSettings {

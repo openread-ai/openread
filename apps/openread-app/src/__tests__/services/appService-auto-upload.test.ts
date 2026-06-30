@@ -178,7 +178,7 @@ vi.mock('uuid', () => ({
 }));
 
 import type { Book, BookFormat } from '@/types/book';
-import { BaseAppService } from '@/services/appService';
+import { BaseAppService, createImportBookContext } from '@/services/appService';
 import { CloudSyncService } from '@/services/cloudSync';
 import { deleteFile, downloadFile } from '@/libs/storage';
 import { getConfigFilename, getCoverFilename, getDir, getLocalBookFilename } from '@/utils/book';
@@ -655,6 +655,63 @@ describe('appService importBook transaction-like rollback', () => {
     expect(files.has('mock-local-filename')).toBe(true);
     expect(files.has('mock-cover-filename')).toBe(true);
     expect(files.has('mock-config-filename')).toBe(true);
+  });
+
+  it('uses an import context to avoid full-library scans for duplicate lookup', async () => {
+    const existingBook = createMockBook({
+      hash: testOpenReadBookRef('d41d8cd98f00b204e9800998ecf8427e'),
+      uploadedAt: Date.now(),
+    });
+    const books: Book[] = [existingBook];
+    const context = createImportBookContext(books);
+    books.find = vi.fn(() => {
+      throw new Error('unexpected full-library scan');
+    }) as typeof books.find;
+
+    const result = await appService.importBook(
+      new File(['test content'], 'test.epub'),
+      books,
+      true,
+      true,
+      false,
+      context,
+    );
+
+    expect(result).toBe(existingBook);
+    expect(books).toHaveLength(1);
+    expect(books.find).not.toHaveBeenCalled();
+  });
+
+  it('updates the import context after a new book commit for later duplicate imports', async () => {
+    const { files } = installTrackedBooksFs(appService);
+    const books: Book[] = [];
+    const context = createImportBookContext(books);
+    books.find = vi.fn(() => {
+      throw new Error('unexpected full-library scan');
+    }) as typeof books.find;
+
+    const firstResult = await appService.importBook(
+      new File(['test content'], 'test.epub'),
+      books,
+      true,
+      true,
+      false,
+      context,
+    );
+    const secondResult = await appService.importBook(
+      new File(['test content'], 'test.epub'),
+      books,
+      true,
+      true,
+      false,
+      context,
+    );
+
+    expect(firstResult).toBe(books[0]);
+    expect(secondResult).toBe(books[0]);
+    expect(books).toHaveLength(1);
+    expect(books.find).not.toHaveBeenCalled();
+    expect(files.has('mock-local-filename')).toBe(true);
   });
 
   it('keeps batch-style imports at N-1 successes with no failed-attempt artifacts', async () => {

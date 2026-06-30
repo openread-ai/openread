@@ -34,6 +34,10 @@ export type FileInfo = {
   birthtime: Date | null;
 };
 
+export type ImportBookContext = {
+  booksByHash: Map<Book['hash'], Book>;
+};
+
 export type NativeTouchEventType = {
   type: 'touchstart' | 'touchcancel' | 'touchend';
   pointerId: number;
@@ -125,6 +129,7 @@ export interface AppService {
     saveBook?: boolean,
     saveCover?: boolean,
     overwrite?: boolean,
+    importContext?: ImportBookContext,
   ): Promise<Book | null>;
   deleteBook(book: Book, deleteAction: DeleteAction): Promise<void>;
   uploadBook(book: Book, onProgress?: ProgressHandler): Promise<void>;

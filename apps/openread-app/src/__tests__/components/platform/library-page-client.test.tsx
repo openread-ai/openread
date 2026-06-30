@@ -702,8 +702,22 @@ describe('LibraryPageClient', () => {
 
       await waitFor(() => {
         expect(mockImportBook).toHaveBeenCalledTimes(2);
-        expect(mockImportBook).toHaveBeenCalledWith(mockFile1, expect.any(Array));
-        expect(mockImportBook).toHaveBeenCalledWith(mockFile2, expect.any(Array));
+        expect(mockImportBook).toHaveBeenCalledWith(
+          mockFile1,
+          expect.any(Array),
+          true,
+          true,
+          false,
+          expect.objectContaining({ booksByHash: expect.any(Map) }),
+        );
+        expect(mockImportBook).toHaveBeenCalledWith(
+          mockFile2,
+          expect.any(Array),
+          true,
+          true,
+          false,
+          expect.objectContaining({ booksByHash: expect.any(Map) }),
+        );
       });
     });
 
@@ -777,6 +791,10 @@ describe('LibraryPageClient', () => {
         expect(mockImportBook).toHaveBeenCalledWith(
           '/home/user/books/novel.epub',
           expect.any(Array),
+          true,
+          true,
+          false,
+          expect.objectContaining({ booksByHash: expect.any(Map) }),
         );
       });
     });
@@ -840,7 +858,14 @@ describe('LibraryPageClient', () => {
       await waitFor(() => {
         // Only epub should be imported, jpg and docx are unsupported
         expect(mockImportBook).toHaveBeenCalledTimes(1);
-        expect(mockImportBook).toHaveBeenCalledWith(epubFile, expect.any(Array));
+        expect(mockImportBook).toHaveBeenCalledWith(
+          epubFile,
+          expect.any(Array),
+          true,
+          true,
+          false,
+          expect.objectContaining({ booksByHash: expect.any(Map) }),
+        );
       });
     });
 

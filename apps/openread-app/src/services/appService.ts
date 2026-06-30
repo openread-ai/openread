@@ -5,6 +5,7 @@ import {
   AppService,
   DistChannel,
   FileItem,
+  ImportBookContext,
   OsPlatform,
   ResolvedPath,
   SelectDirectoryMode,
@@ -112,6 +113,16 @@ type LocalImportArtifact =
       action: 'restore-overwritten-file';
       content: string | ArrayBuffer;
     };
+
+export function createImportBookContext(books: Book[]): ImportBookContext {
+  const booksByHash = new Map<Book['hash'], Book>();
+  for (const book of books) {
+    if (!booksByHash.has(book.hash)) {
+      booksByHash.set(book.hash, book);
+    }
+  }
+  return { booksByHash };
+}
 
 export abstract class BaseAppService implements AppService {
   osPlatform: OsPlatform = getOSPlatform();
@@ -432,6 +443,7 @@ export abstract class BaseAppService implements AppService {
     saveBook: boolean = true,
     saveCover: boolean = true,
     overwrite: boolean = false,
+    importContext?: ImportBookContext,
   ): Promise<Book | null> {
     const createdArtifacts: LocalImportArtifact[] = [];
     let localImportCommitted = false;
@@ -494,7 +506,9 @@ export abstract class BaseAppService implements AppService {
       const platformHash = parsePlatformBookHash(await computeFileHash(fileobj));
       if (!platformHash) throw new ImportFailureError('platform-hash-failed');
 
-      const existingBook = books.filter((b) => b.hash === hash)[0];
+      const existingBook = importContext
+        ? importContext.booksByHash.get(hash)
+        : books.find((b) => b.hash === hash);
 
       const primaryLanguage = getPrimaryLanguage(loadedBook.metadata.language);
       const book: Book = {
@@ -614,6 +628,7 @@ export abstract class BaseAppService implements AppService {
       book.coverImageUrl = await this.generateCoverImageUrl(book);
 
       if (existingBook) {
+        importContext?.booksByHash.set(hash, existingBook);
         existingBook.deletedAt = null;
         existingBook.createdAt = Date.now();
         existingBook.updatedAt = Date.now();
@@ -627,6 +642,7 @@ export abstract class BaseAppService implements AppService {
         if (book.url) existingBook.url = book.url;
       } else {
         books.splice(0, 0, book);
+        importContext?.booksByHash.set(hash, book);
       }
       localImportCommitted = true;
 

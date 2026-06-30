@@ -6,6 +6,7 @@ import { useFileSelector, type SelectedFile } from '@/hooks/useFileSelector';
 import { useLibraryLimit } from '@/hooks/useLibraryLimit';
 import { useSync } from '@/hooks/useSync';
 import { SUPPORTED_BOOK_EXTS, UNSUPPORTED_BOOK_FILES_MESSAGE } from '@/services/constants';
+import { createImportBookContext } from '@/services/appService';
 import { transferManager } from '@/services/transferManager';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useLibraryStore } from '@/store/libraryStore';
@@ -172,6 +173,8 @@ export function useBookImport() {
       let skippedForLimitCount = 0;
       const outcomes: BookImportOutcome[] = [];
 
+      const libraryBeforeImport = useLibraryStore.getState().library;
+      const importContext = createImportBookContext(libraryBeforeImport);
       const activeBefore = new Set(
         useLibraryStore
           .getState()
@@ -208,7 +211,7 @@ export function useBookImport() {
             continue;
           }
           const { library } = useLibraryStore.getState();
-          await appService.importBook(fileInput, library);
+          await appService.importBook(fileInput, library, true, true, false, importContext);
           successCount++;
           outcomes.push({ fileName: selectedBookFileName(selectedFile), status: 'imported' });
         } catch (error) {

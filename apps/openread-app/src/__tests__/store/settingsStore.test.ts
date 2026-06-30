@@ -11,6 +11,8 @@ describe('settingsStore reader-scoped dialog identity', () => {
       isSettingsDialogOpen: false,
       isSettingsGlobal: true,
       activeSettingsItemId: null,
+      settingsDialogScope: 'all',
+      initialSettingsPanel: null,
     });
   });
 
@@ -35,5 +37,22 @@ describe('settingsStore reader-scoped dialog identity', () => {
 
     expect(useSettingsStore.getState().settingsDialogBookKey).toBe(bookKey);
     expect(useSettingsStore.getState().isSettingsDialogOpen).toBe(true);
+  });
+
+  it('carries an optional scoped settings open contract and resets it on close', () => {
+    const bookKey = createReaderBookKey(LOCAL_HASH, 'session-a');
+    useSettingsStore.getState().setSettingsDialogBookKey(bookKey);
+    useSettingsStore
+      .getState()
+      .setSettingsDialogOpen(true, { scope: 'appearance', initialPanel: 'Font' });
+
+    expect(useSettingsStore.getState().isSettingsDialogOpen).toBe(true);
+    expect(useSettingsStore.getState().settingsDialogScope).toBe('appearance');
+    expect(useSettingsStore.getState().initialSettingsPanel).toBe('Font');
+
+    useSettingsStore.getState().setSettingsDialogOpen(false);
+    expect(useSettingsStore.getState().isSettingsDialogOpen).toBe(false);
+    expect(useSettingsStore.getState().settingsDialogScope).toBe('all');
+    expect(useSettingsStore.getState().initialSettingsPanel).toBeNull();
   });
 });

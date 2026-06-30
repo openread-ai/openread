@@ -1,7 +1,7 @@
 import clsx from 'clsx';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useEnv } from '@/context/EnvContext';
-import { useSettingsStore } from '@/store/settingsStore';
+import { useSettingsStore, type SettingsPanelType } from '@/store/settingsStore';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import { useTranslation } from '@/hooks/useTranslation';
 import { RiFontSize } from 'react-icons/ri';
@@ -26,7 +26,7 @@ import MiscPanel from './MiscPanel';
 import { useCommandPalette } from '@/components/command-palette';
 import { LOCAL_PERSISTENCE_KEYS } from '@/services/persistence/localPersistenceRegistry';
 
-export type SettingsPanelType = 'Font' | 'Layout' | 'Color' | 'Control' | 'Language' | 'Custom';
+export type { SettingsPanelType };
 export type SettingsPanelPanelProp = {
   bookKey: string;
   onRegisterReset: (resetFn: () => void) => void;
@@ -39,6 +39,8 @@ type TabConfig = {
   disabled?: boolean;
 };
 
+const APPEARANCE_SETTINGS_PANELS = new Set<SettingsPanelType>(['Font', 'Layout', 'Color']);
+
 const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   const _ = useTranslation();
   const { appService } = useEnv();
@@ -47,8 +49,14 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   const tabsRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [showAllTabLabels, setShowAllTabLabels] = useState(false);
-  const { setFontPanelView, setSettingsDialogOpen, activeSettingsItemId, setActiveSettingsItemId } =
-    useSettingsStore();
+  const {
+    setFontPanelView,
+    setSettingsDialogOpen,
+    settingsDialogScope,
+    initialSettingsPanel,
+    activeSettingsItemId,
+    setActiveSettingsItemId,
+  } = useSettingsStore();
   const { open: openCommandPalette } = useCommandPalette();
 
   const handleOpenCommandPalette = () => {
@@ -56,46 +64,69 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     setSettingsDialogOpen(false);
   };
 
-  const tabConfig = [
-    {
-      tab: 'Font',
-      icon: RiFontSize,
-      label: _('Font'),
-    },
-    {
-      tab: 'Layout',
-      icon: RiDashboardLine,
-      label: _('Layout'),
-    },
-    {
-      tab: 'Color',
-      icon: VscSymbolColor,
-      label: _('Color'),
-    },
-    {
-      tab: 'Control',
-      icon: LiaHandPointerSolid,
-      label: _('Behavior'),
-    },
-    {
-      tab: 'Language',
-      icon: RiTranslate,
-      label: _('Language'),
-    },
-    {
-      tab: 'Custom',
-      icon: IoAccessibilityOutline,
-      label: _('Custom'),
-    },
-  ] as TabConfig[];
+  const tabConfig = useMemo<TabConfig[]>(
+    () => [
+      {
+        tab: 'Font',
+        icon: RiFontSize,
+        label: _('Font'),
+      },
+      {
+        tab: 'Layout',
+        icon: RiDashboardLine,
+        label: _('Layout'),
+      },
+      {
+        tab: 'Color',
+        icon: VscSymbolColor,
+        label: _('Color'),
+      },
+      {
+        tab: 'Control',
+        icon: LiaHandPointerSolid,
+        label: _('Behavior'),
+      },
+      {
+        tab: 'Language',
+        icon: RiTranslate,
+        label: _('Language'),
+      },
+      {
+        tab: 'Custom',
+        icon: IoAccessibilityOutline,
+        label: _('Custom'),
+      },
+    ],
+    [_],
+  );
 
-  const [activePanel, setActivePanel] = useState<SettingsPanelType>(() => {
+  const visibleTabConfig = useMemo(
+    () =>
+      settingsDialogScope === 'appearance'
+        ? tabConfig.filter(({ tab }) => APPEARANCE_SETTINGS_PANELS.has(tab))
+        : tabConfig,
+    [settingsDialogScope, tabConfig],
+  );
+
+  const isVisiblePanel = useCallback(
+    (panel: SettingsPanelType) => visibleTabConfig.some(({ tab }) => tab === panel),
+    [visibleTabConfig],
+  );
+
+  const getInitialPanel = () => {
+    if (initialSettingsPanel && isVisiblePanel(initialSettingsPanel)) {
+      return initialSettingsPanel;
+    }
+
     const lastPanel = localStorage.getItem(LOCAL_PERSISTENCE_KEYS.lastConfigPanel);
-    if (lastPanel && tabConfig.some((tab) => tab.tab === lastPanel)) {
+    if (lastPanel && isVisiblePanel(lastPanel as SettingsPanelType)) {
       return lastPanel as SettingsPanelType;
     }
-    return 'Font' as SettingsPanelType;
-  });
+
+    return visibleTabConfig[0]?.tab ?? 'Font';
+  };
+
+  const [activePanel, setActivePanel] = useState<SettingsPanelType>(getInitialPanel);
 
   const handleSetActivePanel = (tab: SettingsPanelType) => {
     setActivePanel(tab);
@@ -156,7 +187,7 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
       };
       const panelKey = parts[1]?.toLowerCase();
       const targetPanel = panelMap[panelKey || ''];
-      if (targetPanel && targetPanel !== activePanel) {
+      if (targetPanel && isVisiblePanel(targetPanel) && targetPanel !== activePanel) {
         // eslint-disable-next-line react-hooks/set-state-in-effect -- panel switch based on external navigation is intended
         setActivePanel(targetPanel);
       }
@@ -176,7 +207,7 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     }, 100);
 
     return () => clearTimeout(timeoutId);
-  }, [activeSettingsItemId, activePanel, setActiveSettingsItemId]);
+  }, [activeSettingsItemId, activePanel, isVisiblePanel, setActiveSettingsItemId]);
 
   useEffect(() => {
     setFontPanelView('main-fonts');
@@ -222,7 +253,7 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     };
   }, [setFontPanelView]);
 
-  const currentPanel = tabConfig.find((tab) => tab.tab === activePanel);
+  const currentPanel = visibleTabConfig.find((tab) => tab.tab === activePanel);
 
   return (
     <Dialog
@@ -260,7 +291,7 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
               )}
               style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
             >
-              {tabConfig
+              {visibleTabConfig
                 .filter((t) => !t.disabled)
                 .map(({ tab, icon: Icon, label }) => (
                   <button

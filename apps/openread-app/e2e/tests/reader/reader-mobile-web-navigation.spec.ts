@@ -451,7 +451,7 @@ test.describe('Mobile web reader navigation regression', () => {
     await expect(page.getByTestId('mobile-reader-menu-content')).toHaveCount(0);
 
     viewMenu = await openMenu();
-    await page.getByTestId('mobile-reader-menu-button').click();
+    await page.getByTestId('mobile-reader-menu-button').press('Enter');
     await expect(page.getByTestId('mobile-reader-menu-content')).toHaveCount(0);
 
     viewMenu = await openMenu();
@@ -460,6 +460,14 @@ test.describe('Mobile web reader navigation regression', () => {
     await expect(page.getByRole('group', { name: /Font - Settings/ })).toBeVisible({
       timeout: 10_000,
     });
+    const settingsTabs = page.getByRole('group', { name: /Settings Panels - Font/ });
+    await expect(settingsTabs).toBeVisible();
+    await expect(settingsTabs.locator('[data-tab="Font"]')).toHaveClass(/btn-active/);
+    await expect(settingsTabs.locator('[data-tab="Layout"]')).toBeVisible();
+    await expect(settingsTabs.locator('[data-tab="Color"]')).toBeVisible();
+    await expect(settingsTabs.locator('[data-tab="Control"]')).toHaveCount(0);
+    await expect(settingsTabs.locator('[data-tab="Language"]')).toHaveCount(0);
+    await expect(settingsTabs.locator('[data-tab="Custom"]')).toHaveCount(0);
     await attachScreenshot(page, testInfo, 'mobile-web-reader-kebab-font-layout-settings');
     await page.getByRole('button', { name: 'Close' }).first().click();
     await expect(page.getByRole('group', { name: /Font - Settings/ })).toHaveCount(0);
@@ -496,6 +504,33 @@ test.describe('Mobile web reader navigation regression', () => {
     await expect(historySheet.getByText('New Chat', { exact: true })).toHaveCount(0);
     await expect(page.getByTestId('assistant-composer')).toHaveCount(0);
     await attachScreenshot(page, testInfo, 'mobile-web-reader-kebab-chat-history-sheet');
+  });
+
+  test('mobile web Font & Layout opens appearance-scoped settings', async ({
+    authenticatedPage: page,
+  }, testInfo) => {
+    test.skip(!isMobileProject(testInfo), 'Mobile web settings appearance scope proof only.');
+
+    await openFixtureInReader(page, FIXTURES.reflowable);
+    await revealMobileHeader(page);
+    await page.getByTestId('mobile-reader-menu-button').press('Enter');
+    const viewMenu = page.locator('.view-menu').first();
+    await expect(viewMenu).toBeVisible({ timeout: 10_000 });
+
+    await page.getByRole('menuitem', { name: 'Font & Layout' }).press('Enter');
+    await expect(page.getByTestId('mobile-reader-menu-content')).toHaveCount(0);
+    await expect(page.getByRole('group', { name: /Font - Settings/ })).toBeVisible({
+      timeout: 10_000,
+    });
+    const settingsTabs = page.getByRole('group', { name: /Settings Panels - Font/ });
+    await expect(settingsTabs).toBeVisible();
+    await expect(settingsTabs.locator('[data-tab="Font"]')).toHaveClass(/btn-active/);
+    await expect(settingsTabs.locator('[data-tab="Layout"]')).toBeVisible();
+    await expect(settingsTabs.locator('[data-tab="Color"]')).toBeVisible();
+    await expect(settingsTabs.locator('[data-tab="Control"]')).toHaveCount(0);
+    await expect(settingsTabs.locator('[data-tab="Language"]')).toHaveCount(0);
+    await expect(settingsTabs.locator('[data-tab="Custom"]')).toHaveCount(0);
+    await attachScreenshot(page, testInfo, 'mobile-web-reader-kebab-font-layout-settings');
   });
 
   test('mobile web reader menu remains available when AI is disabled', async ({

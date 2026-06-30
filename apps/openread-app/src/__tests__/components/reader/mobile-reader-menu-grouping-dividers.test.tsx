@@ -40,6 +40,13 @@ const mockState = vi.hoisted(() => {
     dispatch: vi.fn(),
     navigateToLogin: vi.fn(),
     setIsDropdownOpen: vi.fn(),
+    appService: {
+      isMobile: true,
+      isIOSApp: false,
+      isAndroidApp: false,
+      appPlatform: 'web',
+      hasWindow: false,
+    },
   };
 });
 
@@ -63,13 +70,7 @@ vi.mock('@/context/AuthContext', () => ({
 vi.mock('@/context/EnvContext', () => ({
   useEnv: () => ({
     envConfig: {},
-    appService: {
-      isMobile: true,
-      isIOSApp: false,
-      isAndroidApp: false,
-      appPlatform: 'web',
-      hasWindow: false,
-    },
+    appService: mockState.appService,
   }),
 }));
 
@@ -154,6 +155,24 @@ vi.mock('@/app/reader/hooks/useBooksManager', () => ({
 }));
 
 function renderMobileWebMenu() {
+  mockState.appService = {
+    isMobile: true,
+    isIOSApp: false,
+    isAndroidApp: false,
+    appPlatform: 'web',
+    hasWindow: false,
+  };
+  return render(<ViewMenu bookKey='book-1' setIsDropdownOpen={mockState.setIsDropdownOpen} />);
+}
+
+function renderDesktopMenu() {
+  mockState.appService = {
+    isMobile: false,
+    isIOSApp: false,
+    isAndroidApp: false,
+    appPlatform: 'web',
+    hasWindow: false,
+  };
   return render(<ViewMenu bookKey='book-1' setIsDropdownOpen={mockState.setIsDropdownOpen} />);
 }
 
@@ -174,6 +193,13 @@ describe('mobile web reader menu grouping dividers', () => {
     mockState.user = { id: 'user-1' };
     mockState.viewSettings.sortedTOC = false;
     mockState.viewSettings.invertImgColorInDark = false;
+    mockState.appService = {
+      isMobile: true,
+      isIOSApp: false,
+      isAndroidApp: false,
+      appPlatform: 'web',
+      hasWindow: false,
+    };
     vi.clearAllMocks();
   });
 
@@ -248,10 +274,24 @@ describe('mobile web reader menu grouping dividers', () => {
     fireEvent.click(screen.getByText('Font & Layout'));
     expect(mockState.setIsDropdownOpen).toHaveBeenCalledWith(false);
     expect(mockState.setSettingsDialogBookKey).toHaveBeenCalledWith('book-1');
-    expect(mockState.setSettingsDialogOpen).toHaveBeenCalledWith(true);
+    expect(mockState.setSettingsDialogOpen).toHaveBeenCalledWith(true, {
+      scope: 'appearance',
+      initialPanel: 'Font',
+    });
 
     expect(screen.queryByText('Dark Mode')).toBeNull();
     expect(mockState.setThemeMode).not.toHaveBeenCalled();
     expect(screen.getByText('Invert Image In Dark Mode')).toBeTruthy();
+  });
+
+  it('keeps the desktop Font & Layout entry on the full settings dialog path', () => {
+    renderDesktopMenu();
+
+    fireEvent.click(screen.getByText('Font & Layout'));
+
+    expect(mockState.setIsDropdownOpen).toHaveBeenCalledWith(false);
+    expect(mockState.setSettingsDialogBookKey).toHaveBeenCalledWith('book-1');
+    expect(mockState.setSettingsDialogOpen).toHaveBeenCalledTimes(1);
+    expect(mockState.setSettingsDialogOpen).toHaveBeenCalledWith(true);
   });
 });

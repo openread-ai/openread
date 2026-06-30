@@ -150,6 +150,12 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
     setSettingsDialogOpen(true);
   };
 
+  const openMobileWebFontLayoutMenu = () => {
+    setIsDropdownOpen?.(false);
+    setSettingsDialogBookKey(bookKey);
+    setSettingsDialogOpen(true, { scope: 'appearance', initialPanel: 'Font' });
+  };
+
   const cycleThemeMode = () => {
     const modeOrder = { auto: 'light', light: 'dark', dark: 'auto' } as const;
     setThemeMode(modeOrder[themeMode]);
@@ -331,7 +337,11 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
         />,
       ],
       [
-        <MenuItem key='font-layout' label={_('Font & Layout')} onClick={openFontLayoutMenu} />,
+        <MenuItem
+          key='font-layout'
+          label={_('Font & Layout')}
+          onClick={openMobileWebFontLayoutMenu}
+        />,
         <MenuItem
           key='invert-images-dark-mode'
           label={_('Invert Image In Dark Mode')}

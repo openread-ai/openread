@@ -645,8 +645,8 @@ export abstract class BaseAppService implements AppService {
         try {
           const settings = useSettingsStore.getState().settings;
           if (settings.autoUpload !== false && transferManager.isReady()) {
-            logger.info('Queueing auto-upload for:', resultBook.title);
-            transferManager.queueUpload(resultBook, 1); // high priority
+            logger.info('Queueing background auto-upload for:', resultBook.title);
+            transferManager.queueUpload(resultBook, 1, true); // high priority, invisible durability lane
           }
         } catch (e) {
           logger.warn('Auto-upload failed:', e);

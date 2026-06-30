@@ -734,6 +734,7 @@ describe('appService importBook auto-upload', () => {
         title: 'Test Book',
       }),
       1,
+      true,
     );
   });
 

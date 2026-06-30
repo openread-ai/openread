@@ -12,6 +12,7 @@ const logger = createLogger('transfer');
 
 const TRANSFER_QUEUE_KEY = LOCAL_PERSISTENCE_KEYS.transferQueue;
 const RETRY_DELAY_BASE_MS = 2000;
+const BACKGROUND_RETRY_DELAY_MAX_MS = 60_000;
 
 export type TransferErrorReason =
   | 'not-authenticated'
@@ -20,48 +21,51 @@ export type TransferErrorReason =
   | 'library-limit-reached'
   | 'local-file-missing'
   | 'network-error'
-  | 'backend-error'
-  | 'unknown';
+  | 'platform-incident'
+  | 'unclassified-retryable';
 
-export function classifyTransferError(errorMessage: string): {
+export interface TransferErrorClassification {
   reason: TransferErrorReason;
   retryable: boolean;
-} {
+  incident: boolean;
+}
+
+export function classifyTransferError(errorMessage: string): TransferErrorClassification {
   if (
     errorMessage.includes('Not authenticated') ||
     errorMessage.includes('UNAUTHORIZED') ||
     /HTTP 401\b/.test(errorMessage)
   ) {
-    return { reason: 'not-authenticated', retryable: false };
+    return { reason: 'not-authenticated', retryable: false, incident: false };
   }
   if (
     errorMessage.includes('STORAGE_LIMIT_REACHED') ||
     errorMessage.includes('Insufficient storage quota') ||
     errorMessage.includes('Storage limit reached')
   ) {
-    return { reason: 'storage-limit-reached', retryable: false };
+    return { reason: 'storage-limit-reached', retryable: false, incident: false };
   }
   if (errorMessage.includes('STORAGE_NOT_AVAILABLE')) {
-    return { reason: 'storage-not-available', retryable: false };
+    return { reason: 'storage-not-available', retryable: false, incident: false };
   }
   if (errorMessage.includes('LIBRARY_LIMIT_REACHED') || errorMessage.includes('Library limit')) {
-    return { reason: 'library-limit-reached', retryable: false };
+    return { reason: 'library-limit-reached', retryable: false, incident: false };
   }
   if (errorMessage.includes('Book file not uploaded')) {
-    return { reason: 'local-file-missing', retryable: false };
+    return { reason: 'local-file-missing', retryable: false, incident: true };
   }
   if (/Failed to fetch|NetworkError|network|Load failed/i.test(errorMessage)) {
-    return { reason: 'network-error', retryable: true };
+    return { reason: 'network-error', retryable: true, incident: false };
   }
   if (
     errorMessage.includes('STORAGE_SCHEMA_UNAVAILABLE') ||
     errorMessage.includes('INTERNAL_ERROR') ||
     /HTTP 5\d\d\b/.test(errorMessage)
   ) {
-    return { reason: 'backend-error', retryable: true };
+    return { reason: 'platform-incident', retryable: true, incident: true };
   }
 
-  return { reason: 'unknown', retryable: true };
+  return { reason: 'unclassified-retryable', retryable: true, incident: true };
 }
 
 interface PersistedQueueData {
@@ -71,6 +75,7 @@ interface PersistedQueueData {
 
 class TransferManager {
   private static instance: TransferManager;
+  private queueWakeTimer: ReturnType<typeof setTimeout> | null = null;
   private appService: AppService | null = null;
   private isProcessing = false;
   private abortControllers: Map<string, AbortController> = new Map();
@@ -119,6 +124,11 @@ class TransferManager {
     // Check if already queued or in progress
     const existing = store.getTransferByBookHash(book.hash, 'upload');
     if (existing) {
+      if (existing.isBackground && !isBackground) {
+        store.promoteTransferToForeground(existing.id, priority);
+        this.persistQueue();
+        this.processQueue();
+      }
       return existing.id;
     }
 
@@ -224,7 +234,11 @@ class TransferManager {
     const maxConcurrent = store.maxConcurrent;
 
     const availableSlots = maxConcurrent - activeCount;
-    if (availableSlots <= 0 || pending.length === 0) return;
+    if (availableSlots <= 0) return;
+    if (pending.length === 0) {
+      this.scheduleNextDelayedPending(store);
+      return;
+    }
 
     // Sort by priority (lower = higher priority) then by createdAt
     const sortedPending = [...pending].sort((a, b) => {
@@ -238,9 +252,37 @@ class TransferManager {
 
     // Check if more items to process
     const newStore = useTransferStore.getState();
-    if (newStore.getPendingTransfers().length > 0 && !newStore.isQueuePaused) {
-      setTimeout(() => this.processQueue(), 100);
+    if (newStore.isQueuePaused) return;
+    if (newStore.getPendingTransfers().length > 0) {
+      this.scheduleProcessQueue(100);
+    } else {
+      this.scheduleNextDelayedPending(newStore);
     }
+  }
+
+  private scheduleNextDelayedPending(store = useTransferStore.getState()): void {
+    const now = Date.now();
+    const nextAvailableAt = Object.values(store.transfers)
+      .filter((transfer) => transfer.status === 'pending' && (transfer.availableAt ?? 0) > now)
+      .reduce<number | null>((earliest, transfer) => {
+        const availableAt = transfer.availableAt!;
+        return earliest === null ? availableAt : Math.min(earliest, availableAt);
+      }, null);
+
+    if (nextAvailableAt !== null) {
+      this.scheduleProcessQueue(nextAvailableAt - now);
+    }
+  }
+
+  private scheduleProcessQueue(delayMs: number): void {
+    if (this.queueWakeTimer) clearTimeout(this.queueWakeTimer);
+    this.queueWakeTimer = setTimeout(
+      () => {
+        this.queueWakeTimer = null;
+        this.processQueue();
+      },
+      Math.max(0, delayMs),
+    );
   }
 
   private async executeTransfer(transfer: TransferItem): Promise<void> {
@@ -272,6 +314,8 @@ class TransferManager {
           progress.transferSpeed,
         );
     };
+
+    let retryScheduled = false;
 
     try {
       const library = this.getLibrary();
@@ -307,13 +351,14 @@ class TransferManager {
       useTransferStore.getState().setTransferStatus(transfer.id, 'completed');
       eventDispatcher.dispatch('transfer-completed', { book, type: transfer.type });
 
+      const latestTransfer = useTransferStore.getState().transfers[transfer.id] ?? transfer;
       const successMessages = {
         upload: _('Book uploaded: {{title}}', { title: transfer.bookTitle }),
         download: _('Book downloaded: {{title}}', { title: transfer.bookTitle }),
         delete: _('Deleted cloud backup of the book: {{title}}', { title: transfer.bookTitle }),
       };
 
-      if (!transfer.isBackground) {
+      if (!latestTransfer.isBackground) {
         eventDispatcher.dispatch('toast', {
           type: 'info',
           timeout: 2000,
@@ -331,8 +376,41 @@ class TransferManager {
       const currentTransfer = currentStore.transfers[transfer.id];
 
       const errorClassification = classifyTransferError(errorMessage);
+      const effectiveTransfer = currentTransfer ?? transfer;
 
-      if (
+      const isBackgroundUpload =
+        effectiveTransfer.type === 'upload' && effectiveTransfer.isBackground;
+
+      if (isBackgroundUpload && currentTransfer) {
+        const delay = Math.min(
+          BACKGROUND_RETRY_DELAY_MAX_MS,
+          RETRY_DELAY_BASE_MS * Math.pow(2, Math.min(currentTransfer.retryCount, 5)),
+        );
+        currentStore.incrementRetryCount(transfer.id);
+        currentStore.deferTransfer(
+          transfer.id,
+          `Background backup retry scheduled: ${errorClassification.reason}`,
+          Date.now() + delay,
+        );
+        retryScheduled = true;
+
+        const logPayload = {
+          transferId: transfer.id,
+          bookHash: transfer.bookHash,
+          reason: errorClassification.reason,
+          retryCount: currentTransfer.retryCount + 1,
+          error: errorMessage,
+        };
+        if (errorClassification.incident) {
+          logger.error('Background cloud backup invariant/incident; retrying silently', logPayload);
+        } else {
+          logger.warn('Background cloud backup delayed; retrying silently', logPayload);
+        }
+
+        setTimeout(() => {
+          this.processQueue();
+        }, delay);
+      } else if (
         errorClassification.retryable &&
         currentTransfer &&
         currentTransfer.retryCount < currentTransfer.maxRetries
@@ -340,18 +418,27 @@ class TransferManager {
         // Schedule retry with exponential backoff
         const delay = RETRY_DELAY_BASE_MS * Math.pow(2, currentTransfer.retryCount);
         currentStore.incrementRetryCount(transfer.id);
-        currentStore.setTransferStatus(
+        currentStore.deferTransfer(
           transfer.id,
-          'pending',
           `Retry ${currentTransfer.retryCount + 1}/${currentTransfer.maxRetries}`,
+          Date.now() + delay,
         );
+        retryScheduled = true;
 
         setTimeout(() => {
           this.processQueue();
         }, delay);
       } else {
-        if (!transfer.isBackground) {
-          const errorMessages = {
+        if (!effectiveTransfer.isBackground) {
+          const genericFailureMessage =
+            transfer.type === 'upload'
+              ? _('Failed to upload book: {{title}}', { title: transfer.bookTitle })
+              : transfer.type === 'download'
+                ? _('Failed to download book: {{title}}', { title: transfer.bookTitle })
+                : _('Failed to delete cloud backup of the book: {{title}}', {
+                    title: transfer.bookTitle,
+                  });
+          const errorMessages: Record<TransferErrorReason, string> = {
             'not-authenticated': _('Please log in to continue'),
             'storage-limit-reached': _('Storage limit reached. Upgrade your plan or remove files.'),
             'storage-not-available': _('Cloud storage is not available on your current plan.'),
@@ -360,17 +447,10 @@ class TransferManager {
               'Book file is not available on this device. Re-download or re-import it before cloud upload.',
             ),
             'network-error': _('Network error. Check your connection and try again.'),
-            'backend-error': _(
+            'platform-incident': _(
               'Cloud storage is temporarily unavailable. Please try again shortly.',
             ),
-            unknown:
-              transfer.type === 'upload'
-                ? _('Failed to upload book: {{title}}', { title: transfer.bookTitle })
-                : transfer.type === 'download'
-                  ? _('Failed to download book: {{title}}', { title: transfer.bookTitle })
-                  : _('Failed to delete cloud backup of the book: {{title}}', {
-                      title: transfer.bookTitle,
-                    }),
+            'unclassified-retryable': genericFailureMessage,
           };
 
           eventDispatcher.dispatch('toast', {
@@ -388,8 +468,8 @@ class TransferManager {
       currentStore.setActiveCount(Math.max(0, currentStore.getActiveTransfers().length));
       this.persistQueue();
 
-      // Continue processing
-      setTimeout(() => this.processQueue(), 100);
+      // Continue processing unless this transfer deliberately delayed its own retry.
+      if (!retryScheduled) this.scheduleProcessQueue(100);
     }
   }
 

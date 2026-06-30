@@ -147,7 +147,16 @@ const AIAssistantChat = ({
   surface?: 'default' | 'mobile-web-sheet';
   mobileWebHeader?: ReactNode;
 }) => {
+  const { appService } = useEnv();
   const { getChapters, getVisualContextImages } = useBookChapters(bookDoc, readerLocation);
+  const readerPlatform = useMemo(
+    () => ({
+      isMobile: !!appService?.isMobile,
+      isIOSApp: !!appService?.isIOSApp,
+      isAndroidApp: !!appService?.isAndroidApp,
+    }),
+    [appService?.isAndroidApp, appService?.isIOSApp, appService?.isMobile],
+  );
   const {
     activeConversationId,
     addMessage,
@@ -183,6 +192,7 @@ const AIAssistantChat = ({
     getChapters,
     getVisualContextImages,
     readerLocation,
+    readerPlatform,
   });
 
   // update ref on every render with latest values
@@ -203,15 +213,15 @@ const AIAssistantChat = ({
       getChapters,
       getVisualContextImages,
       readerLocation,
+      readerPlatform,
     };
   });
 
-  // Pre-warm reader context when the AI surface mounts so the first user
-  // message starts from an available book context instead of a cold extraction.
+  // Pre-warm text context only. Visual/current-page image fallback is loaded lazily
+  // by the adapter when exact text is unavailable or sparse.
   useEffect(() => {
     void getChapters().catch(() => undefined);
-    void getVisualContextImages().catch(() => undefined);
-  }, [getChapters, getVisualContextImages]);
+  }, [getChapters]);
 
   // create adapter ONCE and keep it stable
   const adapter = useMemo(() => {

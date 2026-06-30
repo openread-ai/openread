@@ -10,7 +10,18 @@ const logger = createLogger('book-chapters');
 const MAX_VISUAL_CONTEXT_IMAGES = 5;
 const MAX_VISUAL_CONTEXT_IMAGE_BYTES = 900_000;
 
-type VisualLoadResult = string | { src?: string; data?: string } | Blob;
+type VisualRenderedPageResult = {
+  src?: string;
+  data?: string;
+  onZoom?: (options: {
+    doc: Document;
+    scale: number;
+    pageColors?: unknown;
+  }) => Promise<void> | void;
+};
+type VisualLoadResult = string | VisualRenderedPageResult | Blob;
+type VisualSignal = NonNullable<ReaderVisualContextImage['visualSignal']>;
+type VisualImageBlob = { blob: Blob; visualSignal: VisualSignal };
 type VisualSection = {
   id: string | number;
   load?: () => Promise<VisualLoadResult>;
@@ -80,8 +91,162 @@ function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
-async function loadImageBlobFromVisualResult(result: VisualLoadResult): Promise<Blob | null> {
-  if (result instanceof Blob) return result;
+function classifyPixelData(data: Uint8ClampedArray): VisualSignal {
+  for (let i = 0; i < data.length; i += 4) {
+    const alpha = data[i + 3] ?? 0;
+    if (alpha <= 8) continue;
+    const red = data[i] ?? 255;
+    const green = data[i + 1] ?? 255;
+    const blue = data[i + 2] ?? 255;
+    if (red < 248 || green < 248 || blue < 248) return 'nonblank';
+  }
+  return 'blank';
+}
+
+function classifyCanvasContent(canvas: HTMLCanvasElement): VisualSignal {
+  const width = Math.max(0, Math.floor(canvas.width || canvas.clientWidth || 0));
+  const height = Math.max(0, Math.floor(canvas.height || canvas.clientHeight || 0));
+  if (width === 0 || height === 0) return 'unknown';
+
+  try {
+    const sampleCanvas = canvas.ownerDocument.createElement('canvas');
+    sampleCanvas.width = Math.min(width, 32);
+    sampleCanvas.height = Math.min(height, 32);
+    const sampleContext = sampleCanvas.getContext?.('2d', { willReadFrequently: true });
+    if (sampleContext) {
+      sampleContext.drawImage(canvas, 0, 0, sampleCanvas.width, sampleCanvas.height);
+      return classifyPixelData(
+        sampleContext.getImageData(0, 0, sampleCanvas.width, sampleCanvas.height).data,
+      );
+    }
+  } catch {
+    // Fall back to distributed spot sampling below when canvas downscaling is unavailable.
+  }
+
+  const context = canvas.getContext?.('2d', { willReadFrequently: true });
+  if (!context) return 'unknown';
+
+  try {
+    const gridSize = 12;
+    const sampleSize = Math.max(1, Math.min(8, width, height));
+    for (let row = 0; row < gridSize; row++) {
+      for (let col = 0; col < gridSize; col++) {
+        const centerX = Math.floor(((width - 1) * col) / (gridSize - 1));
+        const centerY = Math.floor(((height - 1) * row) / (gridSize - 1));
+        const sampleX = Math.max(
+          0,
+          Math.min(width - sampleSize, centerX - Math.floor(sampleSize / 2)),
+        );
+        const sampleY = Math.max(
+          0,
+          Math.min(height - sampleSize, centerY - Math.floor(sampleSize / 2)),
+        );
+        if (
+          classifyPixelData(context.getImageData(sampleX, sampleY, sampleSize, sampleSize).data) ===
+          'nonblank'
+        ) {
+          return 'nonblank';
+        }
+      }
+    }
+    return 'blank';
+  } catch {
+    return 'unknown';
+  }
+}
+
+async function classifyImageBlob(blob: Blob): Promise<VisualSignal> {
+  if (typeof document === 'undefined' || typeof globalThis.createImageBitmap !== 'function') {
+    return 'unknown';
+  }
+
+  try {
+    const bitmap = await globalThis.createImageBitmap(blob);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.min(bitmap.width, 24);
+    canvas.height = Math.min(bitmap.height, 24);
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context || canvas.width === 0 || canvas.height === 0) {
+      bitmap.close?.();
+      return 'unknown';
+    }
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close?.();
+    return classifyCanvasContent(canvas);
+  } catch {
+    return 'unknown';
+  }
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    if (typeof canvas.toBlob === 'function') {
+      canvas.toBlob((blob) => resolve(blob?.type.startsWith('image/') ? blob : null), 'image/png');
+      return;
+    }
+
+    const dataUrl = canvas.toDataURL?.('image/png');
+    if (!dataUrl?.startsWith('data:image/')) {
+      resolve(null);
+      return;
+    }
+    fetch(dataUrl)
+      .then((response) => response.blob())
+      .then((blob) => resolve(blob.type.startsWith('image/') ? blob : null))
+      .catch(() => resolve(null));
+  });
+}
+
+async function loadRenderedCanvasBlobFromVisualResult(
+  result: VisualLoadResult,
+): Promise<VisualImageBlob | null> {
+  if (result instanceof Blob || typeof result !== 'object' || typeof result.onZoom !== 'function') {
+    return null;
+  }
+  if (typeof document === 'undefined' || !document.body) return null;
+
+  const iframe = document.createElement('iframe');
+  iframe.setAttribute('aria-hidden', 'true');
+  Object.assign(iframe.style, {
+    position: 'fixed',
+    left: '-10000px',
+    top: '-10000px',
+    width: '1px',
+    height: '1px',
+    opacity: '0',
+    pointerEvents: 'none',
+  });
+
+  document.body.appendChild(iframe);
+  try {
+    const frameDoc = iframe.contentDocument;
+    if (!frameDoc) return null;
+    frameDoc.open();
+    frameDoc.write(
+      result.data ?? '<!doctype html><html><body><div id="canvas"></div></body></html>',
+    );
+    frameDoc.close();
+
+    await result.onZoom({ doc: frameDoc, scale: 1 });
+    const canvas = frameDoc.querySelector('#canvas canvas, canvas') as HTMLCanvasElement | null;
+    if (canvas?.tagName.toLowerCase() !== 'canvas') return null;
+    const visualSignal = classifyCanvasContent(canvas);
+    const blob = await canvasToBlob(canvas);
+    return blob ? { blob, visualSignal } : null;
+  } finally {
+    iframe.remove();
+  }
+}
+
+async function loadImageBlobFromVisualResult(
+  result: VisualLoadResult,
+): Promise<VisualImageBlob | null> {
+  if (result instanceof Blob) {
+    return { blob: result, visualSignal: await classifyImageBlob(result) };
+  }
+
+  const renderedCanvasBlob = await loadRenderedCanvasBlobFromVisualResult(result);
+  if (renderedCanvasBlob) return renderedCanvasBlob;
 
   const src = typeof result === 'string' ? result : result.src;
   const html = typeof result === 'object' && !(result instanceof Blob) ? result.data : undefined;
@@ -99,7 +264,7 @@ async function loadImageBlobFromVisualResult(result: VisualLoadResult): Promise<
   if (!imageResponse.ok) return null;
   const blob = await imageResponse.blob();
   if (!blob.type.startsWith('image/')) return null;
-  return blob;
+  return { blob, visualSignal: await classifyImageBlob(blob) };
 }
 
 async function imageBlobToVisionDataUrl(blob: Blob): Promise<string | null> {
@@ -416,9 +581,9 @@ export async function buildReaderVisualContextImages(
     const section = candidates[i]!;
     try {
       const loaded = await section.load!();
-      const blob = await loadImageBlobFromVisualResult(loaded);
-      if (!blob) continue;
-      const dataUrl = await imageBlobToVisionDataUrl(blob);
+      const imageBlob = await loadImageBlobFromVisualResult(loaded);
+      if (!imageBlob) continue;
+      const dataUrl = await imageBlobToVisionDataUrl(imageBlob.blob);
       if (!dataUrl) continue;
 
       images.push({
@@ -426,6 +591,8 @@ export async function buildReaderVisualContextImages(
         index: startIndex + i,
         title: `Visual page ${startIndex + i + 1}`,
         dataUrl,
+        visualSignal: imageBlob.visualSignal,
+        isBlankPage: imageBlob.visualSignal === 'blank',
       });
     } catch (error) {
       logger.warn('Failed to load visual context image', error);

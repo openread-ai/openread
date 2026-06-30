@@ -128,6 +128,147 @@ describe('buildReaderChaptersForAI', () => {
     expect(images[0]!.dataUrl).toMatch(/^data:image\/png;base64,/);
   });
 
+  test('renders PDF visual context from canvas load results without img tags', async () => {
+    const onZoom = vi.fn(async ({ doc }: { doc: Document }) => {
+      const target = doc.querySelector('#canvas') ?? doc.body;
+      const canvas = doc.createElement('canvas');
+      canvas.width = 2;
+      canvas.height = 1;
+      Object.defineProperty(canvas, 'getContext', {
+        value: () => ({
+          getImageData: () => ({ data: new Uint8ClampedArray([0, 0, 0, 255, 255, 255, 255, 255]) }),
+        }),
+      });
+      Object.defineProperty(canvas, 'toBlob', {
+        value: (callback: (blob: Blob | null) => void) => {
+          callback(new Blob(['rendered-pdf-page'], { type: 'image/png' }));
+        },
+      });
+      target.appendChild(canvas);
+    });
+    const bookDoc = makeBookDoc({
+      sections: [
+        {
+          id: 'pdf-page-2',
+          cfi: 'pdf-page-2',
+          size: 100,
+          linear: 'yes',
+          load: async () => ({
+            data: '<!doctype html><html><body><div id="canvas"></div></body></html>',
+            onZoom,
+          }),
+        } as unknown as SectionItem,
+      ],
+    });
+
+    const images = await buildReaderVisualContextImages(bookDoc, 'pdf-page-2');
+
+    expect(onZoom).toHaveBeenCalledWith(expect.objectContaining({ scale: 1 }));
+    expect(images).toHaveLength(1);
+    expect(images[0]).toMatchObject({
+      id: 'pdf-page-2',
+      title: 'Visual page 1',
+      visualSignal: 'nonblank',
+      isBlankPage: false,
+    });
+    expect(images[0]!.dataUrl).toMatch(/^data:image\/png;base64,/);
+    expect(document.querySelector('iframe[aria-hidden="true"]')).toBeNull();
+  });
+
+  test('keeps PDF pages with white margins but content elsewhere nonblank', async () => {
+    const onZoom = vi.fn(async ({ doc }: { doc: Document }) => {
+      const target = doc.querySelector('#canvas') ?? doc.body;
+      const canvas = doc.createElement('canvas');
+      canvas.width = 120;
+      canvas.height = 120;
+      Object.defineProperty(canvas, 'getContext', {
+        value: () => ({
+          getImageData: (x: number, y: number, width: number, height: number) => {
+            const isContentRegion = x + width > 70 && y + height > 70;
+            const pixel = isContentRegion ? [20, 20, 20, 255] : [255, 255, 255, 255];
+            return {
+              data: new Uint8ClampedArray(
+                Array.from({ length: width * height }, () => pixel).flat(),
+              ),
+            };
+          },
+        }),
+      });
+      Object.defineProperty(canvas, 'toBlob', {
+        value: (callback: (blob: Blob | null) => void) => {
+          callback(new Blob(['white-margin-content-page'], { type: 'image/png' }));
+        },
+      });
+      target.appendChild(canvas);
+    });
+    const bookDoc = makeBookDoc({
+      sections: [
+        {
+          id: 'pdf-page-white-margin',
+          cfi: 'pdf-page-white-margin',
+          size: 100,
+          linear: 'yes',
+          load: async () => ({
+            data: '<!doctype html><html><body><div id="canvas"></div></body></html>',
+            onZoom,
+          }),
+        } as unknown as SectionItem,
+      ],
+    });
+
+    const images = await buildReaderVisualContextImages(bookDoc, 'pdf-page-white-margin');
+
+    expect(images[0]).toMatchObject({
+      id: 'pdf-page-white-margin',
+      visualSignal: 'nonblank',
+      isBlankPage: false,
+    });
+  });
+
+  test('marks rendered blank PDF canvas pages with a blank visual signal', async () => {
+    const onZoom = vi.fn(async ({ doc }: { doc: Document }) => {
+      const target = doc.querySelector('#canvas') ?? doc.body;
+      const canvas = doc.createElement('canvas');
+      canvas.width = 2;
+      canvas.height = 1;
+      Object.defineProperty(canvas, 'getContext', {
+        value: () => ({
+          getImageData: () => ({
+            data: new Uint8ClampedArray([255, 255, 255, 255, 255, 255, 255, 255]),
+          }),
+        }),
+      });
+      Object.defineProperty(canvas, 'toBlob', {
+        value: (callback: (blob: Blob | null) => void) => {
+          callback(new Blob(['blank-pdf-page'], { type: 'image/png' }));
+        },
+      });
+      target.appendChild(canvas);
+    });
+    const bookDoc = makeBookDoc({
+      sections: [
+        {
+          id: 'pdf-page-blank',
+          cfi: 'pdf-page-blank',
+          size: 100,
+          linear: 'yes',
+          load: async () => ({
+            data: '<!doctype html><html><body><div id="canvas"></div></body></html>',
+            onZoom,
+          }),
+        } as unknown as SectionItem,
+      ],
+    });
+
+    const images = await buildReaderVisualContextImages(bookDoc, 'pdf-page-blank');
+
+    expect(images[0]).toMatchObject({
+      id: 'pdf-page-blank',
+      visualSignal: 'blank',
+      isBlankPage: true,
+    });
+  });
+
   test('starts visual context at exact numeric section instead of prefix lookalike', async () => {
     vi.stubGlobal(
       'fetch',

@@ -42,13 +42,13 @@ const fractionFromPageInfo = (pageInfo: { current?: number; total?: number } | u
 };
 
 const pageNumberFromProgress = (progress: BookProgress | null | undefined): number | undefined => {
-  const page = progress?.pageinfo ?? progress?.section;
+  const page = progress?.section ?? progress?.pageinfo;
   if (!page || typeof page.current !== 'number' || page.current < 0) return undefined;
   return Math.floor(page.current) + 1;
 };
 
 const pageTotalFromProgress = (progress: BookProgress | null | undefined): number | undefined => {
-  const total = progress?.pageinfo?.total ?? progress?.section?.total;
+  const total = progress?.section?.total ?? progress?.pageinfo?.total;
   return typeof total === 'number' && total > 0 ? total : undefined;
 };
 

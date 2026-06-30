@@ -5,14 +5,87 @@ import {
   getReaderNavigationTargetFromAICitation,
   navigateReaderToTarget,
 } from '@/app/reader/utils/readerLocationContract';
+import {
+  normalizeReaderLayout,
+  type ReaderLayoutPlatformInput,
+} from '@/app/reader/utils/readerLayoutContract';
 import type { ReaderChapter } from '@/services/ai/tools/bookTools';
+import type { BookFormat } from '@/types/book';
 
 const chapters: ReaderChapter[] = [
   { id: 'chapter-1.xhtml', index: 0, title: 'One', text: 'a'.repeat(100) },
   { id: 'chapter-2.xhtml', index: 1, title: 'Two', text: 'b'.repeat(100) },
 ];
+const supportedFormats = [
+  'epub',
+  'pdf',
+  'mobi',
+  'azw',
+  'azw3',
+  'fb2',
+  'fbz',
+  'cbz',
+  'txt',
+  'md',
+] satisfies BookFormat[];
+const pageFormats = new Set<BookFormat>(['pdf', 'cbz']);
+const supportedPlatforms: Array<{ name: string; platform: ReaderLayoutPlatformInput }> = [
+  { name: 'web', platform: { isMobile: false } },
+  { name: 'mobile-web', platform: { isMobile: true } },
+  { name: 'desktop-tauri', platform: { isMobile: false } },
+  { name: 'ios', platform: { isMobile: true, isIOSApp: true } },
+  { name: 'ipados', platform: { isMobile: true, isIOSApp: true } },
+  { name: 'android', platform: { isMobile: true, isAndroidApp: true } },
+];
 
 describe('readerLocationContract', () => {
+  it.each(
+    supportedPlatforms.flatMap(({ name, platform }) =>
+      supportedFormats.map((format) => ({ platformName: name, platform, format })),
+    ),
+  )(
+    'normalizes canonical AI reader location for $format on $platformName',
+    ({ platform, format }) => {
+      const isPageFormat = pageFormats.has(format);
+      const progress = {
+        sectionHref: isPageFormat ? 'page-8.xhtml' : 'chapter-2.xhtml',
+        sectionId: 1,
+        section: { current: isPageFormat ? 7 : 24, total: isPageFormat ? 40 : 100 },
+        pageinfo: { current: isPageFormat ? 2 : 49, total: isPageFormat ? 99 : 200 },
+        location: isPageFormat ? 'xpointer(/page[8])' : 'epubcfi(/6/4)',
+      } as BookProgress;
+      const layoutState = normalizeReaderLayout({
+        settings: {},
+        book: { format },
+        platform,
+      });
+
+      const location = getCanonicalReaderLocation({
+        progress,
+        book: { format },
+        layoutState,
+      });
+
+      expect(location.bookCapability).toBe(isPageFormat ? 'page' : 'text');
+      if (isPageFormat) {
+        expect(location).toMatchObject({
+          pageNumber: 8,
+          pageTotal: 40,
+          sectionFraction: undefined,
+          xpointer: 'xpointer(/page[8])',
+        });
+      } else {
+        expect(location).toMatchObject({
+          sectionHref: 'chapter-2.xhtml',
+          sectionIndex: 1,
+          sectionFraction: 0.25,
+          cfi: 'epubcfi(/6/4)',
+        });
+        expect(location.pageNumber).toBeUndefined();
+      }
+    },
+  );
+
   it('uses section fractions for text books', () => {
     const progress = {
       sectionHref: 'chapter-2.xhtml',
@@ -78,6 +151,39 @@ describe('readerLocationContract', () => {
       pageTotal: 50,
       sectionFraction: undefined,
       xpointer: 'xpointer(/page[10])',
+    });
+  });
+
+  it('prefers section progress over pageinfo counters for page-capable books', () => {
+    const progress = {
+      sectionHref: 'pdf-page-7',
+      sectionId: 6,
+      section: { current: 6, total: 42 },
+      pageinfo: { current: 0, total: 1 },
+      location: 'xpointer(/page[7])',
+    } as BookProgress;
+
+    const location = getCanonicalReaderLocation({
+      progress,
+      book: { format: 'pdf' },
+      layoutState: {
+        bookCapability: 'page',
+        layoutMode: 'paged',
+        textContinuousSections: false,
+        scrollingOverlap: 0,
+        pageZoomMode: 'fit-page',
+        pageZoomLevel: 100,
+        pageSpreadMode: 'auto',
+        keepCoverSpread: true,
+        paragraphModeEnabled: false,
+      },
+    });
+
+    expect(location).toMatchObject({
+      bookCapability: 'page',
+      pageNumber: 7,
+      pageTotal: 42,
+      sectionFraction: undefined,
     });
   });
 

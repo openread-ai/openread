@@ -346,6 +346,8 @@ test.describe('Mobile web reader navigation regression', () => {
 
     const openMenu = async () => {
       await revealMobileHeader(page);
+      await expect(page.getByTestId('mobile-reader-theme-mode-button')).toBeVisible();
+      await expect(page.getByRole('button', { name: 'AI Chat' })).toHaveCount(0);
       await expect(page.getByLabel('More Options')).toHaveCount(0);
       await page.getByTestId('mobile-reader-menu-button').press('Enter');
       const viewMenu = page.locator('.view-menu').first();
@@ -421,22 +423,23 @@ test.describe('Mobile web reader navigation regression', () => {
         .filter(Boolean),
     );
 
-    expect(topLevelLabels).toHaveLength(9);
-    expect(topLevelLabels.slice(0, 7)).toEqual([
+    expect(topLevelLabels).toHaveLength(8);
+    expect(topLevelLabels).toEqual([
       'Table of Contents',
       'Highlights',
       'Bookmarks',
-      'AI Chat History',
+      'AI Chat',
       'Speed Reading Mode',
       'Parallel Read',
       'Export Annotations',
+      'Invert Image In Dark Mode',
     ]);
-    expect(topLevelLabels[7]).toMatch(/^(Dark|Light|Auto) Mode$/);
-    expect(topLevelLabels[8]).toBe('Invert Image In Dark Mode');
+    expect(topLevelLabels).not.toContain('AI Chat History');
     expect(topLevelLabels).not.toContain('Sign in to Sync');
     expect(topLevelLabels).not.toContain('Never synced');
     expect(topLevelLabels.some((label) => label.startsWith('Synced at '))).toBe(false);
-    await attachScreenshot(page, testInfo, 'mobile-web-reader-kebab-9-options');
+    expect(topLevelLabels.some((label) => /^(Dark|Light|Auto) Mode$/.test(label))).toBe(false);
+    await attachScreenshot(page, testInfo, 'mobile-web-reader-kebab-8-options');
 
     await viewMenu.getByText('Table of Contents', { exact: true }).click();
     await expect(page.getByRole('button', { name: 'Chapters' })).toHaveClass(/bg-base-content\/10/);
@@ -460,7 +463,7 @@ test.describe('Mobile web reader navigation regression', () => {
     await closeMobileSheet(page);
 
     viewMenu = await openMenu();
-    await viewMenu.getByText('AI Chat History', { exact: true }).click();
+    await viewMenu.getByText('AI Chat', { exact: true }).click();
     const historySheet = page.getByTestId('mobile-read-ai-history-view');
     await expect(historySheet).toBeVisible({ timeout: 10_000 });
     await expect(historySheet.getByText('Read AI', { exact: true })).toBeVisible();
@@ -688,7 +691,7 @@ test.describe('Mobile web reader navigation regression', () => {
     await page.getByTestId('mobile-reader-menu-button').press('Enter');
     const viewMenu = page.locator('.view-menu').first();
     await expect(viewMenu).toBeVisible({ timeout: 10_000 });
-    await viewMenu.getByText('AI Chat History', { exact: true }).click();
+    await viewMenu.getByText('AI Chat', { exact: true }).click();
     await page
       .getByRole('button', { name: /What is this book about\?/ })
       .first()

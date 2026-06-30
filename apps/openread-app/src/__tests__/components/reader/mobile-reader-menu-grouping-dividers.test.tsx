@@ -189,14 +189,13 @@ describe('mobile web reader menu grouping dividers', () => {
       'Highlights',
       'Bookmarks',
       'divider',
-      'AI Chat History',
+      'AI Chat',
       'divider',
       'Speed Reading Mode',
       'Parallel Read',
       'divider',
       'Export Annotations',
       'divider',
-      'Dark Mode',
       'Invert Image In Dark Mode',
     ]);
 
@@ -216,6 +215,10 @@ describe('mobile web reader menu grouping dividers', () => {
     expect(screen.queryByText('Display settings')).toBeNull();
     expect(screen.queryByText('Sort TOC by Page')).toBeNull();
     expect(screen.queryByText('Reload Page')).toBeNull();
+    expect(screen.queryByText('AI Chat History')).toBeNull();
+    expect(screen.queryByText('Dark Mode')).toBeNull();
+    expect(screen.queryByText('Light Mode')).toBeNull();
+    expect(screen.queryByText('Auto Mode')).toBeNull();
     expect(screen.queryByText(/^Synced at /)).toBeNull();
     expect(screen.queryByText('Never synced')).toBeNull();
     expect(screen.queryByText('Sign in to Sync')).toBeNull();
@@ -228,7 +231,7 @@ describe('mobile web reader menu grouping dividers', () => {
     expect(mockState.openMobileReaderPanel).toHaveBeenCalledWith('book-1', 'toc');
     expect(mockState.setIsDropdownOpen).toHaveBeenCalledWith(false);
 
-    fireEvent.click(screen.getByText('AI Chat History'));
+    fireEvent.click(screen.getByText('AI Chat'));
     expect(mockState.openMobileReaderPanel).toHaveBeenCalledWith('book-1', 'ai-chat-history');
 
     fireEvent.click(screen.getByText('Speed Reading Mode'));
@@ -241,9 +244,8 @@ describe('mobile web reader menu grouping dividers', () => {
     expect(mockState.dispatch).toHaveBeenCalledWith('export-annotations', { bookKey: 'book-1' });
     expect(mockState.setViewSettings).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByText('Dark Mode'));
-    expect(mockState.setThemeMode).toHaveBeenCalledWith('auto');
-
+    expect(screen.queryByText('Dark Mode')).toBeNull();
+    expect(mockState.setThemeMode).not.toHaveBeenCalled();
     expect(screen.getByText('Invert Image In Dark Mode')).toBeTruthy();
   });
 });

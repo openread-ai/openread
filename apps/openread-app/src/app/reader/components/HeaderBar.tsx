@@ -6,6 +6,8 @@ import {
   PiChatCircleBold,
   PiMagnifyingGlassBold,
 } from 'react-icons/pi';
+import { BiMoon, BiSun } from 'react-icons/bi';
+import { TbSunMoon } from 'react-icons/tb';
 import { RxSlider } from 'react-icons/rx';
 
 import { Insets } from '@/types/misc';
@@ -14,7 +16,6 @@ import { useThemeStore } from '@/store/themeStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useNotebookStore } from '@/store/notebookStore';
 import { useSidebarStore } from '@/store/sidebarStore';
-import { useMobileReaderPanelStore } from '@/store/mobileReaderPanelStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -63,13 +64,12 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
   const { settings } = useSettingsStore();
   const { trafficLightInFullscreen, setTrafficLightVisibility } = useTrafficLightStore();
   const { bookKeys, hoveredBookKey } = useReaderStore();
-  const { isDarkMode, systemUIVisible, statusBarHeight } = useThemeStore();
+  const { themeMode, isDarkMode, systemUIVisible, statusBarHeight, setThemeMode } = useThemeStore();
   const { isSideBarVisible } = useSidebarStore();
   const isNotebookVisible = useNotebookStore((s) => s.isNotebookVisible);
   const notebookOnAI = useNotebookStore((s) => s.notebookActiveTab === 'ai');
   const { getView, getViewSettings, setHoveredBookKey } = useReaderStore();
   const bookData = useBookDataStore((state) => state.getBookDataByReaderKey(bookKey));
-  const { openMobileReaderPanel } = useMobileReaderPanelStore();
   const viewSettings = getViewSettings(bookKey);
 
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -116,6 +116,18 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
     if (viewSettings?.annotationQuickAction === action) action = null;
     saveViewSettings(envConfig, bookKey, 'annotationQuickAction', action, false, true);
   };
+
+  const cycleThemeMode = () => {
+    const modeOrder = { auto: 'light', light: 'dark', dark: 'auto' } as const;
+    setThemeMode(modeOrder[themeMode]);
+  };
+
+  const mobileThemeModeLabel = {
+    dark: _('Dark Mode'),
+    light: _('Light Mode'),
+    auto: _('Auto Mode'),
+  }[themeMode];
+  const MobileThemeModeIcon = { dark: BiMoon, light: BiSun, auto: TbSunMoon }[themeMode];
 
   useEffect(() => {
     setBookInfoOpen(false);
@@ -263,32 +275,38 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
                 </button>
               )}
               <BookmarkToggler bookKey={bookKey} />
-              {!appService?.isIOSApp && (
+              {useMobileWebHeader ? (
                 <button
-                  className={clsx(
-                    'btn btn-ghost h-8 min-h-8 w-8 p-0',
-                    isNotebookVisible && notebookOnAI && 'bg-base-300/50',
-                  )}
-                  onClick={() => {
-                    if (useMobileWebHeader) {
-                      openMobileReaderPanel(bookKey, 'ai-chat-history');
-                      setHoveredBookKey(bookKey);
-                      return;
-                    }
-
-                    const { setNotebookVisible, setNotebookActiveTab } =
-                      useNotebookStore.getState();
-                    if (isNotebookVisible && notebookOnAI) {
-                      setNotebookVisible(false);
-                    } else {
-                      setNotebookVisible(true);
-                      setNotebookActiveTab('ai');
-                    }
-                  }}
-                  aria-label={_('AI Chat')}
+                  className='btn btn-ghost h-8 min-h-8 w-8 p-0'
+                  onClick={cycleThemeMode}
+                  aria-label={mobileThemeModeLabel}
+                  title={mobileThemeModeLabel}
+                  data-testid='mobile-reader-theme-mode-button'
                 >
-                  <PiChatCircleBold size={iconSize16} />
+                  <MobileThemeModeIcon size={iconSize16} />
                 </button>
+              ) : (
+                !appService?.isIOSApp && (
+                  <button
+                    className={clsx(
+                      'btn btn-ghost h-8 min-h-8 w-8 p-0',
+                      isNotebookVisible && notebookOnAI && 'bg-base-300/50',
+                    )}
+                    onClick={() => {
+                      const { setNotebookVisible, setNotebookActiveTab } =
+                        useNotebookStore.getState();
+                      if (isNotebookVisible && notebookOnAI) {
+                        setNotebookVisible(false);
+                      } else {
+                        setNotebookVisible(true);
+                        setNotebookActiveTab('ai');
+                      }
+                    }}
+                    aria-label={_('AI Chat')}
+                  >
+                    <PiChatCircleBold size={iconSize16} />
+                  </button>
+                )
               )}
               {showHeaderViewMenu && (
                 <Dropdown

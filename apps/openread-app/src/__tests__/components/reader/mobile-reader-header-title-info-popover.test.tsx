@@ -61,6 +61,7 @@ const mockState = vi.hoisted(() => {
     book,
     bookDataStore,
     openMobileReaderPanel: vi.fn(),
+    setThemeMode: vi.fn(),
     dispatch: vi.fn(),
     onCloseBook: vi.fn(),
   };
@@ -99,9 +100,11 @@ vi.mock('@/context/EnvContext', () => ({
 
 vi.mock('@/store/themeStore', () => ({
   useThemeStore: () => ({
+    themeMode: 'auto',
     isDarkMode: false,
     systemUIVisible: false,
     statusBarHeight: 0,
+    setThemeMode: mockState.setThemeMode,
   }),
 }));
 
@@ -248,6 +251,17 @@ describe('mobile web reader header title info popover', () => {
     expect(screen.queryByText('Chapter 1')).toBeNull();
     expect(screen.queryByText('EPUB')).toBeNull();
     expect(screen.queryByText('Openread Catalog')).toBeNull();
+  });
+
+  it('replaces the mobile-web header AI shortcut with a theme toggle', () => {
+    renderHeader();
+
+    expect(screen.queryByRole('button', { name: 'AI Chat' })).toBeNull();
+    fireEvent.click(screen.getByTestId('mobile-reader-theme-mode-button'));
+
+    expect(screen.getByRole('button', { name: 'Auto Mode' })).toBeTruthy();
+    expect(mockState.setThemeMode).toHaveBeenCalledWith('light');
+    expect(mockState.openMobileReaderPanel).not.toHaveBeenCalled();
   });
 
   it('closes the popover with outside tap, Escape, and X button', () => {

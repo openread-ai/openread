@@ -306,7 +306,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
       [
         <MenuItem
           key='ai-chat-history'
-          label={_('AI Chat History')}
+          label={_('AI Chat')}
           Icon={PiChatCircleBold}
           onClick={() => openMobileWebDestination('ai-chat-history')}
         />,
@@ -331,12 +331,6 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
         />,
       ],
       [
-        <MenuItem
-          key='theme-mode'
-          label={{ dark: _('Dark Mode'), light: _('Light Mode'), auto: _('Auto Mode') }[themeMode]}
-          Icon={{ dark: BiMoon, light: BiSun, auto: TbSunMoon }[themeMode]}
-          onClick={cycleThemeMode}
-        />,
         <MenuItem
           key='invert-images-dark-mode'
           label={_('Invert Image In Dark Mode')}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ViewSettings } from '@/types/book';
 import {
+  getEffectiveReaderChromeVisibility,
   getInitialReaderViewSettings,
   getReaderBookCapability,
   mergeViewSettingsWithLegacyLayout,
@@ -68,6 +69,49 @@ describe('readerLayoutContract', () => {
     expect(getReaderBookCapability({ format: 'pdf' })).toBe('page');
     expect(getReaderBookCapability({ format: 'cbz' })).toBe('page');
     expect(getReaderBookCapability({ format: 'epub' })).toBe('text');
+  });
+
+  it('suppresses legacy chrome for mobile-web page-capability books only', () => {
+    const chrome = getEffectiveReaderChromeVisibility({
+      settings: settings({ showHeader: true, showFooter: true }),
+      book: { format: 'pdf' },
+      platform: { isMobile: true, isIOSApp: false, isAndroidApp: false },
+    });
+
+    expect(chrome).toEqual({ showHeader: false, showFooter: false });
+  });
+
+  it('preserves mobile-web text and non-mobile page-book chrome settings', () => {
+    const visibleChrome = settings({ showHeader: true, showFooter: true });
+
+    expect(
+      getEffectiveReaderChromeVisibility({
+        settings: visibleChrome,
+        book: { format: 'epub' },
+        platform: { isMobile: true, isIOSApp: false, isAndroidApp: false },
+      }),
+    ).toEqual({ showHeader: true, showFooter: true });
+    expect(
+      getEffectiveReaderChromeVisibility({
+        settings: visibleChrome,
+        book: { format: 'pdf' },
+        platform: { isMobile: false },
+      }),
+    ).toEqual({ showHeader: true, showFooter: true });
+    expect(
+      getEffectiveReaderChromeVisibility({
+        settings: visibleChrome,
+        book: { format: 'pdf' },
+        platform: { isMobile: true, isIOSApp: true, isAndroidApp: false },
+      }),
+    ).toEqual({ showHeader: true, showFooter: true });
+    expect(
+      getEffectiveReaderChromeVisibility({
+        settings: settings({ showHeader: false, showFooter: false }),
+        book: { format: 'epub' },
+        platform: { isMobile: true, isIOSApp: false, isAndroidApp: false },
+      }),
+    ).toEqual({ showHeader: false, showFooter: false });
   });
 
   it('migrates legacy layout fields into canonical fields', () => {

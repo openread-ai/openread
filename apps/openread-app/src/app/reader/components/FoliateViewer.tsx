@@ -47,7 +47,11 @@ import {
   handleTouchCancel,
 } from '../utils/iframeEventHandlers';
 import { shouldUseNativeChapterPull } from '../utils/mobileScroll';
-import { applyReaderLayoutToRenderer, normalizeReaderLayout } from '../utils/readerLayoutContract';
+import {
+  applyReaderLayoutToRenderer,
+  getEffectiveReaderChromeVisibility,
+  normalizeReaderLayout,
+} from '../utils/readerLayoutContract';
 import { getMaxInlineSize } from '@/utils/config';
 import { getDirFromUILanguage } from '@/utils/rtl';
 import { isTauriAppPlatform } from '@/services/environment';
@@ -103,7 +107,11 @@ const FoliateViewer: React.FC<{
     renditionLayout: bookData?.bookDoc?.rendition?.layout,
     format: bookData?.book?.format,
   };
-  const readerLayoutPlatform = { isMobile: !!appService?.isMobile };
+  const readerLayoutPlatform = {
+    isMobile: !!appService?.isMobile,
+    isIOSApp: !!appService?.isIOSApp,
+    isAndroidApp: !!appService?.isAndroidApp,
+  };
   const readerLayout = viewSettings
     ? normalizeReaderLayout({
         settings: viewSettings,
@@ -522,12 +530,18 @@ const FoliateViewer: React.FC<{
   const applyMarginAndGap = () => {
     const viewSettings = getViewSettings(bookKey)!;
     const viewState = getViewState(bookKey);
-    const viewInsets = getViewInsets(viewSettings);
+    const effectiveChrome = getEffectiveReaderChromeVisibility({
+      settings: viewSettings,
+      book: readerLayoutBook,
+      platform: readerLayoutPlatform,
+    });
+    const effectiveChromeViewSettings = { ...viewSettings, ...effectiveChrome };
+    const viewInsets = getViewInsets(effectiveChromeViewSettings);
     const showDoubleBorder = viewSettings.vertical && viewSettings.doubleBorder;
-    const showDoubleBorderHeader = showDoubleBorder && viewSettings.showHeader;
-    const showDoubleBorderFooter = showDoubleBorder && viewSettings.showFooter;
-    const showTopHeader = viewSettings.showHeader && !viewSettings.vertical;
-    const showBottomFooter = viewSettings.showFooter && !viewSettings.vertical;
+    const showDoubleBorderHeader = showDoubleBorder && effectiveChrome.showHeader;
+    const showDoubleBorderFooter = showDoubleBorder && effectiveChrome.showFooter;
+    const showTopHeader = effectiveChrome.showHeader && !viewSettings.vertical;
+    const showBottomFooter = effectiveChrome.showFooter && !viewSettings.vertical;
     const moreTopInset = showTopHeader ? Math.max(0, 44 - insets.top) : 0;
     const ttsBarHeight =
       viewState?.ttsEnabled && viewSettings.showTTSBar ? 52 + gridInsets.bottom * 0.33 : 0;
@@ -623,6 +637,12 @@ const FoliateViewer: React.FC<{
     viewSettings?.showHeader,
     viewSettings?.showFooter,
     viewSettings?.showTTSBar,
+    appService?.isMobile,
+    appService?.isIOSApp,
+    appService?.isAndroidApp,
+    bookData?.isFixedLayout,
+    bookData?.book?.format,
+    bookData?.bookDoc?.rendition?.layout,
     viewState?.ttsEnabled,
   ]);
 

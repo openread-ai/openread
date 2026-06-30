@@ -10,7 +10,10 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { getGridTemplate, getInsetEdges } from '@/utils/grid';
 import { getViewInsets } from '@/utils/insets';
 import { viewPagination } from '../hooks/usePagination';
-import { normalizeReaderLayout } from '../utils/readerLayoutContract';
+import {
+  getEffectiveReaderChromeVisibility,
+  normalizeReaderLayout,
+} from '../utils/readerLayoutContract';
 import { debounce } from '@/utils/debounce';
 import { computeProgress } from './footerbar/progressUtils';
 import SearchResultsNav from './sidebar/SearchResultsNav';
@@ -161,7 +164,23 @@ const BooksGrid: React.FC<BooksGridProps> = ({ bookKeys, onCloseBook }) => {
         const isBookmarked = viewState.ribbonVisible;
         const viewerKey = viewState.viewerKey;
         const horizontalGapPercent = viewSettings.gapPercent;
-        const viewInsets = getViewInsets(viewSettings);
+        const readerLayoutBook = {
+          isFixedLayout: bookData?.isFixedLayout,
+          renditionLayout: bookData?.bookDoc?.rendition?.layout,
+          format: bookData?.book?.format,
+        };
+        const readerLayoutPlatform = {
+          isMobile: !!appService?.isMobile,
+          isIOSApp: !!appService?.isIOSApp,
+          isAndroidApp: !!appService?.isAndroidApp,
+        };
+        const effectiveChrome = getEffectiveReaderChromeVisibility({
+          settings: viewSettings,
+          book: readerLayoutBook,
+          platform: readerLayoutPlatform,
+        });
+        const effectiveChromeViewSettings = { ...viewSettings, ...effectiveChrome };
+        const viewInsets = getViewInsets(effectiveChromeViewSettings);
         const contentInsets = {
           top: gridInsets.top + viewInsets.top,
           right: gridInsets.right + viewInsets.right,
@@ -170,17 +189,13 @@ const BooksGrid: React.FC<BooksGridProps> = ({ bookKeys, onCloseBook }) => {
         };
         const readerLayout = normalizeReaderLayout({
           settings: viewSettings,
-          book: {
-            isFixedLayout: bookData?.isFixedLayout,
-            renditionLayout: bookData?.bookDoc?.rendition?.layout,
-            format: bookData?.book?.format,
-          },
-          platform: { isMobile: !!appService?.isMobile },
+          book: readerLayoutBook,
+          platform: readerLayoutPlatform,
         });
         const scrolled = readerLayout.layoutMode === 'continuous';
         const showBarsOnScroll = viewSettings.showBarsOnScroll;
-        const showHeader = viewSettings.showHeader && (scrolled ? showBarsOnScroll : true);
-        const showFooter = viewSettings.showFooter && (scrolled ? showBarsOnScroll : true);
+        const showHeader = effectiveChrome.showHeader && (scrolled ? showBarsOnScroll : true);
+        const showFooter = effectiveChrome.showFooter && (scrolled ? showBarsOnScroll : true);
 
         return (
           <div

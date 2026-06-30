@@ -33,7 +33,14 @@ export type ReaderLayoutBookInput = {
 
 export type ReaderLayoutPlatformInput = {
   isMobile?: boolean;
+  isIOSApp?: boolean;
+  isAndroidApp?: boolean;
   isEink?: boolean;
+};
+
+export type ReaderChromeVisibility = {
+  showHeader: boolean;
+  showFooter: boolean;
 };
 
 export type LegacyReaderLayoutSettings = Partial<ViewSettings> & {
@@ -166,6 +173,9 @@ export function normalizeLegacyReaderLayoutSettings(
   } as ViewSettings;
 }
 
+const isMobileWebReaderPlatform = (platform: ReaderLayoutPlatformInput) =>
+  !!platform.isMobile && !platform.isIOSApp && !platform.isAndroidApp;
+
 export function normalizeReaderLayout(input: {
   settings: ViewSettings | Partial<ViewSettings> | LegacyReaderLayoutSettings;
   book: ReaderLayoutBookInput;
@@ -201,6 +211,22 @@ export function normalizeReaderLayout(input: {
     keepCoverSpread: settings.keepCoverSpread ?? true,
     paragraphModeEnabled:
       bookCapability === 'text' && layoutMode === 'paged' && !!settings.paragraphMode?.enabled,
+  };
+}
+
+export function getEffectiveReaderChromeVisibility(input: {
+  settings: ViewSettings | Partial<ViewSettings> | LegacyReaderLayoutSettings;
+  book: ReaderLayoutBookInput;
+  platform: ReaderLayoutPlatformInput;
+}): ReaderChromeVisibility {
+  const settings = normalizeLegacyReaderLayoutSettings(input.settings);
+  const state = normalizeReaderLayout(input);
+  const suppressLegacyChrome =
+    state.bookCapability === 'page' && isMobileWebReaderPlatform(input.platform);
+
+  return {
+    showHeader: suppressLegacyChrome ? false : !!settings.showHeader,
+    showFooter: suppressLegacyChrome ? false : !!settings.showFooter,
   };
 }
 

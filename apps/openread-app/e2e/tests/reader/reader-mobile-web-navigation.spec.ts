@@ -737,6 +737,9 @@ test.describe('Mobile web reader navigation regression', () => {
     test.skip(!isMobileProject(testInfo), 'Mobile web regression proof only.');
 
     await openFixtureInReader(page, FIXTURES.fixed);
+    await expect(page.locator('.sectioninfo')).toHaveCount(0);
+    await expect(page.locator('.progressinfo')).toHaveCount(0);
+    await attachScreenshot(page, testInfo, 'mobile-web-fixed-layout-legacy-chrome-hidden');
     const before = await getReaderMetrics(page);
 
     await dragBookContent(page, { xRatio: 0.85, yRatio: 0.5 }, { xRatio: 0.15, yRatio: 0.5 });

@@ -13,14 +13,44 @@ import { enqueueBooksForSync } from '@/services/sync/helpers';
 import { eventDispatcher } from '@/utils/event';
 import { createLogger } from '@/utils/logger';
 import { useTranslation } from './useTranslation';
+import { ImportFailureError, getImportFailurePresentation } from '@/services/importFailure';
+import type { ImportFailureReason, ImportFailureUserBucket } from '@/services/importFailure';
 import type { Book } from '@/types/book';
 
 const logger = createLogger('book-import');
+
+export type BookImportSkippedReason = 'unsupported-format' | 'library-limit';
+
+export type BookImportOutcome =
+  | {
+      fileName: string;
+      status: 'imported';
+    }
+  | {
+      fileName: string;
+      status: 'failed';
+      reason: ImportFailureReason;
+      userBucket: ImportFailureUserBucket;
+      userMessage: string;
+    }
+  | {
+      fileName: string;
+      status: 'skipped';
+      reason: BookImportSkippedReason;
+      userBucket?: ImportFailureUserBucket;
+      userMessage: string;
+    };
 
 export interface BookImportResult {
   successCount: number;
   failCount: number;
   skippedForLimitCount: number;
+  outcomes: BookImportOutcome[];
+  libraryIndexSaveFailure?: {
+    reason: Extract<ImportFailureReason, 'library-index-save-failed'>;
+    userBucket: ImportFailureUserBucket;
+    userMessage: string;
+  };
 }
 
 export function selectedBookFileName(selectedFile: SelectedFile): string {
@@ -35,6 +65,62 @@ export function isSupportedSelectedBookFile(selectedFile: SelectedFile): boolean
 
 export function selectedFilesFromFileList(files: File[]): SelectedFile[] {
   return files.map((file) => ({ file }));
+}
+
+export function createFailedImportOutcome(
+  selectedFile: SelectedFile,
+  error: unknown,
+): Extract<BookImportOutcome, { status: 'failed' }> {
+  const importError =
+    error instanceof ImportFailureError
+      ? error
+      : new ImportFailureError('book-parse-failed', error);
+  return {
+    fileName: selectedBookFileName(selectedFile),
+    status: 'failed',
+    reason: importError.reason,
+    userBucket: importError.bucket,
+    userMessage: importError.userMessage,
+  };
+}
+
+export function createUnsupportedImportOutcome(
+  selectedFile: SelectedFile,
+): Extract<BookImportOutcome, { status: 'skipped' }> {
+  const presentation = getImportFailurePresentation('unsupported-format');
+  return {
+    fileName: selectedBookFileName(selectedFile),
+    status: 'skipped',
+    reason: 'unsupported-format',
+    userBucket: presentation.bucket,
+    userMessage: presentation.message,
+  };
+}
+
+export function createLibraryLimitImportOutcome(
+  selectedFile: SelectedFile,
+): Extract<BookImportOutcome, { status: 'skipped' }> {
+  return {
+    fileName: selectedBookFileName(selectedFile),
+    status: 'skipped',
+    reason: 'library-limit',
+    userMessage: 'Library full. Upgrade for unlimited.',
+  };
+}
+
+export function summarizeImportFailureOutcomes(outcomes: BookImportOutcome[]): string | null {
+  const failed = outcomes.filter((outcome) => outcome.status === 'failed');
+  if (failed.length === 0) return null;
+
+  const bucketCounts = new Map<string, number>();
+  for (const outcome of failed) {
+    bucketCounts.set(outcome.userMessage, (bucketCounts.get(outcome.userMessage) ?? 0) + 1);
+  }
+
+  const summary = [...bucketCounts.entries()]
+    .map(([message, count]) => `${count} ${message}`)
+    .join(' ');
+  return `${failed.length} ${failed.length === 1 ? 'file' : 'files'} failed to import. ${summary}`;
 }
 
 export function useBookImport() {
@@ -68,17 +154,23 @@ export function useBookImport() {
   const importSelectedBookFiles = useCallback(
     async (files: SelectedFile[]): Promise<BookImportResult> => {
       if (!appService || files.length === 0) {
-        return { successCount: 0, failCount: 0, skippedForLimitCount: 0 };
+        return { successCount: 0, failCount: 0, skippedForLimitCount: 0, outcomes: [] };
       }
 
       if (!canAddBook) {
         warnLibraryFull();
-        return { successCount: 0, failCount: 0, skippedForLimitCount: files.length };
+        return {
+          successCount: 0,
+          failCount: 0,
+          skippedForLimitCount: files.length,
+          outcomes: files.map(createLibraryLimitImportOutcome),
+        };
       }
 
       let successCount = 0;
       let failCount = 0;
       let skippedForLimitCount = 0;
+      const outcomes: BookImportOutcome[] = [];
 
       const activeBefore = new Set(
         useLibraryStore
@@ -90,13 +182,19 @@ export function useBookImport() {
         libraryLimit === null ? files.length : Math.max(libraryLimit - activeBefore.size, 0);
       if (remainingSlots <= 0) {
         warnLibraryFull();
-        return { successCount: 0, failCount: 0, skippedForLimitCount: files.length };
+        return {
+          successCount: 0,
+          failCount: 0,
+          skippedForLimitCount: files.length,
+          outcomes: files.map(createLibraryLimitImportOutcome),
+        };
       }
 
       for (const [index, selectedFile] of files.entries()) {
         const activeCount = useLibraryStore.getState().getVisibleLibrary().length;
         if (libraryLimit !== null && activeCount >= libraryLimit) {
           skippedForLimitCount = files.length - index;
+          outcomes.push(...files.slice(index).map(createLibraryLimitImportOutcome));
           break;
         }
 
@@ -104,20 +202,36 @@ export function useBookImport() {
           const fileInput = selectedFile.file || selectedFile.path;
           if (!fileInput) {
             failCount++;
+            outcomes.push(
+              createFailedImportOutcome(selectedFile, new ImportFailureError('file-read-failed')),
+            );
             continue;
           }
           const { library } = useLibraryStore.getState();
           await appService.importBook(fileInput, library);
           successCount++;
+          outcomes.push({ fileName: selectedBookFileName(selectedFile), status: 'imported' });
         } catch (error) {
           logger.error('Failed to import file', error);
           failCount++;
+          outcomes.push(createFailedImportOutcome(selectedFile, error));
         }
       }
 
       const { library, setLibrary } = useLibraryStore.getState();
       setLibrary([...library]);
-      void appService.saveLibraryBooks(library);
+      let libraryIndexSaveFailure: BookImportResult['libraryIndexSaveFailure'];
+      try {
+        await appService.saveLibraryBooks(library);
+      } catch (error) {
+        const failure = new ImportFailureError('library-index-save-failed', error);
+        logger.error('Failed to save library index after import', failure);
+        libraryIndexSaveFailure = {
+          reason: 'library-index-save-failed',
+          userBucket: failure.bucket,
+          userMessage: failure.userMessage,
+        };
+      }
 
       const uploadCandidates = useLibraryStore
         .getState()
@@ -144,14 +258,16 @@ export function useBookImport() {
       if (failCount > 0) {
         eventDispatcher.dispatch('toast', {
           type: 'error',
-          message: `${failCount} ${failCount === 1 ? 'file' : 'files'} failed to import`,
+          message:
+            summarizeImportFailureOutcomes(outcomes) ??
+            `${failCount} ${failCount === 1 ? 'file' : 'files'} failed to import`,
         });
       }
       if (skippedForLimitCount > 0) {
         warnLibraryFull();
       }
 
-      return { successCount, failCount, skippedForLimitCount };
+      return { successCount, failCount, skippedForLimitCount, outcomes, libraryIndexSaveFailure };
     },
     [appService, canAddBook, libraryLimit, warnLibraryFull],
   );
@@ -159,7 +275,7 @@ export function useBookImport() {
   const openImportPicker = useCallback(async (): Promise<BookImportResult> => {
     if (!canAddBook) {
       warnLibraryFull();
-      return { successCount: 0, failCount: 0, skippedForLimitCount: 0 };
+      return { successCount: 0, failCount: 0, skippedForLimitCount: 0, outcomes: [] };
     }
 
     try {
@@ -169,19 +285,27 @@ export function useBookImport() {
           type: 'error',
           message: 'Failed to select files',
         });
-        return { successCount: 0, failCount: 0, skippedForLimitCount: 0 };
+        return { successCount: 0, failCount: 0, skippedForLimitCount: 0, outcomes: [] };
       }
       if (result.files.length === 0) {
-        return { successCount: 0, failCount: 0, skippedForLimitCount: 0 };
+        return { successCount: 0, failCount: 0, skippedForLimitCount: 0, outcomes: [] };
       }
 
       const supportedFiles = result.files.filter(isSupportedSelectedBookFile);
+      const unsupportedOutcomes = result.files
+        .filter((file) => !isSupportedSelectedBookFile(file))
+        .map(createUnsupportedImportOutcome);
       if (supportedFiles.length === 0) {
         eventDispatcher.dispatch('toast', {
           type: 'warning',
           message: _(UNSUPPORTED_BOOK_FILES_MESSAGE),
         });
-        return { successCount: 0, failCount: 0, skippedForLimitCount: 0 };
+        return {
+          successCount: 0,
+          failCount: 0,
+          skippedForLimitCount: 0,
+          outcomes: unsupportedOutcomes,
+        };
       }
       if (supportedFiles.length < result.files.length) {
         const unsupportedCount = result.files.length - supportedFiles.length;
@@ -190,14 +314,15 @@ export function useBookImport() {
           message: `${unsupportedCount} ${unsupportedCount === 1 ? 'file was' : 'files were'} skipped because the format is not supported`,
         });
       }
-      return importSelectedBookFiles(supportedFiles);
+      const importResult = await importSelectedBookFiles(supportedFiles);
+      return { ...importResult, outcomes: [...unsupportedOutcomes, ...importResult.outcomes] };
     } catch (error) {
       logger.error('Import failed', error);
       eventDispatcher.dispatch('toast', {
         type: 'error',
         message: 'Import failed. Please try again.',
       });
-      return { successCount: 0, failCount: 1, skippedForLimitCount: 0 };
+      return { successCount: 0, failCount: 1, skippedForLimitCount: 0, outcomes: [] };
     }
   }, [selectFiles, importSelectedBookFiles, _, canAddBook, warnLibraryFull]);
 

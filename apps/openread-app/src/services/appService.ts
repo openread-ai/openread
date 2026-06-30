@@ -90,6 +90,13 @@ import { createLogger } from '@/utils/logger';
 import { CloudSyncService } from './cloudSync';
 import { LibraryPersistence } from './libraryPersistence';
 import { platform } from '@/services/platform/client';
+import {
+  ImportFailureError,
+  classifyBookParseFailure,
+  classifyFileReadFailure,
+  toImportFailureError,
+} from '@/services/importFailure';
+import type { ImportFailureReason } from '@/services/importFailure';
 
 const logger = createLogger('appService');
 
@@ -428,6 +435,7 @@ export abstract class BaseAppService implements AppService {
   ): Promise<Book | null> {
     const createdArtifacts: LocalImportArtifact[] = [];
     let localImportCommitted = false;
+    let currentFailureReason: ImportFailureReason = 'book-parse-failed';
 
     try {
       let loadedBook: BookDoc;
@@ -436,6 +444,7 @@ export abstract class BaseAppService implements AppService {
       let fileobj: File;
 
       try {
+        currentFailureReason = 'file-read-failed';
         if (typeof file === 'string') {
           fileobj = await this.fs.openFile(file, 'None');
           filename = fileobj.name || getFilename(file);
@@ -443,31 +452,47 @@ export abstract class BaseAppService implements AppService {
           fileobj = file;
           filename = file.name;
         }
-        if (/\.txt$/i.test(filename)) {
+      } catch (error) {
+        throw classifyFileReadFailure(error);
+      }
+
+      if (!fileobj || fileobj.size === 0) {
+        throw new ImportFailureError('file-empty');
+      }
+      if (/\.txt$/i.test(filename)) {
+        try {
+          currentFailureReason = 'txt-conversion-failed';
           const txt2epub = new TxtToEpubConverter();
           ({ file: fileobj } = await txt2epub.convert({ file: fileobj }));
+        } catch (error) {
+          throw toImportFailureError(error, 'txt-conversion-failed');
         }
-        if (!fileobj || fileobj.size === 0) {
-          throw new Error('Invalid or empty book file');
-        }
+      }
+      if (!fileobj || fileobj.size === 0) {
+        throw new ImportFailureError('file-empty');
+      }
+      try {
+        currentFailureReason = 'book-parse-failed';
         ({ book: loadedBook, format } = await new DocumentLoader(fileobj).open());
         if (!loadedBook) {
-          throw new Error('Unsupported or corrupted book file');
+          throw new ImportFailureError('book-parse-failed');
         }
         const metadataTitle = formatTitle(loadedBook.metadata.title);
         if (!metadataTitle || !metadataTitle.trim() || metadataTitle === filename) {
           loadedBook.metadata.title = getBaseFilename(filename);
         }
       } catch (error) {
-        throw new Error(`Failed to open the book: ${(error as Error).message || error}`);
+        throw classifyBookParseFailure(error);
       }
 
+      currentFailureReason = 'local-hash-failed';
       const hash = parseLocalBookHash(await partialMD5(fileobj));
-      if (!hash) throw new Error('Failed to compute canonical local book hash');
+      if (!hash) throw new ImportFailureError('local-hash-failed');
 
       // Compute full-file SHA-256 for book identification
+      currentFailureReason = 'platform-hash-failed';
       const platformHash = parsePlatformBookHash(await computeFileHash(fileobj));
-      if (!platformHash) throw new Error('Failed to compute canonical platform book hash');
+      if (!platformHash) throw new ImportFailureError('platform-hash-failed');
 
       const existingBook = books.filter((b) => b.hash === hash)[0];
 
@@ -486,6 +511,7 @@ export abstract class BaseAppService implements AppService {
         downloadedAt: Date.now(),
         updatedAt: Date.now(),
       };
+      currentFailureReason = 'book-file-write-failed';
       const bookDir = getDir(book);
       const bookDirExists = await this.fs.exists(bookDir, 'Books');
       if (!bookDirExists) {
@@ -529,6 +555,7 @@ export abstract class BaseAppService implements AppService {
       const coverFilename = getCoverFilename(book);
       const coverFileExists = await this.fs.exists(coverFilename, 'Books');
       if (saveCover && (!coverFileExists || overwrite)) {
+        currentFailureReason = 'cover-extraction-failed';
         let cover = await loadedBook.getCover();
         if (cover?.type === 'image/svg+xml') {
           try {
@@ -553,6 +580,7 @@ export abstract class BaseAppService implements AppService {
               action: 'remove-created-file',
             });
           }
+          currentFailureReason = 'cover-file-write-failed';
           await this.fs.writeFile(coverFilename, 'Books', await cover.arrayBuffer());
         }
       }
@@ -572,6 +600,7 @@ export abstract class BaseAppService implements AppService {
             action: 'remove-created-file',
           });
         }
+        currentFailureReason = 'book-config-save-failed';
         await this.saveBookConfig(book, INIT_BOOK_CONFIG);
       }
 
@@ -581,6 +610,7 @@ export abstract class BaseAppService implements AppService {
           book.url = file;
         }
       }
+      currentFailureReason = 'cover-extraction-failed';
       book.coverImageUrl = await this.generateCoverImageUrl(book);
 
       if (existingBook) {
@@ -625,11 +655,12 @@ export abstract class BaseAppService implements AppService {
 
       return existingBook || book;
     } catch (error) {
+      const importError = toImportFailureError(error, currentFailureReason);
       if (!localImportCommitted) {
         await this.cleanupLocalImportArtifacts(createdArtifacts);
       }
-      logger.error('Error importing book:', error);
-      throw error;
+      logger.error('Error importing book:', importError);
+      throw importError;
     }
   }
 

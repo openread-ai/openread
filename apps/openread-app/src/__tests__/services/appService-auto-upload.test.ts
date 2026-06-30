@@ -183,6 +183,8 @@ import { CloudSyncService } from '@/services/cloudSync';
 import { deleteFile, downloadFile } from '@/libs/storage';
 import { getConfigFilename, getCoverFilename, getDir, getLocalBookFilename } from '@/utils/book';
 import { partialMD5 } from '@/utils/md5';
+import { ImportFailureError } from '@/services/importFailure';
+import type { ImportFailureReason } from '@/services/importFailure';
 import type { FileSystem, BaseDir, ResolvedPath, SelectDirectoryMode } from '@/types/system';
 
 class TestAppService extends BaseAppService {
@@ -295,6 +297,20 @@ function createCoverBlob(): Blob {
     type: 'image/png',
     arrayBuffer: vi.fn(async () => new ArrayBuffer(5)),
   } as unknown as Blob;
+}
+
+async function expectImportFailureReason(
+  promise: Promise<unknown>,
+  reason: ImportFailureReason,
+): Promise<ImportFailureError> {
+  try {
+    await promise;
+  } catch (error) {
+    expect(error).toBeInstanceOf(ImportFailureError);
+    expect((error as ImportFailureError).reason).toBe(reason);
+    return error as ImportFailureError;
+  }
+  throw new Error(`Expected import to fail with ${reason}`);
 }
 
 describe('appService deleteBook storage lifecycle', () => {
@@ -433,14 +449,41 @@ describe('appService importBook transaction-like rollback', () => {
     appService = new TestAppService();
   });
 
+  it('classifies empty non-TXT files as file-empty before parsing', async () => {
+    const { files } = installTrackedBooksFs(appService);
+    const books: Book[] = [];
+
+    await expectImportFailureReason(
+      appService.importBook(new File([], 'empty.epub'), books),
+      'file-empty',
+    );
+
+    expect(files.has('mock-local-filename')).toBe(false);
+    expect(books).toHaveLength(0);
+  });
+
+  it('classifies empty TXT files as file-empty before conversion', async () => {
+    const { files } = installTrackedBooksFs(appService);
+    const books: Book[] = [];
+
+    await expectImportFailureReason(
+      appService.importBook(new File([], 'empty.txt'), books),
+      'file-empty',
+    );
+
+    expect(files.has('mock-local-filename')).toBe(false);
+    expect(books).toHaveLength(0);
+  });
+
   it('cleans a newly written book file when cover extraction fails', async () => {
     const { files } = installTrackedBooksFs(appService);
     const books: Book[] = [];
     mockGetCover.mockRejectedValue(new Error('cover failed'));
 
-    await expect(
+    await expectImportFailureReason(
       appService.importBook(new File(['test content'], 'test.epub'), books),
-    ).rejects.toThrow('cover failed');
+      'cover-extraction-failed',
+    );
 
     expect(files.has('mock-local-filename')).toBe(false);
     expect(files.has('mock-cover-filename')).toBe(false);
@@ -458,9 +501,10 @@ describe('appService importBook transaction-like rollback', () => {
       files.set(path, content);
     });
 
-    await expect(
+    await expectImportFailureReason(
       appService.importBook(new File(['test content'], 'test.epub'), books),
-    ).rejects.toThrow('config failed');
+      'book-config-save-failed',
+    );
 
     expect(files.has('mock-local-filename')).toBe(false);
     expect(files.has('mock-cover-filename')).toBe(false);
@@ -476,9 +520,10 @@ describe('appService importBook transaction-like rollback', () => {
       throw new Error('cover url failed');
     });
 
-    await expect(
+    await expectImportFailureReason(
       appService.importBook(new File(['test content'], 'test.epub'), books),
-    ).rejects.toThrow('cover url failed');
+      'cover-extraction-failed',
+    );
 
     expect(files.has('mock-local-filename')).toBe(false);
     expect(files.has('mock-cover-filename')).toBe(false);
@@ -494,9 +539,10 @@ describe('appService importBook transaction-like rollback', () => {
       throw new Error('cover url failed');
     });
 
-    await expect(
+    await expectImportFailureReason(
       appService.importBook(new File(['test content'], 'test.epub'), books),
-    ).rejects.toThrow('cover url failed');
+      'cover-extraction-failed',
+    );
 
     expect(files.has('mock-local-filename')).toBe(false);
     expect(files.get('mock-config-filename')).toBe('old:mock-config-filename');
@@ -531,9 +577,10 @@ describe('appService importBook transaction-like rollback', () => {
       throw new Error('cover url failed');
     });
 
-    await expect(
+    await expectImportFailureReason(
       appService.importBook(new File(['test content'], 'test.epub'), books),
-    ).rejects.toThrow('cover url failed');
+      'cover-extraction-failed',
+    );
 
     expect(existingBook).toEqual(originalSnapshot);
     expect(books[1]).toBe(existingBook);
@@ -566,9 +613,10 @@ describe('appService importBook transaction-like rollback', () => {
       throw new Error('cover url failed');
     });
 
-    await expect(
+    await expectImportFailureReason(
       appService.importBook(new File(['new content'], 'test.epub'), books, true, true, true),
-    ).rejects.toThrow('cover url failed');
+      'cover-extraction-failed',
+    );
 
     expect(existingBook).toEqual(originalSnapshot);
     expect(files.get('mock-local-filename')).toBe('old:mock-local-filename');

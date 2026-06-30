@@ -421,7 +421,7 @@ test.describe('Mobile web reader navigation regression', () => {
         .filter(Boolean),
     );
 
-    expect(topLevelLabels).toHaveLength(11);
+    expect(topLevelLabels).toHaveLength(9);
     expect(topLevelLabels.slice(0, 7)).toEqual([
       'Table of Contents',
       'Highlights',
@@ -433,9 +433,10 @@ test.describe('Mobile web reader navigation regression', () => {
     ]);
     expect(topLevelLabels[7]).toMatch(/^(Dark|Light|Auto) Mode$/);
     expect(topLevelLabels[8]).toBe('Invert Image In Dark Mode');
-    expect(topLevelLabels[9]).toMatch(/^(Sign in to Sync|Synced at|Never synced)/);
-    expect(topLevelLabels[10]).toBe('Reload PageShift+R');
-    await attachScreenshot(page, testInfo, 'mobile-web-reader-kebab-11-options');
+    expect(topLevelLabels).not.toContain('Sign in to Sync');
+    expect(topLevelLabels).not.toContain('Never synced');
+    expect(topLevelLabels.some((label) => label.startsWith('Synced at '))).toBe(false);
+    await attachScreenshot(page, testInfo, 'mobile-web-reader-kebab-9-options');
 
     await viewMenu.getByText('Table of Contents', { exact: true }).click();
     await expect(page.getByRole('button', { name: 'Chapters' })).toHaveClass(/bg-base-content\/10/);

@@ -198,11 +198,9 @@ describe('mobile web reader menu grouping dividers', () => {
       'divider',
       'Dark Mode',
       'Invert Image In Dark Mode',
-      'divider',
-      expect.stringMatching(/^Synced at /),
     ]);
 
-    expect(screen.getAllByTestId('mobile-reader-menu-group-divider')).toHaveLength(5);
+    expect(screen.getAllByTestId('mobile-reader-menu-group-divider')).toHaveLength(4);
     screen.getAllByTestId('mobile-reader-menu-group-divider').forEach((divider) => {
       expect(divider.getAttribute('aria-hidden')).toBe('true');
       expect(divider.getAttribute('role')).toBeNull();
@@ -218,6 +216,9 @@ describe('mobile web reader menu grouping dividers', () => {
     expect(screen.queryByText('Display settings')).toBeNull();
     expect(screen.queryByText('Sort TOC by Page')).toBeNull();
     expect(screen.queryByText('Reload Page')).toBeNull();
+    expect(screen.queryByText(/^Synced at /)).toBeNull();
+    expect(screen.queryByText('Never synced')).toBeNull();
+    expect(screen.queryByText('Sign in to Sync')).toBeNull();
   });
 
   it('preserves representative menu actions and toggles', () => {

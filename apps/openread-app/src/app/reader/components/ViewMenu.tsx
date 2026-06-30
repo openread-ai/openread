@@ -345,21 +345,6 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
           onClick={() => setInvertImgColorInDark(!invertImgColorInDark)}
         />,
       ],
-      [
-        <MenuItem
-          key='sync-status'
-          label={
-            !user
-              ? _('Sign in to Sync')
-              : lastSyncTime
-                ? _('Synced at {{time}}', { time: new Date(lastSyncTime).toLocaleString() })
-                : _('Never synced')
-          }
-          Icon={user ? MdSync : MdSyncProblem}
-          iconClassName={user && viewState?.syncing ? 'animate-reverse-spin' : ''}
-          onClick={handleSync}
-        />,
-      ],
     ];
 
     return (

@@ -219,6 +219,20 @@ describe('MobileReaderMenuLauncher', () => {
       `${dockBottomOffsetPx + MOBILE_READER_MENU_BUTTON_SIZE_PX + MOBILE_READER_MENU_OVERLAY_GAP_PX}px`,
     );
 
+    expect(screen.getByTestId('mobile-reader-menu-dismiss-layer')).toBeTruthy();
+
+    fireEvent.pointerDown(screen.getByTestId('mobile-reader-menu-dismiss-layer'));
+    expect(screen.queryByTestId('mock-view-menu')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('mobile-reader-menu-button'));
+    expect(screen.getByTestId('mock-view-menu')).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId('mobile-reader-menu-button'));
+    expect(screen.queryByTestId('mock-view-menu')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('mobile-reader-menu-button'));
+    expect(screen.getByTestId('mock-view-menu')).toBeTruthy();
+
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByTestId('mock-view-menu')).toBeNull();
 

@@ -99,23 +99,31 @@ export function MobileReaderMenuLauncher({
       data-openread-mobile-reader-menu-launcher
     >
       {open && (
-        <div
-          ref={overlayRef}
-          className={cn(
-            'fixed left-1/2 z-50 w-[calc(100vw-2rem)] max-w-md -translate-x-1/2',
-            popoverClassName,
-          )}
-          style={
-            {
-              bottom: overlayBottomOffsetPx,
-              [MOBILE_READER_MENU_MAX_HEIGHT_CSS_VAR]: '80dvh',
-            } as CSSProperties
-          }
-          data-openread-mobile-reader-menu-content
-          data-testid='mobile-reader-menu-content'
-        >
-          <ViewMenu bookKey={bookKey} setIsDropdownOpen={setOpen} />
-        </div>
+        <>
+          <div
+            aria-hidden='true'
+            className='fixed inset-0 z-20 bg-transparent'
+            data-testid='mobile-reader-menu-dismiss-layer'
+            onPointerDown={() => setOpen(false)}
+          />
+          <div
+            ref={overlayRef}
+            className={cn(
+              'fixed left-1/2 z-50 w-[calc(100vw-2rem)] max-w-md -translate-x-1/2',
+              popoverClassName,
+            )}
+            style={
+              {
+                bottom: overlayBottomOffsetPx,
+                [MOBILE_READER_MENU_MAX_HEIGHT_CSS_VAR]: '80dvh',
+              } as CSSProperties
+            }
+            data-openread-mobile-reader-menu-content
+            data-testid='mobile-reader-menu-content'
+          >
+            <ViewMenu bookKey={bookKey} setIsDropdownOpen={setOpen} />
+          </div>
+        </>
       )}
       <button
         type='button'
@@ -124,6 +132,7 @@ export function MobileReaderMenuLauncher({
         data-testid='mobile-reader-menu-button'
         className={cn(
           'bg-base-100/95 text-base-content/80 ring-base-content/10 hover:bg-base-100 flex size-14 shrink-0 items-center justify-center rounded-full shadow-lg ring-1 ring-inset backdrop-blur-xl transition-transform active:scale-95 motion-reduce:transition-none',
+          open && 'relative z-30',
           buttonClassName,
         )}
         onClick={() => setOpen((current) => !current)}

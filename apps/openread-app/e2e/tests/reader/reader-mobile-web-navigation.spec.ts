@@ -441,6 +441,16 @@ test.describe('Mobile web reader navigation regression', () => {
     expect(topLevelLabels.some((label) => /^(Dark|Light|Auto) Mode$/.test(label))).toBe(false);
     await attachScreenshot(page, testInfo, 'mobile-web-reader-kebab-8-options');
 
+    await page
+      .getByTestId('mobile-reader-menu-dismiss-layer')
+      .click({ position: { x: 16, y: 160 } });
+    await expect(page.getByTestId('mobile-reader-menu-content')).toHaveCount(0);
+
+    viewMenu = await openMenu();
+    await page.getByTestId('mobile-reader-menu-button').click();
+    await expect(page.getByTestId('mobile-reader-menu-content')).toHaveCount(0);
+
+    viewMenu = await openMenu();
     await viewMenu.getByText('Table of Contents', { exact: true }).click();
     await expect(page.getByRole('button', { name: 'Chapters' })).toHaveClass(/bg-base-content\/10/);
     await attachScreenshot(page, testInfo, 'mobile-web-reader-kebab-toc-sheet');

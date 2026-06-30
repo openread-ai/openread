@@ -7,66 +7,20 @@ import { eventDispatcher } from '@/utils/event';
 import { createLogger } from '@/utils/logger';
 import { isUserCloudUploadEligible } from '@/utils/book';
 import { LOCAL_PERSISTENCE_KEYS } from '@/services/persistence/localPersistenceRegistry';
+import {
+  classifyTransferError,
+  type TransferErrorReason,
+  type TransferErrorClassification,
+} from '@/services/transferErrors';
+
+export { classifyTransferError };
+export type { TransferErrorReason, TransferErrorClassification };
 
 const logger = createLogger('transfer');
 
 const TRANSFER_QUEUE_KEY = LOCAL_PERSISTENCE_KEYS.transferQueue;
 const RETRY_DELAY_BASE_MS = 2000;
 const BACKGROUND_RETRY_DELAY_MAX_MS = 60_000;
-
-export type TransferErrorReason =
-  | 'not-authenticated'
-  | 'storage-limit-reached'
-  | 'storage-not-available'
-  | 'library-limit-reached'
-  | 'local-file-missing'
-  | 'network-error'
-  | 'platform-incident'
-  | 'unclassified-retryable';
-
-export interface TransferErrorClassification {
-  reason: TransferErrorReason;
-  retryable: boolean;
-  incident: boolean;
-}
-
-export function classifyTransferError(errorMessage: string): TransferErrorClassification {
-  if (
-    errorMessage.includes('Not authenticated') ||
-    errorMessage.includes('UNAUTHORIZED') ||
-    /HTTP 401\b/.test(errorMessage)
-  ) {
-    return { reason: 'not-authenticated', retryable: false, incident: false };
-  }
-  if (
-    errorMessage.includes('STORAGE_LIMIT_REACHED') ||
-    errorMessage.includes('Insufficient storage quota') ||
-    errorMessage.includes('Storage limit reached')
-  ) {
-    return { reason: 'storage-limit-reached', retryable: false, incident: false };
-  }
-  if (errorMessage.includes('STORAGE_NOT_AVAILABLE')) {
-    return { reason: 'storage-not-available', retryable: false, incident: false };
-  }
-  if (errorMessage.includes('LIBRARY_LIMIT_REACHED') || errorMessage.includes('Library limit')) {
-    return { reason: 'library-limit-reached', retryable: false, incident: false };
-  }
-  if (errorMessage.includes('Book file not uploaded')) {
-    return { reason: 'local-file-missing', retryable: false, incident: true };
-  }
-  if (/Failed to fetch|NetworkError|network|Load failed/i.test(errorMessage)) {
-    return { reason: 'network-error', retryable: true, incident: false };
-  }
-  if (
-    errorMessage.includes('STORAGE_SCHEMA_UNAVAILABLE') ||
-    errorMessage.includes('INTERNAL_ERROR') ||
-    /HTTP 5\d\d\b/.test(errorMessage)
-  ) {
-    return { reason: 'platform-incident', retryable: true, incident: true };
-  }
-
-  return { reason: 'unclassified-retryable', retryable: true, incident: true };
-}
 
 interface PersistedQueueData {
   transfers: Record<string, TransferItem>;
@@ -130,6 +84,19 @@ class TransferManager {
         this.processQueue();
       }
       return existing.id;
+    }
+
+    if (isBackground) {
+      const terminalBackgroundUpload = store
+        .getFailedTransfers()
+        .find(
+          (transfer) =>
+            transfer.status === 'failed' &&
+            transfer.bookHash === book.hash &&
+            transfer.type === 'upload' &&
+            transfer.isBackground,
+        );
+      if (terminalBackgroundUpload) return terminalBackgroundUpload.id;
     }
 
     const transferId = store.addTransfer(book.hash, book.title, 'upload', priority, isBackground);
@@ -382,18 +349,6 @@ class TransferManager {
         effectiveTransfer.type === 'upload' && effectiveTransfer.isBackground;
 
       if (isBackgroundUpload && currentTransfer) {
-        const delay = Math.min(
-          BACKGROUND_RETRY_DELAY_MAX_MS,
-          RETRY_DELAY_BASE_MS * Math.pow(2, Math.min(currentTransfer.retryCount, 5)),
-        );
-        currentStore.incrementRetryCount(transfer.id);
-        currentStore.deferTransfer(
-          transfer.id,
-          `Background backup retry scheduled: ${errorClassification.reason}`,
-          Date.now() + delay,
-        );
-        retryScheduled = true;
-
         const logPayload = {
           transferId: transfer.id,
           bookHash: transfer.bookHash,
@@ -401,15 +356,40 @@ class TransferManager {
           retryCount: currentTransfer.retryCount + 1,
           error: errorMessage,
         };
-        if (errorClassification.incident) {
-          logger.error('Background cloud backup invariant/incident; retrying silently', logPayload);
-        } else {
-          logger.warn('Background cloud backup delayed; retrying silently', logPayload);
-        }
 
-        setTimeout(() => {
-          this.processQueue();
-        }, delay);
+        if (errorClassification.retryable) {
+          const delay = Math.min(
+            BACKGROUND_RETRY_DELAY_MAX_MS,
+            RETRY_DELAY_BASE_MS * Math.pow(2, Math.min(currentTransfer.retryCount, 5)),
+          );
+          currentStore.incrementRetryCount(transfer.id);
+          currentStore.deferTransfer(
+            transfer.id,
+            `Background backup retry scheduled: ${errorClassification.reason}`,
+            Date.now() + delay,
+          );
+          retryScheduled = true;
+
+          if (errorClassification.incident) {
+            logger.error(
+              'Background cloud backup invariant/incident; retrying silently',
+              logPayload,
+            );
+          } else {
+            logger.warn('Background cloud backup delayed; retrying silently', logPayload);
+          }
+
+          setTimeout(() => {
+            this.processQueue();
+          }, delay);
+        } else {
+          currentStore.setTransferStatus(transfer.id, 'failed', errorMessage);
+          if (errorClassification.incident) {
+            logger.error('Background cloud backup terminal incident; not retrying', logPayload);
+          } else {
+            logger.warn('Background cloud backup terminal failure; not retrying', logPayload);
+          }
+        }
       } else if (
         errorClassification.retryable &&
         currentTransfer &&

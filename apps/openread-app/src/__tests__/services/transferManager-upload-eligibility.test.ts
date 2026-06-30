@@ -191,7 +191,56 @@ describe('TransferManager upload eligibility', () => {
     );
   });
 
-  it('restores failed background uploads as pending for startup recovery', () => {
+  it('marks non-retryable background upload failures terminal without toast or retry', async () => {
+    const book = baseBook();
+    const uploadBook = vi.fn(async () => {
+      throw new Error('STORAGE_LIMIT_REACHED');
+    });
+    resetTransferManagerForTest({ uploadBook, library: [book] });
+    const dispatchSpy = vi.spyOn(eventDispatcher, 'dispatch');
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const id = useTransferStore.getState().addTransfer(book.hash, book.title, 'upload', 1, true);
+    await executeTransferForTest(useTransferStore.getState().transfers[id]!);
+    await vi.runOnlyPendingTimersAsync();
+
+    const transfer = useTransferStore.getState().transfers[id]!;
+    expect(transfer.status).toBe('failed');
+    expect(transfer.retryCount).toBe(0);
+    expect(transfer.error).toBe('STORAGE_LIMIT_REACHED');
+    expect(transfer.availableAt).toBeUndefined();
+    expect(useTransferStore.getState().getFailedTransfers()).toEqual([transfer]);
+    expect(uploadBook).toHaveBeenCalledTimes(1);
+    expect(dispatchSpy).not.toHaveBeenCalledWith('toast', expect.anything());
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[transfer] Background cloud backup terminal failure; not retrying',
+      expect.objectContaining({ reason: 'storage-limit-reached' }),
+    );
+  });
+
+  it('exposes terminal background upload failures to retryAllFailed', async () => {
+    const book = baseBook();
+    const uploadBook = vi.fn(async () => {
+      throw new Error('STORAGE_LIMIT_REACHED');
+    });
+    resetTransferManagerForTest({ uploadBook, library: [book] });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const id = useTransferStore.getState().addTransfer(book.hash, book.title, 'upload', 1, true);
+    await executeTransferForTest(useTransferStore.getState().transfers[id]!);
+    useTransferStore.getState().pauseQueue();
+
+    transferManager.retryAllFailed();
+
+    expect(useTransferStore.getState().transfers[id]).toMatchObject({
+      status: 'pending',
+      error: undefined,
+      availableAt: undefined,
+      completedAt: undefined,
+    });
+  });
+
+  it('restores retryable failed background uploads as pending for startup recovery', () => {
     const failedBackgroundUpload: TransferItem = {
       id: 'background-upload',
       bookHash: baseBook().hash,
@@ -202,7 +251,7 @@ describe('TransferManager upload eligibility', () => {
       totalBytes: 100,
       transferredBytes: 43,
       transferSpeed: 1,
-      error: 'previous platform incident',
+      error: 'STORAGE_SCHEMA_UNAVAILABLE: Request failed with HTTP 503',
       retryCount: 3,
       maxRetries: 3,
       createdAt: 1,
@@ -224,6 +273,53 @@ describe('TransferManager upload eligibility', () => {
       transferredBytes: 0,
       transferSpeed: 0,
     });
+  });
+
+  it('preserves non-retryable failed background uploads across restore', () => {
+    const failedBackgroundUpload: TransferItem = {
+      id: 'background-upload',
+      bookHash: baseBook().hash,
+      bookTitle: 'Manual Book',
+      type: 'upload',
+      status: 'failed',
+      progress: 43,
+      totalBytes: 100,
+      transferredBytes: 43,
+      transferSpeed: 1,
+      error: 'STORAGE_LIMIT_REACHED',
+      retryCount: 0,
+      maxRetries: 3,
+      createdAt: 1,
+      completedAt: 2,
+      priority: 1,
+      isBackground: true,
+    };
+
+    useTransferStore
+      .getState()
+      .restoreTransfers({ [failedBackgroundUpload.id]: failedBackgroundUpload }, false);
+
+    const restoredTransfer = useTransferStore.getState().transfers[failedBackgroundUpload.id]!;
+    expect(restoredTransfer).toMatchObject({
+      status: 'failed',
+      error: 'STORAGE_LIMIT_REACHED',
+      completedAt: 2,
+      progress: 43,
+      transferredBytes: 43,
+      transferSpeed: 1,
+    });
+    expect(restoredTransfer).not.toHaveProperty('availableAt');
+  });
+
+  it('does not queue duplicate background uploads for terminal background failures', () => {
+    const book = baseBook();
+    const id = useTransferStore.getState().addTransfer(book.hash, book.title, 'upload', 1, true);
+    useTransferStore.getState().setTransferStatus(id, 'failed', 'STORAGE_LIMIT_REACHED');
+
+    const returnedId = transferManager.queueUpload(book, 1, true);
+
+    expect(returnedId).toBe(id);
+    expect(Object.values(useTransferStore.getState().transfers)).toHaveLength(1);
   });
 
   it('does not retry a background upload before the scheduled backoff', async () => {

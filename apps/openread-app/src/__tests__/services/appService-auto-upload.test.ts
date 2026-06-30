@@ -1,32 +1,41 @@
-import { testOpenReadBookRef } from '../utils/bookIdentityFixtures';
+import { testOpenReadBookRef, testPlatformBookHash } from '../utils/bookIdentityFixtures';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Use vi.hoisted so these are available inside hoisted vi.mock factories
-const { mockQueueUpload, mockIsReady, mockGetState, mockGetDownloadUrl, MockDocumentLoader } =
-  vi.hoisted(() => {
-    // Must use a regular function (not arrow) so it can be called with `new`
-    class FakeDocumentLoader {
-      async open() {
-        return {
-          book: {
-            metadata: { title: 'Test Book', author: 'Author', language: 'en' },
-            getCover: async () => null,
-          },
-          format: 'epub',
-        };
-      }
-    }
+const {
+  mockQueueUpload,
+  mockIsReady,
+  mockGetState,
+  mockGetDownloadUrl,
+  mockGetCover,
+  MockDocumentLoader,
+} = vi.hoisted(() => {
+  const getCover = vi.fn(async () => null as Blob | null);
 
-    return {
-      mockQueueUpload: vi.fn(),
-      mockIsReady: vi.fn(),
-      mockGetState: vi.fn(() => ({
-        settings: { autoUpload: true },
-      })),
-      mockGetDownloadUrl: vi.fn(async () => ({ downloadUrl: 'https://signed.example/book.epub' })),
-      MockDocumentLoader: FakeDocumentLoader,
-    };
-  });
+  // Must use a regular function (not arrow) so it can be called with `new`
+  class FakeDocumentLoader {
+    async open() {
+      return {
+        book: {
+          metadata: { title: 'Test Book', author: 'Author', language: 'en' },
+          getCover,
+        },
+        format: 'epub',
+      };
+    }
+  }
+
+  return {
+    mockQueueUpload: vi.fn(),
+    mockIsReady: vi.fn(),
+    mockGetState: vi.fn(() => ({
+      settings: { autoUpload: true },
+    })),
+    mockGetDownloadUrl: vi.fn(async () => ({ downloadUrl: 'https://signed.example/book.epub' })),
+    mockGetCover: getCover,
+    MockDocumentLoader: FakeDocumentLoader,
+  };
+});
 
 vi.mock('@/services/transferManager', () => ({
   transferManager: {
@@ -172,6 +181,8 @@ import type { Book, BookFormat } from '@/types/book';
 import { BaseAppService } from '@/services/appService';
 import { CloudSyncService } from '@/services/cloudSync';
 import { deleteFile, downloadFile } from '@/libs/storage';
+import { getConfigFilename, getCoverFilename, getDir, getLocalBookFilename } from '@/utils/book';
+import { partialMD5 } from '@/utils/md5';
 import type { FileSystem, BaseDir, ResolvedPath, SelectDirectoryMode } from '@/types/system';
 
 class TestAppService extends BaseAppService {
@@ -226,6 +237,64 @@ function createMockBook(overrides: Partial<Book> = {}): Book {
     updatedAt: Date.now(),
     ...overrides,
   };
+}
+
+function installTrackedBooksFs(appService: TestAppService, initialPaths: string[] = []) {
+  const files = new Map<string, string | ArrayBuffer | File>(
+    initialPaths.map((path) => [path, `old:${path}`]),
+  );
+  const dirs = new Set<string>();
+  const fs = (appService as unknown as { fs: FileSystem }).fs;
+
+  vi.mocked(fs.exists).mockImplementation(
+    async (path: string) => files.has(path) || dirs.has(path),
+  );
+  vi.mocked(fs.createDir).mockImplementation(async (path: string) => {
+    dirs.add(path);
+  });
+  vi.mocked(fs.readFile).mockImplementation(async (path: string) => {
+    const content = files.get(path);
+    if (content === undefined) throw new Error(`File not found: ${path}`);
+    return content instanceof File ? await content.arrayBuffer() : content;
+  });
+  vi.mocked(fs.writeFile).mockImplementation(async (path: string, _base: BaseDir, content) => {
+    files.set(path, content);
+  });
+  vi.mocked(fs.copyFile).mockImplementation(async (_src: string, dst: string) => {
+    files.set(dst, `copied:${dst}`);
+  });
+  vi.mocked(fs.removeFile).mockImplementation(async (path: string) => {
+    files.delete(path);
+  });
+  vi.mocked(fs.removeDir).mockImplementation(async (path: string) => {
+    dirs.delete(path);
+    for (const filePath of [...files.keys()]) {
+      if (filePath.startsWith(path)) files.delete(filePath);
+    }
+  });
+  vi.mocked(fs.getBlobURL).mockResolvedValue('mock-blob-url');
+
+  return { files, dirs, fs };
+}
+
+function resetImportBookMocks() {
+  vi.mocked(partialMD5).mockResolvedValue('d41d8cd98f00b204e9800998ecf8427e');
+  vi.mocked(getDir).mockReturnValue('mock-dir');
+  vi.mocked(getLocalBookFilename).mockReturnValue('mock-local-filename');
+  vi.mocked(getCoverFilename).mockReturnValue('mock-cover-filename');
+  vi.mocked(getConfigFilename).mockReturnValue('mock-config-filename');
+  mockGetCover.mockResolvedValue(null);
+  mockIsReady.mockReturnValue(true);
+  mockGetState.mockReturnValue({
+    settings: { autoUpload: true },
+  });
+}
+
+function createCoverBlob(): Blob {
+  return {
+    type: 'image/png',
+    arrayBuffer: vi.fn(async () => new ArrayBuffer(5)),
+  } as unknown as Blob;
 }
 
 describe('appService deleteBook storage lifecycle', () => {
@@ -354,11 +423,240 @@ describe('appService book content loading', () => {
   });
 });
 
+describe('appService importBook transaction-like rollback', () => {
+  let appService: TestAppService;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetImportBookMocks();
+    mockIsReady.mockReturnValue(false);
+    appService = new TestAppService();
+  });
+
+  it('cleans a newly written book file when cover extraction fails', async () => {
+    const { files } = installTrackedBooksFs(appService);
+    const books: Book[] = [];
+    mockGetCover.mockRejectedValue(new Error('cover failed'));
+
+    await expect(
+      appService.importBook(new File(['test content'], 'test.epub'), books),
+    ).rejects.toThrow('cover failed');
+
+    expect(files.has('mock-local-filename')).toBe(false);
+    expect(files.has('mock-cover-filename')).toBe(false);
+    expect(files.has('mock-config-filename')).toBe(false);
+    expect(books).toHaveLength(0);
+    expect(mockQueueUpload).not.toHaveBeenCalled();
+  });
+
+  it('cleans newly created book and cover files when config save fails', async () => {
+    const { files, fs } = installTrackedBooksFs(appService);
+    const books: Book[] = [];
+    mockGetCover.mockResolvedValue(createCoverBlob());
+    vi.mocked(fs.writeFile).mockImplementation(async (path: string, _base: BaseDir, content) => {
+      if (path === 'mock-config-filename') throw new Error('config failed');
+      files.set(path, content);
+    });
+
+    await expect(
+      appService.importBook(new File(['test content'], 'test.epub'), books),
+    ).rejects.toThrow('config failed');
+
+    expect(files.has('mock-local-filename')).toBe(false);
+    expect(files.has('mock-cover-filename')).toBe(false);
+    expect(files.has('mock-config-filename')).toBe(false);
+    expect(books).toHaveLength(0);
+  });
+
+  it('cleans staged artifacts when cover URL generation fails before library commit', async () => {
+    const { files, fs } = installTrackedBooksFs(appService);
+    const books: Book[] = [];
+    mockGetCover.mockResolvedValue(createCoverBlob());
+    vi.mocked(fs.getURL).mockImplementation(() => {
+      throw new Error('cover url failed');
+    });
+
+    await expect(
+      appService.importBook(new File(['test content'], 'test.epub'), books),
+    ).rejects.toThrow('cover url failed');
+
+    expect(files.has('mock-local-filename')).toBe(false);
+    expect(files.has('mock-cover-filename')).toBe(false);
+    expect(files.has('mock-config-filename')).toBe(false);
+    expect(books).toHaveLength(0);
+  });
+
+  it('restores a pre-existing config for a new library entry when import fails before commit', async () => {
+    const { files, fs } = installTrackedBooksFs(appService, ['mock-config-filename']);
+    const books: Book[] = [];
+    mockGetCover.mockResolvedValue(createCoverBlob());
+    vi.mocked(fs.getURL).mockImplementation(() => {
+      throw new Error('cover url failed');
+    });
+
+    await expect(
+      appService.importBook(new File(['test content'], 'test.epub'), books),
+    ).rejects.toThrow('cover url failed');
+
+    expect(files.has('mock-local-filename')).toBe(false);
+    expect(files.get('mock-config-filename')).toBe('old:mock-config-filename');
+    expect(books).toHaveLength(0);
+    expect(fs.removeDir).not.toHaveBeenCalled();
+  });
+
+  it('preserves existing-book metadata and pre-existing files on reimport failure', async () => {
+    const existingBook = createMockBook({
+      hash: testOpenReadBookRef('d41d8cd98f00b204e9800998ecf8427e'),
+      title: 'Old Title',
+      sourceTitle: 'Old Source',
+      author: 'Old Author',
+      primaryLanguage: 'fr',
+      platformHash: testPlatformBookHash('old-platform-hash'),
+      downloadedAt: 111,
+      updatedAt: 222,
+      createdAt: 333,
+      deletedAt: 444,
+    });
+    const books: Book[] = [
+      createMockBook({ hash: testOpenReadBookRef('other-book') }),
+      existingBook,
+    ];
+    const originalSnapshot = { ...existingBook };
+    const { files, fs } = installTrackedBooksFs(appService, [
+      'mock-local-filename',
+      'mock-cover-filename',
+      'mock-config-filename',
+    ]);
+    vi.mocked(fs.getURL).mockImplementation(() => {
+      throw new Error('cover url failed');
+    });
+
+    await expect(
+      appService.importBook(new File(['test content'], 'test.epub'), books),
+    ).rejects.toThrow('cover url failed');
+
+    expect(existingBook).toEqual(originalSnapshot);
+    expect(books[1]).toBe(existingBook);
+    expect(files.has('mock-local-filename')).toBe(true);
+    expect(files.has('mock-cover-filename')).toBe(true);
+    expect(files.has('mock-config-filename')).toBe(true);
+    expect(fs.removeFile).not.toHaveBeenCalled();
+    expect(fs.removeDir).not.toHaveBeenCalled();
+  });
+
+  it('restores overwritten book and cover files when overwrite reimport fails', async () => {
+    const existingBook = createMockBook({
+      hash: testOpenReadBookRef('d41d8cd98f00b204e9800998ecf8427e'),
+      title: 'Old Title',
+      platformHash: testPlatformBookHash('old-platform-hash'),
+      downloadedAt: 111,
+      updatedAt: 222,
+      createdAt: 333,
+      deletedAt: 444,
+    });
+    const books: Book[] = [existingBook];
+    const originalSnapshot = { ...existingBook };
+    const { files, fs } = installTrackedBooksFs(appService, [
+      'mock-local-filename',
+      'mock-cover-filename',
+      'mock-config-filename',
+    ]);
+    mockGetCover.mockResolvedValue(createCoverBlob());
+    vi.mocked(fs.getURL).mockImplementation(() => {
+      throw new Error('cover url failed');
+    });
+
+    await expect(
+      appService.importBook(new File(['new content'], 'test.epub'), books, true, true, true),
+    ).rejects.toThrow('cover url failed');
+
+    expect(existingBook).toEqual(originalSnapshot);
+    expect(files.get('mock-local-filename')).toBe('old:mock-local-filename');
+    expect(files.get('mock-cover-filename')).toBe('old:mock-cover-filename');
+    expect(files.get('mock-config-filename')).toBe('old:mock-config-filename');
+    expect(fs.removeDir).not.toHaveBeenCalled();
+  });
+
+  it('does not fail a committed import when closing the source file fails', async () => {
+    const { files } = installTrackedBooksFs(appService);
+    const books: Book[] = [];
+    const importFile = new File(['test content'], 'test.epub') as File & {
+      close: () => Promise<void>;
+    };
+    importFile.close = vi.fn(async () => {
+      throw new Error('close failed');
+    });
+
+    const result = await appService.importBook(importFile, books);
+
+    expect(result).toEqual(books[0]);
+    expect(books).toHaveLength(1);
+    expect(files.has('mock-local-filename')).toBe(true);
+    expect(importFile.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps successful new import behavior unchanged', async () => {
+    const { files } = installTrackedBooksFs(appService);
+    const books: Book[] = [];
+    mockGetCover.mockResolvedValue(createCoverBlob());
+
+    const result = await appService.importBook(new File(['test content'], 'test.epub'), books);
+
+    expect(result).toEqual(books[0]);
+    expect(books).toHaveLength(1);
+    expect(files.has('mock-local-filename')).toBe(true);
+    expect(files.has('mock-cover-filename')).toBe(true);
+    expect(files.has('mock-config-filename')).toBe(true);
+  });
+
+  it('keeps batch-style imports at N-1 successes with no failed-attempt artifacts', async () => {
+    const hashes: Record<string, string> = {
+      'ok-1.epub': '11111111111111111111111111111111',
+      'fail.epub': '22222222222222222222222222222222',
+      'ok-2.epub': '33333333333333333333333333333333',
+    };
+    vi.mocked(partialMD5).mockImplementation(async (file) => hashes[(file as File).name]);
+    vi.mocked(getDir).mockImplementation((book) => `dir-${book.hash}`);
+    vi.mocked(getLocalBookFilename).mockImplementation((book) => `book-${book.hash}.epub`);
+    vi.mocked(getCoverFilename).mockImplementation((book) => `cover-${book.hash}.png`);
+    vi.mocked(getConfigFilename).mockImplementation((book) => `config-${book.hash}.json`);
+    mockGetCover.mockResolvedValue(createCoverBlob());
+
+    const { files, fs } = installTrackedBooksFs(appService);
+    vi.mocked(fs.writeFile).mockImplementation(async (path: string, _base: BaseDir, content) => {
+      if (path === `config-${hashes['fail.epub']}.json`) throw new Error('config failed');
+      files.set(path, content);
+    });
+
+    const books: Book[] = [];
+    let successCount = 0;
+    let failCount = 0;
+    for (const name of ['ok-1.epub', 'fail.epub', 'ok-2.epub']) {
+      try {
+        await appService.importBook(new File(['test content'], name), books);
+        successCount++;
+      } catch {
+        failCount++;
+      }
+    }
+
+    expect(successCount).toBe(2);
+    expect(failCount).toBe(1);
+    expect(books).toHaveLength(2);
+    expect(files.has(`book-${hashes['fail.epub']}.epub`)).toBe(false);
+    expect(files.has(`cover-${hashes['fail.epub']}.png`)).toBe(false);
+    expect(files.has(`config-${hashes['fail.epub']}.json`)).toBe(false);
+    expect(files.has(`book-${hashes['ok-1.epub']}.epub`)).toBe(true);
+    expect(files.has(`book-${hashes['ok-2.epub']}.epub`)).toBe(true);
+  });
+});
+
 describe('appService importBook auto-upload', () => {
   let appService: TestAppService;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    resetImportBookMocks();
     vi.useFakeTimers();
 
     appService = new TestAppService();

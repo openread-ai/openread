@@ -93,6 +93,19 @@ import { platform } from '@/services/platform/client';
 
 const logger = createLogger('appService');
 
+type LocalImportArtifact =
+  | {
+      path: string;
+      base: BaseDir;
+      action: 'remove-created-file';
+    }
+  | {
+      path: string;
+      base: BaseDir;
+      action: 'restore-overwritten-file';
+      content: string | ArrayBuffer;
+    };
+
 export abstract class BaseAppService implements AppService {
   osPlatform: OsPlatform = getOSPlatform();
   appPlatform: AppPlatform = 'tauri';
@@ -377,6 +390,29 @@ export abstract class BaseAppService implements AppService {
     await this.fs.removeFile(texture.path, 'Images');
   }
 
+  private async cleanupLocalImportArtifacts(artifacts: LocalImportArtifact[]): Promise<void> {
+    const cleanedArtifacts = new Set<string>();
+
+    for (const artifact of [...artifacts].reverse()) {
+      const artifactKey = `${artifact.action}:${artifact.base}:${artifact.path}`;
+      if (cleanedArtifacts.has(artifactKey)) continue;
+      cleanedArtifacts.add(artifactKey);
+
+      try {
+        if (artifact.action === 'restore-overwritten-file') {
+          await this.fs.writeFile(artifact.path, artifact.base, artifact.content);
+          continue;
+        }
+
+        if (await this.fs.exists(artifact.path, artifact.base)) {
+          await this.fs.removeFile(artifact.path, artifact.base);
+        }
+      } catch (cleanupError) {
+        logger.warn('Failed to clean up import artifact:', { artifact, cleanupError });
+      }
+    }
+  }
+
   async importBook(
     // file might be:
     // 1.1 absolute path for local file on Desktop
@@ -390,6 +426,9 @@ export abstract class BaseAppService implements AppService {
     saveCover: boolean = true,
     overwrite: boolean = false,
   ): Promise<Book | null> {
+    const createdArtifacts: LocalImportArtifact[] = [];
+    let localImportCommitted = false;
+
     try {
       let loadedBook: BookDoc;
       let format: BookFormat;
@@ -431,11 +470,6 @@ export abstract class BaseAppService implements AppService {
       if (!platformHash) throw new Error('Failed to compute canonical platform book hash');
 
       const existingBook = books.filter((b) => b.hash === hash)[0];
-      if (existingBook) {
-        existingBook.deletedAt = null;
-        existingBook.createdAt = Date.now();
-        existingBook.updatedAt = Date.now();
-      }
 
       const primaryLanguage = getPrimaryLanguage(loadedBook.metadata.language);
       const book: Book = {
@@ -452,22 +486,28 @@ export abstract class BaseAppService implements AppService {
         downloadedAt: Date.now(),
         updatedAt: Date.now(),
       };
-      // update book metadata when reimporting the same book
-      if (existingBook) {
-        existingBook.format = book.format;
-        existingBook.title = existingBook.title.trim() ? existingBook.title.trim() : book.title;
-        existingBook.sourceTitle = existingBook.sourceTitle ?? book.sourceTitle;
-        existingBook.author = existingBook.author ?? book.author;
-        existingBook.primaryLanguage = existingBook.primaryLanguage ?? book.primaryLanguage;
-        existingBook.platformHash = platformHash;
-        existingBook.downloadedAt = Date.now();
-      }
-
-      if (!(await this.fs.exists(getDir(book), 'Books'))) {
-        await this.fs.createDir(getDir(book), 'Books');
+      const bookDir = getDir(book);
+      const bookDirExists = await this.fs.exists(bookDir, 'Books');
+      if (!bookDirExists) {
+        await this.fs.createDir(bookDir, 'Books');
       }
       const bookFilename = getLocalBookFilename(book);
-      if (saveBook && (!(await this.fs.exists(bookFilename, 'Books')) || overwrite)) {
+      const bookFileExists = await this.fs.exists(bookFilename, 'Books');
+      if (saveBook && (!bookFileExists || overwrite)) {
+        if (bookFileExists) {
+          createdArtifacts.push({
+            path: bookFilename,
+            base: 'Books',
+            action: 'restore-overwritten-file',
+            content: await this.fs.readFile(bookFilename, 'Books', 'binary'),
+          });
+        } else {
+          createdArtifacts.push({
+            path: bookFilename,
+            base: 'Books',
+            action: 'remove-created-file',
+          });
+        }
         if (/\.txt$/i.test(filename)) {
           await this.fs.writeFile(bookFilename, 'Books', fileobj);
         } else if (typeof file === 'string' && isContentURI(file)) {
@@ -486,7 +526,9 @@ export abstract class BaseAppService implements AppService {
           await this.fs.writeFile(bookFilename, 'Books', fileobj);
         }
       }
-      if (saveCover && (!(await this.fs.exists(getCoverFilename(book), 'Books')) || overwrite)) {
+      const coverFilename = getCoverFilename(book);
+      const coverFileExists = await this.fs.exists(coverFilename, 'Books');
+      if (saveCover && (!coverFileExists || overwrite)) {
         let cover = await loadedBook.getCover();
         if (cover?.type === 'image/svg+xml') {
           try {
@@ -497,26 +539,74 @@ export abstract class BaseAppService implements AppService {
           }
         }
         if (cover) {
-          await this.fs.writeFile(getCoverFilename(book), 'Books', await cover.arrayBuffer());
+          if (coverFileExists) {
+            createdArtifacts.push({
+              path: coverFilename,
+              base: 'Books',
+              action: 'restore-overwritten-file',
+              content: await this.fs.readFile(coverFilename, 'Books', 'binary'),
+            });
+          } else {
+            createdArtifacts.push({
+              path: coverFilename,
+              base: 'Books',
+              action: 'remove-created-file',
+            });
+          }
+          await this.fs.writeFile(coverFilename, 'Books', await cover.arrayBuffer());
         }
       }
-      // Never overwrite the config file only when it's not existed
       if (!existingBook) {
+        const configFilename = getConfigFilename(book);
+        if (await this.fs.exists(configFilename, 'Books')) {
+          createdArtifacts.push({
+            path: configFilename,
+            base: 'Books',
+            action: 'restore-overwritten-file',
+            content: await this.fs.readFile(configFilename, 'Books', 'binary'),
+          });
+        } else {
+          createdArtifacts.push({
+            path: configFilename,
+            base: 'Books',
+            action: 'remove-created-file',
+          });
+        }
         await this.saveBookConfig(book, INIT_BOOK_CONFIG);
-        books.splice(0, 0, book);
       }
 
       // update file links with url or content uri
       if (typeof file === 'string') {
         if (isValidURL(file)) {
           book.url = file;
-          if (existingBook) existingBook.url = file;
         }
       }
       book.coverImageUrl = await this.generateCoverImageUrl(book);
+
+      if (existingBook) {
+        existingBook.deletedAt = null;
+        existingBook.createdAt = Date.now();
+        existingBook.updatedAt = Date.now();
+        existingBook.format = book.format;
+        existingBook.title = existingBook.title.trim() ? existingBook.title.trim() : book.title;
+        existingBook.sourceTitle = existingBook.sourceTitle ?? book.sourceTitle;
+        existingBook.author = existingBook.author ?? book.author;
+        existingBook.primaryLanguage = existingBook.primaryLanguage ?? book.primaryLanguage;
+        existingBook.platformHash = platformHash;
+        existingBook.downloadedAt = Date.now();
+        if (book.url) existingBook.url = book.url;
+      } else {
+        books.splice(0, 0, book);
+      }
+      localImportCommitted = true;
+
       const f = file as ClosableFile;
       if (f && f.close) {
-        await f.close();
+        try {
+          await f.close();
+        } catch (closeError) {
+          logger.warn('Failed to close imported file after commit:', closeError);
+        }
       }
 
       // Auto-upload to cloud immediately (no delay)
@@ -535,6 +625,9 @@ export abstract class BaseAppService implements AppService {
 
       return existingBook || book;
     } catch (error) {
+      if (!localImportCommitted) {
+        await this.cleanupLocalImportArtifacts(createdArtifacts);
+      }
       logger.error('Error importing book:', error);
       throw error;
     }

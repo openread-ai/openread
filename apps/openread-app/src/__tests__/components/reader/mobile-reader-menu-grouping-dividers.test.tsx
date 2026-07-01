@@ -37,7 +37,7 @@ const mockState = vi.hoisted(() => {
     setViewSettings: vi.fn(),
     setThemeMode: vi.fn(),
     saveViewSettings: vi.fn(),
-    restoreGlobalReaderAppearanceDefaults: vi.fn(async () => undefined),
+    restoreCurrentBookReaderAppearanceDefaults: vi.fn(async () => undefined),
     dispatch: vi.fn(),
     navigateToLogin: vi.fn(),
     setIsDropdownOpen: vi.fn(),
@@ -130,7 +130,7 @@ vi.mock('@/store/themeStore', () => ({
 
 vi.mock('@/helpers/settings', () => ({
   saveViewSettings: mockState.saveViewSettings,
-  restoreGlobalReaderAppearanceDefaults: mockState.restoreGlobalReaderAppearanceDefaults,
+  restoreCurrentBookReaderAppearanceDefaults: mockState.restoreCurrentBookReaderAppearanceDefaults,
 }));
 
 vi.mock('@/utils/nav', () => ({
@@ -289,13 +289,14 @@ describe('mobile web reader menu grouping dividers', () => {
     expect(screen.queryByText('Dark Mode')).toBeNull();
     expect(mockState.setThemeMode).not.toHaveBeenCalled();
     fireEvent.click(screen.getByText('Restore Defaults'));
-    expect(mockState.restoreGlobalReaderAppearanceDefaults).toHaveBeenCalledWith(
+    expect(mockState.restoreCurrentBookReaderAppearanceDefaults).toHaveBeenCalledWith(
       {},
+      'book-1',
       { defaultFontSize: 16 },
     );
     await waitFor(() =>
       expect(mockState.dispatch).toHaveBeenCalledWith('toast', {
-        message: 'Reader appearance defaults restored',
+        message: 'Reader appearance defaults restored for this book',
       }),
     );
 

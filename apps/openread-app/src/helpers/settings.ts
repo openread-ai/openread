@@ -11,10 +11,7 @@ import {
   normalizeLegacyReaderLayoutSettings,
   stripLegacyReaderLayoutFields,
 } from '@/app/reader/utils/readerLayoutContract';
-import {
-  applyInheritedReaderAppearanceDefaults,
-  restoreReaderAppearanceDefaults,
-} from '@/services/settings/readerAppearanceDefaults';
+import { restoreReaderAppearanceDefaults } from '@/services/settings/readerAppearanceDefaults';
 
 const assertCanonicalViewSettingKey = (key: keyof ViewSettings) => {
   if ((LEGACY_READER_LAYOUT_KEYS as readonly string[]).includes(String(key))) {
@@ -76,52 +73,52 @@ export const saveViewSettings = async <K extends keyof ViewSettings>(
   }
 };
 
-export const restoreGlobalReaderAppearanceDefaults = async (
-  envConfig: EnvConfigType,
-  defaults: ViewSettings,
-) => {
-  const { settings, setSettings } = useSettingsStore.getState();
-  if (!settings?.globalViewSettings) return settings;
-
-  const previousGlobalViewSettings = settings.globalViewSettings;
-  const nextGlobalViewSettings = restoreReaderAppearanceDefaults(
-    previousGlobalViewSettings,
-    defaults,
-  );
-  const nextSettings = await settingsService.update(envConfig, settings, (current) => ({
-    ...current,
-    globalViewSettings: nextGlobalViewSettings,
-  }));
-  setSettings(nextSettings);
-
-  const { bookKeys, getView, getViewSettings, setViewSettings } = useReaderStore.getState();
+const applyReaderAppearanceToOpenView = (bookKey: string, viewSettings: ViewSettings) => {
+  const { getView } = useReaderStore.getState();
   const { getBookDataByReaderKey } = useBookDataStore.getState();
 
-  for (const openBookKey of bookKeys) {
-    const currentViewSettings = getViewSettings(openBookKey);
-    if (!currentViewSettings) continue;
+  const view = getView(bookKey);
+  view?.renderer.setStyles?.(getStyles(viewSettings));
+  view?.renderer.setAttribute?.('scale-factor', viewSettings.pageZoomLevel);
+  view?.renderer.setAttribute?.('zoom', viewSettings.pageZoomMode);
+  view?.renderer.setAttribute?.('spread', viewSettings.pageSpreadMode);
 
-    const nextViewSettings = applyInheritedReaderAppearanceDefaults({
-      current: currentViewSettings,
-      previousGlobalDefaults: previousGlobalViewSettings,
-      globalDefaults: nextSettings.globalViewSettings,
-    });
-    setViewSettings(openBookKey, nextViewSettings);
+  const bookData = getBookDataByReaderKey(bookKey);
+  if (bookData?.bookDoc?.sections?.length) {
+    const coverSide = bookData.bookDoc.dir === 'rtl' ? 'right' : 'left';
+    bookData.bookDoc.sections[0]!.pageSpread = viewSettings.keepCoverSpread ? '' : coverSide;
+  }
+};
 
-    const view = getView(openBookKey);
-    view?.renderer.setStyles?.(getStyles(nextViewSettings));
-    view?.renderer.setAttribute?.('scale-factor', nextViewSettings.pageZoomLevel);
-    view?.renderer.setAttribute?.('zoom', nextViewSettings.pageZoomMode);
-    view?.renderer.setAttribute?.('spread', nextViewSettings.pageSpreadMode);
+export const restoreCurrentBookReaderAppearanceDefaults = async (
+  envConfig: EnvConfigType,
+  bookKey: string,
+  defaults: ViewSettings,
+) => {
+  const { settings } = useSettingsStore.getState();
+  const { getViewSettings, getViewState, setViewSettings } = useReaderStore.getState();
+  const { getConfig, saveConfig } = useBookDataStore.getState();
+  const currentViewSettings = getViewSettings(bookKey);
+  if (!currentViewSettings) return null;
 
-    const bookData = getBookDataByReaderKey(openBookKey);
-    if (bookData?.bookDoc?.sections?.length) {
-      const coverSide = bookData.bookDoc.dir === 'rtl' ? 'right' : 'left';
-      bookData.bookDoc.sections[0]!.pageSpread = nextViewSettings.keepCoverSpread ? '' : coverSide;
-    }
+  const nextViewSettings = restoreReaderAppearanceDefaults(currentViewSettings, defaults);
+  setViewSettings(bookKey, nextViewSettings);
+  applyReaderAppearanceToOpenView(bookKey, nextViewSettings);
+
+  const config = getConfig(bookKey);
+  if (getViewState(bookKey)?.isPrimary && config) {
+    await saveConfig(
+      envConfig,
+      bookKey,
+      {
+        ...config,
+        viewSettings: nextViewSettings,
+      },
+      settings,
+    );
   }
 
-  return nextSettings;
+  return nextViewSettings;
 };
 
 export const saveSysSettings = async <K extends keyof SystemSettings>(

@@ -74,12 +74,6 @@ export const READER_APPEARANCE_DEFAULT_KEYS = [
 
 type ViewSettingsRecord = Partial<Record<keyof ViewSettings, unknown>>;
 
-const hasOpenBookAppearanceOverride = (
-  current: ViewSettings,
-  previousGlobalDefaults: ViewSettings,
-  key: keyof ViewSettings,
-) => !Object.is(current[key], previousGlobalDefaults[key]);
-
 export function restoreReaderAppearanceDefaults(
   current: ViewSettings,
   defaults: ViewSettings,
@@ -90,28 +84,6 @@ export function restoreReaderAppearanceDefaults(
     const defaultValue = defaults[key];
     if (defaultValue !== undefined) {
       next[key] = defaultValue;
-    }
-  }
-
-  return normalizeLegacyReaderLayoutSettings(
-    stripLegacyReaderLayoutFields(next as Partial<ViewSettings>),
-  ) as ViewSettings;
-}
-
-export function applyInheritedReaderAppearanceDefaults(options: {
-  current: ViewSettings;
-  previousGlobalDefaults: ViewSettings;
-  globalDefaults: ViewSettings;
-}): ViewSettings {
-  const next: ViewSettingsRecord = { ...options.current };
-
-  for (const key of READER_APPEARANCE_DEFAULT_KEYS) {
-    if (hasOpenBookAppearanceOverride(options.current, options.previousGlobalDefaults, key)) {
-      continue;
-    }
-    const globalValue = options.globalDefaults[key];
-    if (globalValue !== undefined) {
-      next[key] = globalValue;
     }
   }
 

@@ -29,7 +29,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { navigateToLogin } from '@/utils/nav';
 import { eventDispatcher } from '@/utils/event';
-import { restoreGlobalReaderAppearanceDefaults, saveViewSettings } from '@/helpers/settings';
+import { restoreCurrentBookReaderAppearanceDefaults, saveViewSettings } from '@/helpers/settings';
 import {
   canUsePageSpreadControls,
   canUsePageZoomControls,
@@ -159,8 +159,14 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
   const restoreMobileWebAppearanceDefaults = async () => {
     if (!appService) return;
 
-    await restoreGlobalReaderAppearanceDefaults(envConfig, appService.getDefaultViewSettings());
-    eventDispatcher.dispatch('toast', { message: _('Reader appearance defaults restored') });
+    await restoreCurrentBookReaderAppearanceDefaults(
+      envConfig,
+      bookKey,
+      appService.getDefaultViewSettings(),
+    );
+    eventDispatcher.dispatch('toast', {
+      message: _('Reader appearance defaults restored for this book'),
+    });
     setIsDropdownOpen?.(false);
   };
 

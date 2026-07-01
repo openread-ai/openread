@@ -157,7 +157,7 @@ const FontPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
   const resetToDefaults = useResetViewSettings();
 
   const handleReset = () => {
-    resetToDefaults({
+    void resetToDefaults(bookKey, ['font'], {
       defaultFont: setDefaultFont,
       defaultFontSize: setDefaultFontSize,
       minimumFontSize: setMinFontSize,

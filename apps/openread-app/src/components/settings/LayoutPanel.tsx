@@ -81,56 +81,8 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
 
   const resetToDefaults = useResetViewSettings();
 
-  const resetFixedLayoutControls = () => {
-    if (!appService) return;
-
-    const currentBookData = getBookDataByReaderKey(bookKey);
-    const currentViewSettings = getViewSettings(bookKey) || settings.globalViewSettings;
-    const defaultSettings = appService.getDefaultViewSettings();
-    const nextZoomLevel = defaultSettings.pageZoomLevel ?? currentViewSettings.pageZoomLevel;
-    const nextZoomMode = defaultSettings.pageZoomMode ?? currentViewSettings.pageZoomMode;
-    const nextSpreadMode = defaultSettings.pageSpreadMode ?? currentViewSettings.pageSpreadMode;
-    const nextKeepCoverSpread =
-      defaultSettings.keepCoverSpread ?? currentViewSettings.keepCoverSpread;
-
-    setZoomLevel(nextZoomLevel);
-    setZoomMode(nextZoomMode);
-    setSpreadMode(nextSpreadMode);
-    setKeepCoverSpread(nextKeepCoverSpread);
-    setViewSettings(bookKey, {
-      ...currentViewSettings,
-      pageZoomLevel: nextZoomLevel,
-      pageZoomMode: nextZoomMode,
-      pageSpreadMode: nextSpreadMode,
-      keepCoverSpread: nextKeepCoverSpread,
-    });
-
-    if (currentBookData?.bookDoc?.sections?.length) {
-      const coverSide = currentBookData.bookDoc.dir === 'rtl' ? 'right' : 'left';
-      currentBookData.bookDoc.sections[0]!.pageSpread = nextKeepCoverSpread ? '' : coverSide;
-    }
-
-    view?.renderer.setAttribute('scale-factor', nextZoomLevel);
-    view?.renderer.setAttribute('zoom', nextZoomMode);
-    view?.renderer.setAttribute('spread', nextSpreadMode);
-    saveViewSettings(envConfig, bookKey, 'pageZoomLevel', nextZoomLevel, true, true);
-    saveViewSettings(envConfig, bookKey, 'pageZoomMode', nextZoomMode, true, false);
-    saveViewSettings(envConfig, bookKey, 'pageSpreadMode', nextSpreadMode, true, false);
-    saveViewSettings(envConfig, bookKey, 'keepCoverSpread', nextKeepCoverSpread, true, false);
-  };
-
   const handleReset = () => {
-    const currentBookData = getBookDataByReaderKey(bookKey);
-    const currentIsFixedLayout =
-      currentBookData?.isFixedLayout ||
-      currentBookData?.bookDoc?.rendition?.layout === 'pre-paginated';
-
-    if (currentIsFixedLayout) {
-      resetFixedLayoutControls();
-      return;
-    }
-
-    resetToDefaults({
+    void resetToDefaults(bookKey, ['layout'], {
       paragraphMargin: setParagraphMargin,
       lineHeight: setLineHeight,
       wordSpacing: setWordSpacing,
@@ -150,6 +102,7 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
       maxColumnCount: setMaxColumnCount,
       maxInlineSize: setMaxInlineSize,
       maxBlockSize: setMaxBlockSize,
+      writingMode: setWritingMode,
       overrideLayout: setOverrideLayout,
       doubleBorder: setDoubleBorder,
       borderColor: setBorderColor,
@@ -161,6 +114,12 @@ const LayoutPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterRese
       showProgressInfo: setShowProgressInfo,
       tapToToggleFooter: setTapToToggleFooter,
       showMarginsOnScroll: setShowMarginsOnScroll,
+      progressStyle: setProgressStyle,
+      screenOrientation: setScreenOrientation,
+      pageZoomLevel: setZoomLevel,
+      pageZoomMode: setZoomMode,
+      pageSpreadMode: setSpreadMode,
+      keepCoverSpread: setKeepCoverSpread,
     });
   };
 

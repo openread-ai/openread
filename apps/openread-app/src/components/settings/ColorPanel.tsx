@@ -20,7 +20,6 @@ import { manageSyntaxHighlighting } from '@/utils/highlightjs';
 import { SettingsPanelPanelProp } from './SettingsDialog';
 import { useFileSelector } from '@/hooks/useFileSelector';
 import { PREDEFINED_TEXTURES } from '@/styles/textures';
-import { HIGHLIGHT_COLOR_HEX } from '@/services/constants';
 import { createLogger } from '@/utils/logger';
 import ThemeEditor from './color/ThemeEditor';
 
@@ -89,22 +88,23 @@ const ColorPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
   const { selectFiles } = useFileSelector(appService, _);
 
   const handleReset = () => {
-    resetToDefaults({
+    void resetToDefaults(bookKey, ['color'], {
       overrideColor: setOverrideColor,
       invertImgColorInDark: setInvertImgColorInDark,
       codeHighlighting: setcodeHighlighting,
       codeLanguage: setCodeLanguage,
+      backgroundTextureId: setSelectedTextureId,
+      backgroundOpacity: setBackgroundOpacity,
+      backgroundSize: setBackgroundSize,
       readingRulerEnabled: setReadingRulerEnabled,
       readingRulerLines: setReadingRulerLines,
       readingRulerOpacity: setReadingRulerOpacity,
+      readingRulerColor: setReadingRulerColor,
+      ttsHighlightOptions: (options) => {
+        setTtsHighlightStyle(options.style);
+        setTtsHighlightColor(options.color);
+      },
     });
-    setThemeColor('default');
-    setThemeMode('auto');
-    setSelectedTextureId('none');
-    setBackgroundOpacity(0.6);
-    setBackgroundSize('cover');
-    setCustomHighlightColors(HIGHLIGHT_COLOR_HEX);
-    setUserHighlightColors([]);
   };
 
   useEffect(() => {

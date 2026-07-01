@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ViewSettings } from '@/types/book';
-import { restoreCurrentBookReaderAppearanceDefaults } from '@/helpers/settings';
+import {
+  markCurrentBookReaderAppearanceResetEcho,
+  restoreCurrentBookReaderAppearanceDefaults,
+  saveViewSettings,
+} from '@/helpers/settings';
 
 const mockState = vi.hoisted(() => {
   const globalViewSettings = {
@@ -27,10 +31,18 @@ const mockState = vi.hoisted(() => {
     pageZoomMode: 'fit-page',
     pageSpreadMode: 'auto',
     keepCoverSpread: false,
+    writingMode: 'vertical-rl',
+    vertical: true,
+    progressStyle: 'percentage',
+    screenOrientation: 'landscape',
     overrideColor: true,
     invertImgColorInDark: true,
     backgroundTextureId: 'paper',
+    backgroundOpacity: 0.9,
+    backgroundSize: 'contain',
     readingRulerEnabled: true,
+    readingRulerColor: 'yellow',
+    ttsHighlightOptions: { style: 'underline', color: '#ff0000' },
     uiLanguage: 'de',
     translationEnabled: true,
     userStylesheet: '.reader { color: red; }',
@@ -53,10 +65,18 @@ const mockState = vi.hoisted(() => {
     pageZoomMode: 'fit-width',
     pageSpreadMode: 'none',
     keepCoverSpread: true,
+    writingMode: 'auto',
+    vertical: false,
+    progressStyle: 'fraction',
+    screenOrientation: 'auto',
     overrideColor: false,
     invertImgColorInDark: false,
     backgroundTextureId: 'none',
+    backgroundOpacity: 0.6,
+    backgroundSize: 'cover',
     readingRulerEnabled: false,
+    readingRulerColor: 'transparent',
+    ttsHighlightOptions: { style: 'highlight', color: '#808080' },
     uiLanguage: 'en',
     translationEnabled: false,
     userStylesheet: '',
@@ -67,10 +87,15 @@ const mockState = vi.hoisted(() => {
     setStyles: vi.fn(),
     setAttribute: vi.fn(),
   };
+  const view = {
+    renderer,
+    book: { dir: 'ltr' },
+  };
   const setViewSettings = vi.fn();
   const saveConfig = vi.fn(async () => undefined);
   const setSettings = vi.fn();
   const settingsServiceUpdate = vi.fn();
+  const updateGlobalViewSetting = vi.fn(async () => settings);
   const config = {
     viewSettings: targetViewSettings,
     progress: { location: 'chapter-1' },
@@ -88,10 +113,12 @@ const mockState = vi.hoisted(() => {
     otherBookViewSettings,
     defaults,
     renderer,
+    view,
     setViewSettings,
     saveConfig,
     setSettings,
     settingsServiceUpdate,
+    updateGlobalViewSetting,
     config,
     bookDoc,
   };
@@ -114,9 +141,9 @@ vi.mock('@/store/readerStore', () => ({
       getViewSettings: (bookKey: string) =>
         bookKey === 'book-1' ? mockState.targetViewSettings : mockState.otherBookViewSettings,
       getViewState: (bookKey: string) => (bookKey === 'book-1' ? { isPrimary: true } : null),
-      getView: (bookKey: string) =>
-        bookKey === 'book-1' ? { renderer: mockState.renderer } : null,
+      getView: (bookKey: string) => (bookKey === 'book-1' ? mockState.view : null),
       setViewSettings: mockState.setViewSettings,
+      recreateViewer: vi.fn(),
     }),
   },
 }));
@@ -136,8 +163,20 @@ vi.mock('@/services/settings/settingsService', () => ({
   settingsService: {
     update: mockState.settingsServiceUpdate,
     updateKey: vi.fn(),
-    updateGlobalViewSetting: vi.fn(),
+    updateGlobalViewSetting: mockState.updateGlobalViewSetting,
   },
+}));
+
+vi.mock('@/store/customTextureStore', () => ({
+  useCustomTextureStore: {
+    getState: () => ({
+      applyTexture: vi.fn(async () => undefined),
+    }),
+  },
+}));
+
+vi.mock('@/utils/bridge', () => ({
+  lockScreenOrientation: vi.fn(async () => undefined),
 }));
 
 vi.mock('@/utils/style', () => ({
@@ -147,6 +186,7 @@ vi.mock('@/utils/style', () => ({
 describe('restoreCurrentBookReaderAppearanceDefaults', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockState.updateGlobalViewSetting.mockResolvedValue(mockState.settings);
     mockState.bookDoc.sections[0]!.pageSpread = 'left';
   });
 
@@ -168,10 +208,18 @@ describe('restoreCurrentBookReaderAppearanceDefaults', () => {
         pageZoomMode: 'fit-width',
         pageSpreadMode: 'none',
         keepCoverSpread: true,
+        writingMode: 'auto',
+        vertical: false,
+        progressStyle: 'fraction',
+        screenOrientation: 'auto',
         overrideColor: false,
         invertImgColorInDark: false,
         backgroundTextureId: 'none',
+        backgroundOpacity: 0.6,
+        backgroundSize: 'cover',
         readingRulerEnabled: false,
+        readingRulerColor: 'transparent',
+        ttsHighlightOptions: { style: 'highlight', color: '#808080' },
       }),
     );
     expect(restored).toEqual(
@@ -211,5 +259,26 @@ describe('restoreCurrentBookReaderAppearanceDefaults', () => {
     expect(mockState.renderer.setAttribute).toHaveBeenCalledWith('zoom', 'fit-width');
     expect(mockState.renderer.setAttribute).toHaveBeenCalledWith('spread', 'none');
     expect(mockState.bookDoc.sections[0]!.pageSpread).toBe('');
+    expect(mockState.view.book.dir).toBe('ltr');
+  });
+
+  it('suppresses reset-induced local state echoes so global defaults are not mutated', async () => {
+    markCurrentBookReaderAppearanceResetEcho('book-1', 'defaultFontSize', 16);
+
+    await saveViewSettings({} as never, 'book-1', 'defaultFontSize', 16);
+
+    expect(mockState.updateGlobalViewSetting).not.toHaveBeenCalled();
+    expect(mockState.setSettings).not.toHaveBeenCalled();
+    expect(mockState.setViewSettings).not.toHaveBeenCalled();
+    expect(mockState.saveConfig).not.toHaveBeenCalled();
+
+    await saveViewSettings({} as never, 'book-1', 'defaultFontSize', 18);
+
+    expect(mockState.updateGlobalViewSetting).toHaveBeenCalledWith(
+      {},
+      mockState.settings,
+      'defaultFontSize',
+      18,
+    );
   });
 });

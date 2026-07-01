@@ -163,6 +163,9 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
       envConfig,
       bookKey,
       appService.getDefaultViewSettings(),
+      {
+        appService,
+      },
     );
     eventDispatcher.dispatch('toast', {
       message: _('Reader appearance defaults restored for this book'),

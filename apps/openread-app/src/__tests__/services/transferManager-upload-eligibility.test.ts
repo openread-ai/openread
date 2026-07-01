@@ -29,6 +29,7 @@ function resetTransferManagerForTest(
     updateBook: ((book: Book) => Promise<void>) | null;
     _: (key: string, vars?: Record<string, string>) => string;
     isInitialized: boolean;
+    recoveredTerminalBackgroundUploadIds: Set<string>;
   };
   const library = overrides.library ?? [baseBook()];
   manager.appService = {
@@ -40,6 +41,7 @@ function resetTransferManagerForTest(
   manager.updateBook = overrides.updateBook ?? vi.fn(async () => {});
   manager._ = (key, vars) => (vars?.['title'] ? key.replace('{{title}}', vars['title']) : key);
   manager.isInitialized = true;
+  manager.recoveredTerminalBackgroundUploadIds = new Set();
 }
 
 async function executeTransferForTest(transfer: TransferItem) {
@@ -55,6 +57,7 @@ describe('TransferManager upload eligibility', () => {
     vi.restoreAllMocks();
     vi.useFakeTimers();
     useTransferStore.getState().clearAll();
+    useTransferStore.getState().resumeQueue();
     localStorage.clear();
     resetTransferManagerForTest();
   });
@@ -320,6 +323,67 @@ describe('TransferManager upload eligibility', () => {
 
     expect(returnedId).toBe(id);
     expect(Object.values(useTransferStore.getState().transfers)).toHaveLength(1);
+  });
+
+  it('recovers terminal background uploads by resetting the existing transfer', () => {
+    const book = baseBook();
+    const id = useTransferStore.getState().addTransfer(book.hash, book.title, 'upload', 1, true);
+    useTransferStore.getState().setTransferStatus(id, 'failed', 'STORAGE_LIMIT_REACHED');
+    useTransferStore.getState().pauseQueue();
+
+    const recoveredIds = transferManager.recoverTerminalBackgroundUploads([book]);
+
+    expect(recoveredIds).toEqual([id]);
+    expect(Object.values(useTransferStore.getState().transfers)).toHaveLength(1);
+    expect(useTransferStore.getState().transfers[id]).toMatchObject({
+      status: 'pending',
+      error: undefined,
+      completedAt: undefined,
+      availableAt: undefined,
+      isBackground: true,
+    });
+  });
+
+  it('does not repeatedly recover the same terminal background upload in one runtime', async () => {
+    const book = baseBook();
+    const uploadBook = vi.fn(async () => {
+      throw new Error('STORAGE_LIMIT_REACHED');
+    });
+    resetTransferManagerForTest({ uploadBook, library: [book] });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const id = useTransferStore.getState().addTransfer(book.hash, book.title, 'upload', 1, true);
+    useTransferStore.getState().setTransferStatus(id, 'failed', 'STORAGE_LIMIT_REACHED');
+    useTransferStore.getState().pauseQueue();
+
+    expect(transferManager.recoverTerminalBackgroundUploads([book])).toEqual([id]);
+    await executeTransferForTest(useTransferStore.getState().transfers[id]!);
+
+    expect(useTransferStore.getState().transfers[id]).toMatchObject({
+      status: 'failed',
+      error: 'STORAGE_LIMIT_REACHED',
+    });
+    expect(transferManager.recoverTerminalBackgroundUploads([book])).toEqual([]);
+    expect(useTransferStore.getState().transfers[id]).toMatchObject({
+      status: 'failed',
+      error: 'STORAGE_LIMIT_REACHED',
+    });
+    expect(uploadBook).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips terminal background recovery for ineligible books', () => {
+    const book = baseBook({
+      hash: testOpenReadBookRef('catalog:65119855-9d37-4caf-a7a4-4a5f9c9572d5'),
+      catalogBookId: '65119855-9d37-4caf-a7a4-4a5f9c9572d5',
+    });
+    const id = useTransferStore.getState().addTransfer(book.hash, book.title, 'upload', 1, true);
+    useTransferStore.getState().setTransferStatus(id, 'failed', 'STORAGE_LIMIT_REACHED');
+
+    expect(transferManager.recoverTerminalBackgroundUploads([book])).toEqual([]);
+    expect(useTransferStore.getState().transfers[id]).toMatchObject({
+      status: 'failed',
+      error: 'STORAGE_LIMIT_REACHED',
+    });
   });
 
   it('does not retry a background upload before the scheduled backoff', async () => {

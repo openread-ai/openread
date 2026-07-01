@@ -42,7 +42,10 @@ export function useTransferQueue(libraryLoaded = true, delayInit = 0) {
           const pendingUploadBooks = sourceResults
             .filter(({ canUpload }) => canUpload)
             .map(({ book }) => book);
-          transferManager.queueBatchUploads(pendingUploadBooks, 1, true);
+          if (pendingUploadBooks.length > 0) {
+            transferManager.recoverTerminalBackgroundUploads(pendingUploadBooks);
+            transferManager.queueBatchUploads(pendingUploadBooks, 1, true);
+          }
         }
       }
     };
@@ -72,7 +75,10 @@ export function useTransferQueue(libraryLoaded = true, delayInit = 0) {
       const pendingUploadBooks = sourceResults
         .filter(({ canUpload }) => canUpload)
         .map(({ book }) => book);
-      transferManager.queueBatchUploads(pendingUploadBooks, 1, true);
+      if (pendingUploadBooks.length > 0) {
+        transferManager.recoverTerminalBackgroundUploads(pendingUploadBooks);
+        transferManager.queueBatchUploads(pendingUploadBooks, 1, true);
+      }
     };
 
     queueRecoverableUploads();

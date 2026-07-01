@@ -34,6 +34,7 @@ class TransferManager {
   private isProcessing = false;
   private abortControllers: Map<string, AbortController> = new Map();
   private isInitialized = false;
+  private recoveredTerminalBackgroundUploadIds = new Set<string>();
   private getLibrary: (() => Book[]) | null = null;
   private updateBook: ((book: Book) => Promise<void>) | null = null;
   private _: TranslationFunc | null = null;
@@ -138,6 +139,36 @@ class TransferManager {
       .filter(isUserCloudUploadEligible)
       .map((book) => this.queueUpload(book, priority, isBackground))
       .filter((id): id is string => id !== null);
+  }
+
+  recoverTerminalBackgroundUploads(books: Book[]): string[] {
+    const eligibleBookHashes = new Set<string>(
+      books.filter(isUserCloudUploadEligible).map((book) => book.hash),
+    );
+    if (eligibleBookHashes.size === 0) return [];
+
+    const store = useTransferStore.getState();
+    const recoveredIds = store
+      .getFailedTransfers()
+      .filter(
+        (transfer) =>
+          transfer.status === 'failed' &&
+          transfer.type === 'upload' &&
+          transfer.isBackground &&
+          eligibleBookHashes.has(transfer.bookHash) &&
+          !this.recoveredTerminalBackgroundUploadIds.has(transfer.id),
+      )
+      .map((transfer) => transfer.id);
+
+    if (recoveredIds.length === 0) return [];
+
+    recoveredIds.forEach((transferId) => {
+      this.recoveredTerminalBackgroundUploadIds.add(transferId);
+      store.retryTransfer(transferId);
+    });
+    this.persistQueue();
+    this.processQueue();
+    return recoveredIds;
   }
 
   cancelTransfer(transferId: string): void {

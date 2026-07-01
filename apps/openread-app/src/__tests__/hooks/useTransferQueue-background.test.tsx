@@ -10,6 +10,7 @@ const { mocks } = vi.hoisted(() => {
   const transferManager = {
     initialize: vi.fn(async () => {}),
     isReady: vi.fn(() => true),
+    recoverTerminalBackgroundUploads: vi.fn(),
     queueBatchUploads: vi.fn(),
     queueUpload: vi.fn(),
     queueDownload: vi.fn(),
@@ -126,15 +127,42 @@ describe('useTransferQueue background backup recovery', () => {
         true,
       ),
     );
+    expect(mocks.transferManager.recoverTerminalBackgroundUploads).toHaveBeenCalledWith([
+      expect.objectContaining({ title: 'Local Book' }),
+    ]);
   });
 
-  it('does not queue startup backup recovery when autoUpload is disabled', async () => {
+  it('recovers terminal background uploads before lifecycle enqueue', async () => {
+    const { useTransferQueue } = await import('@/hooks/useTransferQueue');
+
+    renderHook(() => useTransferQueue(true, 0));
+
+    await waitFor(() => expect(mocks.transferManager.queueBatchUploads).toHaveBeenCalled());
+    expect(
+      mocks.transferManager.recoverTerminalBackgroundUploads.mock.invocationCallOrder[0],
+    ).toBeLessThan(mocks.transferManager.queueBatchUploads.mock.invocationCallOrder[0]);
+  });
+
+  it('does not recover or queue startup backup recovery when autoUpload is disabled', async () => {
     mocks.settingsState.settings.autoUpload = false;
     const { useTransferQueue } = await import('@/hooks/useTransferQueue');
 
     renderHook(() => useTransferQueue(true, 0));
 
     await waitFor(() => expect(mocks.transferManager.initialize).toHaveBeenCalled());
+    expect(mocks.transferManager.recoverTerminalBackgroundUploads).not.toHaveBeenCalled();
+    expect(mocks.transferManager.queueBatchUploads).not.toHaveBeenCalled();
+  });
+
+  it('does not recover or queue books without an upload source', async () => {
+    mocks.appService.exists.mockResolvedValue(false);
+    const { useTransferQueue } = await import('@/hooks/useTransferQueue');
+
+    renderHook(() => useTransferQueue(true, 0));
+
+    await waitFor(() => expect(mocks.transferManager.initialize).toHaveBeenCalled());
+    await waitFor(() => expect(mocks.appService.exists).toHaveBeenCalled());
+    expect(mocks.transferManager.recoverTerminalBackgroundUploads).not.toHaveBeenCalled();
     expect(mocks.transferManager.queueBatchUploads).not.toHaveBeenCalled();
   });
 });

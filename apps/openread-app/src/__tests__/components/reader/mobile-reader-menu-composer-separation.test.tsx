@@ -16,6 +16,9 @@ const mockState = vi.hoisted(() => ({
   openMobileReaderPanel: vi.fn(),
   setHoveredBookKey: vi.fn(),
   activePanel: null as { bookKey: string; destination: string } | null,
+  bookFormat: 'pdf' as string,
+  renditionLayout: undefined as string | undefined,
+  isFixedLayout: false,
 }));
 
 const mockCreateConversation = mockState.createConversation;
@@ -50,9 +53,37 @@ vi.mock('@/store/readerStore', () => {
   const state = {
     hoveredBookKey: '',
     setHoveredBookKey: mockState.setHoveredBookKey,
+    viewStates: {
+      'book-1': {
+        viewSettings: {
+          layoutMode: 'paged',
+          textContinuousSections: false,
+          pageZoomLevel: 100,
+          pageZoomMode: 'fit-page',
+          pageSpreadMode: 'auto',
+          keepCoverSpread: true,
+          scrollingOverlap: 0,
+          paragraphMode: { enabled: false },
+        },
+      },
+    },
   };
   return {
     useReaderStore: (selector?: (value: typeof state) => unknown) =>
+      selector ? selector(state) : state,
+  };
+});
+
+vi.mock('@/store/bookDataStore', () => {
+  const state = {
+    getBookDataByReaderKey: () => ({
+      isFixedLayout: mockState.isFixedLayout,
+      book: { format: mockState.bookFormat },
+      bookDoc: { rendition: { layout: mockState.renditionLayout } },
+    }),
+  };
+  return {
+    useBookDataStore: (selector?: (value: typeof state) => unknown) =>
       selector ? selector(state) : state,
   };
 });
@@ -122,6 +153,9 @@ vi.mock('@/app/reader/components/ViewMenu', () => ({
 describe('mobile web reader menu and composer separation', () => {
   beforeEach(() => {
     mockState.activePanel = null;
+    mockState.bookFormat = 'pdf';
+    mockState.renditionLayout = undefined;
+    mockState.isFixedLayout = false;
     mockCreateConversation.mockResolvedValue('conversation-1');
     mockSetPendingQuestion.mockClear();
     mockOpenMobileReaderPanel.mockClear();
@@ -144,6 +178,25 @@ describe('mobile web reader menu and composer separation', () => {
     expect(dock.contains(composerInput)).toBe(true);
     expect(menuButton.closest('form')).toBeNull();
     expect(composerInput.closest('form')).toBeTruthy();
+  });
+
+  it('masks the page-book renderer edge behind the mobile web dock', () => {
+    render(<InlineQuestionBar bookKey='book-1' />);
+
+    const dock = screen.getByTestId('mobile-reader-dock');
+    const mask = screen.getByTestId('mobile-reader-dock-occlusion-mask');
+
+    expect(dock.contains(mask)).toBe(true);
+    expect(mask.style.backgroundColor).toBe('rgb(255, 255, 255)');
+    expect(mask.className).toContain('-inset-x-2');
+  });
+
+  it('does not mask text-flow mobile web readers', () => {
+    mockState.bookFormat = 'epub';
+
+    render(<InlineQuestionBar bookKey='book-1' />);
+
+    expect(screen.queryByTestId('mobile-reader-dock-occlusion-mask')).toBeNull();
   });
 
   it('opens and closes the existing ViewMenu without submitting the composer', () => {

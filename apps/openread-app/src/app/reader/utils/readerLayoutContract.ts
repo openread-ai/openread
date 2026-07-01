@@ -49,6 +49,11 @@ export type ReaderViewportStyles = {
   backgroundColor?: string;
 };
 
+export type ReaderDockOcclusionStyles = {
+  enabled: boolean;
+  backgroundColor?: string;
+};
+
 export const MOBILE_WEB_PAGE_VIEWPORT_BACKGROUND = '#ffffff';
 
 export type LegacyReaderLayoutSettings = Partial<ViewSettings> & {
@@ -267,6 +272,23 @@ export function getEffectiveReaderViewportStyles(input: {
   }
 
   return {};
+}
+
+export function getEffectiveReaderDockOcclusionStyles(input: {
+  settings: ViewSettings | Partial<ViewSettings> | LegacyReaderLayoutSettings;
+  book: ReaderLayoutBookInput;
+  platform: ReaderLayoutPlatformInput;
+}): ReaderDockOcclusionStyles {
+  const state = normalizeReaderLayout(input);
+  if (state.bookCapability !== 'page' || !isMobileWebReaderPlatform(input.platform)) {
+    return { enabled: false };
+  }
+
+  const viewportStyles = getEffectiveReaderViewportStyles(input);
+  return {
+    enabled: true,
+    backgroundColor: viewportStyles.backgroundColor ?? MOBILE_WEB_PAGE_VIEWPORT_BACKGROUND,
+  };
 }
 
 export function setReaderLayoutMode(settings: ViewSettings, mode: ReaderLayoutMode): ViewSettings {

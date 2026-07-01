@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import { ArrowUpIcon, BookOpenIcon, XIcon } from 'lucide-react';
 
 import { AI_COMPOSER_PLACEHOLDER } from '@/components/assistant/constants';
@@ -9,6 +9,7 @@ import { useAIChatStore } from '@/store/aiChatStore';
 import { useNotebookStore } from '@/store/notebookStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useSidebarStore } from '@/store/sidebarStore';
+import { useBookDataStore } from '@/store/bookDataStore';
 import {
   selectIsAnyMobileReaderPanelOpen,
   useMobileReaderPanelStore,
@@ -19,6 +20,7 @@ import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
 import { usePrimaryBookHash } from '@/app/reader/hooks/usePrimaryBookHash';
 import { isMobileWebReader } from '@/app/reader/utils/mobileReaderPanels';
+import { getEffectiveReaderDockOcclusionStyles } from '../utils/readerLayoutContract';
 import { cn } from '@/utils/tailwind';
 import { MobileReaderMenuLauncher } from './mobile/MobileReaderMenuLauncher';
 
@@ -37,6 +39,8 @@ const InlineQuestionBar: React.FC<InlineQuestionBarProps> = ({ bookKey }) => {
   const { safeAreaInsets } = useThemeStore();
   const hoveredBookKey = useReaderStore((s) => s.hoveredBookKey);
   const setHoveredBookKey = useReaderStore((s) => s.setHoveredBookKey);
+  const viewSettings = useReaderStore((s) => s.viewStates[bookKey]?.viewSettings ?? null);
+  const bookData = useBookDataStore((s) => s.getBookDataByReaderKey(bookKey));
 
   const { createConversation, setPendingQuestion } = useAIChatStore();
   const { activePanel, openMobileReaderPanel } = useMobileReaderPanelStore();
@@ -139,6 +143,32 @@ const InlineQuestionBar: React.FC<InlineQuestionBarProps> = ({ bookKey }) => {
     useMobileWebDock &&
     activePanel?.bookKey === bookKey &&
     activePanel.destination === 'ai-chat-history';
+  const mobileDockOcclusion = useMemo(() => {
+    if (!useMobileWebDock || !viewSettings) return { enabled: false };
+
+    return getEffectiveReaderDockOcclusionStyles({
+      settings: viewSettings,
+      book: {
+        isFixedLayout: bookData?.isFixedLayout,
+        renditionLayout: bookData?.bookDoc?.rendition?.layout,
+        format: bookData?.book?.format,
+      },
+      platform: {
+        isMobile: !!appService?.isMobile,
+        isIOSApp: !!appService?.isIOSApp,
+        isAndroidApp: !!appService?.isAndroidApp,
+      },
+    });
+  }, [
+    appService?.isAndroidApp,
+    appService?.isIOSApp,
+    appService?.isMobile,
+    bookData?.book?.format,
+    bookData?.bookDoc?.rendition?.layout,
+    bookData?.isFixedLayout,
+    useMobileWebDock,
+    viewSettings,
+  ]);
 
   // Don't show if AI is not enabled, dismissed, owned by the mobile AI sheet,
   // or the desktop/native notebook AI tab is already visible.
@@ -167,14 +197,23 @@ const InlineQuestionBar: React.FC<InlineQuestionBarProps> = ({ bookKey }) => {
         style={{ bottom: `${mobileDockBottomOffsetPx}px` }}
       >
         <div
-          className='pointer-events-auto flex w-[calc(100vw-2rem)] max-w-md items-end gap-3'
+          className='pointer-events-auto relative flex w-[calc(100vw-2rem)] max-w-md items-end gap-3'
           data-testid='mobile-reader-dock'
         >
+          {mobileDockOcclusion.enabled && (
+            <div
+              aria-hidden='true'
+              className='pointer-events-none absolute -inset-x-2 -bottom-2 -top-2 z-0 rounded-[2.25rem]'
+              data-testid='mobile-reader-dock-occlusion-mask'
+              style={{ backgroundColor: mobileDockOcclusion.backgroundColor }}
+            />
+          )}
           <MobileReaderMenuLauncher
             bookKey={bookKey}
+            className='relative z-10'
             dockBottomOffsetPx={mobileDockBottomOffsetPx}
           />
-          <form onSubmit={handleSubmit} className='min-w-0 flex-1 overflow-visible'>
+          <form onSubmit={handleSubmit} className='relative z-10 min-w-0 flex-1 overflow-visible'>
             <MobileReadAIComposerChrome
               className={cn('!overflow-visible', question.includes(' ') && 'rounded-[2rem]')}
             >

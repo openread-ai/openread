@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ViewSettings } from '@/types/book';
 import {
   getEffectiveReaderChromeVisibility,
+  getEffectiveReaderDockOcclusionStyles,
   getEffectiveReaderViewInsets,
   getEffectiveReaderViewportStyles,
   getInitialReaderViewSettings,
@@ -192,6 +193,54 @@ describe('readerLayoutContract', () => {
         platform: { isMobile: false },
       }),
     ).toEqual({});
+  });
+
+  it('enables dock occlusion only for mobile-web page books using the canonical viewport background', () => {
+    for (const book of [
+      { format: 'pdf' },
+      { format: 'cbz' },
+      { renditionLayout: 'pre-paginated' },
+      { isFixedLayout: true },
+    ]) {
+      expect(
+        getEffectiveReaderDockOcclusionStyles({
+          settings: insetSettings({ showFooter: true }),
+          book,
+          platform: { isMobile: true, isIOSApp: false, isAndroidApp: false },
+        }),
+      ).toEqual({ enabled: true, backgroundColor: '#ffffff' });
+    }
+  });
+
+  it('does not occlude the dock for text books or non-mobile-web platforms', () => {
+    expect(
+      getEffectiveReaderDockOcclusionStyles({
+        settings: insetSettings(),
+        book: { format: 'epub' },
+        platform: { isMobile: true, isIOSApp: false, isAndroidApp: false },
+      }),
+    ).toEqual({ enabled: false });
+    expect(
+      getEffectiveReaderDockOcclusionStyles({
+        settings: insetSettings(),
+        book: { format: 'pdf' },
+        platform: { isMobile: false },
+      }),
+    ).toEqual({ enabled: false });
+    expect(
+      getEffectiveReaderDockOcclusionStyles({
+        settings: insetSettings(),
+        book: { format: 'pdf' },
+        platform: { isMobile: true, isIOSApp: true, isAndroidApp: false },
+      }),
+    ).toEqual({ enabled: false });
+    expect(
+      getEffectiveReaderDockOcclusionStyles({
+        settings: insetSettings(),
+        book: { format: 'pdf' },
+        platform: { isMobile: true, isIOSApp: false, isAndroidApp: true },
+      }),
+    ).toEqual({ enabled: false });
   });
 
   it('migrates legacy layout fields into canonical fields', () => {

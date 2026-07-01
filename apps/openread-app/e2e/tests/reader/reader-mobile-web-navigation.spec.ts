@@ -794,6 +794,34 @@ test.describe('Mobile web reader navigation regression', () => {
         return `${marginTop}|${marginBottom}|${letterboxBackground}`;
       })
       .toBe('0px|0px|rgb(255, 255, 255)');
+    const dockMask = page.getByTestId('mobile-reader-dock-occlusion-mask');
+    await expect(dockMask).toBeVisible({ timeout: 10_000 });
+    const dockMaskContract = await page.evaluate(() => {
+      const dock = document
+        .querySelector('[data-testid="mobile-reader-dock"]')
+        ?.getBoundingClientRect();
+      const mask = document
+        .querySelector('[data-testid="mobile-reader-dock-occlusion-mask"]')
+        ?.getBoundingClientRect();
+      const renderer = document
+        .querySelector('foliate-view')
+        ?.shadowRoot?.querySelector('foliate-paginator, foliate-fxl') as HTMLElement | null;
+      const maskElement = document.querySelector(
+        '[data-testid="mobile-reader-dock-occlusion-mask"]',
+      ) as HTMLElement | null;
+      if (!dock || !mask || !renderer || !maskElement) return null;
+      return {
+        coversDock: mask.left <= dock.left && mask.right >= dock.right && mask.top <= dock.top,
+        maskBackground: getComputedStyle(maskElement).backgroundColor,
+        rendererBackground: getComputedStyle(renderer).backgroundColor,
+      };
+    });
+    expect(dockMaskContract).toMatchObject({
+      coversDock: true,
+      maskBackground: 'rgb(255, 255, 255)',
+      rendererBackground: 'rgb(255, 255, 255)',
+    });
+    await attachScreenshot(page, testInfo, 'mobile-web-fixed-layout-dock-edge-mask');
     await attachScreenshot(page, testInfo, 'mobile-web-fixed-layout-zero-edge-bars');
     const before = await getReaderMetrics(page);
 

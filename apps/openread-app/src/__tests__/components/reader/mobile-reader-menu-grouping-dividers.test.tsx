@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import ViewMenu from '@/app/reader/components/ViewMenu';
 
@@ -37,6 +37,7 @@ const mockState = vi.hoisted(() => {
     setViewSettings: vi.fn(),
     setThemeMode: vi.fn(),
     saveViewSettings: vi.fn(),
+    restoreGlobalReaderAppearanceDefaults: vi.fn(async () => undefined),
     dispatch: vi.fn(),
     navigateToLogin: vi.fn(),
     setIsDropdownOpen: vi.fn(),
@@ -46,6 +47,7 @@ const mockState = vi.hoisted(() => {
       isAndroidApp: false,
       appPlatform: 'web',
       hasWindow: false,
+      getDefaultViewSettings: vi.fn(() => ({ defaultFontSize: 16 })),
     },
   };
 });
@@ -128,6 +130,7 @@ vi.mock('@/store/themeStore', () => ({
 
 vi.mock('@/helpers/settings', () => ({
   saveViewSettings: mockState.saveViewSettings,
+  restoreGlobalReaderAppearanceDefaults: mockState.restoreGlobalReaderAppearanceDefaults,
 }));
 
 vi.mock('@/utils/nav', () => ({
@@ -161,6 +164,7 @@ function renderMobileWebMenu() {
     isAndroidApp: false,
     appPlatform: 'web',
     hasWindow: false,
+    getDefaultViewSettings: vi.fn(() => ({ defaultFontSize: 16 })),
   };
   return render(<ViewMenu bookKey='book-1' setIsDropdownOpen={mockState.setIsDropdownOpen} />);
 }
@@ -172,6 +176,7 @@ function renderDesktopMenu() {
     isAndroidApp: false,
     appPlatform: 'web',
     hasWindow: false,
+    getDefaultViewSettings: vi.fn(() => ({ defaultFontSize: 16 })),
   };
   return render(<ViewMenu bookKey='book-1' setIsDropdownOpen={mockState.setIsDropdownOpen} />);
 }
@@ -199,6 +204,7 @@ describe('mobile web reader menu grouping dividers', () => {
       isAndroidApp: false,
       appPlatform: 'web',
       hasWindow: false,
+      getDefaultViewSettings: vi.fn(() => ({ defaultFontSize: 16 })),
     };
     vi.clearAllMocks();
   });
@@ -223,6 +229,7 @@ describe('mobile web reader menu grouping dividers', () => {
       'Export Annotations',
       'divider',
       'Font & Layout',
+      'Restore Defaults',
       'Invert Image In Dark Mode',
     ]);
 
@@ -251,7 +258,7 @@ describe('mobile web reader menu grouping dividers', () => {
     expect(screen.queryByText('Sign in to Sync')).toBeNull();
   });
 
-  it('preserves representative menu actions and toggles', () => {
+  it('preserves representative menu actions and toggles', async () => {
     renderMobileWebMenu();
 
     fireEvent.click(screen.getByText('Table of Contents'));
@@ -281,6 +288,17 @@ describe('mobile web reader menu grouping dividers', () => {
 
     expect(screen.queryByText('Dark Mode')).toBeNull();
     expect(mockState.setThemeMode).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText('Restore Defaults'));
+    expect(mockState.restoreGlobalReaderAppearanceDefaults).toHaveBeenCalledWith(
+      {},
+      { defaultFontSize: 16 },
+    );
+    await waitFor(() =>
+      expect(mockState.dispatch).toHaveBeenCalledWith('toast', {
+        message: 'Reader appearance defaults restored',
+      }),
+    );
+
     expect(screen.getByText('Invert Image In Dark Mode')).toBeTruthy();
   });
 

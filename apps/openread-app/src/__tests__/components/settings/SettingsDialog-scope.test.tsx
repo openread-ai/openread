@@ -39,7 +39,9 @@ vi.mock('@/components/Dropdown', () => ({
 }));
 
 vi.mock('@/components/settings/DialogMenu', () => ({
-  default: () => <div data-testid='settings-dialog-menu' />,
+  default: ({ showReset }: { showReset?: boolean }) => (
+    <div data-show-reset={String(showReset)} data-testid='settings-dialog-menu' />
+  ),
 }));
 
 vi.mock('@/components/settings/FontPanel', () => ({
@@ -103,6 +105,7 @@ describe('SettingsDialog scoped entry modes', () => {
     expect(container.querySelector('[data-tab="Language"]')).toBeTruthy();
     expect(container.querySelector('[data-tab="Custom"]')).toBeTruthy();
     expect(container.querySelector('[data-tab="Language"]')?.className).toContain('btn-active');
+    expect(screen.getByTestId('settings-dialog-menu').dataset.showReset).toBe('true');
   });
 
   it('limits appearance scope to Font, Layout, and Color with Font selected first', () => {
@@ -124,5 +127,6 @@ describe('SettingsDialog scoped entry modes', () => {
     expect(container.querySelector('[data-tab="Custom"]')).toBeNull();
     expect(container.querySelector('[data-tab="Font"]')?.className).toContain('btn-active');
     expect(screen.getByRole('group', { name: /Font - Settings/ })).toBeTruthy();
+    expect(screen.getByTestId('settings-dialog-menu').dataset.showReset).toBe('false');
   });
 });

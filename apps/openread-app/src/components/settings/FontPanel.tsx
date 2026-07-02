@@ -27,10 +27,8 @@ import { getOSPlatform, isCJKEnv } from '@/utils/misc';
 import { getSysFontsList } from '@/utils/bridge';
 import { isCJKStr } from '@/utils/lang';
 import { isTauriAppPlatform } from '@/services/environment';
-import { useResetViewSettings } from '@/hooks/useResetSettings';
 import { saveViewSettings } from '@/helpers/settings';
 import { createLogger } from '@/utils/logger';
-import { SettingsPanelPanelProp } from './SettingsDialog';
 import NumberInput from './NumberInput';
 
 const logger = createLogger('font-panel');
@@ -92,7 +90,7 @@ const FontFace = ({
   );
 };
 
-const FontPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset }) => {
+const FontPanel: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   const _ = useTranslation();
   const { envConfig, appService } = useEnv();
   const { getView, getViewSettings } = useReaderStore();
@@ -154,22 +152,6 @@ const FontPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
     return genCJKFontsList([...customFonts, ...sysFonts]);
   });
 
-  const resetToDefaults = useResetViewSettings();
-
-  const handleReset = () => {
-    void resetToDefaults(bookKey, ['font'], {
-      defaultFont: setDefaultFont,
-      defaultFontSize: setDefaultFontSize,
-      minimumFontSize: setMinFontSize,
-      overrideFont: setOverrideFont,
-      defaultCJKFont: setDefaultCJKFont,
-      serifFont: setSerifFont,
-      sansSerifFont: setSansSerifFont,
-      monospaceFont: setMonospaceFont,
-      fontWeight: setFontWeight,
-    });
-  };
-
   const handleManageCustomFonts = () => {
     setFontPanelView('custom-fonts');
   };
@@ -177,11 +159,6 @@ const FontPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
   const handleBackToMain = () => {
     setFontPanelView('main-fonts');
   };
-
-  useEffect(() => {
-    onRegisterReset(handleReset);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appService]);
 
   useEffect(() => {
     setCJKFonts((prev) => {

@@ -29,7 +29,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { navigateToLogin } from '@/utils/nav';
 import { eventDispatcher } from '@/utils/event';
-import { restoreCurrentBookReaderAppearanceDefaults, saveViewSettings } from '@/helpers/settings';
+import { saveViewSettings } from '@/helpers/settings';
 import {
   canUsePageSpreadControls,
   canUsePageZoomControls,
@@ -154,23 +154,6 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
     setIsDropdownOpen?.(false);
     setSettingsDialogBookKey(bookKey);
     setSettingsDialogOpen(true, { scope: 'appearance', initialPanel: 'Font' });
-  };
-
-  const restoreMobileWebAppearanceDefaults = async () => {
-    if (!appService) return;
-
-    await restoreCurrentBookReaderAppearanceDefaults(
-      envConfig,
-      bookKey,
-      appService.getDefaultViewSettings(),
-      {
-        appService,
-      },
-    );
-    eventDispatcher.dispatch('toast', {
-      message: _('Reader appearance defaults restored for this book'),
-    });
-    setIsDropdownOpen?.(false);
   };
 
   const cycleThemeMode = () => {
@@ -358,11 +341,6 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
           key='font-layout'
           label={_('Font & Layout')}
           onClick={openMobileWebFontLayoutMenu}
-        />,
-        <MenuItem
-          key='restore-appearance-defaults'
-          label={_('Restore Defaults')}
-          onClick={restoreMobileWebAppearanceDefaults}
         />,
         <MenuItem
           key='invert-images-dark-mode'

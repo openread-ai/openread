@@ -14,6 +14,7 @@ interface DialogMenuProps {
   setIsDropdownOpen?: (open: boolean) => void;
   onReset: () => void;
   resetLabel?: string;
+  showReset?: boolean;
 }
 
 const DialogMenu: React.FC<DialogMenuProps> = ({
@@ -21,6 +22,7 @@ const DialogMenu: React.FC<DialogMenuProps> = ({
   setIsDropdownOpen,
   onReset,
   resetLabel,
+  showReset = true,
 }) => {
   const _ = useTranslation();
   const { envConfig, appService } = useEnv();
@@ -67,7 +69,9 @@ const DialogMenu: React.FC<DialogMenuProps> = ({
         Icon={isSettingsGlobal ? <MdCheck size={iconSize} className='text-base-content' /> : null}
         onClick={handleToggleGlobal}
       />
-      <MenuItem label={resetLabel || _('Reset Settings')} onClick={handleResetToDefaults} />
+      {showReset && (
+        <MenuItem label={resetLabel || _('Reset Settings')} onClick={handleResetToDefaults} />
+      )}
       {activePanel === 'Font' && (
         <>
           <MenuItem label={_('Clear Custom Fonts')} onClick={handleClearCustomFont} />

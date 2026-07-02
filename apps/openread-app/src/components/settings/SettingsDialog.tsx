@@ -254,6 +254,7 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   }, [setFontPanelView]);
 
   const currentPanel = visibleTabConfig.find((tab) => tab.tab === activePanel);
+  const canResetCurrentPanel = !APPEARANCE_SETTINGS_PANELS.has(activePanel);
 
   return (
     <Dialog
@@ -340,6 +341,7 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
                       ? _('Reset {{settings}}', { settings: currentPanel.label })
                       : undefined
                   }
+                  showReset={canResetCurrentPanel}
                 />
               </Dropdown>
               <button
@@ -361,24 +363,9 @@ const SettingsDialog: React.FC<{ bookKey: string }> = ({ bookKey }) => {
         role='group'
         aria-label={`${_(currentPanel?.label || '')} - ${_('Settings')}`}
       >
-        {activePanel === 'Font' && (
-          <FontPanel
-            bookKey={bookKey}
-            onRegisterReset={(fn) => registerResetFunction('Font', fn)}
-          />
-        )}
-        {activePanel === 'Layout' && (
-          <LayoutPanel
-            bookKey={bookKey}
-            onRegisterReset={(fn) => registerResetFunction('Layout', fn)}
-          />
-        )}
-        {activePanel === 'Color' && (
-          <ColorPanel
-            bookKey={bookKey}
-            onRegisterReset={(fn) => registerResetFunction('Color', fn)}
-          />
-        )}
+        {activePanel === 'Font' && <FontPanel bookKey={bookKey} />}
+        {activePanel === 'Layout' && <LayoutPanel bookKey={bookKey} />}
+        {activePanel === 'Color' && <ColorPanel bookKey={bookKey} />}
         {activePanel === 'Control' && (
           <ControlPanel
             bookKey={bookKey}

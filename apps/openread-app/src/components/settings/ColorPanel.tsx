@@ -12,12 +12,10 @@ import { useThemeStore } from '@/store/themeStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useSettingsStore } from '@/store/settingsStore';
-import { useResetViewSettings } from '@/hooks/useResetSettings';
 import { useCustomTextureStore } from '@/store/customTextureStore';
 import { saveViewSettings } from '@/helpers/settings';
 import { settingsService } from '@/services/settings/settingsService';
 import { manageSyntaxHighlighting } from '@/utils/highlightjs';
-import { SettingsPanelPanelProp } from './SettingsDialog';
 import { useFileSelector } from '@/hooks/useFileSelector';
 import { PREDEFINED_TEXTURES } from '@/styles/textures';
 import { createLogger } from '@/utils/logger';
@@ -33,7 +31,7 @@ import CodeHighlightingSettings from './color/CodeHighlightingSettings';
 import ReadingRulerSettings from './color/ReadingRulerSettings';
 import { LAUNCH_TTS_ENABLED } from '@/services/launchFeatures';
 
-const ColorPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset }) => {
+const ColorPanel: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   const _ = useTranslation();
   const { themeMode, themeColor, isDarkMode, setThemeMode, setThemeColor, saveCustomTheme } =
     useThemeStore();
@@ -84,33 +82,7 @@ const ColorPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset
     loadCustomTextures,
     saveCustomTextures,
   } = useCustomTextureStore();
-  const resetToDefaults = useResetViewSettings();
   const { selectFiles } = useFileSelector(appService, _);
-
-  const handleReset = () => {
-    void resetToDefaults(bookKey, ['color'], {
-      overrideColor: setOverrideColor,
-      invertImgColorInDark: setInvertImgColorInDark,
-      codeHighlighting: setcodeHighlighting,
-      codeLanguage: setCodeLanguage,
-      backgroundTextureId: setSelectedTextureId,
-      backgroundOpacity: setBackgroundOpacity,
-      backgroundSize: setBackgroundSize,
-      readingRulerEnabled: setReadingRulerEnabled,
-      readingRulerLines: setReadingRulerLines,
-      readingRulerOpacity: setReadingRulerOpacity,
-      readingRulerColor: setReadingRulerColor,
-      ttsHighlightOptions: (options) => {
-        setTtsHighlightStyle(options.style);
-        setTtsHighlightColor(options.color);
-      },
-    });
-  };
-
-  useEffect(() => {
-    onRegisterReset(handleReset);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   useEffect(() => {
     loadCustomTextures(envConfig);

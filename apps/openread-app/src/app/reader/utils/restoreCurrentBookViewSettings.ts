@@ -67,7 +67,6 @@ export const CURRENT_BOOK_APPEARANCE_DEFAULT_KEYS = [
   'pageSpreadMode',
   'keepCoverSpread',
   'paragraphMode',
-  'theme',
   'overrideColor',
   'invertImgColorInDark',
   'codeHighlighting',

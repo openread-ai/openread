@@ -58,6 +58,7 @@ describe('current-book reader restore defaults contract', () => {
       layoutMode: 'continuous',
       lineHeight: 2,
       backgroundTextureId: 'custom-texture',
+      theme: 'legacy-book-theme',
       ttsHighlightOptions: { style: 'underline', color: '#ff0000' },
       translationEnabled: true,
       ttsRate: 2,
@@ -74,6 +75,7 @@ describe('current-book reader restore defaults contract', () => {
     expect(next.lineHeight).toBe(1.4);
     expect(next.backgroundTextureId).toBe('none');
     expect(next.ttsHighlightOptions).toEqual({ style: 'highlight', color: '#808080' });
+    expect(next.theme).toBe('legacy-book-theme');
     expect(next.translationEnabled).toBe(true);
     expect(next.ttsRate).toBe(2);
     expect(next.sideBarTab).toBe('bookmarks');

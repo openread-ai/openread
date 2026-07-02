@@ -107,6 +107,31 @@ const indexedDBFileSystem: FileSystem = {
       getRequest.onerror = () => reject(getRequest.error);
     });
   },
+  async moveFile(srcPath: string, dstPath: string, base: BaseDir) {
+    const { fp } = this.resolvePath(dstPath, base);
+    const db = await openIndexedDB();
+
+    return new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction('files', 'readwrite');
+      const store = transaction.objectStore('files');
+      const getRequest = store.get(srcPath);
+
+      getRequest.onsuccess = () => {
+        const data = getRequest.result;
+        if (!data) {
+          reject(new Error(`File not found: ${srcPath}`));
+          return;
+        }
+
+        store.put({ path: fp, content: data.content });
+        store.delete(srcPath);
+      };
+
+      getRequest.onerror = () => reject(getRequest.error);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+    });
+  },
   async readFile(path: string, base: BaseDir, mode: 'text' | 'binary') {
     const { fp } = this.resolvePath(path, base);
     const db = await openIndexedDB();

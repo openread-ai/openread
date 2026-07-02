@@ -101,6 +101,47 @@ pub struct ProgressPayload {
     transfer_speed: u64,
 }
 
+fn parse_content_range(value: &str) -> Option<(u64, u64, u64)> {
+    let range = value.strip_prefix("bytes ")?;
+    let (bounds, total) = range.split_once('/')?;
+    let (start, end) = bounds.split_once('-')?;
+
+    Some((start.parse().ok()?, end.parse().ok()?, total.parse().ok()?))
+}
+
+fn validate_multipart_range(
+    status: reqwest::StatusCode,
+    content_range: Option<&str>,
+    actual_len: usize,
+    expected_start: u64,
+    expected_end: u64,
+    expected_total: u64,
+) -> Result<()> {
+    if status != reqwest::StatusCode::PARTIAL_CONTENT {
+        return Err(Error::HttpErrorCode(
+            status.as_u16(),
+            "multipart range request did not return partial content".to_string(),
+        ));
+    }
+
+    let expected_len = expected_end - expected_start + 1;
+    let parsed_range = content_range.and_then(parse_content_range);
+    if parsed_range != Some((expected_start, expected_end, expected_total)) {
+        return Err(Error::ContentLength(format!(
+            "multipart content-range mismatch: expected bytes {expected_start}-{expected_end}/{expected_total}, got {}",
+            content_range.unwrap_or("<missing>"),
+        )));
+    }
+
+    if actual_len as u64 != expected_len {
+        return Err(Error::ContentLength(format!(
+            "multipart range length mismatch: expected {expected_len}, got {actual_len}",
+        )));
+    }
+
+    Ok(())
+}
+
 #[command]
 pub async fn download_file(
     url: &str,
@@ -221,7 +262,8 @@ pub async fn download_file(
     let progress = Arc::new(tokio::sync::Mutex::new(TransferStats::default()));
 
     stream::iter(0..part_count)
-        .for_each_concurrent(8, |i| {
+        .map(Ok::<u64, Error>)
+        .try_for_each_concurrent(8, |i| {
             let client = client.clone();
             let file = Arc::clone(&file);
             let progress = Arc::clone(&progress);
@@ -239,26 +281,27 @@ pub async fn download_file(
                     req = req.header(key, value);
                 }
 
-                let resp = match req.send().await {
-                    Ok(r) => r,
-                    Err(_) => return,
-                };
-
-                if !resp.status().is_success()
-                    && resp.status() != reqwest::StatusCode::PARTIAL_CONTENT
-                {
-                    return;
-                }
-
-                let bytes = match resp.bytes().await {
-                    Ok(b) => b,
-                    Err(_) => return,
-                };
+                let resp = req.send().await?;
+                let status = resp.status();
+                let content_range = resp
+                    .headers()
+                    .get(reqwest::header::CONTENT_RANGE)
+                    .and_then(|value| value.to_str().ok())
+                    .map(str::to_owned);
+                let bytes = resp.bytes().await?;
+                validate_multipart_range(
+                    status,
+                    content_range.as_deref(),
+                    bytes.len(),
+                    start,
+                    end,
+                    total,
+                )?;
 
                 {
                     let mut f = file.lock().await;
-                    f.seek(std::io::SeekFrom::Start(start)).await.unwrap();
-                    f.write_all(&bytes).await.unwrap();
+                    f.seek(std::io::SeekFrom::Start(start)).await?;
+                    f.write_all(&bytes).await?;
                 }
 
                 {
@@ -270,9 +313,13 @@ pub async fn download_file(
                         transfer_speed: stat.transfer_speed,
                     });
                 }
+
+                Ok(())
             }
         })
-        .await;
+        .await?;
+
+    file.lock().await.sync_all().await?;
 
     Ok(resp_headers)
 }
@@ -329,4 +376,133 @@ fn file_to_body(channel: Channel<ProgressPayload>, file: File, file_len: u64) ->
             });
         }),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn multipart_range_validation_requires_partial_content() {
+        let error =
+            validate_multipart_range(reqwest::StatusCode::OK, Some("bytes 0-3/10"), 4, 0, 3, 10)
+                .unwrap_err();
+
+        assert!(error
+            .to_string()
+            .contains("multipart range request did not return partial content"));
+    }
+
+    #[test]
+    fn multipart_range_validation_rejects_wrong_content_range_start() {
+        let error = validate_multipart_range(
+            reqwest::StatusCode::PARTIAL_CONTENT,
+            Some("bytes 1-3/10"),
+            3,
+            0,
+            2,
+            10,
+        )
+        .unwrap_err();
+
+        assert!(
+            error.to_string().contains(
+                "multipart content-range mismatch: expected bytes 0-2/10, got bytes 1-3/10",
+            )
+        );
+    }
+
+    #[test]
+    fn multipart_range_validation_rejects_wrong_content_range_end() {
+        let error = validate_multipart_range(
+            reqwest::StatusCode::PARTIAL_CONTENT,
+            Some("bytes 0-3/10"),
+            3,
+            0,
+            2,
+            10,
+        )
+        .unwrap_err();
+
+        assert!(
+            error.to_string().contains(
+                "multipart content-range mismatch: expected bytes 0-2/10, got bytes 0-3/10",
+            )
+        );
+    }
+
+    #[test]
+    fn multipart_range_validation_rejects_wrong_content_range_total() {
+        let error = validate_multipart_range(
+            reqwest::StatusCode::PARTIAL_CONTENT,
+            Some("bytes 0-2/9"),
+            3,
+            0,
+            2,
+            10,
+        )
+        .unwrap_err();
+
+        assert!(error
+            .to_string()
+            .contains("multipart content-range mismatch: expected bytes 0-2/10, got bytes 0-2/9",));
+    }
+
+    #[test]
+    fn multipart_range_validation_rejects_malformed_content_range() {
+        let error = validate_multipart_range(
+            reqwest::StatusCode::PARTIAL_CONTENT,
+            Some("0-2/10"),
+            3,
+            0,
+            2,
+            10,
+        )
+        .unwrap_err();
+
+        assert!(error
+            .to_string()
+            .contains("multipart content-range mismatch: expected bytes 0-2/10, got 0-2/10"));
+    }
+
+    #[test]
+    fn multipart_range_validation_requires_content_range_header() {
+        let error =
+            validate_multipart_range(reqwest::StatusCode::PARTIAL_CONTENT, None, 3, 0, 2, 10)
+                .unwrap_err();
+
+        assert!(error
+            .to_string()
+            .contains("multipart content-range mismatch: expected bytes 0-2/10, got <missing>"));
+    }
+
+    #[test]
+    fn multipart_range_validation_requires_complete_part_length() {
+        let error = validate_multipart_range(
+            reqwest::StatusCode::PARTIAL_CONTENT,
+            Some("bytes 0-3/10"),
+            3,
+            0,
+            3,
+            10,
+        )
+        .unwrap_err();
+
+        assert!(error
+            .to_string()
+            .contains("multipart range length mismatch: expected 4, got 3"));
+    }
+
+    #[test]
+    fn multipart_range_validation_accepts_complete_partial_content() {
+        validate_multipart_range(
+            reqwest::StatusCode::PARTIAL_CONTENT,
+            Some("bytes 0-3/10"),
+            4,
+            0,
+            3,
+            10,
+        )
+        .unwrap();
+    }
 }

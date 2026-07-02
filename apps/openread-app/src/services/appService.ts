@@ -217,6 +217,15 @@ export abstract class BaseAppService implements AppService {
     return await this.fs.copyFile(srcPath, dstPath, base);
   }
 
+  async moveFile(srcPath: string, dstPath: string, base: BaseDir): Promise<void> {
+    if (this.fs.moveFile) {
+      return await this.fs.moveFile(srcPath, dstPath, base);
+    }
+
+    await this.fs.copyFile(srcPath, dstPath, base);
+    await this.fs.removeFile(srcPath, base);
+  }
+
   async readFile(path: string, base: BaseDir, mode: 'text' | 'binary') {
     return await this.fs.readFile(path, base, mode);
   }
@@ -754,6 +763,8 @@ export abstract class BaseAppService implements AppService {
       dst: `${this.localBooksDir}/${localPath}`,
       cfp: book.storagePath,
       url: data.downloadUrl,
+      expectedSizeBytes: data.sizeBytes,
+      expectedSha256: book.platformHash,
       onProgress,
     });
     book.downloadedAt = Date.now();
@@ -774,6 +785,7 @@ export abstract class BaseAppService implements AppService {
       cfp: `${CLOUD_BOOKS_SUBDIR}/${getRemoteBookFilename(book)}`,
       bookHash: book.hash,
       kind: 'user_book_file',
+      expectedSha256: book.platformHash,
       onProgress,
     });
     book.downloadedAt = Date.now();

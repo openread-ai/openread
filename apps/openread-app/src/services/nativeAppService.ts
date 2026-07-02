@@ -8,6 +8,7 @@ import {
   readDir,
   remove,
   copyFile,
+  rename,
   stat,
   BaseDirectory,
   WriteFileOptions,
@@ -262,6 +263,18 @@ export const nativeFileSystem: FileSystem = {
       const { fp, baseDir } = this.resolvePath(dstPath, base);
       await copyFile(srcPath, fp, baseDir ? { toPathBaseDir: baseDir } : undefined);
     }
+  },
+  async moveFile(srcPath: string, dstPath: string, base: BaseDir) {
+    try {
+      if (!(await this.exists(getDirPath(dstPath), base))) {
+        await this.createDir(getDirPath(dstPath), base, true);
+      }
+    } catch (error) {
+      logger.info('Failed to create directory for moving file:', error);
+    }
+
+    const { fp, baseDir } = this.resolvePath(dstPath, base);
+    await rename(srcPath, fp, baseDir ? { newPathBaseDir: baseDir } : undefined);
   },
   async readFile(path: string, base: BaseDir, mode: 'text' | 'binary') {
     const { fp, baseDir } = this.resolvePath(path, base);

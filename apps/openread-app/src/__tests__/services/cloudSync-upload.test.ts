@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CloudSyncService } from '@/services/cloudSync';
 import type { Book } from '@/types/book';
 import type { FileSystem } from '@/types/system';
-import { deleteFile, uploadFile } from '@/libs/storage';
+import { deleteFile, downloadFile, uploadFile } from '@/libs/storage';
 import { CLOUD_BOOKS_SUBDIR } from '@/services/constants';
 import { getCoverFilename, getRemoteBookFilename } from '@/utils/book';
 
@@ -31,6 +31,7 @@ const createFs = (existingPaths: Set<string>): FileSystem =>
     exists: vi.fn(async (path: string) => existingPaths.has(path)),
     openFile: vi.fn(async () => new File(['book'], 'book.epub')),
     writeFile: vi.fn(async () => {}),
+    createDir: vi.fn(async () => {}),
   }) as unknown as FileSystem;
 
 describe('CloudSyncService storage lifecycle', () => {
@@ -59,6 +60,25 @@ describe('CloudSyncService storage lifecycle', () => {
     expect(uploadFile).toHaveBeenCalledTimes(1);
     expect(book.uploadedAt).toEqual(expect.any(Number));
     expect(book.downloadedAt).toEqual(expect.any(Number));
+  });
+
+  it('does not mark a book downloaded when download verification rejects', async () => {
+    vi.mocked(downloadFile).mockRejectedValueOnce(new Error('Downloaded file size mismatch'));
+    const book = baseBook({ uploadedAt: 123, downloadedAt: null });
+    const fs = createFs(new Set([getCoverFilename(book)]));
+    const service = new CloudSyncService(fs, '/books', async (path) => `/books/${path}`);
+
+    await expect(service.downloadBook(book, {} as never)).rejects.toThrow(
+      'Downloaded file size mismatch',
+    );
+
+    expect(downloadFile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        expectedSha256: book.platformHash,
+        cfp: `${CLOUD_BOOKS_SUBDIR}/${getRemoteBookFilename(book)}`,
+      }),
+    );
+    expect(book.downloadedAt).toBeNull();
   });
 
   it('does not delete cloud files when the book is not uploaded', async () => {

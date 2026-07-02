@@ -5,6 +5,7 @@ import type { FoliateView } from '@/types/view';
 import type { BookDoc } from '@/libs/document';
 import { getBookDirFromLanguage, getBookDirFromWritingMode } from '@/utils/book';
 import { getMaxInlineSize } from '@/utils/config';
+import { getStyles } from '@/utils/style';
 import {
   applyReaderLayoutToRenderer,
   normalizeLegacyReaderLayoutSettings,
@@ -169,9 +170,11 @@ export function applyCurrentBookDefaultViewSettingsToRenderer({
 
   applyWritingDirection(bookDoc, viewSettings);
   applyCoverSpread(bookDoc, viewSettings, layout.layoutMode);
-  applyReaderLayoutToRenderer(renderer, viewSettings, book, platform);
 
   if (!renderer) return;
+
+  renderer.setStyles?.(getStyles(viewSettings));
+  applyReaderLayoutToRenderer(renderer, viewSettings, book, platform, { applyStyles: false });
 
   if (layout.bookCapability === 'page') {
     renderer.setAttribute('zoom', viewSettings.pageZoomMode);

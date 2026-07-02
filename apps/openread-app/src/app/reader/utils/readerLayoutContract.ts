@@ -379,12 +379,15 @@ export function applyReaderLayoutToRenderer(
   settings: ViewSettings,
   book: ReaderLayoutBookInput,
   platform: ReaderLayoutPlatformInput,
+  options: { applyStyles?: boolean } = {},
 ) {
   if (!renderer) return;
   const state = normalizeReaderLayout({ settings, book, platform });
   renderer.setAttribute('flow', getRendererFlow(state));
   renderer.setAttribute('max-inline-size', `${getMaxInlineSize(settings)}px`);
-  renderer.setStyles?.(getStyles(settings));
+  if (options.applyStyles ?? true) {
+    renderer.setStyles?.(getStyles(settings));
+  }
 }
 
 export async function persistReaderLayout({

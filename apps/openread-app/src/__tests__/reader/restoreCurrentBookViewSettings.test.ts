@@ -21,6 +21,7 @@ import type { BookDoc } from '@/libs/document';
 import type { FoliateView } from '@/types/view';
 import type { EnvConfigType } from '@/services/environment';
 import type { SystemSettings } from '@/types/settings';
+import { getStyles } from '@/utils/style';
 
 const viewSettings = (overrides: Partial<ViewSettings> = {}): ViewSettings => ({
   ...DEFAULT_BOOK_LAYOUT,
@@ -111,7 +112,7 @@ describe('current-book reader restore defaults contract', () => {
     const setViewSettings = vi.fn(() => events.push('set'));
     const saveConfig = vi.fn(async (_envConfig, _bookKey, nextConfig: BookConfig) => {
       events.push('save');
-      expect(events).toEqual(['set', 'save']);
+      expect(events).toEqual(['set', 'styles', 'save']);
       expect(nextConfig).toMatchObject({
         location: 'epubcfi(/6/2)',
         progress: [3, 10],
@@ -122,6 +123,7 @@ describe('current-book reader restore defaults contract', () => {
       expect(nextConfig.viewSettings?.backgroundTextureId).toBe('none');
     });
     const openRenderer = renderer();
+    vi.mocked(openRenderer.setStyles!).mockImplementation(() => events.push('styles'));
 
     const next = await restoreCurrentBookViewSettings({
       envConfig: {} as EnvConfigType,
@@ -141,7 +143,8 @@ describe('current-book reader restore defaults contract', () => {
     expect(setViewSettings).toHaveBeenCalledOnce();
     expect(setViewSettings).toHaveBeenCalledWith('reader:book-a', next);
     expect(saveConfig).toHaveBeenCalledOnce();
-    expect(openRenderer.setStyles).toHaveBeenCalled();
+    expect(openRenderer.setStyles).toHaveBeenCalledOnce();
+    expect(openRenderer.setStyles).toHaveBeenCalledWith(getStyles(next));
   });
 
   it('applies page-book renderer zoom spread and cover-spread side effects immediately', () => {

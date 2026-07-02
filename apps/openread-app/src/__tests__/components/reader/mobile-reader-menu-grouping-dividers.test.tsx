@@ -38,7 +38,16 @@ const mockState = vi.hoisted(() => {
     setThemeMode: vi.fn(),
     saveConfig: vi.fn(),
     saveViewSettings: vi.fn(),
-    restoreCurrentBookViewSettings: vi.fn(async () => viewSettings),
+    renderer: {
+      setAttribute: vi.fn(),
+      setStyles: vi.fn(),
+    },
+    restoreCurrentBookViewSettings: vi.fn(
+      async (options: { renderer?: { setStyles?: (css: string) => void } }) => {
+        options.renderer?.setStyles?.('restored-reader-styles');
+        return viewSettings;
+      },
+    ),
     dispatch: vi.fn(),
     navigateToLogin: vi.fn(),
     setIsDropdownOpen: vi.fn(),
@@ -116,7 +125,7 @@ vi.mock('@/store/settingsStore', () => ({
 vi.mock('@/store/readerStore', () => ({
   useReaderStore: () => ({
     bookKeys: ['book-1', 'book-2'],
-    getView: () => ({ renderer: { setAttribute: vi.fn() } }),
+    getView: () => ({ renderer: mockState.renderer }),
     getViewSettings: () => mockState.viewSettings,
     getViewState: () => ({ syncing: false }),
     setViewSettings: mockState.setViewSettings,
@@ -298,12 +307,15 @@ describe('mobile web reader menu grouping dividers', () => {
 
     fireEvent.click(screen.getByText('Restore Defaults'));
     await waitFor(() => expect(mockState.restoreCurrentBookViewSettings).toHaveBeenCalledOnce());
+    await waitFor(() => expect(mockState.renderer.setStyles).toHaveBeenCalledOnce());
+    expect(mockState.renderer.setStyles).toHaveBeenCalledWith('restored-reader-styles');
     expect(mockState.restoreCurrentBookViewSettings).toHaveBeenCalledWith(
       expect.objectContaining({
         bookKey: 'book-1',
         config: mockState.config,
         settings: { globalViewSettings: mockState.viewSettings },
         currentViewSettings: mockState.viewSettings,
+        renderer: mockState.renderer,
         setViewSettings: mockState.setViewSettings,
         saveConfig: mockState.saveConfig,
       }),

@@ -1,5 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
 
+const mocks = vi.hoisted(() => ({
+  applyTexture: vi.fn(async () => undefined),
+}));
+
+vi.mock('@/store/customTextureStore', () => ({
+  useCustomTextureStore: {
+    getState: () => ({
+      applyTexture: mocks.applyTexture,
+    }),
+  },
+}));
+
 import {
   applyCurrentBookDefaultViewSettingsToRenderer,
   buildCurrentBookDefaultViewSettings,
@@ -112,7 +124,7 @@ describe('current-book reader restore defaults contract', () => {
     const setViewSettings = vi.fn(() => events.push('set'));
     const saveConfig = vi.fn(async (_envConfig, _bookKey, nextConfig: BookConfig) => {
       events.push('save');
-      expect(events).toEqual(['set', 'styles', 'save']);
+      expect(events).toEqual(['set', 'styles', 'texture', 'save']);
       expect(nextConfig).toMatchObject({
         location: 'epubcfi(/6/2)',
         progress: [3, 10],
@@ -124,6 +136,9 @@ describe('current-book reader restore defaults contract', () => {
     });
     const openRenderer = renderer();
     vi.mocked(openRenderer.setStyles!).mockImplementation(() => events.push('styles'));
+    mocks.applyTexture.mockImplementationOnce(async () => {
+      events.push('texture');
+    });
 
     const next = await restoreCurrentBookViewSettings({
       envConfig: {} as EnvConfigType,
@@ -145,6 +160,37 @@ describe('current-book reader restore defaults contract', () => {
     expect(saveConfig).toHaveBeenCalledOnce();
     expect(openRenderer.setStyles).toHaveBeenCalledOnce();
     expect(openRenderer.setStyles).toHaveBeenCalledWith(getStyles(next));
+    expect(mocks.applyTexture).toHaveBeenCalledWith({} as EnvConfigType, 'none', {
+      opacity: next.backgroundOpacity,
+      size: next.backgroundSize,
+    });
+  });
+
+  it('cleans stale syntax highlighting side effects immediately', () => {
+    const doc = document.implementation.createHTMLDocument('reader content');
+    const style = doc.createElement('style');
+    style.id = 'highlight-js-theme-style';
+    doc.head.appendChild(style);
+    doc.body.innerHTML =
+      '<pre class="hljs language-javascript" data-highlighted="yes"><span class="hljs-keyword">const</span> value = 1;</pre>';
+    const openRenderer = {
+      ...renderer(),
+      getContents: vi.fn(() => [{ doc }]),
+    } as unknown as FoliateView['renderer'];
+    const settings = viewSettings({ codeHighlighting: false, codeLanguage: 'auto-detect' });
+
+    applyCurrentBookDefaultViewSettingsToRenderer({
+      renderer: openRenderer,
+      viewSettings: settings,
+      book: { format: 'epub' },
+      platform: { isMobile: true },
+    });
+
+    const pre = doc.querySelector('pre')!;
+    expect(doc.getElementById('highlight-js-theme-style')).toBeNull();
+    expect(pre.innerHTML).toBe('const value = 1;');
+    expect(pre.className).toBe('');
+    expect(pre.hasAttribute('data-highlighted')).toBe(false);
   });
 
   it('applies page-book renderer zoom spread and cover-spread side effects immediately', () => {

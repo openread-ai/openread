@@ -160,9 +160,10 @@ const ColorPanel: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   }, [readingRulerColor]);
 
   const applyBackgroundTexture = () => {
-    applyTexture(envConfig, selectedTextureId);
-    document.documentElement.style.setProperty('--bg-texture-opacity', `${backgroundOpacity}`);
-    document.documentElement.style.setProperty('--bg-texture-size', backgroundSize);
+    applyTexture(envConfig, selectedTextureId, {
+      opacity: backgroundOpacity,
+      size: backgroundSize,
+    });
   };
 
   useEffect(() => {

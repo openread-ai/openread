@@ -5,6 +5,8 @@ import type { FoliateView } from '@/types/view';
 import type { BookDoc } from '@/libs/document';
 import { getBookDirFromLanguage, getBookDirFromWritingMode } from '@/utils/book';
 import { getMaxInlineSize } from '@/utils/config';
+import { manageSyntaxHighlighting } from '@/utils/highlightjs';
+import { useCustomTextureStore } from '@/store/customTextureStore';
 import { getStyles } from '@/utils/style';
 import {
   applyReaderLayoutToRenderer,
@@ -174,6 +176,7 @@ export function applyCurrentBookDefaultViewSettingsToRenderer({
   if (!renderer) return;
 
   renderer.setStyles?.(getStyles(viewSettings));
+  renderer.getContents?.().forEach(({ doc }) => manageSyntaxHighlighting(doc, viewSettings));
   applyReaderLayoutToRenderer(renderer, viewSettings, book, platform, { applyStyles: false });
 
   if (layout.bookCapability === 'page') {
@@ -222,6 +225,12 @@ export async function restoreCurrentBookViewSettings({
     platform,
     bookDoc,
   });
+  await useCustomTextureStore
+    .getState()
+    .applyTexture(envConfig, nextViewSettings.backgroundTextureId || 'none', {
+      opacity: nextViewSettings.backgroundOpacity,
+      size: nextViewSettings.backgroundSize,
+    });
 
   await saveConfig(envConfig, bookKey, nextConfig, settings);
   return nextViewSettings;

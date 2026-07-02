@@ -13,6 +13,11 @@ import { createLogger } from '@/utils/logger';
 
 const logger = createLogger('customTextureStore');
 
+type BackgroundTextureVisualOptions = {
+  opacity?: number;
+  size?: string;
+};
+
 interface TextureStoreState {
   textures: CustomTexture[];
   loading: boolean;
@@ -26,7 +31,11 @@ interface TextureStoreState {
   getAvailableTextures: () => CustomTexture[];
   clearAllTextures: () => void;
 
-  applyTexture: (envConfig: EnvConfigType, textureId: string) => Promise<void>;
+  applyTexture: (
+    envConfig: EnvConfigType,
+    textureId: string,
+    options?: BackgroundTextureVisualOptions,
+  ) => Promise<void>;
   loadTexture: (envConfig: EnvConfigType, textureId: string) => Promise<CustomTexture>;
   loadTextures: (envConfig: EnvConfigType, textureIds: string[]) => Promise<CustomTexture[]>;
   loadAllTextures: (envConfig: EnvConfigType) => Promise<CustomTexture[]>;
@@ -44,6 +53,16 @@ function toSettingsTexture(texture: CustomTexture): CustomTexture {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { blobUrl, loaded, error, ...settingsTexture } = texture;
   return settingsTexture;
+}
+
+function applyTextureVisualOptions(options?: BackgroundTextureVisualOptions) {
+  if (typeof document === 'undefined') return;
+  if (options?.opacity !== undefined) {
+    document.documentElement.style.setProperty('--bg-texture-opacity', `${options.opacity}`);
+  }
+  if (options?.size) {
+    document.documentElement.style.setProperty('--bg-texture-size', options.size);
+  }
 }
 
 export const useCustomTextureStore = create<TextureStoreState>((set, get) => ({
@@ -268,7 +287,17 @@ export const useCustomTextureStore = create<TextureStoreState>((set, get) => ({
     return texture?.loaded === true && !texture.error && !texture.deletedAt;
   },
 
-  applyTexture: async (envConfig, textureId) => {
+  applyTexture: async (envConfig, textureId, options) => {
+    applyTextureVisualOptions(options);
+
+    const settingsTexture = useSettingsStore
+      .getState()
+      .settings.customTextures?.find((texture) => texture.id === textureId && !texture.deletedAt);
+
+    if (settingsTexture && !get().getTexture(textureId)) {
+      get().addTexture(settingsTexture.path);
+    }
+
     const customTextures = get().getAvailableTextures();
     const allTextures = [...PREDEFINED_TEXTURES, ...customTextures];
     let selectedTexture = allTextures.find((t) => t.id === textureId);

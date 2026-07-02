@@ -17,22 +17,14 @@ import type { EnvConfigType } from '@/services/environment';
 import type { ViewSettings } from '@/types/book';
 
 const mocks = vi.hoisted(() => ({
-  addTexture: vi.fn(),
   applyTexture: vi.fn(),
 }));
 
 vi.mock('@/store/customTextureStore', () => ({
   useCustomTextureStore: {
     getState: () => ({
-      addTexture: mocks.addTexture,
       applyTexture: mocks.applyTexture,
     }),
-  },
-}));
-
-vi.mock('@/store/settingsStore', () => ({
-  useSettingsStore: {
-    getState: () => ({ settings: { customTextures: [] } }),
   },
 }));
 
@@ -55,9 +47,18 @@ describe('useBackgroundTexture', () => {
     const envConfig = {} as EnvConfigType;
     const { result } = renderHook(() => useBackgroundTexture());
 
-    result.current.applyBackgroundTexture(envConfig, viewSettings({ backgroundTextureId: 'none' }));
+    result.current.applyBackgroundTexture(
+      envConfig,
+      viewSettings({
+        backgroundTextureId: 'none',
+        backgroundOpacity: 0.25,
+        backgroundSize: 'contain',
+      }),
+    );
 
-    expect(mocks.applyTexture).toHaveBeenCalledWith(envConfig, 'none');
-    expect(mocks.addTexture).not.toHaveBeenCalled();
+    expect(mocks.applyTexture).toHaveBeenCalledWith(envConfig, 'none', {
+      opacity: 0.25,
+      size: 'contain',
+    });
   });
 });

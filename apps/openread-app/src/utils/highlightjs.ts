@@ -57,9 +57,10 @@ export const manageSyntaxHighlighting = (doc: Document, viewSettings: ViewSettin
     const styleElement = doc.getElementById(styleId);
     if (styleElement) styleElement.remove();
     doc.querySelectorAll('pre').forEach((block) => {
-      if ((block as HTMLElement).dataset['highlighted']) {
-        block.innerHTML = block.textContent || '';
-      }
+      block.className = block.className.replace(/language-\S+/g, '');
+      block.classList.remove('hljs');
+      block.removeAttribute('data-highlighted');
+      block.innerHTML = block.textContent || '';
     });
     return;
   }

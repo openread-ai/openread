@@ -26,6 +26,7 @@ import { useLibraryStore } from './libraryStore';
 import { uniqueId } from '@/utils/misc';
 import { parseBookRefFromReaderBookKey } from '@/utils/readerBookKey';
 import { getInitialReaderViewSettings } from '@/app/reader/utils/readerLayoutContract';
+import type { ProgressHandler } from '@/utils/transfer';
 
 interface ViewState {
   /* Unique key for each book view */
@@ -82,6 +83,7 @@ interface ReaderStore {
     key: string,
     isPrimary?: boolean,
     reload?: boolean,
+    onLoadProgress?: ProgressHandler,
   ) => Promise<void>;
   clearViewState: (key: string) => void;
   getViewState: (key: string) => ViewState | null;
@@ -133,6 +135,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
     key: string,
     isPrimary = true,
     reload = false,
+    onLoadProgress,
   ) => {
     const booksData = useBookDataStore.getState().booksData;
     const bookData = booksData[id];
@@ -168,7 +171,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
       let bookDoc = bookData?.bookDoc;
       let file = bookData?.file;
       if (!bookDoc || !file || reload) {
-        const content = (await appService.loadBookContent(book)) as BookContent;
+        const content = (await appService.loadBookContent(book, onLoadProgress)) as BookContent;
         file = content.file;
         logger.info('Loading book', key);
         const doc = await new DocumentLoader(file).open();

@@ -35,8 +35,14 @@ import BooksGrid from './BooksGrid';
 import InlineQuestionBar from './InlineQuestionBar';
 import SettingsDialog from '@/components/settings/SettingsDialog';
 import { createLogger } from '@/utils/logger';
+import type { ProgressPayload } from '@/utils/transfer';
 
 const logger = createLogger('reader');
+
+const getReaderOpenDownloadPercent = (progress: ProgressPayload): number | null => {
+  if (progress.total <= 0 || progress.progress < 0) return null;
+  return Math.max(0, Math.min(100, Math.round((progress.progress / progress.total) * 100)));
+};
 
 const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ ids, settings }) => {
   const _ = useTranslation();
@@ -55,6 +61,7 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
   const [loading, setLoading] = useState(false);
   const [errorLoading, setErrorLoading] = useState(false);
   const [readerEntryError, setReaderEntryError] = useState<string | null>(null);
+  const [readerOpenDownloadPercent, setReaderOpenDownloadPercent] = useState<number | null>(null);
 
   useBookShortcuts({ sideBarBookKey, bookKeys });
   useGamepad();
@@ -62,6 +69,7 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
   useEffect(() => {
     if (isInitiating.current) return;
     isInitiating.current = true;
+    setReaderOpenDownloadPercent(null);
 
     const pathname = window.location.pathname;
     const bookIds = ids || searchParams?.get('ids') || pathname.split('/reader/')[1] || '';
@@ -72,6 +80,7 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
     );
     if (validBookRefs.length === 0 || validBookRefs.length !== initialBookRefs.length) {
       setErrorLoading(true);
+      setReaderOpenDownloadPercent(null);
       setReaderEntryError(_('Unable to open book'));
       eventDispatcher.dispatch('toast', {
         message: _('Unable to open book'),
@@ -91,16 +100,29 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
       const isPrimary = !uniqueIds.has(id);
       uniqueIds.add(id);
       if (!getViewState(key)) {
-        initViewState(envConfig, id, key, isPrimary).catch((error) => {
-          logger.info('Error initializing book', { key, error });
-          setErrorLoading(true);
-          eventDispatcher.dispatch('toast', {
-            message: _('Unable to open book'),
-            callback: () => navigateBackToLibrary(),
-            timeout: 2000,
-            type: 'error',
+        const isReaderLoadingBook = index === 0;
+        const handleReaderOpenProgress = isReaderLoadingBook
+          ? (progress: ProgressPayload) => {
+              const percent = getReaderOpenDownloadPercent(progress);
+              if (percent !== null) setReaderOpenDownloadPercent(percent);
+            }
+          : undefined;
+
+        initViewState(envConfig, id, key, isPrimary, false, handleReaderOpenProgress)
+          .then(() => {
+            if (isReaderLoadingBook) setReaderOpenDownloadPercent(null);
+          })
+          .catch((error) => {
+            logger.info('Error initializing book', { key, error });
+            setErrorLoading(true);
+            if (isReaderLoadingBook) setReaderOpenDownloadPercent(null);
+            eventDispatcher.dispatch('toast', {
+              message: _('Unable to open book'),
+              callback: () => navigateBackToLibrary(),
+              timeout: 2000,
+              type: 'error',
+            });
           });
-        });
         if (index === 0) setSideBarBookKey(key);
       }
     });
@@ -254,7 +276,14 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
       loading &&
       !errorLoading && (
         <div className='hero hero-content full-height' data-testid='reader-loading'>
-          <Spinner loading={true} />
+          <div className='flex flex-col items-center gap-3'>
+            <Spinner loading={true} />
+            {readerOpenDownloadPercent !== null && (
+              <p className='text-base font-medium'>
+                {_('Downloading… {{percent}}%', { percent: `${readerOpenDownloadPercent}` })}
+              </p>
+            )}
+          </div>
         </div>
       )
     );

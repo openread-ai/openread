@@ -390,7 +390,9 @@ describe('appService book content loading', () => {
       downloadedAt: null,
     });
 
-    const content = await appService.loadBookContent(book);
+    const onProgress = vi.fn();
+
+    const content = await appService.loadBookContent(book, onProgress);
 
     expect(mockGetDownloadUrl).toHaveBeenCalledWith(book.hash);
     expect(downloadFile).toHaveBeenCalledWith(
@@ -399,6 +401,7 @@ describe('appService book content loading', () => {
         dst: '/mock-local-filename',
         cfp: 'catalog/books/test.epub',
         url: 'https://signed.example/book.epub',
+        onProgress,
       }),
     );
     expect(downloadFile).toHaveBeenCalledWith(
@@ -423,7 +426,9 @@ describe('appService book content loading', () => {
       downloadedAt: null,
     });
 
-    const content = await appService.loadBookContent(book);
+    const onProgress = vi.fn();
+
+    const content = await appService.loadBookContent(book, onProgress);
 
     expect(downloadFile).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -432,6 +437,7 @@ describe('appService book content loading', () => {
         cfp: 'books/mock-remote-filename',
         bookHash: book.hash,
         kind: 'user_book_file',
+        onProgress,
       }),
     );
     expect(content.file).toBeInstanceOf(File);

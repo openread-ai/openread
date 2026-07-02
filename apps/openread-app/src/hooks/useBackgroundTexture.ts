@@ -10,7 +10,11 @@ export const useBackgroundTexture = () => {
       const textureId = viewSettings.backgroundTextureId;
       const textureOpacity = viewSettings.backgroundOpacity;
       const textureSize = viewSettings.backgroundSize;
-      if (!textureId || textureId === 'none') return;
+
+      if (!textureId || textureId === 'none') {
+        useCustomTextureStore.getState().applyTexture(envConfig, 'none');
+        return;
+      }
 
       document.documentElement.style.setProperty('--bg-texture-opacity', `${textureOpacity}`);
       document.documentElement.style.setProperty('--bg-texture-size', textureSize);

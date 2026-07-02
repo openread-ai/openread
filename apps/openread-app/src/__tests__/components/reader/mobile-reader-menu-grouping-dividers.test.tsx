@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import ViewMenu from '@/app/reader/components/ViewMenu';
 
@@ -26,7 +26,7 @@ const mockState = vi.hoisted(() => {
 
   return {
     user: { id: 'user-1' },
-    config: { updatedAt: Date.UTC(2026, 5, 28, 21, 10, 22) },
+    config: { updatedAt: Date.UTC(2026, 5, 28, 21, 10, 22), viewSettings },
     bookDoc,
     viewSettings,
     openMobileReaderPanel: vi.fn(),
@@ -36,7 +36,9 @@ const mockState = vi.hoisted(() => {
     setSettingsDialogBookKey: vi.fn(),
     setViewSettings: vi.fn(),
     setThemeMode: vi.fn(),
+    saveConfig: vi.fn(),
     saveViewSettings: vi.fn(),
+    restoreCurrentBookViewSettings: vi.fn(async () => viewSettings),
     dispatch: vi.fn(),
     navigateToLogin: vi.fn(),
     setIsDropdownOpen: vi.fn(),
@@ -83,6 +85,7 @@ vi.mock('@/store/bookDataStore', () => ({
       bookDoc: mockState.bookDoc,
       book: { format: 'epub' },
     }),
+    saveConfig: mockState.saveConfig,
   }),
 }));
 
@@ -104,6 +107,7 @@ vi.mock('@/store/parallelViewStore', () => ({
 
 vi.mock('@/store/settingsStore', () => ({
   useSettingsStore: () => ({
+    settings: { globalViewSettings: mockState.viewSettings },
     setSettingsDialogOpen: mockState.setSettingsDialogOpen,
     setSettingsDialogBookKey: mockState.setSettingsDialogBookKey,
   }),
@@ -129,6 +133,10 @@ vi.mock('@/store/themeStore', () => ({
 
 vi.mock('@/helpers/settings', () => ({
   saveViewSettings: mockState.saveViewSettings,
+}));
+
+vi.mock('@/app/reader/utils/restoreCurrentBookViewSettings', () => ({
+  restoreCurrentBookViewSettings: mockState.restoreCurrentBookViewSettings,
 }));
 
 vi.mock('@/utils/nav', () => ({
@@ -227,6 +235,7 @@ describe('mobile web reader menu grouping dividers', () => {
       'Export Annotations',
       'divider',
       'Font & Layout',
+      'Restore Defaults',
       'Invert Image In Dark Mode',
     ]);
 
@@ -284,8 +293,25 @@ describe('mobile web reader menu grouping dividers', () => {
     });
 
     expect(screen.queryByText('Dark Mode')).toBeNull();
-    expect(screen.queryByText('Restore Defaults')).toBeNull();
+    expect(screen.getAllByText('Restore Defaults')).toHaveLength(1);
     expect(mockState.setThemeMode).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText('Restore Defaults'));
+    await waitFor(() => expect(mockState.restoreCurrentBookViewSettings).toHaveBeenCalledOnce());
+    expect(mockState.restoreCurrentBookViewSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bookKey: 'book-1',
+        config: mockState.config,
+        settings: { globalViewSettings: mockState.viewSettings },
+        currentViewSettings: mockState.viewSettings,
+        setViewSettings: mockState.setViewSettings,
+        saveConfig: mockState.saveConfig,
+      }),
+    );
+    expect(mockState.dispatch).toHaveBeenCalledWith('toast', {
+      type: 'success',
+      message: 'Reader defaults restored',
+    });
 
     expect(screen.getByText('Invert Image In Dark Mode')).toBeTruthy();
   });
@@ -299,5 +325,6 @@ describe('mobile web reader menu grouping dividers', () => {
     expect(mockState.setSettingsDialogBookKey).toHaveBeenCalledWith('book-1');
     expect(mockState.setSettingsDialogOpen).toHaveBeenCalledTimes(1);
     expect(mockState.setSettingsDialogOpen).toHaveBeenCalledWith(true);
+    expect(screen.queryByText('Restore Defaults')).toBeNull();
   });
 });

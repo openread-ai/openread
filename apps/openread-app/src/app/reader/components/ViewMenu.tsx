@@ -9,6 +9,7 @@ import {
   MdZoomIn,
   MdCheck,
   MdOutlineHeadphones,
+  MdRestore,
   MdSync,
   MdSyncProblem,
 } from 'react-icons/md';
@@ -38,6 +39,7 @@ import {
   persistReaderLayout,
   setReaderLayoutMode,
 } from '@/app/reader/utils/readerLayoutContract';
+import { restoreCurrentBookViewSettings } from '@/app/reader/utils/restoreCurrentBookViewSettings';
 import {
   isMobileWebReader,
   type MobileWebKebabDestination,
@@ -86,11 +88,11 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
   const router = useRouter();
   const { user } = useAuth();
   const { envConfig, appService } = useEnv();
-  const { getConfig, getBookDataByReaderKey } = useBookDataStore();
+  const { getConfig, getBookDataByReaderKey, saveConfig } = useBookDataStore();
   const { getVisibleLibrary } = useLibraryStore();
   const { openMobileReaderPanel } = useMobileReaderPanelStore();
   const { parallelViews, setParallel, unsetParallel } = useParallelViewStore();
-  const { setSettingsDialogOpen, setSettingsDialogBookKey } = useSettingsStore();
+  const { settings, setSettingsDialogOpen, setSettingsDialogBookKey } = useSettingsStore();
   const { bookKeys, getView, getViewSettings, getViewState, setViewSettings } = useReaderStore();
   const config = getConfig(bookKey)!;
   const bookData = getBookDataByReaderKey(bookKey)!;
@@ -105,7 +107,11 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
     renditionLayout: bookData.bookDoc?.rendition?.layout,
     format: bookData.book?.format,
   };
-  const readerLayoutPlatform = { isMobile: isMobileReader };
+  const readerLayoutPlatform = {
+    isMobile: isMobileReader,
+    isIOSApp: !!appService?.isIOSApp,
+    isAndroidApp: !!appService?.isAndroidApp,
+  };
   const readerLayout = normalizeReaderLayout({
     settings: viewSettings,
     book: readerLayoutBook,
@@ -120,6 +126,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
   const [invertImgColorInDark, setInvertImgColorInDark] = useState(
     viewSettings!.invertImgColorInDark,
   );
+  const [isRestoringDefaults, setIsRestoringDefaults] = useState(false);
 
   const zoomIn = () => setZoomLevel((prev) => Math.min(prev + ZOOM_STEP, MAX_ZOOM_LEVEL));
   const zoomOut = () => setZoomLevel((prev) => Math.max(prev - ZOOM_STEP, MIN_ZOOM_LEVEL));
@@ -232,6 +239,40 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
     setIsDropdownOpen?.(false);
   };
 
+  const handleRestoreDefaults = async () => {
+    if (!appService || isRestoringDefaults) return;
+
+    setIsRestoringDefaults(true);
+    try {
+      await restoreCurrentBookViewSettings({
+        envConfig,
+        bookKey,
+        config,
+        settings,
+        currentViewSettings: viewSettings,
+        defaultViewSettings: appService.getDefaultViewSettings(),
+        book: readerLayoutBook,
+        platform: readerLayoutPlatform,
+        bookDoc: bookData.bookDoc,
+        renderer: getView(bookKey)?.renderer,
+        setViewSettings,
+        saveConfig,
+      });
+      eventDispatcher.dispatch('toast', {
+        type: 'success',
+        message: _('Reader defaults restored'),
+      });
+      setIsDropdownOpen?.(false);
+    } catch {
+      eventDispatcher.dispatch('toast', {
+        type: 'error',
+        message: _('Failed to restore reader defaults'),
+      });
+    } finally {
+      setIsRestoringDefaults(false);
+    }
+  };
+
   const handleParallelRead = () => {
     if (bookKeys.length < 2) return;
     if (hasParallelGroup) {
@@ -341,6 +382,13 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
           key='font-layout'
           label={_('Font & Layout')}
           onClick={openMobileWebFontLayoutMenu}
+        />,
+        <MenuItem
+          key='restore-defaults'
+          label={_('Restore Defaults')}
+          Icon={MdRestore}
+          disabled={isRestoringDefaults || !appService}
+          onClick={() => void handleRestoreDefaults()}
         />,
         <MenuItem
           key='invert-images-dark-mode'

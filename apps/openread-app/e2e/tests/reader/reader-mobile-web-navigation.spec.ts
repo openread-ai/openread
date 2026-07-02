@@ -436,6 +436,7 @@ test.describe('Mobile web reader navigation regression', () => {
       'Parallel Read',
       'Export Annotations',
       'Font & Layout',
+      'Restore Defaults',
       'Invert Image In Dark Mode',
     ]);
     expect(topLevelLabels).not.toContain('AI Chat History');
@@ -443,7 +444,7 @@ test.describe('Mobile web reader navigation regression', () => {
     expect(topLevelLabels).not.toContain('Never synced');
     expect(topLevelLabels.some((label) => label.startsWith('Synced at '))).toBe(false);
     expect(topLevelLabels.some((label) => /^(Dark|Light|Auto) Mode$/.test(label))).toBe(false);
-    await attachScreenshot(page, testInfo, 'mobile-web-reader-kebab-9-options');
+    await attachScreenshot(page, testInfo, 'mobile-web-reader-kebab-10-options');
 
     await page
       .getByTestId('mobile-reader-menu-dismiss-layer')
@@ -460,6 +461,7 @@ test.describe('Mobile web reader navigation regression', () => {
     await expect(page.getByRole('group', { name: /Font - Settings/ })).toBeVisible({
       timeout: 10_000,
     });
+    await expect(page.getByRole('button', { name: 'Restore Defaults' })).toHaveCount(0);
     const settingsTabs = page.getByRole('group', { name: /Settings Panels - Font/ });
     await expect(settingsTabs).toBeVisible();
     await expect(settingsTabs.locator('[data-tab="Font"]')).toHaveClass(/btn-active/);

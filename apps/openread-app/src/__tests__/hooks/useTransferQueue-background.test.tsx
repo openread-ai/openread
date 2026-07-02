@@ -23,7 +23,6 @@ const { mocks } = vi.hoisted(() => {
   const transferState = {
     transfers: {},
     isQueuePaused: false,
-    setIsTransferQueueOpen: vi.fn(),
   };
   const settingsState = { settings: { autoUpload: true } };
   const libraryState = { library, updateBook: vi.fn(async () => {}) };

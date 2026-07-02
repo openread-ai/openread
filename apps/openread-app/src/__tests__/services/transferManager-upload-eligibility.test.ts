@@ -341,6 +341,30 @@ describe('TransferManager upload eligibility', () => {
     });
   });
 
+  it('restores transfers with the persisted queue pause state', () => {
+    const transfer: TransferItem = {
+      id: 'pending-upload',
+      bookHash: baseBook().hash,
+      bookTitle: 'Manual Book',
+      type: 'upload',
+      status: 'pending',
+      progress: 0,
+      totalBytes: 0,
+      transferredBytes: 0,
+      transferSpeed: 0,
+      retryCount: 0,
+      maxRetries: 3,
+      createdAt: 1,
+      priority: 1,
+      isBackground: true,
+    };
+
+    useTransferStore.getState().restoreTransfers({ [transfer.id]: transfer }, true);
+
+    expect(useTransferStore.getState().transfers[transfer.id]).toEqual(transfer);
+    expect(useTransferStore.getState().isQueuePaused).toBe(true);
+  });
+
   it('preserves non-retryable failed background uploads across restore', () => {
     const failedBackgroundUpload: TransferItem = {
       id: 'background-upload',

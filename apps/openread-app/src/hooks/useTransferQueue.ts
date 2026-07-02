@@ -16,7 +16,6 @@ export function useTransferQueue(libraryLoaded = true, delayInit = 0) {
   const autoUpload = useSettingsStore((state) => state.settings.autoUpload);
   const transfers = useTransferStore((state) => state.transfers);
   const isQueuePaused = useTransferStore((state) => state.isQueuePaused);
-  const setIsTransferQueueOpen = useTransferStore((state) => state.setIsTransferQueueOpen);
 
   useEffect(() => {
     const initManager = async () => {
@@ -179,7 +178,6 @@ export function useTransferQueue(libraryLoaded = true, delayInit = 0) {
     completedTransfers,
     hasActiveTransfers,
 
-    setIsTransferQueueOpen,
     queueUpload,
     queueDownload,
     queueBatchUploads,

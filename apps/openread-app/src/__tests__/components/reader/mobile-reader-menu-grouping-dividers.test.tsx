@@ -36,11 +36,12 @@ const mockState = vi.hoisted(() => {
     setSettingsDialogBookKey: vi.fn(),
     setViewSettings: vi.fn(),
     setThemeMode: vi.fn(),
+    resetThemeDefaults: vi.fn(),
     saveConfig: vi.fn(),
     saveViewSettings: vi.fn(),
-    renderer: {
-      setAttribute: vi.fn(),
-      setStyles: vi.fn(),
+    renderer: null as null | {
+      setAttribute: ReturnType<typeof vi.fn>;
+      setStyles: ReturnType<typeof vi.fn>;
     },
     restoreCurrentBookViewSettings: vi.fn(
       async (options: { renderer?: { setStyles?: (css: string) => void } }) => {
@@ -137,6 +138,7 @@ vi.mock('@/store/themeStore', () => ({
     themeMode: 'dark',
     isDarkMode: true,
     setThemeMode: mockState.setThemeMode,
+    resetThemeDefaults: mockState.resetThemeDefaults,
   }),
 }));
 
@@ -204,7 +206,7 @@ function menuSequence(container: HTMLElement) {
     if ((child as HTMLElement).dataset.testid === 'mobile-reader-menu-group-divider') {
       return 'divider';
     }
-    return child.textContent?.trim().replace(/\s+/g, ' ') ?? '';
+    return child.querySelector('.mx-2')?.textContent?.trim().replace(/\s+/g, ' ') ?? '';
   });
 }
 
@@ -220,6 +222,10 @@ describe('mobile web reader menu grouping dividers', () => {
       appPlatform: 'web',
       hasWindow: false,
       getDefaultViewSettings: vi.fn(() => ({ defaultFontSize: 16 })),
+    };
+    mockState.renderer = {
+      setAttribute: vi.fn(),
+      setStyles: vi.fn(),
     };
     vi.clearAllMocks();
   });
@@ -244,7 +250,7 @@ describe('mobile web reader menu grouping dividers', () => {
       'Export Annotations',
       'divider',
       'Font & Layout',
-      'Restore Defaults',
+      'Restore Reader & Theme Defaults',
       'Invert Image In Dark Mode',
     ]);
 
@@ -302,30 +308,79 @@ describe('mobile web reader menu grouping dividers', () => {
     });
 
     expect(screen.queryByText('Dark Mode')).toBeNull();
-    expect(screen.getAllByText('Restore Defaults')).toHaveLength(1);
+    expect(screen.getAllByText('Restore Reader & Theme Defaults')).toHaveLength(1);
+    expect(
+      screen.getByText('Resets this book’s reader settings and the app theme for all books.'),
+    ).toBeTruthy();
     expect(mockState.setThemeMode).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByText('Restore Defaults'));
+    fireEvent.click(screen.getByText('Restore Reader & Theme Defaults'));
     await waitFor(() => expect(mockState.restoreCurrentBookViewSettings).toHaveBeenCalledOnce());
-    await waitFor(() => expect(mockState.renderer.setStyles).toHaveBeenCalledOnce());
-    expect(mockState.renderer.setStyles).toHaveBeenCalledWith('restored-reader-styles');
+    const renderer = mockState.renderer!;
+    await waitFor(() => expect(renderer.setStyles).toHaveBeenCalledOnce());
+    expect(mockState.resetThemeDefaults).toHaveBeenCalledOnce();
+    expect(mockState.restoreCurrentBookViewSettings.mock.invocationCallOrder[0]).toBeLessThan(
+      mockState.resetThemeDefaults.mock.invocationCallOrder[0],
+    );
+    expect(renderer.setStyles).toHaveBeenCalledWith('restored-reader-styles');
     expect(mockState.restoreCurrentBookViewSettings).toHaveBeenCalledWith(
       expect.objectContaining({
         bookKey: 'book-1',
         config: mockState.config,
         settings: { globalViewSettings: mockState.viewSettings },
         currentViewSettings: mockState.viewSettings,
-        renderer: mockState.renderer,
+        renderer,
         setViewSettings: mockState.setViewSettings,
         saveConfig: mockState.saveConfig,
       }),
     );
     expect(mockState.dispatch).toHaveBeenCalledWith('toast', {
       type: 'success',
-      message: 'Reader defaults restored',
+      message: 'Reader and theme defaults restored',
     });
 
     expect(screen.getByText('Invert Image In Dark Mode')).toBeTruthy();
+  });
+
+  it('does not show success when the visible reader renderer is unavailable', async () => {
+    mockState.renderer = null;
+    renderMobileWebMenu();
+
+    fireEvent.click(screen.getByText('Restore Reader & Theme Defaults'));
+
+    await waitFor(() =>
+      expect(mockState.dispatch).toHaveBeenCalledWith('toast', {
+        type: 'error',
+        message: 'Failed to restore reader and theme defaults',
+      }),
+    );
+    expect(mockState.restoreCurrentBookViewSettings).not.toHaveBeenCalled();
+    expect(mockState.resetThemeDefaults).not.toHaveBeenCalled();
+    expect(mockState.dispatch).not.toHaveBeenCalledWith('toast', {
+      type: 'success',
+      message: 'Reader and theme defaults restored',
+    });
+  });
+
+  it('does not show success when the global theme reset fails', async () => {
+    mockState.resetThemeDefaults.mockImplementationOnce(() => {
+      throw new Error('theme reset failed');
+    });
+    renderMobileWebMenu();
+
+    fireEvent.click(screen.getByText('Restore Reader & Theme Defaults'));
+
+    await waitFor(() =>
+      expect(mockState.dispatch).toHaveBeenCalledWith('toast', {
+        type: 'error',
+        message: 'Failed to restore reader and theme defaults',
+      }),
+    );
+    expect(mockState.restoreCurrentBookViewSettings).toHaveBeenCalledOnce();
+    expect(mockState.dispatch).not.toHaveBeenCalledWith('toast', {
+      type: 'success',
+      message: 'Reader and theme defaults restored',
+    });
   });
 
   it('keeps the desktop Font & Layout entry on the full settings dialog path', () => {
@@ -337,6 +392,6 @@ describe('mobile web reader menu grouping dividers', () => {
     expect(mockState.setSettingsDialogBookKey).toHaveBeenCalledWith('book-1');
     expect(mockState.setSettingsDialogOpen).toHaveBeenCalledTimes(1);
     expect(mockState.setSettingsDialogOpen).toHaveBeenCalledWith(true);
-    expect(screen.queryByText('Restore Defaults')).toBeNull();
+    expect(screen.queryByText('Restore Reader & Theme Defaults')).toBeNull();
   });
 });

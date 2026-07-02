@@ -34,6 +34,7 @@ interface ThemeState {
   dismissSystemUI: () => void;
   setThemeMode: (mode: ThemeMode) => void;
   setThemeColor: (color: string) => void;
+  resetThemeDefaults: () => void;
   updateAppTheme: (color: keyof Palette) => void;
   saveCustomTheme: (
     envConfig: EnvConfigType,
@@ -45,16 +46,22 @@ interface ThemeState {
   updateSafeAreaInsets: (insets: Insets) => void;
 }
 
-const getDefaultThemeColor = (): string => {
+export const DEFAULT_THEME_MODE: ThemeMode = 'auto';
+
+export const getDefaultThemeColor = (): string => {
   return typeof window !== 'undefined' && window.__OPENREAD_IS_EINK ? 'contrast' : 'default';
 };
 
 const getInitialThemeMode = (): ThemeMode => {
-  return settingsLocalAdapter.getThemeMode('auto');
+  return settingsLocalAdapter.getThemeMode(DEFAULT_THEME_MODE);
 };
 
 const getInitialThemeColor = (): string => {
   return settingsLocalAdapter.getThemeColor(getDefaultThemeColor());
+};
+
+const resolveIsDarkMode = (themeMode: ThemeMode, systemIsDarkMode: boolean): boolean => {
+  return themeMode === 'dark' || (themeMode === 'auto' && systemIsDarkMode);
 };
 
 const getResolvedThemeName = (
@@ -62,7 +69,7 @@ const getResolvedThemeName = (
   themeColor: string,
   systemIsDarkMode: boolean,
 ): string => {
-  const isDarkMode = themeMode === 'dark' || (themeMode === 'auto' && systemIsDarkMode);
+  const isDarkMode = resolveIsDarkMode(themeMode, systemIsDarkMode);
   return `${themeColor}-${isDarkMode ? 'dark' : 'light'}`;
 };
 
@@ -71,8 +78,7 @@ export const useThemeStore = create<ThemeState>((set, get) => {
   const initialThemeColor = getInitialThemeColor();
   const systemIsDarkMode =
     typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches;
-  const isDarkMode =
-    initialThemeMode === 'dark' || (initialThemeMode === 'auto' && systemIsDarkMode);
+  const isDarkMode = resolveIsDarkMode(initialThemeMode, systemIsDarkMode);
   const themeCode = getThemeCode();
 
   return {
@@ -92,7 +98,7 @@ export const useThemeStore = create<ThemeState>((set, get) => {
     setSystemUIAlwaysHidden: (hidden: boolean) => set({ systemUIAlwaysHidden: hidden }),
     setThemeMode: (mode) => {
       settingsService.setThemeMode(mode);
-      const isDarkMode = mode === 'dark' || (mode === 'auto' && get().systemIsDarkMode);
+      const isDarkMode = resolveIsDarkMode(mode, get().systemIsDarkMode);
       document.documentElement.setAttribute(
         'data-theme',
         `${get().themeColor}-${isDarkMode ? 'dark' : 'light'}`,
@@ -107,6 +113,19 @@ export const useThemeStore = create<ThemeState>((set, get) => {
         `${color}-${get().isDarkMode ? 'dark' : 'light'}`,
       );
       set({ themeColor: color });
+      set({ themeCode: getThemeCode() });
+    },
+    resetThemeDefaults: () => {
+      const themeMode: ThemeMode = DEFAULT_THEME_MODE;
+      const themeColor = getDefaultThemeColor();
+      settingsService.setThemeMode(themeMode);
+      settingsService.setThemeColor(themeColor);
+      const isDarkMode = resolveIsDarkMode(themeMode, get().systemIsDarkMode);
+      document.documentElement.setAttribute(
+        'data-theme',
+        `${themeColor}-${isDarkMode ? 'dark' : 'light'}`,
+      );
+      set({ themeMode, themeColor, isDarkMode });
       set({ themeCode: getThemeCode() });
     },
     updateAppTheme: (color) => {
@@ -141,7 +160,7 @@ export const useThemeStore = create<ThemeState>((set, get) => {
     },
     handleSystemThemeChange: (systemIsDarkMode) => {
       const { themeMode, themeColor } = get();
-      const isDarkMode = themeMode === 'dark' || (themeMode === 'auto' && systemIsDarkMode);
+      const isDarkMode = resolveIsDarkMode(themeMode, systemIsDarkMode);
       if (typeof document !== 'undefined') {
         document.documentElement.setAttribute(
           'data-theme',
@@ -159,7 +178,7 @@ export const useThemeStore = create<ThemeState>((set, get) => {
 export const loadDataTheme = () => {
   if (typeof localStorage === 'undefined' || typeof document === 'undefined') return;
 
-  const themeMode = settingsService.getThemeMode('auto');
+  const themeMode = settingsService.getThemeMode(DEFAULT_THEME_MODE);
   const themeColor = settingsService.getThemeColor(getDefaultThemeColor());
   const systemIsDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
   document.documentElement.setAttribute(

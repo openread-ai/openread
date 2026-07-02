@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadDataTheme, useThemeStore } from '@/store/themeStore';
+import {
+  DEFAULT_THEME_MODE,
+  getDefaultThemeColor,
+  loadDataTheme,
+  useThemeStore,
+} from '@/store/themeStore';
 
 const setSystemDarkMode = (matches: boolean) => {
   Object.defineProperty(window, 'matchMedia', {
@@ -54,5 +59,42 @@ describe('loadDataTheme', () => {
     useThemeStore.getState().handleSystemThemeChange(true);
 
     expect(document.documentElement.getAttribute('data-theme')).toBe('default-dark');
+  });
+
+  it('resets only global theme mode/color to canonical defaults', () => {
+    localStorage.setItem('themeMode', 'dark');
+    localStorage.setItem('themeColor', 'sepia');
+    localStorage.setItem('notificationPreferences', '{"productUpdates":false}');
+    useThemeStore.setState({
+      themeMode: 'dark',
+      themeColor: 'sepia',
+      systemIsDarkMode: false,
+      isDarkMode: true,
+    });
+
+    useThemeStore.getState().resetThemeDefaults();
+
+    expect(localStorage.getItem('themeMode')).toBe(DEFAULT_THEME_MODE);
+    expect(localStorage.getItem('themeColor')).toBe(getDefaultThemeColor());
+    expect(localStorage.getItem('notificationPreferences')).toBe('{"productUpdates":false}');
+    expect(useThemeStore.getState().themeMode).toBe(DEFAULT_THEME_MODE);
+    expect(useThemeStore.getState().themeColor).toBe('default');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('default-light');
+  });
+
+  it('uses contrast as the default theme color on eink devices', () => {
+    window.__OPENREAD_IS_EINK = true;
+    useThemeStore.setState({
+      themeMode: 'dark',
+      themeColor: 'sepia',
+      systemIsDarkMode: false,
+      isDarkMode: true,
+    });
+
+    useThemeStore.getState().resetThemeDefaults();
+
+    expect(localStorage.getItem('themeMode')).toBe(DEFAULT_THEME_MODE);
+    expect(localStorage.getItem('themeColor')).toBe('contrast');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('contrast-light');
   });
 });

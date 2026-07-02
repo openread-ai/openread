@@ -436,7 +436,7 @@ test.describe('Mobile web reader navigation regression', () => {
       'Parallel Read',
       'Export Annotations',
       'Font & Layout',
-      'Restore Defaults',
+      'Restore Reader & Theme Defaults',
       'Invert Image In Dark Mode',
     ]);
     expect(topLevelLabels).not.toContain('AI Chat History');

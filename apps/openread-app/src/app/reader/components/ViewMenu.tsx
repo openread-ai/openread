@@ -118,7 +118,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
     platform: readerLayoutPlatform,
   });
 
-  const { themeMode, isDarkMode, setThemeMode } = useThemeStore();
+  const { themeMode, isDarkMode, setThemeMode, resetThemeDefaults } = useThemeStore();
   const [zoomLevel, setZoomLevel] = useState(viewSettings!.pageZoomLevel!);
   const [zoomMode, setZoomMode] = useState(viewSettings!.pageZoomMode!);
   const [spreadMode, setSpreadMode] = useState(viewSettings!.pageSpreadMode!);
@@ -242,6 +242,15 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
   const handleRestoreDefaults = async () => {
     if (!appService || isRestoringDefaults) return;
 
+    const renderer = getView(bookKey)?.renderer;
+    if (!renderer) {
+      eventDispatcher.dispatch('toast', {
+        type: 'error',
+        message: _('Failed to restore reader and theme defaults'),
+      });
+      return;
+    }
+
     setIsRestoringDefaults(true);
     try {
       await restoreCurrentBookViewSettings({
@@ -254,19 +263,20 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
         book: readerLayoutBook,
         platform: readerLayoutPlatform,
         bookDoc: bookData.bookDoc,
-        renderer: getView(bookKey)?.renderer,
+        renderer,
         setViewSettings,
         saveConfig,
       });
+      resetThemeDefaults();
       eventDispatcher.dispatch('toast', {
         type: 'success',
-        message: _('Reader defaults restored'),
+        message: _('Reader and theme defaults restored'),
       });
       setIsDropdownOpen?.(false);
     } catch {
       eventDispatcher.dispatch('toast', {
         type: 'error',
-        message: _('Failed to restore reader defaults'),
+        message: _('Failed to restore reader and theme defaults'),
       });
     } finally {
       setIsRestoringDefaults(false);
@@ -385,7 +395,8 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
         />,
         <MenuItem
           key='restore-defaults'
-          label={_('Restore Defaults')}
+          label={_('Restore Reader & Theme Defaults')}
+          description={_('Resets this book’s reader settings and the app theme for all books.')}
           Icon={MdRestore}
           disabled={isRestoringDefaults || !appService}
           onClick={() => void handleRestoreDefaults()}

@@ -5,12 +5,27 @@ import { eventDispatcher } from '@/utils/event';
 
 export type ToastType = 'info' | 'success' | 'warning' | 'error';
 
+export interface ToastAction {
+  label: string;
+  run: () => void;
+}
+
+export interface ToastEventDetail {
+  message: string;
+  type?: ToastType;
+  timeout?: number;
+  className?: string;
+  callback?: (() => void) | null;
+  action?: ToastAction | null;
+}
+
 export const Toast = () => {
   const { safeAreaInsets } = useThemeStore();
   const [toastMessage, setToastMessage] = useState('');
   const [toastType, setToastType] = useState<ToastType>('info');
   const [toastTimeout, setToastTimeout] = useState(5000);
   const [messageClass, setMessageClass] = useState('');
+  const [toastAction, setToastAction] = useState<ToastAction | null>(null);
   const [isVisible, setIsVisible] = useState(false);
   const toastDismissTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -80,7 +95,10 @@ export const Toast = () => {
     if (toastMessage) {
       const timeout = setTimeout(() => {
         setIsVisible(false);
-        setTimeout(() => setToastMessage(''), 300);
+        setTimeout(() => {
+          setToastMessage('');
+          setToastAction(null);
+        }, 300);
       }, toastTimeout);
       toastDismissTimeout.current = timeout;
       return () => {
@@ -90,14 +108,22 @@ export const Toast = () => {
     return;
   }, [toastMessage, toastTimeout]);
 
-  const handleShowToast = async (event: CustomEvent) => {
-    const { message, type = 'info', timeout, className = '', callback = null } = event.detail;
+  const handleShowToast = async (event: CustomEvent<ToastEventDetail>) => {
+    const {
+      message,
+      type = 'info',
+      timeout,
+      className = '',
+      callback = null,
+      action = null,
+    } = event.detail;
     setToastMessage(message);
     setToastType(type);
     if (timeout) setToastTimeout(timeout);
     if (callback && typeof callback === 'function') {
       setTimeout(() => callback(), timeout || 5000);
     }
+    setToastAction(action && typeof action.run === 'function' ? action : null);
     setMessageClass(className);
   };
 
@@ -110,8 +136,16 @@ export const Toast = () => {
 
   const handleDismiss = () => {
     setIsVisible(false);
-    setTimeout(() => setToastMessage(''), 300);
+    setTimeout(() => {
+      setToastMessage('');
+      setToastAction(null);
+    }, 300);
     if (toastDismissTimeout.current) clearTimeout(toastDismissTimeout.current);
+  };
+
+  const handleActionClick = () => {
+    toastAction?.run();
+    handleDismiss();
   };
 
   return (
@@ -159,6 +193,21 @@ export const Toast = () => {
               </React.Fragment>
             ))}
           </span>
+
+          {toastAction && (
+            <button
+              type='button'
+              onClick={handleActionClick}
+              className={clsx(
+                'flex-shrink-0 rounded-lg border px-3 py-1.5 text-sm font-semibold transition-colors',
+                toastType === 'info'
+                  ? 'border-base-content/20 hover:bg-base-300'
+                  : 'border-white/40 bg-white/15 hover:bg-white/25 active:bg-white/30',
+              )}
+            >
+              {toastAction.label}
+            </button>
+          )}
 
           {/* Close button */}
           <button

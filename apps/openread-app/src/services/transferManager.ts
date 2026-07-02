@@ -464,9 +464,18 @@ class TransferManager {
             'unclassified-retryable': genericFailureMessage,
           };
 
+          const retryAction =
+            effectiveTransfer.type === 'upload' || effectiveTransfer.type === 'download'
+              ? {
+                  label: _('Retry'),
+                  run: () => this.retryTransfer(transfer.id),
+                }
+              : null;
+
           eventDispatcher.dispatch('toast', {
             type: 'error',
             message: errorMessages[errorClassification.reason],
+            action: retryAction,
           });
         }
 

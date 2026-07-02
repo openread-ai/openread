@@ -19,6 +19,7 @@ const baseBook = (overrides: Partial<Book> = {}): Book => ({
 function resetTransferManagerForTest(
   overrides: {
     uploadBook?: (book: Book) => Promise<void>;
+    downloadBook?: (book: Book) => Promise<void>;
     updateBook?: (book: Book) => Promise<void>;
     library?: Book[];
   } = {},
@@ -34,7 +35,7 @@ function resetTransferManagerForTest(
   const library = overrides.library ?? [baseBook()];
   manager.appService = {
     uploadBook: overrides.uploadBook ?? vi.fn(async () => {}),
-    downloadBook: vi.fn(async () => {}),
+    downloadBook: overrides.downloadBook ?? vi.fn(async () => {}),
     deleteBook: vi.fn(async () => {}),
   };
   manager.getLibrary = () => library;
@@ -50,6 +51,20 @@ async function executeTransferForTest(transfer: TransferItem) {
       executeTransfer: (transfer: TransferItem) => Promise<void>;
     }
   ).executeTransfer(transfer);
+}
+
+type ToastDispatchDetail = {
+  type?: string;
+  message?: string;
+  action?: { label: string; run: () => void } | null;
+};
+
+function getLastToastDetail(dispatchSpy: { mock: { calls: unknown[][] } }): ToastDispatchDetail {
+  const toastCall = [...dispatchSpy.mock.calls]
+    .reverse()
+    .find(([eventName]) => eventName === 'toast');
+  expect(toastCall).toBeTruthy();
+  return toastCall![1] as ToastDispatchDetail;
 }
 
 describe('TransferManager upload eligibility', () => {
@@ -145,6 +160,54 @@ describe('TransferManager upload eligibility', () => {
       retryable: true,
       incident: true,
     });
+  });
+
+  it('adds a Retry action to terminal foreground upload failure toasts', async () => {
+    const book = baseBook();
+    const uploadBook = vi.fn(async () => {
+      throw new Error('STORAGE_LIMIT_REACHED');
+    });
+    resetTransferManagerForTest({ uploadBook, library: [book] });
+    const dispatchSpy = vi.spyOn(eventDispatcher, 'dispatch');
+
+    const id = useTransferStore.getState().addTransfer(book.hash, book.title, 'upload', 1, false);
+    await executeTransferForTest(useTransferStore.getState().transfers[id]!);
+
+    const toastDetail = getLastToastDetail(dispatchSpy);
+    expect(toastDetail).toMatchObject({
+      type: 'error',
+      message: 'Storage limit reached. Upgrade your plan or remove files.',
+      action: expect.objectContaining({ label: 'Retry' }),
+    });
+
+    const retrySpy = vi.spyOn(transferManager, 'retryTransfer').mockImplementation(() => {});
+    toastDetail.action!.run();
+
+    expect(retrySpy).toHaveBeenCalledWith(id);
+  });
+
+  it('adds a Retry action to terminal foreground download failure toasts', async () => {
+    const book = baseBook();
+    const downloadBook = vi.fn(async () => {
+      throw new Error('STORAGE_LIMIT_REACHED');
+    });
+    resetTransferManagerForTest({ downloadBook, library: [book] });
+    const dispatchSpy = vi.spyOn(eventDispatcher, 'dispatch');
+
+    const id = useTransferStore.getState().addTransfer(book.hash, book.title, 'download', 1, false);
+    await executeTransferForTest(useTransferStore.getState().transfers[id]!);
+
+    const toastDetail = getLastToastDetail(dispatchSpy);
+    expect(toastDetail).toMatchObject({
+      type: 'error',
+      message: 'Storage limit reached. Upgrade your plan or remove files.',
+      action: expect.objectContaining({ label: 'Retry' }),
+    });
+
+    const retrySpy = vi.spyOn(transferManager, 'retryTransfer').mockImplementation(() => {});
+    toastDetail.action!.run();
+
+    expect(retrySpy).toHaveBeenCalledWith(id);
   });
 
   it('keeps background network upload failures pending for silent retry without toast', async () => {

@@ -234,6 +234,8 @@ export class SyncWorker {
   private canonicalEngine: SyncEngine | null = null;
   private realtimeChannel: RealtimeChannel | null = null;
   private userId: string | null = null;
+  private recoveredFailedOutboxUsers = new Set<string>();
+  private recoveringFailedOutboxUsers = new Set<string>();
   /** When true, all new sync operations are suppressed (set by stop()). */
   private stopped = true;
   private _status: SyncWorkerStatus = {
@@ -339,7 +341,7 @@ export class SyncWorker {
     // Hydrate books immediately on startup. Do not let stale offline queue pushes
     // block the remote Library pull for a fresh browser/webview session.
     this.reconcileBooks();
-    this.runSyncCycle();
+    void this.runSyncCycleWithTerminalFailureRecovery();
   }
 
   /**
@@ -435,14 +437,43 @@ export class SyncWorker {
   }
 
   private handleOnline = (): void => {
-    // Resume: drain immediately when coming back online
-    this.drainQueue();
+    // Resume: recover terminal failed outbox records once per session/user, then drain normally.
+    void this.drainQueueWithTerminalFailureRecovery();
   };
 
   private handleOffline = (): void => {
     // Nothing to do — drainQueue checks navigator.onLine
     this.updateStatus({ error: 'Offline — changes will sync when connected' });
   };
+
+  private async recoverTerminalFailedOutboxRecords(): Promise<void> {
+    if (this.stopped || isOffline() || !this.userId || !this.canonicalEngine) return;
+    if (this.recoveredFailedOutboxUsers.has(this.userId)) return;
+    if (this.recoveringFailedOutboxUsers.has(this.userId)) return;
+
+    const recoveryUserId = this.userId;
+    this.recoveringFailedOutboxUsers.add(recoveryUserId);
+    try {
+      const recovered = await this.canonicalEngine.recoverFailed();
+      if (recovered.length > 0) {
+        this.recoveredFailedOutboxUsers.add(recoveryUserId);
+      }
+    } catch (error) {
+      console.warn('[SyncWorker] Failed to recover terminal failed sync outbox records:', error);
+    } finally {
+      this.recoveringFailedOutboxUsers.delete(recoveryUserId);
+    }
+  }
+
+  private async drainQueueWithTerminalFailureRecovery(): Promise<void> {
+    await this.recoverTerminalFailedOutboxRecords();
+    await this.drainQueue();
+  }
+
+  private async runSyncCycleWithTerminalFailureRecovery(): Promise<void> {
+    await this.recoverTerminalFailedOutboxRecords();
+    await this.runSyncCycle();
+  }
 
   /**
    * Process all pending canonical outbox mutations.

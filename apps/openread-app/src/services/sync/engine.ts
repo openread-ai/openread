@@ -126,6 +126,10 @@ export class SyncEngine {
     return this.outbox.pendingCount(this.options.userId);
   }
 
+  async recoverFailed(): Promise<StoredSyncMutation[]> {
+    return this.outbox.recoverFailed({ userId: this.options.userId });
+  }
+
   async drainOnce(): Promise<SyncDrainResult> {
     this.drainPromise ??= this.drainInternal().finally(() => {
       this.drainPromise = null;

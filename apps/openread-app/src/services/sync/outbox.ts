@@ -28,6 +28,10 @@ export interface PendingMutationOptions {
   now?: number;
 }
 
+export interface RecoverFailedOptions extends PendingMutationOptions {
+  nextAttemptAt?: number;
+}
+
 export interface ClaimPendingOptions extends PendingMutationOptions {
   leaseOwner?: string;
   leaseDurationMs?: number;
@@ -39,6 +43,13 @@ interface StorageClaimPendingOptions {
   now: number;
   leaseOwner: string;
   leaseExpiresAt: number;
+}
+
+interface StorageRecoverFailedOptions {
+  userId: UserId;
+  limit: number;
+  now: number;
+  nextAttemptAt: number;
 }
 
 interface StorageClaimCompletionOptions {
@@ -60,6 +71,7 @@ export interface SyncOutboxStorage {
   putMany(records: StoredSyncMutation[]): Promise<void>;
   getAll(): Promise<StoredSyncMutation[]>;
   claimPending(options: StorageClaimPendingOptions): Promise<StoredSyncMutation[]>;
+  recoverFailed(options: StorageRecoverFailedOptions): Promise<StoredSyncMutation[]>;
   deleteClaimed(options: StorageClaimCompletionOptions): Promise<string[]>;
   updateClaimed(options: StorageClaimUpdateOptions): Promise<StoredSyncMutation[]>;
   deleteMany(ids: string[]): Promise<void>;
@@ -129,6 +141,33 @@ const claimRecords = (
       leaseExpiresAt: options.leaseExpiresAt,
     }));
 
+const hasActiveLease = (record: StoredSyncMutation, now: number): boolean =>
+  Boolean(record.leaseOwner && (record.leaseExpiresAt ?? Number.MAX_SAFE_INTEGER) > now);
+
+const recoverFailedRecords = (
+  records: StoredSyncMutation[],
+  options: StorageRecoverFailedOptions,
+): StoredSyncMutation[] =>
+  records
+    .filter(
+      (record) =>
+        record.userId === options.userId &&
+        record.status === 'failed' &&
+        !hasActiveLease(record, options.now),
+    )
+    .sort((a, b) => a.createdAt - b.createdAt)
+    .slice(0, options.limit)
+    .map((record) => ({
+      ...record,
+      status: 'pending',
+      retryCount: 0,
+      updatedAt: options.now,
+      nextAttemptAt: options.nextAttemptAt,
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      lastError: null,
+    }));
+
 export class IndexedDBSyncOutboxStorage implements SyncOutboxStorage {
   private dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -165,6 +204,19 @@ export class IndexedDBSyncOutboxStorage implements SyncOutboxStorage {
     }
     await transactionDone(transaction);
     return claimed.map((record) => clone(record));
+  }
+
+  async recoverFailed(options: StorageRecoverFailedOptions): Promise<StoredSyncMutation[]> {
+    const db = await this.openDatabase();
+    const transaction = db.transaction(MUTATION_STORE_NAME, 'readwrite');
+    const store = transaction.objectStore(MUTATION_STORE_NAME);
+    const records = await requestToPromise<StoredSyncMutation[]>(store.getAll());
+    const recovered = recoverFailedRecords(records, options);
+    for (const record of recovered) {
+      store.put(clone(record));
+    }
+    await transactionDone(transaction);
+    return recovered.map((record) => clone(record));
   }
 
   async deleteClaimed(options: StorageClaimCompletionOptions): Promise<string[]> {
@@ -264,6 +316,14 @@ export class MemorySyncOutboxStorage implements SyncOutboxStorage {
       this.records.set(record.id, clone(record));
     }
     return claimed.map((record) => clone(record));
+  }
+
+  async recoverFailed(options: StorageRecoverFailedOptions): Promise<StoredSyncMutation[]> {
+    const recovered = recoverFailedRecords(Array.from(this.records.values()), options);
+    for (const record of recovered) {
+      this.records.set(record.id, clone(record));
+    }
+    return recovered.map((record) => clone(record));
   }
 
   async deleteClaimed(options: StorageClaimCompletionOptions): Promise<string[]> {
@@ -374,6 +434,17 @@ export class SyncOutbox {
       )
       .sort((a, b) => a.createdAt - b.createdAt)
       .slice(0, limit);
+  }
+
+  async recoverFailed(options: RecoverFailedOptions): Promise<StoredSyncMutation[]> {
+    const now = options.now ?? this.clock();
+    const limit = options.limit ?? DEFAULT_BATCH_LIMIT;
+    return this.storage.recoverFailed({
+      userId: options.userId,
+      limit,
+      now,
+      nextAttemptAt: options.nextAttemptAt ?? now,
+    });
   }
 
   async acknowledgeClaimed(ids: string[], leaseOwner: string): Promise<string[]> {

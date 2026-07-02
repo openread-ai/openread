@@ -238,6 +238,72 @@ describe('SyncWorker book reconcile queue', () => {
     mocks.pullChanges.mockResolvedValue({ books: [] });
   });
 
+  it('recovers terminal failed outbox records before lifecycle drain', async () => {
+    const { SyncWorker } = await import('@/services/sync/syncWorker');
+    const worker = new SyncWorker();
+    const callOrder: string[] = [];
+    const recoverFailed = vi.fn(async () => {
+      callOrder.push('recover');
+      return [{ id: 'note-mutation-1' }];
+    });
+    const drainOnce = vi.fn(async () => {
+      callOrder.push('drain');
+      return { attempted: 1, accepted: 1, conflicted: 0, failed: 0, remaining: 0 };
+    });
+    const testWorker = worker as unknown as {
+      stopped: boolean;
+      userId: string;
+      canonicalEngine: {
+        recoverFailed: typeof recoverFailed;
+        drainOnce: typeof drainOnce;
+        pendingCount: () => Promise<number>;
+      };
+      drainQueueWithTerminalFailureRecovery: () => Promise<void>;
+    };
+    testWorker.stopped = false;
+    testWorker.userId = 'user-1';
+    testWorker.canonicalEngine = { recoverFailed, drainOnce, pendingCount: vi.fn(async () => 0) };
+
+    await testWorker.drainQueueWithTerminalFailureRecovery();
+
+    expect(recoverFailed).toHaveBeenCalledTimes(1);
+    expect(drainOnce).toHaveBeenCalledTimes(1);
+    expect(callOrder).toEqual(['recover', 'drain']);
+    expect(worker.status.lastDrainResult).toEqual({ synced: 1, failed: 0, remaining: 0 });
+  });
+
+  it('does not repeatedly recover the same failed outbox records in one session', async () => {
+    const { SyncWorker } = await import('@/services/sync/syncWorker');
+    const worker = new SyncWorker();
+    const recoverFailed = vi.fn(async () => [{ id: 'note-mutation-1' }]);
+    const drainOnce = vi.fn(async () => ({
+      attempted: 1,
+      accepted: 0,
+      conflicted: 0,
+      failed: 1,
+      remaining: 0,
+    }));
+    const testWorker = worker as unknown as {
+      stopped: boolean;
+      userId: string;
+      canonicalEngine: {
+        recoverFailed: typeof recoverFailed;
+        drainOnce: typeof drainOnce;
+        pendingCount: () => Promise<number>;
+      };
+      drainQueueWithTerminalFailureRecovery: () => Promise<void>;
+    };
+    testWorker.stopped = false;
+    testWorker.userId = 'user-1';
+    testWorker.canonicalEngine = { recoverFailed, drainOnce, pendingCount: vi.fn(async () => 0) };
+
+    await testWorker.drainQueueWithTerminalFailureRecovery();
+    await testWorker.drainQueueWithTerminalFailureRecovery();
+
+    expect(recoverFailed).toHaveBeenCalledTimes(1);
+    expect(drainOnce).toHaveBeenCalledTimes(2);
+  });
+
   it('recovers a cover from canonical files metadata when book uploadedAt is missing', async () => {
     const { SyncWorker } = await import('@/services/sync/syncWorker');
     const worker = new SyncWorker();

@@ -28,6 +28,27 @@ const bookMutation = (
   ...overrides,
 });
 
+const bookNoteMutation = (
+  overrides: Partial<SyncUpsertMutation<'bookNote'>> = {},
+): SyncUpsertMutation<'bookNote'> => ({
+  id: 'note-mutation-1',
+  entity: 'bookNote',
+  entityId: 'd41d8cd98f00b204e9800998ecf8427e:note-1',
+  op: 'upsert',
+  baseRevision: 'rev-1',
+  userId: 'user-1',
+  deviceId: 'device-1',
+  clientUpdatedAt: 100,
+  payload: {
+    id: 'note-1',
+    bookHash: testSyncableBookRef('d41d8cd98f00b204e9800998ecf8427e'),
+    type: 'highlight',
+    cfi: 'epubcfi(/6/2!/4/1:0)',
+    updatedAt: 100,
+  },
+  ...overrides,
+});
+
 describe('canonical SyncOutbox', () => {
   it('persists validated protocol mutations with pending metadata', async () => {
     const outbox = new SyncOutbox(new MemorySyncOutboxStorage(), () => 1_000);
@@ -128,6 +149,66 @@ describe('canonical SyncOutbox', () => {
         status: 'pushing',
         leaseOwner: 'engine-a',
         leaseExpiresAt: 31_000,
+      },
+    ]);
+  });
+
+  it('recovers terminal failed mutations to pending without changing payload metadata', async () => {
+    let now = 1_000;
+    const outbox = new SyncOutbox(new MemorySyncOutboxStorage(), () => now);
+    await outbox.enqueue(bookNoteMutation());
+    await outbox.claimPending({ userId: 'user-1', leaseOwner: 'engine-a' });
+    await outbox.recordClaimFailure(['note-mutation-1'], 'engine-a', 'permanent conflict', {
+      maxRetries: 1,
+      retryBackoffMs: 500,
+    });
+
+    await expect(outbox.getPending({ userId: 'user-1', now: 5_000 })).resolves.toHaveLength(0);
+
+    now = 5_000;
+    const [recovered] = await outbox.recoverFailed({ userId: 'user-1' });
+
+    expect(recovered).toMatchObject({
+      id: 'note-mutation-1',
+      entity: 'bookNote',
+      status: 'pending',
+      retryCount: 0,
+      updatedAt: 5_000,
+      nextAttemptAt: 5_000,
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      lastError: null,
+      payload: expect.objectContaining({ id: 'note-1', type: 'highlight' }),
+      baseRevision: 'rev-1',
+    });
+    await expect(outbox.getPending({ userId: 'user-1', now: 5_000 })).resolves.toHaveLength(1);
+  });
+
+  it('does not recover failed records with an active lease', async () => {
+    const storage = new MemorySyncOutboxStorage();
+    const outbox = new SyncOutbox(storage, () => 1_000);
+    await outbox.enqueue(bookMutation());
+    const [record] = await outbox.getAll('user-1');
+    await storage.putMany([
+      {
+        ...record,
+        status: 'failed',
+        retryCount: 5,
+        leaseOwner: 'engine-a',
+        leaseExpiresAt: 2_000,
+        lastError: 'still owned',
+      },
+    ]);
+
+    await expect(outbox.recoverFailed({ userId: 'user-1', now: 1_500 })).resolves.toEqual([]);
+    await expect(outbox.getAll('user-1')).resolves.toMatchObject([
+      {
+        id: 'mutation-1',
+        status: 'failed',
+        retryCount: 5,
+        leaseOwner: 'engine-a',
+        leaseExpiresAt: 2_000,
+        lastError: 'still owned',
       },
     ]);
   });

@@ -1,0 +1,186 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { loadReaderOpenDocument } from '@/services/readerOpenRecovery';
+import type { Book } from '@/types/book';
+import type { AppService } from '@/types/system';
+import type { ProgressHandler } from '@/utils/transfer';
+
+const { openMock, DocumentLoaderMock } = vi.hoisted(() => {
+  const open = vi.fn();
+  function FakeDocumentLoader() {
+    return { open };
+  }
+  return {
+    openMock: open,
+    DocumentLoaderMock: vi.fn(FakeDocumentLoader),
+  };
+});
+
+vi.mock('@/libs/document', () => ({
+  DocumentLoader: DocumentLoaderMock,
+}));
+
+vi.mock('@/utils/logger', () => ({
+  createLogger: () => ({
+    warn: vi.fn(),
+    info: vi.fn(),
+    error: vi.fn(),
+  }),
+}));
+
+const createBook = (overrides: Partial<Book> = {}): Book =>
+  ({
+    hash: 'book-hash' as Book['hash'],
+    format: 'epub',
+    title: 'Test Book',
+    author: 'Author',
+    createdAt: 1,
+    updatedAt: 1,
+    uploadedAt: null,
+    downloadedAt: null,
+    deletedAt: null,
+    ...overrides,
+  }) as Book;
+
+const createAppService = () =>
+  ({
+    loadBookContent: vi.fn(),
+    redownloadBookContent: vi.fn(),
+  }) as unknown as AppService;
+
+const createContent = (book: Book, name: string, close = vi.fn(async () => {})) => ({
+  book,
+  file: Object.assign(new File([name], name), { close }),
+  close,
+});
+
+const doc = { book: { metadata: { title: 'Recovered' } }, format: 'epub' };
+
+describe('loadReaderOpenDocument', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('recovers a corrupt cloud-backed local book once and forwards progress', async () => {
+    const book = createBook({ uploadedAt: 1, downloadedAt: 2 });
+    const appService = createAppService();
+    const onProgress = vi.fn() as ProgressHandler;
+    const initialContent = createContent(book, 'corrupt.epub');
+    const recoveredContent = createContent(book, 'valid.epub');
+    vi.mocked(appService.loadBookContent).mockResolvedValueOnce(initialContent);
+    vi.mocked(appService.redownloadBookContent).mockResolvedValue(recoveredContent);
+    openMock.mockRejectedValueOnce(new Error('Unsupported or corrupted book file'));
+    openMock.mockResolvedValueOnce(doc);
+
+    const result = await loadReaderOpenDocument(appService, book, onProgress);
+
+    expect(result.recovered).toBe(true);
+    expect(result.doc).toBe(doc);
+    expect(result.content).toBe(recoveredContent);
+    expect(appService.loadBookContent).toHaveBeenCalledTimes(1);
+    expect(appService.loadBookContent).toHaveBeenCalledWith(book, onProgress);
+    expect(initialContent.close).toHaveBeenCalledTimes(1);
+    expect(initialContent.close.mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(appService.redownloadBookContent).mock.invocationCallOrder[0]!,
+    );
+    expect(appService.redownloadBookContent).toHaveBeenCalledTimes(1);
+    expect(appService.redownloadBookContent).toHaveBeenCalledWith(book, onProgress);
+    expect(DocumentLoaderMock).toHaveBeenLastCalledWith(recoveredContent.file);
+  });
+
+  it('recovers a corrupt catalog storage-backed local book', async () => {
+    const book = createBook({ storagePath: 'catalog/books/test.epub' });
+    const appService = createAppService();
+    const recoveredContent = createContent(book, 'valid.epub');
+    vi.mocked(appService.loadBookContent).mockResolvedValueOnce(
+      createContent(book, 'corrupt.epub'),
+    );
+    vi.mocked(appService.redownloadBookContent).mockResolvedValue(recoveredContent);
+    openMock.mockRejectedValueOnce(new Error('parse failed'));
+    openMock.mockResolvedValueOnce(doc);
+
+    await expect(loadReaderOpenDocument(appService, book)).resolves.toMatchObject({
+      recovered: true,
+      content: recoveredContent,
+      doc,
+    });
+    expect(appService.loadBookContent).toHaveBeenCalledTimes(1);
+    expect(appService.redownloadBookContent).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not treat downloadedAt as remote provenance for local-only imported books', async () => {
+    const book = createBook({
+      downloadedAt: 2,
+      storagePath: null,
+      uploadedAt: null,
+      url: undefined,
+    });
+    const appService = createAppService();
+    vi.mocked(appService.loadBookContent).mockResolvedValue(createContent(book, 'local.epub'));
+    openMock.mockRejectedValueOnce(new Error('parse failed'));
+
+    await expect(loadReaderOpenDocument(appService, book)).rejects.toThrow('parse failed');
+    expect(appService.redownloadBookContent).not.toHaveBeenCalled();
+  });
+
+  it('does not retry URL-only books', async () => {
+    const book = createBook({ url: 'https://example.com/book.epub' });
+    const appService = createAppService();
+    vi.mocked(appService.loadBookContent).mockResolvedValue(createContent(book, 'remote.epub'));
+    openMock.mockRejectedValueOnce(new Error('parse failed'));
+
+    await expect(loadReaderOpenDocument(appService, book)).rejects.toThrow('parse failed');
+    expect(appService.redownloadBookContent).not.toHaveBeenCalled();
+  });
+
+  it('does not retry books with no remote provenance', async () => {
+    const book = createBook();
+    const appService = createAppService();
+    vi.mocked(appService.loadBookContent).mockResolvedValue(createContent(book, 'local.epub'));
+    openMock.mockRejectedValueOnce(new Error('parse failed'));
+
+    await expect(loadReaderOpenDocument(appService, book)).rejects.toThrow('parse failed');
+    expect(appService.redownloadBookContent).not.toHaveBeenCalled();
+  });
+
+  it('does not recover when the initial content download fails before document open', async () => {
+    const book = createBook({ uploadedAt: 1, downloadedAt: 2 });
+    const appService = createAppService();
+    vi.mocked(appService.loadBookContent).mockRejectedValue(new Error('download failed'));
+
+    await expect(loadReaderOpenDocument(appService, book)).rejects.toThrow('download failed');
+    expect(openMock).not.toHaveBeenCalled();
+    expect(appService.redownloadBookContent).not.toHaveBeenCalled();
+  });
+
+  it('does not set success state or retry again when redownload fails', async () => {
+    const book = createBook({ uploadedAt: 1, downloadedAt: 2 });
+    const appService = createAppService();
+    const initialContent = createContent(book, 'corrupt.epub');
+    vi.mocked(appService.loadBookContent).mockResolvedValue(initialContent);
+    vi.mocked(appService.redownloadBookContent).mockRejectedValue(new Error('redownload failed'));
+    openMock.mockRejectedValueOnce(new Error('parse failed'));
+
+    await expect(loadReaderOpenDocument(appService, book)).rejects.toThrow('redownload failed');
+    expect(initialContent.close).toHaveBeenCalledTimes(1);
+    expect(appService.loadBookContent).toHaveBeenCalledTimes(1);
+    expect(appService.redownloadBookContent).toHaveBeenCalledTimes(1);
+  });
+
+  it('tries recovery only once and closes recovered content when the replacement still cannot open', async () => {
+    const book = createBook({ storagePath: 'catalog/books/test.epub' });
+    const appService = createAppService();
+    const recoveredContent = createContent(book, 'still-corrupt.epub');
+    vi.mocked(appService.loadBookContent).mockResolvedValueOnce(
+      createContent(book, 'corrupt.epub'),
+    );
+    vi.mocked(appService.redownloadBookContent).mockResolvedValue(recoveredContent);
+    openMock.mockRejectedValueOnce(new Error('parse failed'));
+    openMock.mockRejectedValueOnce(new Error('still corrupt'));
+
+    await expect(loadReaderOpenDocument(appService, book)).rejects.toThrow('still corrupt');
+    expect(appService.redownloadBookContent).toHaveBeenCalledTimes(1);
+    expect(appService.loadBookContent).toHaveBeenCalledTimes(1);
+    expect(recoveredContent.close).toHaveBeenCalledTimes(1);
+  });
+});

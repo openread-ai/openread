@@ -4,7 +4,6 @@ import { createLogger } from '@/utils/logger';
 const logger = createLogger('readerStore');
 
 import {
-  BookContent,
   BookConfig,
   PageInfo,
   BookProgress,
@@ -15,7 +14,8 @@ import {
 import { Insets } from '@/types/misc';
 import { EnvConfigType } from '@/services/environment';
 import { FoliateView } from '@/types/view';
-import { DocumentLoader, TOCItem } from '@/libs/document';
+import { TOCItem } from '@/libs/document';
+import { loadReaderOpenDocument } from '@/services/readerOpenRecovery';
 import { updateToc } from '@/utils/toc';
 import { formatTitle, getMetadataHash, getPrimaryLanguage } from '@/utils/book';
 import { getBaseFilename } from '@/utils/path';
@@ -171,10 +171,9 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
       let bookDoc = bookData?.bookDoc;
       let file = bookData?.file;
       if (!bookDoc || !file || reload) {
-        const content = (await appService.loadBookContent(book, onLoadProgress)) as BookContent;
-        file = content.file;
         logger.info('Loading book', key);
-        const doc = await new DocumentLoader(file).open();
+        const { content, doc } = await loadReaderOpenDocument(appService, book, onLoadProgress);
+        file = content.file;
         bookDoc = doc.book;
       }
       const config = await appService.loadBookConfig(book, settings);

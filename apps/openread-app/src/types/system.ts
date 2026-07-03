@@ -157,6 +157,7 @@ export interface AppService {
   fetchBookDetails(book: Book): Promise<BookMetadata>;
   saveBookConfig(book: Book, config: BookConfig, settings?: SystemSettings): Promise<void>;
   loadBookContent(book: Book, onProgress?: ProgressHandler): Promise<BookContent>;
+  redownloadBookContent(book: Book, onProgress?: ProgressHandler): Promise<BookContent>;
   loadLibraryBooks(): Promise<Book[]>;
   saveLibraryBooks(books: Book[]): Promise<void>;
   getCoverImageUrl(book: Book): string;

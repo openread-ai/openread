@@ -8,8 +8,8 @@
 
 import { create } from 'zustand';
 import { createLogger } from '@/utils/logger';
-import { BookContent, FIXED_LAYOUT_FORMATS } from '@/types/book';
-import { DocumentLoader } from '@/libs/document';
+import { FIXED_LAYOUT_FORMATS } from '@/types/book';
+import { loadReaderOpenDocument } from '@/services/readerOpenRecovery';
 import { updateToc } from '@/utils/toc';
 import { formatTitle, getMetadataHash, getPrimaryLanguage } from '@/utils/book';
 import { getBaseFilename } from '@/utils/path';
@@ -74,10 +74,9 @@ export const useReaderLoadingStore = create<LoadingState & LoadingActions>((set,
       const book = library.find((b) => b.hash === bookId);
       if (!book) throw new Error('Book not found');
 
-      const content = (await appService.loadBookContent(book)) as BookContent;
-      const file = content.file;
       logger.info('Loading book', bookId);
-      const doc = await new DocumentLoader(file).open();
+      const { content, doc } = await loadReaderOpenDocument(appService, book);
+      const file = content.file;
       const bookDoc = doc.book;
       const config = await appService.loadBookConfig(book, settings);
 

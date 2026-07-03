@@ -443,6 +443,92 @@ describe('appService book content loading', () => {
     expect(content.file).toBeInstanceOf(File);
     expect(book.downloadedAt).toEqual(expect.any(Number));
   });
+
+  it('redownloads storage-backed content through the catalog signing path', async () => {
+    const fs = (appService as unknown as { fs: FileSystem }).fs;
+    vi.mocked(fs.exists).mockResolvedValue(true);
+    vi.mocked(downloadFile).mockResolvedValue({});
+
+    const book = createMockBook({
+      hash: testOpenReadBookRef('d41d8cd98f00b204e9800998ecf8427e'),
+      storagePath: 'catalog/books/test.epub',
+      downloadedAt: null,
+    });
+
+    const onProgress = vi.fn();
+
+    const content = await appService.redownloadBookContent(book, onProgress);
+
+    expect(mockGetDownloadUrl).toHaveBeenCalledWith(book.hash);
+    expect(downloadFile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appService,
+        dst: '/mock-local-filename',
+        cfp: 'catalog/books/test.epub',
+        url: 'https://signed.example/book.epub',
+        onProgress,
+      }),
+    );
+    expect(content.file).toBeInstanceOf(File);
+    expect(book.downloadedAt).toEqual(expect.any(Number));
+  });
+
+  it('redownloads only the uploaded book file when active file metadata is unavailable', async () => {
+    const fs = (appService as unknown as { fs: FileSystem }).fs;
+    vi.mocked(fs.exists)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValue(true);
+    vi.mocked(downloadFile)
+      .mockRejectedValueOnce(new Error('download intent failed'))
+      .mockResolvedValueOnce({});
+
+    const book = createMockBook({
+      storagePath: null,
+      uploadedAt: 1,
+      downloadedAt: null,
+    });
+    const onProgress = vi.fn();
+
+    const content = await appService.redownloadBookContent(book, onProgress);
+
+    expect(downloadFile).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        appService,
+        dst: '/mock-local-filename',
+        cfp: 'books/mock-remote-filename',
+        onProgress,
+      }),
+    );
+    expect(downloadFile).toHaveBeenNthCalledWith(
+      2,
+      expect.not.objectContaining({
+        bookHash: book.hash,
+        kind: 'user_book_file',
+      }),
+    );
+    expect(downloadFile).not.toHaveBeenCalledWith(
+      expect.objectContaining({ cfp: 'books/mock-cover-filename' }),
+    );
+    expect(content.file).toBeInstanceOf(File);
+    expect(book.downloadedAt).toEqual(expect.any(Number));
+  });
+
+  it('does not mark downloaded when active file metadata redownload fails without fallback', async () => {
+    const fs = (appService as unknown as { fs: FileSystem }).fs;
+    vi.mocked(fs.exists).mockResolvedValue(false);
+    vi.mocked(downloadFile).mockRejectedValueOnce(new Error('download intent failed'));
+
+    const book = createMockBook({
+      storagePath: null,
+      uploadedAt: null,
+      downloadedAt: null,
+    });
+
+    await expect(appService.redownloadBookContent(book)).rejects.toThrow('download intent failed');
+    expect(book.downloadedAt).toBeNull();
+  });
 });
 
 describe('appService importBook transaction-like rollback', () => {

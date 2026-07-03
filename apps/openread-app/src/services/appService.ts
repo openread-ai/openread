@@ -791,6 +791,22 @@ export abstract class BaseAppService implements AppService {
     book.downloadedAt = Date.now();
   }
 
+  private async downloadUploadedBookFile(book: Book, onProgress?: ProgressHandler): Promise<void> {
+    const localPath = getLocalBookFilename(book);
+    if (!(await this.fs.exists(getDir(book), 'Books'))) {
+      await this.fs.createDir(getDir(book), 'Books');
+    }
+
+    await downloadFile({
+      appService: this,
+      dst: `${this.localBooksDir}/${localPath}`,
+      cfp: `${CLOUD_BOOKS_SUBDIR}/${getRemoteBookFilename(book)}`,
+      expectedSha256: book.platformHash,
+      onProgress,
+    });
+    book.downloadedAt = Date.now();
+  }
+
   async exportBook(book: Book): Promise<boolean> {
     const { file } = await this.loadBookContent(book);
     const content = await file.arrayBuffer();
@@ -870,6 +886,32 @@ export abstract class BaseAppService implements AppService {
       }
     }
     return { book, file };
+  }
+
+  async redownloadBookContent(book: Book, onProgress?: ProgressHandler): Promise<BookContent> {
+    if (book.storagePath) {
+      await this.downloadStorageBackedBook(book, onProgress);
+      return this.loadBookContent(book, onProgress);
+    }
+
+    if (book.url && !book.uploadedAt) {
+      throw new Error(BOOK_FILE_NOT_FOUND_ERROR);
+    }
+
+    try {
+      await this.downloadFileMetadataBackedBook(book, onProgress);
+    } catch (metadataError) {
+      logger.info('Book active file metadata redownload unavailable', {
+        hash: book.hash,
+        error: metadataError,
+      });
+      if (!book.uploadedAt) {
+        throw metadataError;
+      }
+      await this.downloadUploadedBookFile(book, onProgress);
+    }
+
+    return this.loadBookContent(book, onProgress);
   }
 
   async loadBookConfig(book: Book, settings: SystemSettings): Promise<BookConfig> {

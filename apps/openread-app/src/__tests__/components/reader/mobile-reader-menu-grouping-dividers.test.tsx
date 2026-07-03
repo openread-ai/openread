@@ -310,8 +310,8 @@ describe('mobile web reader menu grouping dividers', () => {
     expect(screen.queryByText('Dark Mode')).toBeNull();
     expect(screen.getAllByText('Restore Defaults')).toHaveLength(1);
     expect(
-      screen.getByText('Resets this book’s reader appearance and the app theme for all books.'),
-    ).toBeTruthy();
+      screen.queryByText('Resets this book’s reader appearance and the app theme for all books.'),
+    ).toBeNull();
     expect(mockState.setThemeMode).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByText('Restore Defaults'));
@@ -336,6 +336,7 @@ describe('mobile web reader menu grouping dividers', () => {
     );
     expect(mockState.dispatch).toHaveBeenCalledWith('toast', {
       message: 'Defaults restored',
+      timeout: 2000,
     });
 
     expect(screen.getByText('Invert Image In Dark Mode')).toBeTruthy();
@@ -357,6 +358,7 @@ describe('mobile web reader menu grouping dividers', () => {
     expect(mockState.resetThemeDefaults).not.toHaveBeenCalled();
     expect(mockState.dispatch).not.toHaveBeenCalledWith('toast', {
       message: 'Defaults restored',
+      timeout: 2000,
     });
   });
 
@@ -377,6 +379,7 @@ describe('mobile web reader menu grouping dividers', () => {
     expect(mockState.restoreCurrentBookViewSettings).toHaveBeenCalledOnce();
     expect(mockState.dispatch).not.toHaveBeenCalledWith('toast', {
       message: 'Defaults restored',
+      timeout: 2000,
     });
   });
 

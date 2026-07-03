@@ -1,10 +1,10 @@
 import { testOpenReadBookRef } from '../utils/bookIdentityFixtures';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { CloudSyncService } from '@/services/cloudSync';
+import { CloudSyncService, COVER_DOWNLOAD_CONCURRENCY } from '@/services/cloudSync';
 import type { Book } from '@/types/book';
 import type { FileSystem } from '@/types/system';
-import { deleteFile, downloadFile, uploadFile } from '@/libs/storage';
+import { batchGetDownloadUrls, deleteFile, downloadFile, uploadFile } from '@/libs/storage';
 import { CLOUD_BOOKS_SUBDIR } from '@/services/constants';
 import { getCoverFilename, getRemoteBookFilename } from '@/utils/book';
 
@@ -33,6 +33,14 @@ const createFs = (existingPaths: Set<string>): FileSystem =>
     writeFile: vi.fn(async () => {}),
     createDir: vi.fn(async () => {}),
   }) as unknown as FileSystem;
+
+const createCoverBooks = (count: number): Book[] =>
+  Array.from({ length: count }, (_, index) =>
+    baseBook({
+      hash: testOpenReadBookRef(index.toString(16).padStart(32, '0')),
+      title: `Book ${index}`,
+    }),
+  );
 
 describe('CloudSyncService storage lifecycle', () => {
   beforeEach(() => {
@@ -79,6 +87,63 @@ describe('CloudSyncService storage lifecycle', () => {
       }),
     );
     expect(book.downloadedAt).toBeNull();
+  });
+
+  it('bounds catalog cover downloads at the shared cover sync seam', async () => {
+    const books = createCoverBooks(48);
+    vi.mocked(batchGetDownloadUrls).mockResolvedValue(
+      books.map((book) => ({
+        lfp: getCoverFilename(book),
+        cfp: `${CLOUD_BOOKS_SUBDIR}/${getCoverFilename(book)}`,
+        downloadUrl: `https://r2.example/${book.hash}/cover.png`,
+        sizeBytes: 123,
+      })),
+    );
+
+    let activeDownloads = 0;
+    let maxActiveDownloads = 0;
+    vi.mocked(downloadFile).mockImplementation(async () => {
+      activeDownloads++;
+      maxActiveDownloads = Math.max(maxActiveDownloads, activeDownloads);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      activeDownloads--;
+      return {};
+    });
+
+    const service = new CloudSyncService(createFs(new Set()), '/books', async (path) => path);
+
+    await service.downloadBookCovers(books, {} as never);
+
+    expect(batchGetDownloadUrls).toHaveBeenCalledWith(expect.any(Array), {
+      concurrency: COVER_DOWNLOAD_CONCURRENCY,
+    });
+    expect(downloadFile).toHaveBeenCalledTimes(books.length);
+    expect(maxActiveDownloads).toBeLessThanOrEqual(COVER_DOWNLOAD_CONCURRENCY);
+    expect(Math.max(...books.map((book) => book.coverDownloadedAt ?? 0))).toBeGreaterThan(0);
+  });
+
+  it('keeps catalog cover download failures non-fatal', async () => {
+    const books = createCoverBooks(3);
+    vi.mocked(batchGetDownloadUrls).mockResolvedValue(
+      books.map((book) => ({
+        lfp: getCoverFilename(book),
+        cfp: `${CLOUD_BOOKS_SUBDIR}/${getCoverFilename(book)}`,
+        downloadUrl: `https://r2.example/${book.hash}/cover.png`,
+        sizeBytes: 123,
+      })),
+    );
+    vi.mocked(downloadFile)
+      .mockRejectedValueOnce(new Error('Download intent failed: 429'))
+      .mockResolvedValue({});
+
+    const service = new CloudSyncService(createFs(new Set()), '/books', async (path) => path);
+
+    await expect(service.downloadBookCovers(books, {} as never)).resolves.toBeUndefined();
+
+    expect(downloadFile).toHaveBeenCalledTimes(books.length);
+    expect(books[0]!.coverDownloadedAt).toBeUndefined();
+    expect(books[1]!.coverDownloadedAt).toEqual(expect.any(Number));
+    expect(books[2]!.coverDownloadedAt).toEqual(expect.any(Number));
   });
 
   it('does not delete cloud files when the book is not uploaded', async () => {

@@ -1,9 +1,9 @@
 'use client';
 
 import { FormEvent, type ElementType, useMemo, useState } from 'react';
-import { BookOpen } from 'lucide-react';
 
 import LegalLinks from '@/components/LegalLinks';
+import { OpenReadMark } from '@/components/brand/openread-mark';
 import { Button } from '@/components/primitives/button';
 import {
   Card,
@@ -109,7 +109,7 @@ export function OpenReadAuthCard({
       <Card className='border-base-300/80 bg-base-100/95 shadow-base-content/10 shadow-2xl backdrop-blur'>
         <CardHeader className='items-center gap-3 pb-5 text-center'>
           <div className='from-primary to-secondary text-primary-content flex size-12 items-center justify-center rounded-2xl bg-gradient-to-br shadow-lg'>
-            <BookOpen aria-hidden='true' className='size-6' strokeWidth={1.6} />
+            <OpenReadMark aria-hidden='true' className='size-6' />
           </div>
           <div className='space-y-2'>
             <CardTitle aria-level={1} className='text-2xl' role='heading'>

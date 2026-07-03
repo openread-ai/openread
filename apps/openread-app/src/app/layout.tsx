@@ -30,7 +30,8 @@ export const metadata: Metadata = {
   ],
   icons: [
     { rel: 'apple-touch-icon', url: '/apple-touch-icon.png' },
-    { rel: 'icon', url: '/icon.png' },
+    { rel: 'icon', url: '/favicon.svg', type: 'image/svg+xml' },
+    { rel: 'icon', url: '/favicon.ico', sizes: '32x32' },
   ],
   openGraph: {
     type: 'website',
@@ -94,7 +95,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name='apple-mobile-web-app-status-bar-style' content='default' />
         <meta name='apple-mobile-web-app-title' content='Openread' />
         <link rel='apple-touch-icon' sizes='180x180' href='/apple-touch-icon.png' />
-        <link rel='icon' href='/favicon.ico' />
+        <link rel='icon' type='image/svg+xml' href='/favicon.svg' />
+        <link rel='icon' href='/favicon.ico' sizes='32x32' />
         <link rel='manifest' href='/manifest.json' />
         <meta name='description' content={description} />
         <meta property='og:url' content={url} />

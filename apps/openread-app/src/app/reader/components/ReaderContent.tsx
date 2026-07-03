@@ -17,7 +17,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { UnlistenFn } from '@tauri-apps/api/event';
 import { tauriHandleClose, tauriHandleOnCloseWindow } from '@/utils/window';
 import { isTauriAppPlatform } from '@/services/environment';
-import { createBookKey, parseBookRefFromReaderBookKey } from '@/utils/readerBookKey';
+import { createReaderBookKey, parseBookRefFromReaderBookKey } from '@openread/types';
 import { throttle } from '@/utils/throttle';
 import { eventDispatcher } from '@/utils/event';
 import { navigateToLibrary } from '@/utils/nav';
@@ -90,7 +90,7 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
       navigateBackToLibrary();
       return;
     }
-    const initialBookKeys = validBookRefs.map((bookRef) => createBookKey(bookRef));
+    const initialBookKeys = validBookRefs.map((bookRef) => createReaderBookKey(bookRef));
     setBookKeys(initialBookKeys);
     const uniqueIds = new Set<string>();
     logger.info('Initialize books', initialBookKeys);

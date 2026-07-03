@@ -34,7 +34,7 @@ import { getHighlightColorHex } from '../../utils/annotatorUtil';
 import { registerNativeMenuBridge } from '@/services/annotation/nativeMenuBridge';
 import { bridge } from '@/services/bridge/bridgeService';
 import { ANNOTATION_ACTION_EVENT } from '@/services/annotation/menuConfig';
-import { parseBookRefFromReaderBookKey } from '@/utils/readerBookKey';
+import { parseBookRefFromReaderBookKey } from '@openread/types';
 import type { AnnotationActionEvent } from '@/services/annotation/menuConfig';
 import { annotationToolButtons } from './AnnotationTools';
 import {

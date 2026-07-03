@@ -7,7 +7,7 @@ import { AppService } from '@/types/system';
 import { SETTINGS_ACCOUNT_PATH } from '@/lib/billing-routes';
 import { createLogger } from '@/utils/logger';
 import { LOCAL_PERSISTENCE_KEYS } from '@/services/persistence/localPersistenceRegistry';
-import { normalizeBookReference } from '@/utils/readerBookKey';
+import { normalizeBookReference } from '@openread/types';
 
 const logger = createLogger('nav');
 

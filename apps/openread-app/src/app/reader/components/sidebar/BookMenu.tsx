@@ -23,7 +23,7 @@ import { getParallelReadMenuBooks } from '../../utils/parallelReadEligibility';
 // import { setAboutDialogVisible } from '@/components/AboutWindow'; // disabled: About
 import { useBookDataStore } from '@/store/bookDataStore';
 import { sortTocItems } from '@/utils/toc';
-import { parseBookRefFromReaderBookKey } from '@/utils/readerBookKey';
+import { parseBookRefFromReaderBookKey } from '@openread/types';
 import useBooksManager from '../../hooks/useBooksManager';
 import MenuItem from '@/components/MenuItem';
 import Menu from '@/components/Menu';

@@ -2,7 +2,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useEnv } from '@/context/EnvContext';
 import { useReaderStore } from '@/store/readerStore';
 import { useSidebarStore } from '@/store/sidebarStore';
-import { createBookKey, parseBookRefFromReaderBookKey } from '@/utils/readerBookKey';
+import { createReaderBookKey, parseBookRefFromReaderBookKey } from '@openread/types';
 import { useParallelViewStore } from '@/store/parallelViewStore';
 import { navigateToReader } from '@/utils/nav';
 
@@ -29,7 +29,7 @@ const useBooksManager = () => {
     isParallel: boolean,
     sourceBookKey = sideBarBookKey,
   ) => {
-    const newKey = createBookKey(id);
+    const newKey = createReaderBookKey(id);
     initViewState(envConfig, id, newKey, isPrimary);
     const updatedKeys = bookKeys.includes(newKey) ? bookKeys : [...bookKeys, newKey];
     if (!bookKeys.includes(newKey)) {

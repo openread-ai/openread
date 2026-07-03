@@ -8,7 +8,7 @@ import { getDirFromLanguage } from './rtl';
 import { code6392to6391, isValidLang, normalizedLangCode } from './lang';
 import { md5 } from './md5';
 import { createLogger } from '@/utils/logger';
-import { isCatalogBookRef } from '@/utils/bookHash';
+import { isCatalogBookRef } from '@openread/types';
 import { parseMetaHash, type MetaHash } from '@openread/types';
 
 const logger = createLogger('book');

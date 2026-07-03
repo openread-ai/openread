@@ -7,7 +7,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { createLogger } from '@/utils/logger';
 import { makeAnnotationTargetFromSelection } from '@/services/annotation/annotationTargetContract';
-import { parseBookRefFromReaderBookKey } from '@/utils/readerBookKey';
+import { parseBookRefFromReaderBookKey } from '@openread/types';
 
 const logger = createLogger('annotation-editor');
 

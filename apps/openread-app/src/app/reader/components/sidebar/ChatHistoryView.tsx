@@ -15,7 +15,7 @@ import { useSidebarStore } from '@/store/sidebarStore';
 import { useParallelViewStore } from '@/store/parallelViewStore';
 import type { AIConversation } from '@/services/ai/types';
 import { useEnv } from '@/context/EnvContext';
-import { createBookKey, parseBookRefFromReaderBookKey } from '@/utils/readerBookKey';
+import { createReaderBookKey, parseBookRefFromReaderBookKey } from '@openread/types';
 import { usePrimaryBookHash } from '@/app/reader/hooks/usePrimaryBookHash';
 import {
   DropdownMenu,
@@ -166,7 +166,7 @@ const ChatHistoryView: React.FC<ChatHistoryViewProps> = ({
           const { initViewState, setBookKeys } = useReaderStore.getState();
           const newKeys: string[] = [];
           for (const hash of missingHashes) {
-            const newKey = createBookKey(hash);
+            const newKey = createReaderBookKey(hash);
             initViewState(envConfig, hash, newKey, false);
             newKeys.push(newKey);
           }

@@ -5,7 +5,7 @@ import { EnvConfigType } from '@/services/environment';
 import { getBookNoteTargetKey } from '@/services/annotation/annotationTargetContract';
 import { BookDoc } from '@/libs/document';
 import { useLibraryStore } from './libraryStore';
-import { parseBookRefFromReaderBookKey, normalizeBookReference } from '@/utils/readerBookKey';
+import { parseBookRefFromReaderBookKey, normalizeBookReference } from '@openread/types';
 import { createLogger } from '@/utils/logger';
 
 const logger = createLogger('bookDataStore');

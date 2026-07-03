@@ -100,10 +100,14 @@ vi.mock('@/store/bookDataStore', () => ({
   }),
 }));
 
-vi.mock('@/utils/readerBookKey', () => ({
-  createBookKey: () => 'reader-key-1',
-  parseBookRefFromReaderBookKey: (key: string) => (key === 'invalid' ? null : 'book-1'),
-}));
+vi.mock('@openread/types', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@openread/types')>();
+  return {
+    ...actual,
+    createReaderBookKey: () => 'reader-key-1',
+    parseBookRefFromReaderBookKey: (key: string) => (key === 'invalid' ? null : 'book-1'),
+  };
+});
 
 vi.mock('@/utils/nav', () => ({ navigateToLibrary: vi.fn() }));
 vi.mock('@/helpers/openWith', () => ({ parseOpenWithFiles: vi.fn(async () => []) }));

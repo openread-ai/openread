@@ -19,7 +19,7 @@ import { createRejectFilter } from '@/utils/node';
 import Dropdown from '@/components/Dropdown';
 import SearchOptions from './SearchOptions';
 import { createLogger } from '@/utils/logger';
-import { parseBookRefFromReaderBookKey } from '@/utils/readerBookKey';
+import { parseBookRefFromReaderBookKey } from '@openread/types';
 import { LOCAL_PERSISTENCE_PREFIXES } from '@/services/persistence/localPersistenceRegistry';
 
 const logger = createLogger('search');

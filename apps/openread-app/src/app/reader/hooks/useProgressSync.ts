@@ -14,7 +14,7 @@ import { getCFIFromXPointer, getXPointerFromCFI, normalizeProgressXPointer } fro
 import { createLogger } from '@/utils/logger';
 import { enqueueBookConfigForSync } from '@/services/sync/helpers';
 import { remoteApplyEventMatchesBook, subscribeRemoteApply } from '@/services/sync/remoteApply';
-import { parseBookRefFromReaderBookKey } from '@/utils/readerBookKey';
+import { parseBookRefFromReaderBookKey } from '@openread/types';
 import { parseSyncableBookRef } from '@openread/types';
 
 const logger = createLogger('progress-sync');

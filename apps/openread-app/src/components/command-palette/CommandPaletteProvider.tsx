@@ -11,7 +11,7 @@ import { tauriHandleSetAlwaysOnTop, tauriHandleToggleFullScreen } from '@/utils/
 import { setAboutDialogVisible } from '@/components/AboutWindow';
 import { saveSysSettings } from '@/helpers/settings';
 import { SettingsPanelType } from '@/components/settings/SettingsDialog';
-import { isReaderBookKeyOrRef } from '@/utils/readerBookKey';
+import { isReaderBookKeyOrRef } from '@openread/types';
 import { eventDispatcher } from '@/utils/event';
 import {
   CommandItem,

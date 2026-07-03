@@ -13,7 +13,7 @@ import { useBookDataStore } from '@/store/bookDataStore';
 import { useReaderStore } from '@/store/readerStore';
 import { uniqueId } from '@/utils/misc';
 import { createLogger } from '@/utils/logger';
-import { parseBookRefFromReaderBookKey } from '@/utils/readerBookKey';
+import { parseBookRefFromReaderBookKey } from '@openread/types';
 
 const logger = createLogger('instant-annotation');
 

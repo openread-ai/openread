@@ -24,7 +24,7 @@ import { useSettingsStore } from './settingsStore';
 import { useBookDataStore } from './bookDataStore';
 import { useLibraryStore } from './libraryStore';
 import { uniqueId } from '@/utils/misc';
-import { parseBookRefFromReaderBookKey } from '@/utils/readerBookKey';
+import { parseBookRefFromReaderBookKey } from '@openread/types';
 import { getInitialReaderViewSettings } from '@/app/reader/utils/readerLayoutContract';
 import type { ProgressHandler } from '@/utils/transfer';
 

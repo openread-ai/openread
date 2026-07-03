@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useReaderStore } from '@/store/readerStore';
 import { useParallelViewStore } from '@/store/parallelViewStore';
-import { parseBookRefFromReaderBookKey } from '@/utils/readerBookKey';
+import { parseBookRefFromReaderBookKey } from '@openread/types';
 
 /**
  * In a parallel read session, returns the primary (first-opened/initiating) book's hash.

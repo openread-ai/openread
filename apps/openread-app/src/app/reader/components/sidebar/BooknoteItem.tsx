@@ -22,7 +22,7 @@ import { NOTE_PREFIX } from '@/types/view';
 import useScrollToItem from '../../hooks/useScrollToItem';
 import TextButton from '@/components/TextButton';
 import TextEditor, { TextEditorRef } from '@/components/TextEditor';
-import { parseBookRefFromReaderBookKey } from '@/utils/readerBookKey';
+import { parseBookRefFromReaderBookKey } from '@openread/types';
 
 interface BooknoteItemProps {
   bookKey: string;

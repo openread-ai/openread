@@ -38,7 +38,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 import type { AIMessage } from '@/services/ai/types';
 import { aiStore } from '@/services/ai/storage/aiStore';
 import { useAIChatStore } from '@/store/aiChatStore';
-import { isSyncableLibraryBookHash, parseSyncableBookRef } from '@/utils/bookHash';
+import { isSyncableBookRef, parseSyncableBookRef } from '@openread/types';
 import { getDeviceId } from '@/services/deviceService';
 import { LOCAL_PERSISTENCE_KEYS } from '@/services/persistence/localPersistenceRegistry';
 import {
@@ -630,7 +630,7 @@ export class SyncWorker {
       const library = useLibraryStore.getState().library;
       const localHashes: Record<string, number> = {};
       for (const book of library) {
-        if (!isSyncableLibraryBookHash(book.hash)) continue;
+        if (!isSyncableBookRef(book.hash)) continue;
         localHashes[book.hash] = Math.max(book.updatedAt || 0, book.deletedAt || 0);
       }
 

@@ -7,7 +7,7 @@ import {
 } from '@/services/annotation/annotationTargetContract';
 import envConfig from '@/services/environment';
 import { settingsService } from '@/services/settings/settingsService';
-import { parseSyncableBookRef } from '@/utils/bookHash';
+import { parseSyncableBookRef } from '@openread/types';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useLibraryStore } from '@/store/libraryStore';
 import { usePlatformSidebarStore } from '@/store/platformSidebarStore';

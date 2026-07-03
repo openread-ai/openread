@@ -4,7 +4,7 @@ import { SystemSettings } from '@/types/settings';
 import { EnvConfigType } from '@/services/environment';
 import { settingsService } from '@/services/settings/settingsService';
 import { initDayjs } from '@/utils/time';
-import { isReaderBookKeyOrRef } from '@/utils/readerBookKey';
+import { isReaderBookKeyOrRef } from '@openread/types';
 import { createLogger } from '@/utils/logger';
 
 const logger = createLogger('settingsStore');

@@ -47,7 +47,7 @@ import {
 import { tauriHandleToggleFullScreen } from '@/utils/window';
 import { LAUNCH_TTS_ENABLED, LAUNCH_TRANSLATION_ENABLED } from '@/services/launchFeatures';
 import { getParallelReadMenuBooks } from '../utils/parallelReadEligibility';
-import { parseBookRefFromReaderBookKey } from '@/utils/readerBookKey';
+import { parseBookRefFromReaderBookKey } from '@openread/types';
 import MenuItem from '@/components/MenuItem';
 import Menu from '@/components/Menu';
 import { BookMenuItems } from './sidebar/BookMenu';

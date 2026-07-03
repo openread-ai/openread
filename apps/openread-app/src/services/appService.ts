@@ -34,7 +34,7 @@ import {
 } from '@/utils/book';
 import { md5, partialMD5 } from '@/utils/md5';
 import { computeFileHash } from '@/services/platform/storage';
-import { parseLocalBookHash, parsePlatformBookHash } from '@/utils/bookHash';
+import { parseLocalBookHash, parsePlatformBookHash } from '@openread/types';
 import { getBaseFilename, getFilename } from '@/utils/path';
 import { BookDoc, DocumentLoader, EXTS } from '@/libs/document';
 import {

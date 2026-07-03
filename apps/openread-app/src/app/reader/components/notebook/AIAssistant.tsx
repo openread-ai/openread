@@ -23,7 +23,7 @@ import { createAgenticAdapter } from '@/services/ai';
 import type { AISettings, AIMessage } from '@/services/ai/types';
 import { useBookChapters } from '@/app/reader/hooks/useBookChapters';
 import { Thread } from '@/components/assistant/Thread';
-import { parseBookRefFromReaderBookKey } from '@/utils/readerBookKey';
+import { parseBookRefFromReaderBookKey } from '@openread/types';
 import { LAUNCH_BYOK_ENABLED } from '@/services/launchFeatures';
 import { normalizeReaderLayout } from '@/app/reader/utils/readerLayoutContract';
 import {

@@ -360,7 +360,7 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
       });
     }
 
-    // Disable the default context menu on mobile devices (selection handles suffice)
+    // Apply the shared owner contract: allow native/iOS web menus, suppress only OpenRead-owned touch menus.
     detail.doc?.addEventListener('contextmenu', handleContextmenu);
   };
 
@@ -651,8 +651,8 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
       }
       return;
     }
-    // Native mobile apps own new-selection actions through the platform menu/bridge.
-    // Mobile web browsers are mobile form-factor only and must keep using this web popup.
+    // Native app and iOS/iPadOS mobile-web new selections are owned by their
+    // platform/browser menu; Android mobile web remains OpenRead-owned.
     if (shouldSuppressWebAnnotationPopupForSelection({ appService, selection })) return;
 
     containerRef.current?.focus();

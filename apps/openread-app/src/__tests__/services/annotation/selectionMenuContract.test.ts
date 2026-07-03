@@ -4,40 +4,69 @@ import {
   isHighlightActionDisabledForFormat,
   shouldSuppressBrowserSelectionMenuForSelection,
   shouldSuppressWebAnnotationPopupForSelection,
+  usesBrowserNativeAnnotationSelectionMenu,
   usesNativeAnnotationSelectionMenu,
   usesWebAnnotationSelectionMenu,
 } from '@/services/annotation/selectionMenuContract';
 import type { AppService } from '@/types/system';
 
 const appService = (
-  overrides: Partial<Pick<AppService, 'isMobile' | 'isIOSApp' | 'isAndroidApp' | 'appPlatform'>>,
+  overrides: Partial<
+    Pick<AppService, 'isMobile' | 'isIOSApp' | 'isAndroidApp' | 'appPlatform' | 'osPlatform'>
+  >,
 ) =>
   ({
     isMobile: false,
     isIOSApp: false,
     isAndroidApp: false,
     appPlatform: 'web',
+    osPlatform: 'macos',
     ...overrides,
   }) as AppService;
 
 describe('annotation selection menu contract', () => {
-  it('keeps web annotation ownership for mobile web browsers', () => {
-    const mobileWeb = appService({ isMobile: true, appPlatform: 'web' });
+  it('keeps OpenRead annotation ownership for Android mobile web browsers', () => {
+    const androidMobileWeb = appService({
+      isMobile: true,
+      appPlatform: 'web',
+      osPlatform: 'android',
+    });
 
-    expect(usesNativeAnnotationSelectionMenu(mobileWeb)).toBe(false);
-    expect(usesWebAnnotationSelectionMenu(mobileWeb)).toBe(true);
+    expect(usesNativeAnnotationSelectionMenu(androidMobileWeb)).toBe(false);
+    expect(usesBrowserNativeAnnotationSelectionMenu(androidMobileWeb)).toBe(false);
+    expect(usesWebAnnotationSelectionMenu(androidMobileWeb)).toBe(true);
     expect(
       shouldSuppressWebAnnotationPopupForSelection({
-        appService: mobileWeb,
+        appService: androidMobileWeb,
         selection: { annotated: false },
       }),
     ).toBe(false);
     expect(
       shouldSuppressBrowserSelectionMenuForSelection({
-        appService: mobileWeb,
+        appService: androidMobileWeb,
         pointerType: 'touch',
       }),
     ).toBe(true);
+  });
+
+  it('uses browser-native ownership for new selections in iOS mobile web browsers', () => {
+    const iosMobileWeb = appService({ isMobile: true, appPlatform: 'web', osPlatform: 'ios' });
+
+    expect(usesNativeAnnotationSelectionMenu(iosMobileWeb)).toBe(false);
+    expect(usesBrowserNativeAnnotationSelectionMenu(iosMobileWeb)).toBe(true);
+    expect(usesWebAnnotationSelectionMenu(iosMobileWeb)).toBe(false);
+    expect(
+      shouldSuppressWebAnnotationPopupForSelection({
+        appService: iosMobileWeb,
+        selection: { annotated: false },
+      }),
+    ).toBe(true);
+    expect(
+      shouldSuppressBrowserSelectionMenuForSelection({
+        appService: iosMobileWeb,
+        pointerType: 'touch',
+      }),
+    ).toBe(false);
   });
 
   it('suppresses the web annotation popup for new selections in native iOS and Android apps', () => {
@@ -78,12 +107,24 @@ describe('annotation selection menu contract', () => {
     ).toBe(false);
   });
 
-  it('keeps existing native annotations editable through the web popup path', () => {
-    const nativeIOS = appService({ isMobile: true, isIOSApp: true, appPlatform: 'tauri' });
+  it('keeps existing native-owned annotations editable through the web popup path', () => {
+    const nativeIOS = appService({
+      isMobile: true,
+      isIOSApp: true,
+      appPlatform: 'tauri',
+      osPlatform: 'ios',
+    });
+    const iosMobileWeb = appService({ isMobile: true, appPlatform: 'web', osPlatform: 'ios' });
 
     expect(
       shouldSuppressWebAnnotationPopupForSelection({
         appService: nativeIOS,
+        selection: { annotated: true },
+      }),
+    ).toBe(false);
+    expect(
+      shouldSuppressWebAnnotationPopupForSelection({
+        appService: iosMobileWeb,
         selection: { annotated: true },
       }),
     ).toBe(false);
@@ -113,14 +154,27 @@ describe('annotation selection menu contract', () => {
   });
 
   it('routes PDF contextmenu ownership through the shared platform contract', () => {
-    const mobileWeb = appService({ isMobile: true, appPlatform: 'web' });
-    const nativeIOS = appService({ isMobile: true, isIOSApp: true, appPlatform: 'tauri' });
+    const androidMobileWeb = appService({
+      isMobile: true,
+      appPlatform: 'web',
+      osPlatform: 'android',
+    });
+    const iosMobileWeb = appService({ isMobile: true, appPlatform: 'web', osPlatform: 'ios' });
+    const nativeIOS = appService({
+      isMobile: true,
+      isIOSApp: true,
+      appPlatform: 'tauri',
+      osPlatform: 'ios',
+    });
     const desktopWeb = appService({ isMobile: false, appPlatform: 'web' });
     const desktopTauri = appService({ isMobile: false, appPlatform: 'tauri' });
 
-    expect(getPdfContextMenuSelectionAction({ appService: mobileWeb, pointerType: 'touch' })).toBe(
-      'suppress-browser',
-    );
+    expect(
+      getPdfContextMenuSelectionAction({ appService: androidMobileWeb, pointerType: 'touch' }),
+    ).toBe('suppress-browser');
+    expect(
+      getPdfContextMenuSelectionAction({ appService: iosMobileWeb, pointerType: 'touch' }),
+    ).toBe('allow-native');
     expect(getPdfContextMenuSelectionAction({ appService: nativeIOS, pointerType: 'touch' })).toBe(
       'allow-native',
     );

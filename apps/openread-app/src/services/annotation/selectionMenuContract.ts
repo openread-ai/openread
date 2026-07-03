@@ -3,7 +3,7 @@ import type { BookFormat } from '@/types/book';
 
 type AnnotationSelectionMenuPlatform = Pick<
   AppService,
-  'appPlatform' | 'isMobile' | 'isIOSApp' | 'isAndroidApp'
+  'appPlatform' | 'osPlatform' | 'isMobile' | 'isIOSApp' | 'isAndroidApp'
 >;
 
 type AnnotationPopupSelection =
@@ -15,17 +15,27 @@ type AnnotationPopupSelection =
 
 /**
  * Native app builds have a platform-owned text-selection action menu/bridge.
- * Mobile web browsers share the mobile form factor but must keep using the web
- * annotation popup, so this contract intentionally keys off native app
- * capability rather than broad mobile user-agent detection.
+ * iOS/iPadOS mobile web keeps browser-native selection ownership because Safari
+ * callout suppression is not reliable while preserving selectable reader text.
+ * Android mobile web remains OpenRead-owned, and desktop web/Tauri keep the
+ * existing web/desktop context-menu paths.
  */
 export const usesNativeAnnotationSelectionMenu = (
   appService?: AnnotationSelectionMenuPlatform | null,
 ) => Boolean(appService?.isIOSApp || appService?.isAndroidApp);
 
+export const usesBrowserNativeAnnotationSelectionMenu = (
+  appService?: AnnotationSelectionMenuPlatform | null,
+) =>
+  Boolean(
+    appService?.appPlatform === 'web' && appService.isMobile && appService.osPlatform === 'ios',
+  );
+
 export const usesWebAnnotationSelectionMenu = (
   appService?: AnnotationSelectionMenuPlatform | null,
-) => !usesNativeAnnotationSelectionMenu(appService);
+) =>
+  !usesNativeAnnotationSelectionMenu(appService) &&
+  !usesBrowserNativeAnnotationSelectionMenu(appService);
 
 export const shouldSuppressWebAnnotationPopupForSelection = ({
   appService,
@@ -33,7 +43,10 @@ export const shouldSuppressWebAnnotationPopupForSelection = ({
 }: {
   appService?: AnnotationSelectionMenuPlatform | null;
   selection?: AnnotationPopupSelection;
-}) => usesNativeAnnotationSelectionMenu(appService) && !selection?.annotated;
+}) =>
+  (usesNativeAnnotationSelectionMenu(appService) ||
+    usesBrowserNativeAnnotationSelectionMenu(appService)) &&
+  !selection?.annotated;
 
 export const shouldSuppressBrowserSelectionMenuForSelection = ({
   appService,
@@ -42,7 +55,12 @@ export const shouldSuppressBrowserSelectionMenuForSelection = ({
   appService?: AnnotationSelectionMenuPlatform | null;
   pointerType?: string | null;
 }) => {
-  if (usesNativeAnnotationSelectionMenu(appService)) return false;
+  if (
+    usesNativeAnnotationSelectionMenu(appService) ||
+    usesBrowserNativeAnnotationSelectionMenu(appService)
+  ) {
+    return false;
+  }
   if (appService?.appPlatform === 'web' && appService.isMobile) return true;
   return pointerType === 'touch' || pointerType === 'pen';
 };
@@ -61,7 +79,12 @@ export const getPdfContextMenuSelectionAction = ({
   pointerType?: string | null;
   hasDesktopNativeMenu?: boolean;
 }): PdfContextMenuSelectionAction => {
-  if (usesNativeAnnotationSelectionMenu(appService)) return 'allow-native';
+  if (
+    usesNativeAnnotationSelectionMenu(appService) ||
+    usesBrowserNativeAnnotationSelectionMenu(appService)
+  ) {
+    return 'allow-native';
+  }
   if (hasDesktopNativeMenu && (pointerType == null || pointerType === 'mouse'))
     return 'allow-native';
   if (shouldSuppressBrowserSelectionMenuForSelection({ appService, pointerType })) {

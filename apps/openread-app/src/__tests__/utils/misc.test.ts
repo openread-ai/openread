@@ -1,5 +1,43 @@
-import { describe, it, expect } from 'vitest';
-import { makeSafeFilename } from '../../utils/misc';
+import { afterEach, describe, it, expect } from 'vitest';
+import { getOSPlatform, makeSafeFilename } from '../../utils/misc';
+
+const originalUserAgent = navigator.userAgent;
+const originalMaxTouchPoints = navigator.maxTouchPoints;
+
+const stubNavigatorPlatform = (userAgent: string, maxTouchPoints = 0) => {
+  Object.defineProperty(navigator, 'userAgent', {
+    configurable: true,
+    value: userAgent,
+  });
+  Object.defineProperty(navigator, 'maxTouchPoints', {
+    configurable: true,
+    value: maxTouchPoints,
+  });
+};
+
+afterEach(() => {
+  stubNavigatorPlatform(originalUserAgent, originalMaxTouchPoints);
+});
+
+describe('getOSPlatform', () => {
+  it('classifies iPad desktop-mode Safari as iOS', () => {
+    stubNavigatorPlatform(
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) AppleWebKit/605.1.15 Version/17.0 Safari/605.1.15',
+      5,
+    );
+
+    expect(getOSPlatform()).toBe('ios');
+  });
+
+  it('keeps pointerless desktop macOS classified as macOS', () => {
+    stubNavigatorPlatform(
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/17.0 Safari/605.1.15',
+      0,
+    );
+
+    expect(getOSPlatform()).toBe('macos');
+  });
+});
 
 describe('makeSafeFilename', () => {
   describe('Basic sanitization', () => {

@@ -72,8 +72,12 @@ export const getUserLocale = (lang: string): string | undefined => {
 // to check if the app is running on iOS
 export const getOSPlatform = (): OsPlatform => {
   const userAgent = navigator.userAgent.toLowerCase();
+  const isiPadDesktopMode =
+    userAgent.includes('macintosh') &&
+    'maxTouchPoints' in navigator &&
+    navigator.maxTouchPoints > 1;
 
-  if (/iphone|ipad|ipod/.test(userAgent)) return 'ios';
+  if (/iphone|ipad|ipod/.test(userAgent) || isiPadDesktopMode) return 'ios';
   if (userAgent.includes('android')) return 'android';
   if (userAgent.includes('macintosh') || userAgent.includes('mac os x')) return 'macos';
   if (userAgent.includes('windows nt')) return 'windows';

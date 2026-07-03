@@ -47,6 +47,10 @@ node e2e/qa/cli.mjs notion-init --activity ACT-093 --platform web-chromium
 node e2e/qa/cli.mjs platform-run --activity ACT-093 --target settings --platform web-chromium
 node e2e/qa/cli.mjs platform-publish --activity ACT-093 --attempt settings-web-chromium-20260514 --platform web-chromium
 
+# Account/book-delete/persistence PR-1 red baseline (ACCT/DEL slots are expected red until
+# A/B account fixtures, disposable book SQL proof, and R2/storage audit are provisioned)
+node e2e/qa/cli.mjs platform-run --activity ACT-ACCOUNT-DELETE-PERSISTENCE-CONTRACTS --target account-delete-persistence --platform web-chromium --local-only
+
 # Matrix flow: Playwright-backed platforms can run in parallel; native/Tauri stay serial
 node e2e/qa/cli.mjs matrix-run --activity ACT-093 --target settings --matrix playwright-all --concurrency 3
 

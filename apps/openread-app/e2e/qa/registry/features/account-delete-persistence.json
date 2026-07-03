@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "description": "Account A/B isolation plus book-delete propagation/persistence contract red-baseline target for ACT-ACCOUNT-DELETE-PERSISTENCE-CONTRACTS PR-1.",
+  "aliases": {
+    "account-delete-persistence-contract": "account-delete-persistence",
+    "account-delete-persistence-contracts": "account-delete-persistence",
+    "book-delete-persistence": "account-delete-persistence"
+  },
+  "lanes": {
+    "account-delete-persistence": {
+      "lane": "account-delete-persistence",
+      "runLevel": "feature",
+      "specs": ["e2e/tests/account-delete-persistence"],
+      "description": "Live, non-mocked account A/B isolation and book-delete propagation/persistence baseline. Green evidence requires QA A/B accounts, disposable book fixtures, SQL verification, and R2/storage audit.",
+      "defaultExpectedOutcome": "Account/book-delete/persistence behavior should match ACCT/DEL/PAR contracts in docs/testing/everything-current-state-and-qa-baseline.md.",
+      "expectedOutcomes": {
+        "ACCT-001/ACCT-002/ACCT-003 captures env-blocked A/B account isolation baseline slot": {
+          "scenarioId": "ACCT-001/ACCT-002/ACCT-003",
+          "expected": "Account A/B switching proves no cross-account library/cache/outbox artifact leakage and A return integrity through live UI/session evidence."
+        },
+        "DEL-001/DEL-002 captures env-blocked book delete server-storage baseline slot": {
+          "scenarioId": "DEL-001/DEL-002",
+          "expected": "Book delete proof requires a disposable book fixture, server-authoritative books.deleted_at, and owned R2/file storage removal or tombstone evidence."
+        },
+        "DEL-003/DEL-004/DEL-005/DEL-006 captures env-blocked delete propagation persistence baseline slot": {
+          "scenarioId": "DEL-003/DEL-004/DEL-005/DEL-006",
+          "expected": "Book delete tombstones propagate cross-device, survive offline/reload/logout/account-switch lifecycle, handle legacy/pre-namespace keys, and do not resurrect soft-deleted books."
+        },
+        "PAR-001/PAR-002 validates canonical platform target and fixture reset contract": {
+          "scenarioId": "PAR-001/PAR-002",
+          "expected": "The target is discoverable through the canonical QA CLI and records explicit setup/reset requirements for platform and pre-namespace migration evidence."
+        }
+      }
+    }
+  },
+  "targets": {}
+}

@@ -269,8 +269,7 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
       });
       resetThemeDefaults();
       eventDispatcher.dispatch('toast', {
-        type: 'success',
-        message: _('Reader and theme defaults restored'),
+        message: _('Defaults restored'),
       });
       setIsDropdownOpen?.(false);
     } catch {
@@ -395,8 +394,8 @@ const ViewMenu: React.FC<ViewMenuProps> = ({ bookKey, setIsDropdownOpen }) => {
         />,
         <MenuItem
           key='restore-defaults'
-          label={_('Restore Reader & Theme Defaults')}
-          description={_('Resets this book’s reader settings and the app theme for all books.')}
+          label={_('Restore Defaults')}
+          description={_('Resets this book’s reader appearance and the app theme for all books.')}
           Icon={MdRestore}
           disabled={isRestoringDefaults || !appService}
           onClick={() => void handleRestoreDefaults()}

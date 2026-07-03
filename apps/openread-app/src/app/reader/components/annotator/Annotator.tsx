@@ -50,9 +50,11 @@ import {
 import {
   getPdfContextMenuSelectionAction,
   isHighlightActionDisabledForFormat,
+  shouldShowWebAnnotationActionsSheetForSelection,
   shouldSuppressWebAnnotationPopupForSelection,
 } from '@/services/annotation/selectionMenuContract';
 import AnnotationRangeEditor from './AnnotationRangeEditor';
+import AnnotationActionsSheet from './AnnotationActionsSheet';
 import AnnotationPopup from './AnnotationPopup';
 import {
   showNativeColorPicker,
@@ -94,6 +96,7 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
 
   const [selection, setSelection] = useState<TextSelection | null>(null);
   const [showAnnotPopup, setShowAnnotPopup] = useState(false);
+  const [showAnnotationActionsSheet, setShowAnnotationActionsSheet] = useState(false);
   const [showWiktionaryPopup, setShowWiktionaryPopup] = useState(false);
   const [showWikipediaPopup, setShowWikipediaPopup] = useState(false);
   const [showDeepLPopup, setShowDeepLPopup] = useState(false);
@@ -123,6 +126,7 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
 
   const showingPopup =
     showAnnotPopup ||
+    showAnnotationActionsSheet ||
     showWiktionaryPopup ||
     showWikipediaPopup ||
     showDeepLPopup ||
@@ -224,6 +228,7 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     throttle(() => {
       setSelection(null);
       setShowAnnotPopup(false);
+      setShowAnnotationActionsSheet(false);
       setShowWiktionaryPopup(false);
       setShowWikipediaPopup(false);
       setShowDeepLPopup(false);
@@ -651,11 +656,24 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
       }
       return;
     }
-    // Native app and iOS/iPadOS mobile-web new selections are owned by their
-    // platform/browser menu; Android mobile web remains OpenRead-owned.
+    // iOS/iPadOS mobile web keeps Safari selection ownership, but OpenRead
+    // still provides actions through a separate non-overlapping dock.
+    if (shouldShowWebAnnotationActionsSheetForSelection({ appService, selection })) {
+      containerRef.current?.focus();
+      setShowAnnotationActionsSheet(true);
+      setShowAnnotPopup(false);
+      setShowDeepLPopup(false);
+      setShowWiktionaryPopup(false);
+      setShowWikipediaPopup(false);
+      return;
+    }
+
+    // Native app new selections are owned by their platform menu; Android mobile
+    // web and desktop web/Tauri remain OpenRead-owned through the anchored popup.
     if (shouldSuppressWebAnnotationPopupForSelection({ appService, selection })) return;
 
     containerRef.current?.focus();
+    setShowAnnotationActionsSheet(false);
     setShowAnnotPopup(true);
     setShowDeepLPopup(false);
     setShowWiktionaryPopup(false);
@@ -1116,6 +1134,9 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
             onDismiss={handleDismissPopupAndSelection}
           />
         )}
+      {showAnnotationActionsSheet && selection && (
+        <AnnotationActionsSheet buttons={toolButtons} onDismiss={handleDismissPopupAndSelection} />
+      )}
       {showAnnotPopup && trianglePosition && annotPopupPosition && (
         <AnnotationPopup
           bookKey={bookKey}

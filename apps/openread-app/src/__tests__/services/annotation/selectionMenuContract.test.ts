@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  getAnnotationSelectionActionSurface,
   getPdfContextMenuSelectionAction,
   isHighlightActionDisabledForFormat,
+  shouldShowWebAnnotationActionsSheetForSelection,
   shouldSuppressBrowserSelectionMenuForSelection,
   shouldSuppressWebAnnotationPopupForSelection,
   usesBrowserNativeAnnotationSelectionMenu,
@@ -42,6 +44,18 @@ describe('annotation selection menu contract', () => {
       }),
     ).toBe(false);
     expect(
+      shouldShowWebAnnotationActionsSheetForSelection({
+        appService: androidMobileWeb,
+        selection: { annotated: false },
+      }),
+    ).toBe(false);
+    expect(
+      getAnnotationSelectionActionSurface({
+        appService: androidMobileWeb,
+        selection: { annotated: false },
+      }),
+    ).toBe('web-popup');
+    expect(
       shouldSuppressBrowserSelectionMenuForSelection({
         appService: androidMobileWeb,
         pointerType: 'touch',
@@ -49,7 +63,7 @@ describe('annotation selection menu contract', () => {
     ).toBe(true);
   });
 
-  it('uses browser-native ownership for new selections in iOS mobile web browsers', () => {
+  it('uses browser-native ownership with a detached OpenRead actions sheet for new selections in iOS mobile web browsers', () => {
     const iosMobileWeb = appService({ isMobile: true, appPlatform: 'web', osPlatform: 'ios' });
 
     expect(usesNativeAnnotationSelectionMenu(iosMobileWeb)).toBe(false);
@@ -61,6 +75,18 @@ describe('annotation selection menu contract', () => {
         selection: { annotated: false },
       }),
     ).toBe(true);
+    expect(
+      shouldShowWebAnnotationActionsSheetForSelection({
+        appService: iosMobileWeb,
+        selection: { annotated: false },
+      }),
+    ).toBe(true);
+    expect(
+      getAnnotationSelectionActionSurface({
+        appService: iosMobileWeb,
+        selection: { annotated: false },
+      }),
+    ).toBe('web-actions-sheet');
     expect(
       shouldSuppressBrowserSelectionMenuForSelection({
         appService: iosMobileWeb,
@@ -87,6 +113,18 @@ describe('annotation selection menu contract', () => {
         selection: { annotated: false },
       }),
     ).toBe(true);
+    expect(
+      shouldShowWebAnnotationActionsSheetForSelection({
+        appService: nativeIOS,
+        selection: { annotated: false },
+      }),
+    ).toBe(false);
+    expect(
+      getAnnotationSelectionActionSurface({
+        appService: nativeIOS,
+        selection: { annotated: false },
+      }),
+    ).toBe('native-menu');
   });
 
   it('does not suppress native app selection menus through browser context handling', () => {
@@ -128,6 +166,18 @@ describe('annotation selection menu contract', () => {
         selection: { annotated: true },
       }),
     ).toBe(false);
+    expect(
+      shouldShowWebAnnotationActionsSheetForSelection({
+        appService: iosMobileWeb,
+        selection: { annotated: true },
+      }),
+    ).toBe(false);
+    expect(
+      getAnnotationSelectionActionSurface({
+        appService: iosMobileWeb,
+        selection: { annotated: true },
+      }),
+    ).toBe('web-popup');
   });
 
   it('keeps desktop touch and pen context menus suppressed without taking desktop mouse ownership', () => {

@@ -13,6 +13,8 @@ type AnnotationPopupSelection =
   | null
   | undefined;
 
+export type AnnotationSelectionActionSurface = 'native-menu' | 'web-popup' | 'web-actions-sheet';
+
 /**
  * Native app builds have a platform-owned text-selection action menu/bridge.
  * iOS/iPadOS mobile web keeps browser-native selection ownership because Safari
@@ -37,16 +39,34 @@ export const usesWebAnnotationSelectionMenu = (
   !usesNativeAnnotationSelectionMenu(appService) &&
   !usesBrowserNativeAnnotationSelectionMenu(appService);
 
+export const getAnnotationSelectionActionSurface = ({
+  appService,
+  selection,
+}: {
+  appService?: AnnotationSelectionMenuPlatform | null;
+  selection?: AnnotationPopupSelection;
+}): AnnotationSelectionActionSurface => {
+  if (selection?.annotated) return 'web-popup';
+  if (usesNativeAnnotationSelectionMenu(appService)) return 'native-menu';
+  if (usesBrowserNativeAnnotationSelectionMenu(appService)) return 'web-actions-sheet';
+  return 'web-popup';
+};
+
 export const shouldSuppressWebAnnotationPopupForSelection = ({
   appService,
   selection,
 }: {
   appService?: AnnotationSelectionMenuPlatform | null;
   selection?: AnnotationPopupSelection;
-}) =>
-  (usesNativeAnnotationSelectionMenu(appService) ||
-    usesBrowserNativeAnnotationSelectionMenu(appService)) &&
-  !selection?.annotated;
+}) => getAnnotationSelectionActionSurface({ appService, selection }) !== 'web-popup';
+
+export const shouldShowWebAnnotationActionsSheetForSelection = ({
+  appService,
+  selection,
+}: {
+  appService?: AnnotationSelectionMenuPlatform | null;
+  selection?: AnnotationPopupSelection;
+}) => getAnnotationSelectionActionSurface({ appService, selection }) === 'web-actions-sheet';
 
 export const shouldSuppressBrowserSelectionMenuForSelection = ({
   appService,

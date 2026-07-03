@@ -18,6 +18,11 @@ import type { CollectionRecord } from './client';
 export type RemoteConfigTransform = { config: BookConfig; record: BookDataRecord };
 export type RemoteNoteTransform = { note: BookNote; record: BookDataRecord };
 
+export type RemoteApplyDurabilityFailures = {
+  failedRecords: BookDataRecord[];
+  failedTombstones: SyncTombstone[];
+};
+
 type SyncableCollection = CollectionRecord;
 
 export type RemoteApplyEvent =
@@ -130,13 +135,15 @@ async function loadLocalConfig(book: Book): Promise<BookConfig> {
   }
 }
 
-async function persistBookConfig(book: Book, config: BookConfig): Promise<void> {
+async function persistBookConfig(book: Book, config: BookConfig): Promise<boolean> {
   try {
     const appService = await envConfig.getAppService();
     const settings = useSettingsStore.getState().settings;
     await appService.saveBookConfig(book, config, settings);
+    return true;
   } catch (error) {
     console.warn('[RemoteSyncApply] Failed to persist remote book config:', error);
+    return false;
   }
 }
 
@@ -162,28 +169,40 @@ async function applyLibraryProgress(
 export async function applyRemoteBookConfigRows(
   configRows: RemoteConfigTransform[],
   tombstones: SyncTombstone[],
-): Promise<{
-  configs: BookConfig[];
-  acceptedRecords: BookDataRecord[];
-  acceptedTombstones: SyncTombstone[];
-}> {
+): Promise<
+  {
+    configs: BookConfig[];
+    acceptedRecords: BookDataRecord[];
+    acceptedTombstones: SyncTombstone[];
+  } & RemoteApplyDurabilityFailures
+> {
   const bookDataStore = useBookDataStore.getState();
   const acceptedRecords: BookDataRecord[] = [];
   const acceptedTombstones: SyncTombstone[] = [];
+  const failedRecords: BookDataRecord[] = [];
+  const failedTombstones: SyncTombstone[] = [];
   const appliedConfigs: BookConfig[] = [];
   const progressUpdates: Array<{ hash: string; progress: BookConfig['progress'] }> = [];
 
   for (const { config: rawConfig, record } of configRows) {
-    acceptedRecords.push(record);
-    if (!rawConfig.bookHash) continue;
+    if (!rawConfig.bookHash) {
+      acceptedRecords.push(record);
+      continue;
+    }
     const book = findLibraryBook(rawConfig.bookHash);
-    if (!book) continue;
+    if (!book) {
+      acceptedRecords.push(record);
+      continue;
+    }
 
     const previousConfig = await loadLocalConfig(book);
     const remoteConfig = sanitizeRemoteConfig(rawConfig);
     const remoteTime = latestModelTime(remoteConfig);
     const localTime = latestModelTime(previousConfig);
-    if (remoteTime < localTime) continue;
+    if (remoteTime < localTime) {
+      acceptedRecords.push(record);
+      continue;
+    }
 
     const merged = {
       ...previousConfig,
@@ -193,9 +212,15 @@ export async function applyRemoteBookConfigRows(
       updatedAt: remoteConfig.updatedAt ?? previousConfig.updatedAt ?? 0,
     } as BookConfig;
 
+    const persisted = await persistBookConfig(book, merged);
+    if (!persisted) {
+      failedRecords.push(record);
+      continue;
+    }
+
     bookDataStore.setConfig(book.hash, merged);
     bookDataStore.setPreSyncedConfig(rawConfig.bookHash, merged);
-    await persistBookConfig(book, merged);
+    acceptedRecords.push(record);
 
     if (merged.progress) progressUpdates.push({ hash: book.hash, progress: merged.progress });
     appliedConfigs.push(merged);
@@ -209,20 +234,34 @@ export async function applyRemoteBookConfigRows(
   }
 
   for (const tombstone of tombstones) {
-    acceptedTombstones.push(tombstone);
     const bookHash = parseSyncableBookRef(tombstone.entityId);
-    if (!bookHash) continue;
+    if (!bookHash) {
+      acceptedTombstones.push(tombstone);
+      continue;
+    }
     const book = findLibraryBook(bookHash);
-    if (!book) continue;
+    if (!book) {
+      acceptedTombstones.push(tombstone);
+      continue;
+    }
 
     const previousConfig = await loadLocalConfig(book);
     const deletedAt = tombstoneTimestamp(tombstone);
-    if (deletedAt < latestModelTime(previousConfig)) continue;
+    if (deletedAt < latestModelTime(previousConfig)) {
+      acceptedTombstones.push(tombstone);
+      continue;
+    }
 
     const patch = configDeletePatch(bookHash, deletedAt);
+    const persisted = await persistBookConfig(book, patch);
+    if (!persisted) {
+      failedTombstones.push(tombstone);
+      continue;
+    }
+
     bookDataStore.setConfig(book.hash, patch);
     bookDataStore.setPreSyncedConfig(bookHash, patch);
-    await persistBookConfig(book, patch);
+    acceptedTombstones.push(tombstone);
     appliedConfigs.push(patch);
     emitRemoteApply({
       type: 'bookConfig',
@@ -234,25 +273,37 @@ export async function applyRemoteBookConfigRows(
   }
 
   await applyLibraryProgress(progressUpdates);
-  return { configs: appliedConfigs, acceptedRecords, acceptedTombstones };
+  return {
+    configs: appliedConfigs,
+    acceptedRecords,
+    acceptedTombstones,
+    failedRecords,
+    failedTombstones,
+  };
 }
 
 export async function applyRemoteBookNoteRows(
   noteRows: RemoteNoteTransform[],
   tombstones: SyncTombstone[],
-): Promise<{
-  notes: BookNote[];
-  acceptedRecords: BookDataRecord[];
-  acceptedTombstones: SyncTombstone[];
-}> {
+): Promise<
+  {
+    notes: BookNote[];
+    acceptedRecords: BookDataRecord[];
+    acceptedTombstones: SyncTombstone[];
+  } & RemoteApplyDurabilityFailures
+> {
   const acceptedRecords: BookDataRecord[] = [];
   const acceptedTombstones: SyncTombstone[] = [];
+  const failedRecords: BookDataRecord[] = [];
+  const failedTombstones: SyncTombstone[] = [];
   const appliedNotes: BookNote[] = [];
   const notesByBook = new Map<SyncableBookRef, RemoteNoteTransform[]>();
 
   for (const row of noteRows) {
-    acceptedRecords.push(row.record);
-    if (!row.note.bookHash) continue;
+    if (!row.note.bookHash) {
+      acceptedRecords.push(row.record);
+      continue;
+    }
     const existing = notesByBook.get(row.note.bookHash) ?? [];
     existing.push(row);
     notesByBook.set(row.note.bookHash, existing);
@@ -260,12 +311,16 @@ export async function applyRemoteBookNoteRows(
 
   for (const [bookHash, rows] of notesByBook) {
     const book = findLibraryBook(bookHash);
-    if (!book) continue;
+    if (!book) {
+      acceptedRecords.push(...rows.map((row) => row.record));
+      continue;
+    }
     const config = await loadLocalConfig(book);
     const previousNotes = config.booknotes ?? [];
     const noteIdxMap = new Map(previousNotes.map((note, index) => [note.id, index]));
     const mergedNotes = [...previousNotes];
     const changedNotes: BookNote[] = [];
+    const recordsNeedingDurableApply: BookDataRecord[] = [];
 
     for (const row of rows) {
       const note = {
@@ -281,18 +336,28 @@ export async function applyRemoteBookNoteRows(
         if (remoteTime >= localTime) {
           mergedNotes[idx] = { ...mergedNotes[idx]!, ...note };
           changedNotes.push(mergedNotes[idx]!);
+          recordsNeedingDurableApply.push(row.record);
+        } else {
+          acceptedRecords.push(row.record);
         }
       } else {
         mergedNotes.push(note);
         noteIdxMap.set(note.id, mergedNotes.length - 1);
         changedNotes.push(note);
+        recordsNeedingDurableApply.push(row.record);
       }
     }
 
     if (changedNotes.length > 0) {
       const mergedConfig = { ...config, bookHash, metaHash: book.metaHash, booknotes: mergedNotes };
+      const persisted = await persistBookConfig(book, mergedConfig);
+      if (!persisted) {
+        failedRecords.push(...recordsNeedingDurableApply);
+        continue;
+      }
+
       useBookDataStore.getState().setConfig(book.hash, mergedConfig);
-      await persistBookConfig(book, mergedConfig);
+      acceptedRecords.push(...recordsNeedingDurableApply);
       appliedNotes.push(...changedNotes);
       emitRemoteApply({
         type: 'bookNotes',
@@ -306,18 +371,29 @@ export async function applyRemoteBookNoteRows(
   }
 
   for (const tombstone of tombstones) {
-    acceptedTombstones.push(tombstone);
     const parsed = parseBookNoteEntityId(tombstone.entityId);
-    if (!parsed) continue;
+    if (!parsed) {
+      acceptedTombstones.push(tombstone);
+      continue;
+    }
     const book = findLibraryBook(parsed.bookHash);
-    if (!book) continue;
+    if (!book) {
+      acceptedTombstones.push(tombstone);
+      continue;
+    }
     const config = await loadLocalConfig(book);
     const previousNotes = config.booknotes ?? [];
     const idx = previousNotes.findIndex((note) => note.id === parsed.noteId);
-    if (idx === -1) continue;
+    if (idx === -1) {
+      acceptedTombstones.push(tombstone);
+      continue;
+    }
 
     const remoteTime = tombstoneTimestamp(tombstone);
-    if (remoteTime < latestModelTime(previousNotes[idx]!)) continue;
+    if (remoteTime < latestModelTime(previousNotes[idx]!)) {
+      acceptedTombstones.push(tombstone);
+      continue;
+    }
 
     const mergedNotes = [...previousNotes];
     mergedNotes[idx] = {
@@ -331,8 +407,14 @@ export async function applyRemoteBookNoteRows(
       metaHash: book.metaHash,
       booknotes: mergedNotes,
     } as BookConfig;
+    const persisted = await persistBookConfig(book, mergedConfig);
+    if (!persisted) {
+      failedTombstones.push(tombstone);
+      continue;
+    }
+
     useBookDataStore.getState().setConfig(book.hash, mergedConfig);
-    await persistBookConfig(book, mergedConfig);
+    acceptedTombstones.push(tombstone);
     appliedNotes.push(mergedNotes[idx]!);
     emitRemoteApply({
       type: 'bookNotes',
@@ -344,7 +426,13 @@ export async function applyRemoteBookNoteRows(
     });
   }
 
-  return { notes: appliedNotes, acceptedRecords, acceptedTombstones };
+  return {
+    notes: appliedNotes,
+    acceptedRecords,
+    acceptedTombstones,
+    failedRecords,
+    failedTombstones,
+  };
 }
 
 function mergeCollections(

@@ -30,6 +30,7 @@ import {
   applyRemoteBookConfigRows,
   applyRemoteBookNoteRows,
   applyRemoteSettingsAndCollections,
+  type RemoteApplyDurabilityFailures,
   type RemoteConfigTransform,
   type RemoteNoteTransform,
 } from './remoteApply';
@@ -68,17 +69,19 @@ function isOffline(): boolean {
 }
 
 /** Compute the max timestamp from an array of DB records (updated_at / deleted_at). */
-function computeMaxTimestamp(records: BookDataRecord[]): number {
+function recordTimestamp(record: BookDataRecord): number {
   let maxTime = 0;
-  for (const rec of records) {
-    if (rec.updated_at) {
-      maxTime = Math.max(maxTime, new Date(rec.updated_at).getTime());
-    }
-    if (rec.deleted_at) {
-      maxTime = Math.max(maxTime, new Date(rec.deleted_at).getTime());
-    }
+  if (record.updated_at) {
+    maxTime = Math.max(maxTime, new Date(record.updated_at).getTime());
+  }
+  if (record.deleted_at) {
+    maxTime = Math.max(maxTime, new Date(record.deleted_at).getTime());
   }
   return maxTime;
+}
+
+function computeMaxTimestamp(records: BookDataRecord[]): number {
+  return records.reduce((maxTime, record) => Math.max(maxTime, recordTimestamp(record)), 0);
 }
 
 function tombstoneTimestamp(tombstone: SyncTombstone): number {
@@ -89,6 +92,52 @@ function computeMaxTombstoneTimestamp(tombstones: SyncTombstone[]): number {
   return tombstones.reduce(
     (maxTime, tombstone) => Math.max(maxTime, tombstoneTimestamp(tombstone)),
     0,
+  );
+}
+
+function computeMaxTimestampBefore(records: BookDataRecord[], upperExclusive: number): number {
+  return records.reduce((maxTime, record) => {
+    const timestamp = recordTimestamp(record);
+    return timestamp < upperExclusive ? Math.max(maxTime, timestamp) : maxTime;
+  }, 0);
+}
+
+function computeMaxTombstoneTimestampBefore(
+  tombstones: SyncTombstone[],
+  upperExclusive: number,
+): number {
+  return tombstones.reduce((maxTime, tombstone) => {
+    const timestamp = tombstoneTimestamp(tombstone);
+    return timestamp < upperExclusive ? Math.max(maxTime, timestamp) : maxTime;
+  }, 0);
+}
+
+function minDurabilityFailureTimestamp(failures: RemoteApplyDurabilityFailures): number | null {
+  const timestamps = [
+    ...failures.failedRecords.map(recordTimestamp),
+    ...failures.failedTombstones.map(tombstoneTimestamp),
+  ].filter((timestamp) => timestamp > 0);
+  return timestamps.length ? Math.min(...timestamps) : null;
+}
+
+function acceptedCursorTimestamp(input: {
+  acceptedRecords: BookDataRecord[];
+  skippedRecords: BookDataRecord[];
+  acceptedTombstones: SyncTombstone[];
+  failureTimestamp: number | null;
+}): number {
+  if (input.failureTimestamp == null) {
+    return Math.max(
+      computeMaxTimestamp(input.acceptedRecords),
+      computeMaxTimestamp(input.skippedRecords),
+      computeMaxTombstoneTimestamp(input.acceptedTombstones),
+    );
+  }
+
+  return Math.max(
+    computeMaxTimestampBefore(input.acceptedRecords, input.failureTimestamp),
+    computeMaxTimestampBefore(input.skippedRecords, input.failureTimestamp),
+    computeMaxTombstoneTimestampBefore(input.acceptedTombstones, input.failureTimestamp),
   );
 }
 
@@ -773,7 +822,8 @@ export class SyncWorker {
 
     try {
       const cursorScope = scopedBookCursor(bookHash, metaHash);
-      const since = getCanonicalSyncCursor(this.userId, 'bookConfig', cursorScope) + 1;
+      const currentCursor = getCanonicalSyncCursor(this.userId, 'bookConfig', cursorScope);
+      const since = currentCursor + 1;
 
       const result = await pullCanonicalSyncChanges(
         since,
@@ -798,16 +848,18 @@ export class SyncWorker {
         transformRemoteConfigRows(dbConfigs);
       const applyResult = await applyRemoteBookConfigRows(configRows, configTombstones);
 
-      const maxTime = Math.max(
-        computeMaxTimestamp(applyResult.acceptedRecords),
-        computeMaxTimestamp(skippedConfigRecords),
-        computeMaxTombstoneTimestamp(applyResult.acceptedTombstones),
-      );
-      if (maxTime > 0) {
+      const failureTimestamp = minDurabilityFailureTimestamp(applyResult);
+      const maxTime = acceptedCursorTimestamp({
+        acceptedRecords: applyResult.acceptedRecords,
+        skippedRecords: skippedConfigRecords,
+        acceptedTombstones: applyResult.acceptedTombstones,
+        failureTimestamp,
+      });
+      if (maxTime > currentCursor) {
         setCanonicalSyncCursor(
           this.userId,
           'bookConfig',
-          result.cursorByEntity?.bookConfig ?? maxTime,
+          failureTimestamp == null ? (result.cursorByEntity?.bookConfig ?? maxTime) : maxTime,
           cursorScope,
         );
       }
@@ -830,7 +882,8 @@ export class SyncWorker {
 
     try {
       const cursorScope = scopedBookCursor(bookHash, metaHash);
-      const since = getCanonicalSyncCursor(this.userId, 'bookNote', cursorScope) + 1;
+      const currentCursor = getCanonicalSyncCursor(this.userId, 'bookNote', cursorScope);
+      const since = currentCursor + 1;
 
       const result = await pullCanonicalSyncChanges(
         since,
@@ -857,16 +910,18 @@ export class SyncWorker {
 
       // Advance for every processed/malformed remote row or tombstone so stale/non-applicable
       // records do not churn repeated pulls while malformed rows still move past poison records.
-      const maxTime = Math.max(
-        computeMaxTimestamp(applyResult.acceptedRecords),
-        computeMaxTimestamp(skippedNoteRecords),
-        computeMaxTombstoneTimestamp(applyResult.acceptedTombstones),
-      );
-      if (maxTime > 0) {
+      const failureTimestamp = minDurabilityFailureTimestamp(applyResult);
+      const maxTime = acceptedCursorTimestamp({
+        acceptedRecords: applyResult.acceptedRecords,
+        skippedRecords: skippedNoteRecords,
+        acceptedTombstones: applyResult.acceptedTombstones,
+        failureTimestamp,
+      });
+      if (maxTime > currentCursor) {
         setCanonicalSyncCursor(
           this.userId,
           'bookNote',
-          result.cursorByEntity?.bookNote ?? maxTime,
+          failureTimestamp == null ? (result.cursorByEntity?.bookNote ?? maxTime) : maxTime,
           cursorScope,
         );
       }

@@ -230,7 +230,7 @@ export abstract class BaseAppService implements AppService {
     return await this.fs.readFile(path, base, mode);
   }
 
-  async writeFile(path: string, base: BaseDir, content: string | ArrayBuffer | File) {
+  async writeFile(path: string, base: BaseDir, content: string | ArrayBuffer | Blob) {
     return await this.fs.writeFile(path, base, content);
   }
 

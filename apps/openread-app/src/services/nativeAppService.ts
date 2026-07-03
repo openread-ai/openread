@@ -283,7 +283,7 @@ export const nativeFileSystem: FileSystem = {
       ? (readTextFile(fp, baseDir ? { baseDir } : undefined) as Promise<string>)
       : ((await readFile(fp, baseDir ? { baseDir } : undefined)).buffer as ArrayBuffer);
   },
-  async writeFile(path: string, base: BaseDir, content: string | ArrayBuffer | File) {
+  async writeFile(path: string, base: BaseDir, content: string | ArrayBuffer | Blob) {
     // NOTE: this could be very slow for large files and might block the UI thread
     // so do not use this for large files
     const { fp, baseDir } = this.resolvePath(path, base);
@@ -293,7 +293,7 @@ export const nativeFileSystem: FileSystem = {
 
     if (typeof content === 'string') {
       return writeTextFile(fp, content, baseDir ? { baseDir } : undefined);
-    } else if (content instanceof File) {
+    } else if (content instanceof Blob) {
       const writeOptions = {
         write: true,
         create: true,

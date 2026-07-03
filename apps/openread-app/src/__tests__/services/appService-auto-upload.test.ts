@@ -242,7 +242,7 @@ function createMockBook(overrides: Partial<Book> = {}): Book {
 }
 
 function installTrackedBooksFs(appService: TestAppService, initialPaths: string[] = []) {
-  const files = new Map<string, string | ArrayBuffer | File>(
+  const files = new Map<string, string | ArrayBuffer | Blob>(
     initialPaths.map((path) => [path, `old:${path}`]),
   );
   const dirs = new Set<string>();
@@ -257,7 +257,7 @@ function installTrackedBooksFs(appService: TestAppService, initialPaths: string[
   vi.mocked(fs.readFile).mockImplementation(async (path: string) => {
     const content = files.get(path);
     if (content === undefined) throw new Error(`File not found: ${path}`);
-    return content instanceof File ? await content.arrayBuffer() : content;
+    return content instanceof Blob ? await content.arrayBuffer() : content;
   });
   vi.mocked(fs.writeFile).mockImplementation(async (path: string, _base: BaseDir, content) => {
     files.set(path, content);

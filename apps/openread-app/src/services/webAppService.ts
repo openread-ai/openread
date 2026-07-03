@@ -51,7 +51,7 @@ async function openIndexedDB(): Promise<IDBDatabase> {
   });
 }
 
-const indexedDBFileSystem: FileSystem = {
+export const indexedDBFileSystem: FileSystem = {
   resolvePath,
   async getPrefix(base: BaseDir) {
     const { basePrefix, fp } = this.resolvePath('', base);
@@ -80,10 +80,32 @@ const indexedDBFileSystem: FileSystem = {
   async openFile(path: string, base: BaseDir, filename?: string) {
     if (isValidURL(path)) {
       return await new RemoteFile(path, filename).open();
-    } else {
-      const content = await this.readFile(path, base, 'binary');
-      return new File([content], filename || path);
     }
+
+    const { fp } = this.resolvePath(path, base);
+    const db = await openIndexedDB();
+
+    return new Promise<File>((resolve, reject) => {
+      const transaction = db.transaction('files', 'readonly');
+      const store = transaction.objectStore('files');
+      const request = store.get(fp);
+
+      request.onsuccess = () => {
+        const content = request.result?.content;
+        if (
+          content instanceof Blob ||
+          content instanceof ArrayBuffer ||
+          typeof content === 'string'
+        ) {
+          resolve(new File([content], filename || path));
+          return;
+        }
+
+        reject(new Error(`File not found: ${fp}`));
+      };
+
+      request.onerror = () => reject(request.error);
+    });
   },
   async copyFile(srcPath: string, dstPath: string, base: BaseDir) {
     const { fp } = this.resolvePath(dstPath, base);
@@ -144,8 +166,15 @@ const indexedDBFileSystem: FileSystem = {
       request.onsuccess = async () => {
         if (request.result) {
           const content = request.result.content;
-          if (mode === 'text') resolve(content);
-          else {
+          if (mode === 'text') {
+            if (content instanceof Blob) {
+              resolve(await content.text());
+            } else if (content instanceof ArrayBuffer) {
+              resolve(new TextDecoder().decode(content));
+            } else {
+              resolve(content);
+            }
+          } else {
             if (content instanceof Blob) {
               const arrayBuffer = await content.arrayBuffer();
               resolve(arrayBuffer);
@@ -165,13 +194,10 @@ const indexedDBFileSystem: FileSystem = {
       request.onerror = () => reject(request.error);
     });
   },
-  async writeFile(path: string, base: BaseDir, content: string | ArrayBuffer | File) {
+  async writeFile(path: string, base: BaseDir, content: string | ArrayBuffer | Blob) {
     const { fp } = this.resolvePath(path, base);
     const db = await openIndexedDB();
 
-    if (content instanceof File) {
-      content = await content.arrayBuffer();
-    }
     return new Promise<void>((resolve, reject) => {
       const transaction = db.transaction('files', 'readwrite');
       const store = transaction.objectStore('files');

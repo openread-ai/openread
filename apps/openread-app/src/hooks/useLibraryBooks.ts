@@ -10,6 +10,7 @@ type FilterType = 'all' | 'reading' | 'recent' | 'want-to-read' | 'finished' | '
 interface UseLibraryBooksOptions {
   filter?: FilterType;
   limit?: number;
+  excludeHashes?: Set<string>;
 }
 
 interface UseLibraryBooksReturn {
@@ -29,7 +30,7 @@ function getProgressPercentage(progress?: [number, number]): number {
  * Hook for querying library books with filtering and limiting
  */
 export function useLibraryBooks(options: UseLibraryBooksOptions = {}): UseLibraryBooksReturn {
-  const { filter = 'all', limit } = options;
+  const { filter = 'all', limit, excludeHashes } = options;
 
   const { user } = useAuth();
   const libraryLoaded = useLibraryStore((state) => state.libraryLoaded);
@@ -108,13 +109,17 @@ export function useLibraryBooks(options: UseLibraryBooksOptions = {}): UseLibrar
         filteredBooks = [...visibleLibrary].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     }
 
+    if (excludeHashes?.size) {
+      filteredBooks = filteredBooks.filter((book) => !excludeHashes.has(book.hash));
+    }
+
     // Apply limit if specified
     if (limit && limit > 0) {
       filteredBooks = filteredBooks.slice(0, limit);
     }
 
     return filteredBooks;
-  }, [filter, isLoading, limit, library]);
+  }, [excludeHashes, filter, isLoading, limit, library]);
 
   return {
     books,

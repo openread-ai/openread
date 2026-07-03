@@ -48,9 +48,13 @@ vi.mock('@/components/platform/book-section', () => ({
 }));
 
 vi.mock('@/app/(platform)/home/sections', () => ({
-  ReadingNow: () => <section data-testid='reading-now'>Reading Now</section>,
-  RecentlyAdded: () => <section data-testid='recently-added'>Recently Added</section>,
-  WantToRead: () => <section data-testid='want-to-read'>Want to Read</section>,
+  HomeSections: () => (
+    <>
+      <section data-testid='continue-reading'>Continue Reading</section>
+      <section data-testid='recently-added'>Recently Added</section>
+      <section data-testid='featured-from-explore'>Featured from Explore</section>
+    </>
+  ),
 }));
 
 describe('Home empty-library routing', () => {
@@ -67,7 +71,7 @@ describe('Home empty-library routing', () => {
     await waitFor(() => {
       expect(mockReplace).toHaveBeenCalledWith('/get-started');
     });
-    expect(screen.queryByTestId('reading-now')).toBeNull();
+    expect(screen.queryByTestId('continue-reading')).toBeNull();
   });
 
   it('renders regular Home dashboard when visible books exist', () => {
@@ -76,9 +80,9 @@ describe('Home empty-library routing', () => {
     render(<HomePage />);
 
     expect(mockReplace).not.toHaveBeenCalled();
-    expect(screen.getByTestId('reading-now')).toBeTruthy();
+    expect(screen.getByTestId('continue-reading')).toBeTruthy();
     expect(screen.getByTestId('recently-added')).toBeTruthy();
-    expect(screen.getByTestId('want-to-read')).toBeTruthy();
+    expect(screen.getByTestId('featured-from-explore')).toBeTruthy();
     expect(screen.getByTestId('home-search')).toBeTruthy();
   });
 
@@ -88,6 +92,6 @@ describe('Home empty-library routing', () => {
     render(<HomePage />);
 
     expect(mockReplace).not.toHaveBeenCalled();
-    expect(screen.getAllByTestId('skeleton').length).toBe(3);
+    expect(screen.getAllByTestId('skeleton').length).toBe(2);
   });
 });

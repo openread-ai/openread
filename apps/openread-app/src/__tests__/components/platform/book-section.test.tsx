@@ -23,6 +23,16 @@ vi.mock('next/link', () => ({
   ),
 }));
 
+vi.mock('@/hooks/useTranslation', () => ({
+  useTranslation: () => (key: string) => key,
+}));
+
+vi.mock('@/components/BookCover', () => ({
+  default: ({ book, className }: { book: Book; className?: string }) => (
+    <div data-testid={`book-cover-${book.hash}`} className={className} />
+  ),
+}));
+
 // Mock BookCard component
 vi.mock('@/components/platform/book-card', () => ({
   BookCard: ({ book, showProgress }: { book: Book; showProgress?: boolean }) => (
@@ -86,6 +96,27 @@ describe('BookSection', () => {
 
       const card = screen.getByTestId(bookCardTestId(books[0]!));
       expect(card.getAttribute('data-show-progress')).toBe('true');
+    });
+
+    it('should render first book as hero and remaining books as row cards', () => {
+      const books = [
+        createMockBook({
+          hash: testOpenReadBookRef('hero-book'),
+          title: 'Hero Book',
+          progress: [4, 10],
+        }),
+        createMockBook({ hash: testOpenReadBookRef('row-book'), title: 'Row Book' }),
+      ];
+
+      render(<BookSection title='Continue Reading' books={books} showProgress variant='hero' />);
+
+      expect(screen.getByRole('link', { name: /Resume Hero Book/ }).getAttribute('href')).toBe(
+        `/reader?ids=${books[0]!.hash}`,
+      );
+      expect(screen.getByText('Resume reading')).toBeTruthy();
+      expect(screen.getByText('40%')).toBeTruthy();
+      expect(screen.queryByTestId(bookCardTestId(books[0]!))).toBeNull();
+      expect(screen.getByTestId(bookCardTestId(books[1]!))).toBeTruthy();
     });
   });
 

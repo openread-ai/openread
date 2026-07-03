@@ -162,6 +162,28 @@ describe('useLibraryBooks', () => {
       expect(result.current.books[1]?.hash).toBe(testOpenReadBookRef('mid'));
       expect(result.current.books[2]?.hash).toBe(testOpenReadBookRef('old'));
     });
+
+    it('should exclude requested hashes after sorting and before limiting', () => {
+      const books = [
+        createMockBook({ hash: testOpenReadBookRef('old'), createdAt: 1000 }),
+        createMockBook({ hash: testOpenReadBookRef('new'), createdAt: 3000 }),
+        createMockBook({ hash: testOpenReadBookRef('mid'), createdAt: 2000 }),
+      ];
+      mockStoreState.library = books;
+
+      const { result } = renderHook(() =>
+        useLibraryBooks({
+          filter: 'recent',
+          limit: 2,
+          excludeHashes: new Set([testOpenReadBookRef('new')]),
+        }),
+      );
+
+      expect(result.current.books.map((book) => book.hash)).toEqual([
+        testOpenReadBookRef('mid'),
+        testOpenReadBookRef('old'),
+      ]);
+    });
   });
 
   describe('Want to read filter', () => {

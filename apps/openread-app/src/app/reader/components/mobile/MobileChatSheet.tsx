@@ -1,8 +1,8 @@
-import Image from 'next/image';
 import { useEffect, useState, type ReactNode } from 'react';
 import { LuChevronLeft, LuHistory, LuPlus, LuSquarePen, LuX } from 'react-icons/lu';
 
 import AIAssistant from '../notebook/AIAssistant';
+import { OpenReadMark } from '@/components/brand/openread-mark';
 import ChatHistoryView from '../sidebar/ChatHistoryView';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAIChatStore } from '@/store/aiChatStore';
@@ -10,30 +10,12 @@ import { usePrimaryBookHash } from '@/app/reader/hooks/usePrimaryBookHash';
 import { useMobileReaderPanelStore } from '@/store/mobileReaderPanelStore';
 import type { MobileAIChatInitialView } from '@/app/reader/utils/mobileReaderPanels';
 
-const OPENREAD_AI_ICON_LIGHT = '/assets/openread-ai/icon-light.svg';
-const OPENREAD_AI_ICON_DARK = '/assets/openread-ai/icon-dark.svg';
-
 export type MobileAIChatLayout = 'default' | 'mobile-web';
 
 function OpenReadAILogo() {
   return (
-    <span className='bg-base-content/10 relative flex size-8 shrink-0 overflow-hidden rounded-xl'>
-      <Image
-        src={OPENREAD_AI_ICON_LIGHT}
-        alt=''
-        width={32}
-        height={32}
-        className='block dark:hidden'
-        priority={false}
-      />
-      <Image
-        src={OPENREAD_AI_ICON_DARK}
-        alt=''
-        width={32}
-        height={32}
-        className='hidden dark:block'
-        priority={false}
-      />
+    <span className='bg-base-content/10 relative flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-xl'>
+      <OpenReadMark className='text-base-content size-5' aria-hidden='true' />
     </span>
   );
 }

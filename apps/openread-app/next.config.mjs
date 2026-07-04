@@ -2,6 +2,7 @@ import path from 'node:path';
 import { withSentryConfig } from '@sentry/nextjs';
 import withSerwistInit from '@serwist/next';
 import withBundleAnalyzer from '@next/bundle-analyzer';
+import { resolveSentryEnvironment, resolveSentryRelease } from './sentry-shared.mjs';
 
 const isDev = process.env['NODE_ENV'] === 'development';
 const appPlatform = process.env['NEXT_PUBLIC_APP_PLATFORM'];
@@ -13,6 +14,9 @@ if (isDev) {
 
 const exportOutput = appPlatform !== 'web' && !isDev;
 const pdfjsAlias = path.resolve(process.cwd(), 'public/vendor/pdfjs');
+
+const sentryEnvironment = resolveSentryEnvironment();
+const sentryRelease = resolveSentryRelease();
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -30,6 +34,10 @@ const nextConfig = {
   assetPrefix: '',
   reactStrictMode: true,
   serverExternalPackages: ['isows'],
+  env: {
+    NEXT_PUBLIC_SENTRY_ENVIRONMENT: sentryEnvironment,
+    NEXT_PUBLIC_SENTRY_RELEASE: sentryRelease,
+  },
   webpack: (config) => {
     config.resolve.alias = {
       ...config.resolve.alias,
@@ -156,9 +164,15 @@ const withAnalyzer = withBundleAnalyzer({
 const sentryWebpackPluginOptions = {
   // Automatically upload source maps to Sentry
   silent: true, // Suppresses all logs
-  org: process.env['SENTRY_ORG'],
-  project: process.env['SENTRY_PROJECT'],
+  org: process.env['SENTRY_ORG'] || 'openreadai',
+  project: process.env['SENTRY_PROJECT'] || 'javascript-nextjs',
   authToken: process.env['SENTRY_AUTH_TOKEN'],
+  release: {
+    name: sentryRelease,
+    deploy: {
+      env: sentryEnvironment,
+    },
+  },
 
   // Only upload source maps in CI or when explicitly enabled
   dryRun: !process.env['SENTRY_AUTH_TOKEN'],

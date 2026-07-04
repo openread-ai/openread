@@ -84,6 +84,26 @@ describe('canonical sync mutation adapters', () => {
     });
   });
 
+  it('builds canonical book delete mutations from local tombstones', () => {
+    const mutation = buildBookMutation(book({ deletedAt: 3_000, updatedAt: 2_000 }), context);
+
+    expect(validateSyncMutation(mutation).ok).toBe(true);
+    expect(mutation).toMatchObject({
+      entity: 'book',
+      entityId: 'd41d8cd98f00b204e9800998ecf8427e',
+      op: 'delete',
+      baseRevision: null,
+      userId: 'user-1',
+      deviceId: 'device-1',
+      clientUpdatedAt: 3_000,
+      tombstone: {
+        deletedAt: 3_000,
+        reason: 'book-delete',
+      },
+    });
+    expect(mutation).not.toHaveProperty('payload');
+  });
+
   it('builds valid config mutations and strips notes plus non-serializable search callbacks', () => {
     const mutation = buildBookConfigMutation(config(), context);
 

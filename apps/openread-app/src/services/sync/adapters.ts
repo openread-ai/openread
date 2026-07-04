@@ -106,10 +106,33 @@ const withBase = <E extends SyncMutation['entity']>(
   clientUpdatedAt: timestamp,
 });
 
+const withDeleteBase = <E extends SyncMutation['entity']>(
+  entity: E,
+  entityId: string,
+  context: SyncMutationContext,
+  timestamp: number,
+  reason: string,
+) => ({
+  id: mutationId(entity, entityId, 'delete', timestamp),
+  entity,
+  entityId,
+  op: 'delete' as const,
+  baseRevision: null,
+  userId: context.userId,
+  deviceId: context.deviceId,
+  clientUpdatedAt: timestamp,
+  tombstone: { deletedAt: timestamp, reason },
+});
+
 export function buildBookMutation(book: Book, context: SyncMutationContext): SyncMutation<'book'> {
   const now = context.now ?? Date.now();
   const updatedAt = latestTimestamp(book.updatedAt, book.deletedAt, now);
   const bookHash = requireSyncableBookRef(book.hash, 'book.hash');
+
+  if (typeof book.deletedAt === 'number' && book.deletedAt > 0) {
+    return withDeleteBase('book', bookHash, context, updatedAt, 'book-delete');
+  }
+
   const payload: SyncPayloadByEntity['book'] = {
     hash: bookHash,
     title: book.title || 'Untitled',

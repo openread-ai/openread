@@ -70,4 +70,26 @@ describe('libraryStore.updateBooks', () => {
     });
     expect(saveLibraryBooks).toHaveBeenCalledWith(useLibraryStore.getState().library);
   });
+
+  it('keeps a local delete tombstone over an equal-time active remote book', async () => {
+    useLibraryStore.getState().setLibrary([
+      book({
+        hash: testOpenReadBookRef('catalog:7231ff9a-24b9-4074-9369-bc7f88ffb179'),
+        updatedAt: 300,
+        deletedAt: 300,
+      }),
+    ]);
+
+    await useLibraryStore.getState().updateBooks(envConfig, [
+      book({
+        hash: testOpenReadBookRef('catalog:7231ff9a-24b9-4074-9369-bc7f88ffb179'),
+        updatedAt: 300,
+        deletedAt: null,
+      }),
+    ]);
+
+    const [updated] = useLibraryStore.getState().library;
+    expect(updated?.deletedAt).toBe(300);
+    expect(useLibraryStore.getState().getVisibleLibrary()).toEqual([]);
+  });
 });

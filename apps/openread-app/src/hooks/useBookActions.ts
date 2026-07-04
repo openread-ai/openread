@@ -24,7 +24,9 @@ async function cleanupDeletedBook(book: Book): Promise<void> {
     // Remove local files/config/AI/collection references only. The foreground
     // delete path already persisted the tombstoned library before hiding it.
     const [, sidebarStore] = await Promise.all([
-      appService.deleteBook(book, 'both').catch(() => {}),
+      appService.deleteBook(book, 'both').catch((error) => {
+        logger.warn('Deleted book file/cloud cleanup failed:', error);
+      }),
       import('@/store/platformSidebarStore'),
     ]);
 
@@ -38,7 +40,9 @@ async function cleanupDeletedBook(book: Book): Promise<void> {
     }
 
     // Delete local config directory
-    appService.deleteDir(`${book.hash}`, 'Books').catch(() => {});
+    appService.deleteDir(`${book.hash}`, 'Books').catch((error) => {
+      logger.warn('Deleted book config directory cleanup failed:', error);
+    });
 
     // Delete AI conversations from IndexedDB
     import('@/services/ai/storage/aiStore')
@@ -48,7 +52,9 @@ async function cleanupDeletedBook(book: Book): Promise<void> {
           await aiStore.deleteConversation(conv.id);
         }
       })
-      .catch(() => {});
+      .catch((error) => {
+        logger.warn('Deleted book AI cleanup failed:', error);
+      });
   } catch (error) {
     logger.error('Background cleanup failed:', error);
   }

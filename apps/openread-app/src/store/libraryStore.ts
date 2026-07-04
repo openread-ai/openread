@@ -5,6 +5,36 @@ import { BOOK_UNGROUPED_NAME } from '@/services/constants';
 import { readLibraryPaintCache, writeLibraryPaintCache } from '@/services/libraryPaintCache';
 import { md5Fingerprint } from '@/utils/md5';
 
+const latestBookMutationTime = (book: Book): number =>
+  Math.max(book.updatedAt || 0, book.deletedAt || 0);
+
+const isDeletedBook = (book: Book): boolean =>
+  typeof book.deletedAt === 'number' && book.deletedAt > 0;
+
+export function mergeLibraryBook(existing: Book, incoming: Book): Book {
+  const localTime = latestBookMutationTime(existing);
+  const remoteTime = latestBookMutationTime(incoming);
+  const localDeleteWins = isDeletedBook(existing) && localTime >= remoteTime;
+  const remoteDeleteWins = isDeletedBook(incoming) && remoteTime >= localTime;
+
+  const winner = localDeleteWins
+    ? { ...existing }
+    : remoteDeleteWins || remoteTime >= localTime
+      ? { ...incoming, coverImageUrl: existing.coverImageUrl ?? incoming.coverImageUrl }
+      : { ...existing };
+
+  const coverImageUrl =
+    existing.metadata?.coverImageUrl ??
+    incoming.metadata?.coverImageUrl ??
+    winner.metadata?.coverImageUrl;
+  if (coverImageUrl && !winner.metadata?.coverImageUrl) {
+    winner.metadata = { ...(winner.metadata ?? {}), coverImageUrl } as NonNullable<
+      Book['metadata']
+    >;
+  }
+  return winner;
+}
+
 function buildGroups(library: Book[]): Record<string, string> {
   const groups: Record<string, string> = {};
 
@@ -134,25 +164,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
     const existingMap = new Map(library.map((b) => [b.hash, b]));
     const incomingHashes = new Set(books.map((b) => b.hash));
-    const merged = books.map((b) => {
-      const existing = existingMap.get(b.hash);
-      if (!existing) return b;
-      const localTime = Math.max(existing.updatedAt || 0, existing.deletedAt || 0);
-      const remoteTime = Math.max(b.updatedAt || 0, b.deletedAt || 0);
-      const localNewer = localTime > remoteTime;
-      const winner = localNewer
-        ? { ...existing }
-        : { ...b, coverImageUrl: existing.coverImageUrl ?? b.coverImageUrl };
-      const coverImageUrl =
-        existing.metadata?.coverImageUrl ??
-        b.metadata?.coverImageUrl ??
-        winner.metadata?.coverImageUrl;
-      if (coverImageUrl && !winner.metadata?.coverImageUrl) {
-        winner.metadata = { ...(winner.metadata ?? {}), coverImageUrl } as NonNullable<
-          Book['metadata']
-        >;
-      }
-      return winner;
+    const merged = books.map((book) => {
+      const existing = existingMap.get(book.hash);
+      return existing ? mergeLibraryBook(existing, book) : book;
     });
     const newLibrary = [...library.filter((b) => !incomingHashes.has(b.hash)), ...merged];
     set({ library: newLibrary, libraryLoaded: true });

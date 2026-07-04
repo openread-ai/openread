@@ -146,7 +146,7 @@ describe('CloudSyncService storage lifecycle', () => {
     expect(books[2]!.coverDownloadedAt).toEqual(expect.any(Number));
   });
 
-  it('does not delete cloud files when the book is not uploaded', async () => {
+  it('does not gate cloud file deletion on uploadedAt alone', async () => {
     const book = baseBook({ uploadedAt: null });
     const service = new CloudSyncService(
       createFs(new Set()),
@@ -156,7 +156,9 @@ describe('CloudSyncService storage lifecycle', () => {
 
     await service.deleteBookFromCloud(book);
 
-    expect(deleteFile).not.toHaveBeenCalled();
+    expect(deleteFile).toHaveBeenCalledWith(`${CLOUD_BOOKS_SUBDIR}/${getRemoteBookFilename(book)}`);
+    expect(deleteFile).toHaveBeenCalledWith(`${CLOUD_BOOKS_SUBDIR}/${getCoverFilename(book)}`);
+    expect(deleteFile).toHaveBeenCalledTimes(2);
     expect(book.uploadedAt).toBeNull();
   });
 

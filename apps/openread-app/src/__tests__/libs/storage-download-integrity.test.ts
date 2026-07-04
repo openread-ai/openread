@@ -308,6 +308,28 @@ describe('downloadFile integrity and atomic commit', () => {
     ).toEqual([]);
   });
 
+  it('accepts string expected size bytes that equal the downloaded file size', async () => {
+    const appService = createAppService();
+    webDownloadMock.mockResolvedValueOnce({
+      headers: { 'content-length': '4' },
+      blob: blobLike('book'),
+    });
+
+    await downloadFile({
+      appService,
+      cfp: 'remote/book.epub',
+      dst: '/books/book.epub',
+      url: 'https://r2.example/book.epub',
+      expectedSizeBytes: '4',
+    });
+
+    expect(appService.files.get('/books/book.epub')).toBeTruthy();
+    expect(appService.movedFiles).toHaveLength(1);
+    expect(
+      Array.from(appService.files.keys()).filter((path) => path.includes('.download-')),
+    ).toEqual([]);
+  });
+
   it('writes the web download Blob directly to temp storage without materializing an ArrayBuffer', async () => {
     const appService = createAppService();
     const blob = blobLike('book');

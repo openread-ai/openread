@@ -4,6 +4,63 @@ import { isTauriAppPlatform, isMobilePlatform } from '@/services/environment';
 
 const logger = createLogger('fetch');
 
+export const OPENREAD_REQUEST_ID_HEADER = 'x-request-id';
+
+function createOpenreadRequestId(): string {
+  const random =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : Math.random().toString(36).slice(2, 12);
+  return `web_${random}`;
+}
+
+function isOpenreadApiUrl(input: RequestInfo | URL): boolean {
+  const rawUrl = typeof input === 'string' || input instanceof URL ? String(input) : input.url;
+
+  if (rawUrl.startsWith('/api/') || rawUrl === '/api') return true;
+
+  try {
+    const base = typeof window === 'undefined' ? 'https://app.openread.ai' : window.location.href;
+    const url = new URL(rawUrl, base);
+    const configuredNodeBase = process.env['NEXT_PUBLIC_NODE_BASE_URL'];
+    const configuredNodeHost = configuredNodeBase
+      ? new URL(configuredNodeBase).hostname
+      : undefined;
+
+    return (
+      url.hostname === configuredNodeHost ||
+      url.hostname === 'api.openread.ai' ||
+      url.hostname === 'staging-api.openread.ai'
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function withOpenreadCorrelationHeaders(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+): RequestInit {
+  if (!isOpenreadApiUrl(input)) return init;
+
+  const headers = new Headers(input instanceof Request ? input.headers : undefined);
+  new Headers(init.headers).forEach((value, key) => headers.set(key, value));
+
+  if (!headers.has(OPENREAD_REQUEST_ID_HEADER)) {
+    headers.set(OPENREAD_REQUEST_ID_HEADER, createOpenreadRequestId());
+  }
+
+  return { ...init, headers };
+}
+
+export async function correlatedPlatformFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  const platformFetch = await getPlatformFetch();
+  return platformFetch(input, withOpenreadCorrelationHeaders(input, init));
+}
+
 /**
  * Get the appropriate fetch function for the current platform.
  * On Tauri mobile (iOS/Android), the WebView's native fetch() cannot reach external
@@ -28,10 +85,13 @@ export const fetchWithTimeout = async (url: string, options: RequestInit = {}, t
   const id = setTimeout(() => controller.abort('Request timed out'), timeout);
   const platformFetch = await getPlatformFetch();
 
-  return platformFetch(url, {
-    ...options,
-    signal: controller.signal,
-  }).finally(() => clearTimeout(id));
+  return platformFetch(
+    url,
+    withOpenreadCorrelationHeaders(url, {
+      ...options,
+      signal: controller.signal,
+    }),
+  ).finally(() => clearTimeout(id));
 };
 
 export class ApiRequestError extends Error {
@@ -80,7 +140,10 @@ export const fetchWithAuth = async (url: string, options: RequestInit) => {
   const headers = new Headers(options.headers);
   headers.set('Authorization', `Bearer ${token}`);
   const platformFetch = await getPlatformFetch();
-  const response = await platformFetch(url, { ...options, headers });
+  const response = await platformFetch(
+    url,
+    withOpenreadCorrelationHeaders(url, { ...options, headers }),
+  );
 
   if (!response.ok) {
     const errorData = await parseErrorBody(response);

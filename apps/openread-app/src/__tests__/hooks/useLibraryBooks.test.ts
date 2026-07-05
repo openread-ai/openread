@@ -10,6 +10,7 @@ const mockStoreState = {
   libraryLoaded: true,
   libraryOwnerUserId: 'user-1' as string | null,
   isReconciling: false,
+  syncError: null as string | null,
 };
 const authMock = vi.hoisted(() => ({
   user: { id: 'user-1' } as { id: string } | null,
@@ -43,6 +44,7 @@ describe('useLibraryBooks', () => {
     mockStoreState.libraryLoaded = true;
     mockStoreState.libraryOwnerUserId = 'user-1';
     mockStoreState.isReconciling = false;
+    mockStoreState.syncError = null;
     authMock.user = { id: 'user-1' };
   });
 
@@ -54,12 +56,14 @@ describe('useLibraryBooks', () => {
       expect(result.current.isLoading).toBe(false);
     });
 
-    it('should return isLoading true and withhold books when library not loaded', () => {
-      mockStoreState.library = [createMockBook({ hash: testOpenReadBookRef('stale-book') })];
+    it('should return account-scoped projected books when library source is still loading', () => {
+      mockStoreState.library = [createMockBook({ hash: testOpenReadBookRef('projected-book') })];
       mockStoreState.libraryLoaded = false;
       const { result } = renderHook(() => useLibraryBooks());
-      expect(result.current.isLoading).toBe(true);
-      expect(result.current.books).toEqual([]);
+      expect(result.current.isLoading).toBe(false);
+      expect(result.current.books.map((book) => book.hash)).toEqual([
+        testOpenReadBookRef('projected-book'),
+      ]);
     });
 
     it('should return isLoading true and withhold books when the loaded library belongs to another account', () => {
@@ -82,6 +86,26 @@ describe('useLibraryBooks', () => {
       expect(result.current.books.map((book) => book.hash)).toEqual([
         testOpenReadBookRef('cached-book'),
       ]);
+    });
+
+    it('should keep a fresh authenticated empty library loading while first reconcile is pending', () => {
+      mockStoreState.library = [];
+      mockStoreState.libraryLoaded = true;
+      mockStoreState.libraryOwnerUserId = 'user-1';
+      mockStoreState.isReconciling = true;
+      const { result } = renderHook(() => useLibraryBooks());
+      expect(result.current.isLoading).toBe(true);
+      expect(result.current.books).toEqual([]);
+    });
+
+    it('should keep a failed first authenticated pull out of the false-empty state', () => {
+      mockStoreState.library = [];
+      mockStoreState.libraryLoaded = true;
+      mockStoreState.libraryOwnerUserId = 'user-1';
+      mockStoreState.syncError = 'network timeout';
+      const { result } = renderHook(() => useLibraryBooks());
+      expect(result.current.isLoading).toBe(true);
+      expect(result.current.books).toEqual([]);
     });
 
     it('should return all visible books by default', () => {

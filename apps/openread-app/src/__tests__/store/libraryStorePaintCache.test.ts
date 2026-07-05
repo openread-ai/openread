@@ -14,14 +14,13 @@ function cachedBook(overrides: Partial<Book> = {}): Book {
   } as Book;
 }
 
-describe('libraryStore durable paint cache', () => {
+describe('account library paint projection cache', () => {
   beforeEach(() => {
     vi.resetModules();
     localStorage.clear();
   });
 
-  it('hydrates account-scoped books synchronously for reload paint', async () => {
-    localStorage.setItem('user', JSON.stringify({ id: 'user-1' }));
+  it('hydrates account-scoped projection only when lifecycle owner requests it', async () => {
     localStorage.setItem('openread_library_owner_user_id', 'user-1');
     localStorage.setItem(
       'openread_library_paint_cache_v1',
@@ -34,7 +33,10 @@ describe('libraryStore durable paint cache', () => {
     );
 
     const { useLibraryStore } = await import('@/store/libraryStore');
+    const { hydrateLibraryPaintProjection } = await import('@/services/accountLibraryLifecycle');
 
+    expect(useLibraryStore.getState().libraryLoaded).toBe(false);
+    expect(hydrateLibraryPaintProjection('user-1')).toBe(true);
     expect(useLibraryStore.getState().libraryLoaded).toBe(true);
     expect(useLibraryStore.getState().libraryOwnerUserId).toBe('user-1');
     expect(useLibraryStore.getState().library.map((book) => book.hash)).toEqual([
@@ -43,7 +45,6 @@ describe('libraryStore durable paint cache', () => {
   });
 
   it('does not hydrate cached books for a different signed-in account', async () => {
-    localStorage.setItem('user', JSON.stringify({ id: 'user-2' }));
     localStorage.setItem('openread_library_owner_user_id', 'user-1');
     localStorage.setItem(
       'openread_library_paint_cache_v1',
@@ -56,19 +57,29 @@ describe('libraryStore durable paint cache', () => {
     );
 
     const { useLibraryStore } = await import('@/store/libraryStore');
+    const { hydrateLibraryPaintProjection } = await import('@/services/accountLibraryLifecycle');
 
+    expect(hydrateLibraryPaintProjection('user-2')).toBe(false);
     expect(useLibraryStore.getState().libraryLoaded).toBe(false);
     expect(useLibraryStore.getState().libraryOwnerUserId).toBeNull();
     expect(useLibraryStore.getState().library).toEqual([]);
   });
 
-  it('persists the latest account-scoped library for the next reload', async () => {
-    localStorage.setItem('user', JSON.stringify({ id: 'user-1' }));
-    localStorage.setItem('openread_library_owner_user_id', 'user-1');
-
+  it('persists projections only through lifecycle, not libraryStore writes', async () => {
     const { useLibraryStore } = await import('@/store/libraryStore');
+    const { persistLibraryPaintProjection } = await import('@/services/accountLibraryLifecycle');
+    const { rememberLibraryOwnerUserId } = await import('@/services/libraryPaintCache');
+
     useLibraryStore.getState().setLibraryOwnerUserId('user-1');
-    useLibraryStore.getState().setLibrary([cachedBook({ hash: testOpenReadBookRef('new-cache') })]);
+    useLibraryStore
+      .getState()
+      .setLibrary([cachedBook({ hash: testOpenReadBookRef('store-only') })]);
+    expect(localStorage.getItem('openread_library_paint_cache_v1')).toBeNull();
+
+    rememberLibraryOwnerUserId('user-1');
+    persistLibraryPaintProjection('user-1', [
+      cachedBook({ hash: testOpenReadBookRef('new-cache') }),
+    ]);
 
     expect(JSON.parse(localStorage.getItem('openread_library_paint_cache_v1') ?? '{}')).toEqual(
       expect.objectContaining({
@@ -79,13 +90,12 @@ describe('libraryStore durable paint cache', () => {
     );
   });
 
-  it('does not persist transient generated cover URLs in the durable paint cache', async () => {
-    localStorage.setItem('user', JSON.stringify({ id: 'user-1' }));
-    localStorage.setItem('openread_library_owner_user_id', 'user-1');
+  it('does not persist transient generated cover URLs in the durable projection cache', async () => {
+    const { persistLibraryPaintProjection } = await import('@/services/accountLibraryLifecycle');
+    const { rememberLibraryOwnerUserId } = await import('@/services/libraryPaintCache');
 
-    const { useLibraryStore } = await import('@/store/libraryStore');
-    useLibraryStore.getState().setLibraryOwnerUserId('user-1');
-    useLibraryStore.getState().setLibrary([
+    rememberLibraryOwnerUserId('user-1');
+    persistLibraryPaintProjection('user-1', [
       cachedBook({
         coverImageUrl: 'blob:http://localhost:3000/6f008d49-4b24-4449-8487-1515efb4a8f3',
         metadata: {
@@ -108,8 +118,7 @@ describe('libraryStore durable paint cache', () => {
     expect(cached.books[0].metadata).not.toHaveProperty('coverImageBlobUrl');
   });
 
-  it('sanitizes stale transient cover URLs before hydrating reload paint', async () => {
-    localStorage.setItem('user', JSON.stringify({ id: 'user-1' }));
+  it('sanitizes stale transient cover URLs before hydrating projection paint', async () => {
     localStorage.setItem('openread_library_owner_user_id', 'user-1');
     localStorage.setItem(
       'openread_library_paint_cache_v1',
@@ -133,6 +142,9 @@ describe('libraryStore durable paint cache', () => {
     );
 
     const { useLibraryStore } = await import('@/store/libraryStore');
+    const { hydrateLibraryPaintProjection } = await import('@/services/accountLibraryLifecycle');
+
+    expect(hydrateLibraryPaintProjection('user-1')).toBe(true);
     const [book] = useLibraryStore.getState().library;
 
     expect(book.coverImageUrl).toBeUndefined();

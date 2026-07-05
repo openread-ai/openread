@@ -2,7 +2,6 @@ import { create } from 'zustand';
 import { Book, BookGroupType, BooksGroup } from '@/types/book';
 import { EnvConfigType, isTauriAppPlatform } from '@/services/environment';
 import { BOOK_UNGROUPED_NAME } from '@/services/constants';
-import { readLibraryPaintCache, writeLibraryPaintCache } from '@/services/libraryPaintCache';
 import { md5Fingerprint } from '@/utils/md5';
 
 const latestBookMutationTime = (book: Book): number =>
@@ -53,8 +52,6 @@ function buildGroups(library: Book[]): Record<string, string> {
   return groups;
 }
 
-const initialLibraryPaintCache = readLibraryPaintCache();
-
 interface LibraryState {
   library: Book[];
   libraryLoaded: boolean;
@@ -101,9 +98,9 @@ interface LibraryState {
 }
 
 export const useLibraryStore = create<LibraryState>((set, get) => ({
-  library: initialLibraryPaintCache?.books ?? [],
-  libraryLoaded: Boolean(initialLibraryPaintCache),
-  libraryOwnerUserId: initialLibraryPaintCache?.ownerUserId ?? null,
+  library: [],
+  libraryLoaded: false,
+  libraryOwnerUserId: null,
   isReconciling: false,
   isSyncing: false,
   syncProgress: 0,
@@ -112,7 +109,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   dirtyBooks: new Set(),
   currentBookshelf: [],
   selectedBooks: new Set(),
-  groups: buildGroups(initialLibraryPaintCache?.books ?? []),
+  groups: {},
   checkOpenWithBooks: isTauriAppPlatform(),
   checkLastOpenBooks: isTauriAppPlatform(),
 
@@ -136,14 +133,12 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   setCheckOpenWithBooks: (check) => set({ checkOpenWithBooks: check }),
   setCheckLastOpenBooks: (check) => set({ checkLastOpenBooks: check }),
   setLibrary: (books) => {
-    const { refreshGroups, libraryOwnerUserId } = get();
+    const { refreshGroups } = get();
     set({ library: books, libraryLoaded: true });
     refreshGroups();
-    writeLibraryPaintCache(libraryOwnerUserId, books);
   },
   setLibraryOwnerUserId: (userId) => {
     set({ libraryOwnerUserId: userId });
-    writeLibraryPaintCache(userId, get().library);
   },
   updateBook: async (envConfig: EnvConfigType, book: Book) => {
     const appService = await envConfig.getAppService();
@@ -153,7 +148,6 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       library[bookIndex] = book;
     }
     set({ library: [...library] });
-    writeLibraryPaintCache(get().libraryOwnerUserId, library);
     await appService.saveLibraryBooks(library);
   },
   updateBooks: async (envConfig: EnvConfigType, books: Book[]) => {
@@ -171,7 +165,6 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     const newLibrary = [...library.filter((b) => !incomingHashes.has(b.hash)), ...merged];
     set({ library: newLibrary, libraryLoaded: true });
     refreshGroups();
-    writeLibraryPaintCache(get().libraryOwnerUserId, newLibrary);
     await appService.saveLibraryBooks(newLibrary);
   },
 

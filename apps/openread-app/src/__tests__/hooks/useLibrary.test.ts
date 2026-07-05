@@ -8,7 +8,11 @@ const mocks = vi.hoisted(() => {
     library: [] as Book[],
     libraryLoaded: false,
     isReconciling: false,
+    syncError: null as string | null,
     libraryOwnerUserId: null as string | null,
+    getVisibleLibrary() {
+      return this.library.filter((book) => !book.deletedAt);
+    },
   };
   const setLibrary = vi.fn((books: Book[]) => {
     state.library = books;
@@ -20,6 +24,9 @@ const mocks = vi.hoisted(() => {
   const setIsReconciling = vi.fn((reconciling: boolean) => {
     state.isReconciling = reconciling;
   });
+  const setSyncError = vi.fn((error: string | null) => {
+    state.syncError = error;
+  });
   const setSettings = vi.fn();
   const saveLibraryBooks = vi.fn().mockResolvedValue(undefined);
   const saveSettings = vi.fn().mockResolvedValue(undefined);
@@ -29,6 +36,7 @@ const mocks = vi.hoisted(() => {
   const setCollectionsOwnerUserId = vi.fn();
   const pullNow = vi.fn().mockResolvedValue(undefined);
   const start = vi.fn();
+  const stop = vi.fn();
   const resetCanonicalSyncCursors = vi.fn();
   let user: { id: string } | null = null;
 
@@ -37,12 +45,21 @@ const mocks = vi.hoisted(() => {
       setLibrary,
       setLibraryOwnerUserId,
       setIsReconciling,
+      setSyncError,
       libraryLoaded: state.libraryLoaded,
       libraryOwnerUserId: state.libraryOwnerUserId,
       isReconciling: state.isReconciling,
+      syncError: state.syncError,
     })),
     {
-      getState: vi.fn(() => state),
+      getState: vi.fn(() => ({
+        ...state,
+        setLibrary,
+        setLibraryOwnerUserId,
+        setIsReconciling,
+        setSyncError,
+        getVisibleLibrary: () => state.library.filter((book) => !book.deletedAt),
+      })),
     },
   );
 
@@ -51,6 +68,7 @@ const mocks = vi.hoisted(() => {
     setLibrary,
     setLibraryOwnerUserId,
     setIsReconciling,
+    setSyncError,
     setSettings,
     saveLibraryBooks,
     saveSettings,
@@ -60,6 +78,7 @@ const mocks = vi.hoisted(() => {
     setCollectionsOwnerUserId,
     pullNow,
     start,
+    stop,
     resetCanonicalSyncCursors,
     get user() {
       return user;
@@ -91,7 +110,11 @@ vi.mock('@/context/EnvContext', () => ({
 vi.mock('@/services/sync/syncWorker', () => ({
   syncWorker: {
     start: mocks.start,
+    stop: mocks.stop,
     pullNow: mocks.pullNow,
+    get status() {
+      return { error: mocks.state.syncError };
+    },
   },
 }));
 
@@ -123,10 +146,12 @@ describe('useLibrary account isolation', () => {
     mocks.state.library = [];
     mocks.state.libraryLoaded = false;
     mocks.state.isReconciling = false;
+    mocks.state.syncError = null;
     mocks.state.libraryOwnerUserId = null;
     mocks.setUser(null);
     mocks.setLibraryOwnerUserId.mockClear();
     mocks.setIsReconciling.mockClear();
+    mocks.setSyncError.mockClear();
     mocks.loadLibraryBooks.mockResolvedValue([]);
     mocks.saveLibraryBooks.mockResolvedValue(undefined);
     mocks.saveSettings.mockResolvedValue(undefined);
@@ -135,6 +160,7 @@ describe('useLibrary account isolation', () => {
     mocks.setCollectionsOwnerUserId.mockClear();
     mocks.pullNow.mockResolvedValue(undefined);
     mocks.start.mockClear();
+    mocks.stop.mockClear();
     mocks.resetCanonicalSyncCursors.mockClear();
   });
 
@@ -152,7 +178,11 @@ describe('useLibrary account isolation', () => {
     const { result } = renderHook(() => useLibrary());
 
     await waitFor(() => expect(result.current.libraryLoaded).toBe(true));
+    expect(mocks.stop).toHaveBeenCalled();
     expect(mocks.setLibrary).toHaveBeenCalledWith([]);
+    expect(mocks.stop.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.setLibrary.mock.invocationCallOrder[0]!,
+    );
     expect(mocks.setLibrary.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.setLibraryOwnerUserId.mock.invocationCallOrder[0]!,
     );
@@ -169,6 +199,38 @@ describe('useLibrary account isolation', () => {
     expect(mocks.setIsReconciling).toHaveBeenLastCalledWith(false);
   });
 
+  it('does not commit a new owner when the owner-mismatch disk wipe fails', async () => {
+    const staleBook = {
+      hash: 'account-a-book',
+      title: 'Account A',
+      author: 'A',
+      format: 'epub',
+    } as Book;
+    mocks.state.library = [staleBook];
+    mocks.state.libraryOwnerUserId = 'account-a';
+    localStorage.setItem('openread_library_owner_user_id', 'account-a');
+    mocks.setUser({ id: 'account-b' });
+    mocks.saveLibraryBooks.mockRejectedValueOnce(new Error('disk wipe failed'));
+
+    const { result } = renderHook(() => useLibrary());
+
+    await waitFor(() => expect(mocks.setSyncError).toHaveBeenCalledWith('disk wipe failed'));
+    expect(result.current.libraryLoaded).toBe(false);
+    expect(mocks.stop).toHaveBeenCalled();
+    expect(mocks.setLibrary).toHaveBeenCalledWith([]);
+    expect(mocks.stop.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.setLibrary.mock.invocationCallOrder[0]!,
+    );
+    expect(mocks.setLibraryOwnerUserId).not.toHaveBeenCalledWith('account-b');
+    expect(mocks.setCollectionsOwnerUserId).not.toHaveBeenCalledWith('account-b');
+    expect(localStorage.getItem('openread_library_owner_user_id')).toBe('account-a');
+    expect(mocks.start).not.toHaveBeenCalled();
+    expect(mocks.pullNow).not.toHaveBeenCalled();
+    expect(mocks.loadLibraryBooks).not.toHaveBeenCalled();
+    expect(mocks.setIsReconciling).toHaveBeenNthCalledWith(1, true);
+    expect(mocks.setIsReconciling).toHaveBeenLastCalledWith(false);
+  });
+
   it('does not load disk books for anonymous users', async () => {
     mocks.loadLibraryBooks.mockResolvedValue([
       { hash: 'private-book', title: 'Private', author: 'A', format: 'epub' } as Book,
@@ -180,9 +242,12 @@ describe('useLibrary account isolation', () => {
     expect(mocks.setLibrary).toHaveBeenCalledWith([]);
     expect(mocks.setLibraryOwnerUserId).toHaveBeenCalledWith(null);
     expect(mocks.loadLibraryBooks).not.toHaveBeenCalled();
+    expect(mocks.resetAccountScopedCollections).toHaveBeenCalled();
+    expect(mocks.setCollectionsOwnerUserId).toHaveBeenCalledWith(null);
+    expect(mocks.stop).toHaveBeenCalled();
     expect(mocks.start).not.toHaveBeenCalled();
     expect(mocks.pullNow).not.toHaveBeenCalled();
-    expect(mocks.setIsReconciling).not.toHaveBeenCalled();
+    expect(mocks.setIsReconciling).not.toHaveBeenCalledWith(true);
   });
 
   it('does not let stale disk load overwrite an in-memory account library', async () => {
@@ -258,7 +323,7 @@ describe('useLibrary account isolation', () => {
     ]);
   });
 
-  it('does not rerun the initial reconcile when remounted for the same loaded account', async () => {
+  it('reruns the account lifecycle idempotently when remounted for the same loaded account', async () => {
     localStorage.setItem('openread_library_owner_user_id', 'account-remount');
     mocks.setUser({ id: 'account-remount' });
 
@@ -277,10 +342,10 @@ describe('useLibrary account isolation', () => {
     const { result: remounted } = renderHook(() => useLibrary());
 
     await waitFor(() => expect(remounted.current.libraryLoaded).toBe(true));
-    expect(mocks.start).not.toHaveBeenCalled();
-    expect(mocks.pullNow).not.toHaveBeenCalled();
-    expect(mocks.setIsReconciling).not.toHaveBeenCalled();
-    expect(mocks.loadLibraryBooks).not.toHaveBeenCalled();
+    expect(mocks.start).toHaveBeenCalledWith('account-remount');
+    expect(mocks.pullNow).toHaveBeenCalledWith('books');
+    expect(mocks.setIsReconciling).toHaveBeenCalledWith(true);
+    expect(mocks.loadLibraryBooks).toHaveBeenCalled();
   });
 
   it('returns account-scoped cached library immediately while reconcile runs in the background', async () => {

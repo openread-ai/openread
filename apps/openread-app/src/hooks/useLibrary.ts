@@ -1,19 +1,18 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useEnv } from '@/context/EnvContext';
+import {
+  persistLibraryPaintProjection,
+  transitionAccountLibraryOwner,
+} from '@/services/accountLibraryLifecycle';
 import { syncWorker } from '@/services/sync/syncWorker';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useSettingsStore } from '@/store/settingsStore';
-import { usePlatformSidebarStore } from '@/store/platformSidebarStore';
-import { LIBRARY_OWNER_STORAGE_KEY } from '@/services/libraryPaintCache';
 import { settingsService } from '@/services/settings/settingsService';
-import { resetCanonicalSyncCursors } from '@/services/sync/cursors';
 import { createLogger } from '@/utils/logger';
 import type { Book } from '@/types/book';
 
 const logger = createLogger('useLibrary');
-const qaAutomationEnabled = process.env.NEXT_PUBLIC_OPENREAD_QA_AUTOMATION === '1';
-let lastInitializedLibraryKey: string | null = null;
 
 function mergeRegeneratedCoverImageUrls(currentLibrary: Book[], diskBooks: Book[]): Book[] | null {
   const diskBooksByHash = new Map(diskBooks.map((book) => [book.hash, book]));
@@ -39,127 +38,81 @@ export const useLibrary = () => {
     setLibrary,
     setLibraryOwnerUserId,
     setIsReconciling,
+    setSyncError,
     libraryLoaded: storeLibraryLoaded,
     libraryOwnerUserId,
     isReconciling,
+    syncError,
   } = useLibraryStore();
   const { setSettings } = useSettingsStore();
   const [libraryLoaded, setLibraryLoaded] = useState(false);
 
   useEffect(() => {
     const userId = user?.id ?? null;
-    const initKey = userId ?? 'anonymous';
-    const storeState = useLibraryStore.getState();
-    const ownerUserId = userId ? localStorage.getItem(LIBRARY_OWNER_STORAGE_KEY) : null;
-    const ownerMatches = Boolean(userId && ownerUserId === userId);
-    const ownerMismatch = Boolean(userId && ownerUserId !== userId);
-    const storeOwnerMismatch = Boolean(
-      userId &&
-      storeState.libraryLoaded &&
-      storeState.libraryOwnerUserId &&
-      storeState.libraryOwnerUserId !== userId,
-    );
-    const shouldClearAccountScopedState = ownerMismatch || storeOwnerMismatch;
-    const hasAccountScopedCache = Boolean(
-      userId &&
-      ownerMatches &&
-      storeState.libraryLoaded &&
-      storeState.libraryOwnerUserId === userId,
-    );
-
-    if (lastInitializedLibraryKey === initKey && useLibraryStore.getState().libraryLoaded) {
-      setLibraryLoaded(true);
-      return;
-    }
-    lastInitializedLibraryKey = initKey;
-    if (!hasAccountScopedCache) {
-      setLibraryLoaded(false);
-    }
-    if (shouldClearAccountScopedState) {
-      setLibrary([]);
-      usePlatformSidebarStore.getState().resetAccountScopedCollections();
-      setLibraryOwnerUserId(userId);
-      usePlatformSidebarStore.getState().setCollectionsOwnerUserId(userId);
-    } else if (ownerMatches && storeState.libraryOwnerUserId !== userId) {
-      setLibraryOwnerUserId(userId);
-      usePlatformSidebarStore.getState().setCollectionsOwnerUserId(userId);
-    } else if (ownerMatches) {
-      usePlatformSidebarStore.getState().setCollectionsOwnerUserId(userId);
-    } else if (!userId) {
-      setLibraryOwnerUserId(null);
-    }
-    if (userId) setIsReconciling(true);
     let cancelled = false;
 
     const initLibrary = async () => {
       try {
+        if (!userId) {
+          await transitionAccountLibraryOwner(null, envConfig);
+          if (!cancelled) setLibraryLoaded(true);
+          return;
+        }
+
+        setIsReconciling(true);
+        setSyncError(null);
+
         const appService = await envConfig.getAppService();
         const settings = await settingsService.load(envConfig);
         if (cancelled) return;
-        const scopedSettings = settings;
-        setSettings(scopedSettings);
-        if (ownerMismatch) {
-          resetCanonicalSyncCursors(userId);
-        }
+        setSettings(settings);
 
-        if (!userId) {
-          setLibrary([]);
-          return;
-        }
-
-        if (ownerMismatch) {
-          await appService.saveLibraryBooks([]);
-          localStorage.setItem(LIBRARY_OWNER_STORAGE_KEY, userId);
-          return;
-        }
-
-        if (qaAutomationEnabled) {
-          const currentLibrary = useLibraryStore.getState().library;
-          setLibraryOwnerUserId(userId);
-          setLibrary([...currentLibrary]);
-          return;
-        }
-
-        const diskBooks = await appService.loadLibraryBooks();
+        const { ownerMismatch } = await transitionAccountLibraryOwner(userId, envConfig);
         if (cancelled) return;
-        // Disk is a startup fallback only. Auth/session changes, QA resets, or sync may
-        // populate the store while this load is in flight; never let stale local disk
-        // overwrite a newer in-memory account-scoped Library.
+
+        const currentBeforeDisk = useLibraryStore.getState().library;
+        const diskBooks = ownerMismatch ? [] : await appService.loadLibraryBooks();
+        if (cancelled) return;
+
         const currentLibrary = useLibraryStore.getState().library;
-        if (currentLibrary.length === 0) {
+        if (!ownerMismatch && currentLibrary.length === 0 && diskBooks.length > 0) {
           setLibraryOwnerUserId(userId);
           setLibrary(diskBooks);
-        } else {
+        } else if (!ownerMismatch) {
           const mergedLibrary = mergeRegeneratedCoverImageUrls(currentLibrary, diskBooks);
           if (mergedLibrary) {
             setLibrary(mergedLibrary);
           }
         }
+
+        // Auth lifecycle may restore a local session before this hook mounts.
+        // Starting here is idempotent and keeps worker ownership with account-library lifecycle.
+        syncWorker.start(userId);
+        await syncWorker.pullNow('books');
+
+        const currentState = useLibraryStore.getState();
+        const visibleCount = currentState.getVisibleLibrary().length;
+        if (syncWorker.status.error && visibleCount === 0) {
+          setSyncError(syncWorker.status.error);
+          setLibraryLoaded(false);
+          return;
+        }
+
+        setSyncError(null);
+        persistLibraryPaintProjection(userId, currentState.library);
+        setLibraryLoaded(true);
+
+        if (currentBeforeDisk.length > 0 && currentState.library.length === 0) {
+          logger.warn('Account library became empty after initialization', { userId });
+        }
       } catch (error) {
         logger.error('Failed to initialize library', error);
-        // Set empty library so libraryLoaded=true in the store,
-        // allowing sync to proceed even if disk load fails.
-        const currentLibrary = useLibraryStore.getState().library;
-        if (currentLibrary.length === 0) {
-          setLibrary([]);
-        }
+        const message = error instanceof Error ? error.message : 'Failed to initialize library';
+        setSyncError(message);
+        setLibraryLoaded(useLibraryStore.getState().getVisibleLibrary().length > 0);
       } finally {
-        if (!cancelled && userId) {
-          // AuthContext usually starts the worker, but Library can mount from the
-          // locally restored user before AuthContext's async session effect runs.
-          // Start/no-op here after account-scoped local Library initialization so
-          // the initial reconcile is not dropped while the worker is still stopped.
-          syncWorker.start(userId);
-          try {
-            await syncWorker.pullNow('books');
-          } catch (error) {
-            logger.warn('Initial account-scoped library sync failed', error);
-          } finally {
-            setIsReconciling(false);
-          }
-        }
         if (!cancelled) {
-          setLibraryLoaded(true);
+          setIsReconciling(false);
         }
       }
     };
@@ -168,14 +121,28 @@ export const useLibrary = () => {
     return () => {
       cancelled = true;
     };
-  }, [envConfig, setIsReconciling, setLibrary, setLibraryOwnerUserId, setSettings, user?.id]);
+  }, [
+    envConfig,
+    setIsReconciling,
+    setLibrary,
+    setLibraryOwnerUserId,
+    setSettings,
+    setSyncError,
+    user?.id,
+  ]);
 
-  const hasAccountScopedCache = Boolean(
-    user?.id && storeLibraryLoaded && libraryOwnerUserId === user.id,
+  const visibleBookCount = useLibraryStore((state) => state.getVisibleLibrary().length);
+  const hasAccountScopedProjection = Boolean(
+    user?.id && storeLibraryLoaded && libraryOwnerUserId === user.id && visibleBookCount > 0,
   );
+  const authenticatedEmptyPending = Boolean(user?.id && visibleBookCount === 0 && isReconciling);
+  const authenticatedEmptyFailed = Boolean(user?.id && visibleBookCount === 0 && syncError);
 
   return {
     libraryLoaded:
-      hasAccountScopedCache || ((libraryLoaded || storeLibraryLoaded) && !isReconciling),
+      hasAccountScopedProjection ||
+      (!authenticatedEmptyPending &&
+        !authenticatedEmptyFailed &&
+        (libraryLoaded || storeLibraryLoaded)),
   };
 };

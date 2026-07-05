@@ -35,15 +35,27 @@ export function useLibraryBooks(options: UseLibraryBooksOptions = {}): UseLibrar
   const { user } = useAuth();
   const libraryLoaded = useLibraryStore((state) => state.libraryLoaded);
   const libraryOwnerUserId = useLibraryStore((state) => state.libraryOwnerUserId);
+  const isReconciling = useLibraryStore((state) => state.isReconciling);
+  const syncError = useLibraryStore((state) => state.syncError);
   const library = useLibraryStore((state) => state.library);
+  const visibleLibrary = useMemo(() => library.filter((book) => !book.deletedAt), [library]);
   const hasOwnerMismatch = Boolean(user?.id && libraryOwnerUserId !== user.id);
-  const isLoading = !libraryLoaded || hasOwnerMismatch;
+  const emptyAuthenticatedLibraryPending = Boolean(
+    user?.id && visibleLibrary.length === 0 && isReconciling,
+  );
+  const emptyAuthenticatedLibraryFailed = Boolean(
+    user?.id && visibleLibrary.length === 0 && syncError,
+  );
+  const isLoading =
+    hasOwnerMismatch ||
+    emptyAuthenticatedLibraryPending ||
+    emptyAuthenticatedLibraryFailed ||
+    (!libraryLoaded && visibleLibrary.length === 0);
 
   const books = useMemo(() => {
     if (isLoading) return [];
 
     let filteredBooks: Book[];
-    const visibleLibrary = library.filter((book) => !book.deletedAt);
 
     switch (filter) {
       case 'reading': {
@@ -119,7 +131,7 @@ export function useLibraryBooks(options: UseLibraryBooksOptions = {}): UseLibrar
     }
 
     return filteredBooks;
-  }, [excludeHashes, filter, isLoading, limit, library]);
+  }, [excludeHashes, filter, isLoading, limit, visibleLibrary]);
 
   return {
     books,

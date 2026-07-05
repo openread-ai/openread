@@ -22,9 +22,7 @@ import {
   transformBookNoteFromDB,
 } from '@/utils/transform';
 import { useLibraryStore } from '@/store/libraryStore';
-import { useSettingsStore } from '@/store/settingsStore';
 import envConfig from '@/services/environment';
-import { settingsService } from '@/services/settings/settingsService';
 import type { BookConfig, BookDataRecord, BookNote } from '@/types/book';
 import {
   applyRemoteBookConfigRows,
@@ -41,14 +39,8 @@ import { aiStore } from '@/services/ai/storage/aiStore';
 import { useAIChatStore } from '@/store/aiChatStore';
 import { isSyncableBookRef, parseSyncableBookRef } from '@openread/types';
 import { getDeviceId } from '@/services/deviceService';
-import { LOCAL_PERSISTENCE_KEYS } from '@/services/persistence/localPersistenceRegistry';
-import {
-  getCanonicalSyncCursor,
-  resetCanonicalSyncCursors,
-  setCanonicalSyncCursor,
-} from './cursors';
+import { getCanonicalSyncCursor, setCanonicalSyncCursor } from './cursors';
 
-const LIBRARY_OWNER_STORAGE_KEY = LOCAL_PERSISTENCE_KEYS.libraryOwnerUserId;
 const RECONCILE_RETRY_DELAYS_MS = [500, 1_500] as const;
 
 /** Realtime broadcast event names for cross-device sync */
@@ -306,36 +298,6 @@ export class SyncWorker {
     const previousUserId = this.userId;
     if (!this.stopped && previousUserId === nextUserId) return; // Already started for this account
     if (!this.stopped) this.stop();
-    const persistedOwnerUserId =
-      typeof window !== 'undefined' ? localStorage.getItem(LIBRARY_OWNER_STORAGE_KEY) : null;
-    const accountChanged =
-      Boolean(previousUserId && previousUserId !== nextUserId) ||
-      Boolean(nextUserId && persistedOwnerUserId && persistedOwnerUserId !== nextUserId);
-    if (accountChanged) {
-      useLibraryStore.getState().setLibrary([]);
-      void import('@/store/platformSidebarStore').then(({ usePlatformSidebarStore }) => {
-        usePlatformSidebarStore.getState().resetAccountScopedCollections();
-      });
-      const currentSettings = useSettingsStore.getState().settings;
-      const resetSettings = Object.keys(currentSettings).length ? { ...currentSettings } : null;
-      resetCanonicalSyncCursors(previousUserId);
-      resetCanonicalSyncCursors(nextUserId);
-      if (typeof window !== 'undefined' && nextUserId) {
-        localStorage.setItem(LIBRARY_OWNER_STORAGE_KEY, nextUserId);
-      }
-      void envConfig
-        .getAppService()
-        .then(async (appService) => {
-          await Promise.all([
-            appService.saveLibraryBooks([]),
-            resetSettings
-              ? settingsService.save(envConfig, resetSettings, { sync: false })
-              : Promise.resolve(),
-          ]);
-        })
-        .catch((error) => console.warn('[SyncWorker] Failed to clear account-scoped state', error));
-    }
-
     this.stopped = false;
     this.userId = nextUserId;
     this.canonicalEngine = nextUserId

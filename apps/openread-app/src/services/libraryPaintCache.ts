@@ -48,27 +48,23 @@ function getLocalStorage(): Storage | null {
   return typeof window === 'undefined' ? null : window.localStorage;
 }
 
-export function getLocalStorageUserId(): string | null {
-  const storage = getLocalStorage();
-  if (!storage) return null;
-
-  try {
-    const userJson = storage.getItem('user');
-    if (!userJson) return null;
-    const user = JSON.parse(userJson) as { id?: unknown } | null;
-    return typeof user?.id === 'string' ? user.id : null;
-  } catch {
-    return null;
-  }
-}
-
 export function readLibraryOwnerUserId(): string | null {
   return getLocalStorage()?.getItem(LIBRARY_OWNER_STORAGE_KEY) ?? null;
 }
 
-export function readLibraryPaintCache(
-  userId = getLocalStorageUserId(),
-): LibraryPaintCacheEntry | null {
+export function rememberLibraryOwnerUserId(userId: string | null): void {
+  const storage = getLocalStorage();
+  if (!storage) return;
+
+  if (userId) {
+    storage.setItem(LIBRARY_OWNER_STORAGE_KEY, userId);
+    return;
+  }
+
+  storage.removeItem(LIBRARY_OWNER_STORAGE_KEY);
+}
+
+export function readLibraryPaintCache(userId: string | null): LibraryPaintCacheEntry | null {
   const storage = getLocalStorage();
   if (!storage || !userId || readLibraryOwnerUserId() !== userId) return null;
 
@@ -97,7 +93,6 @@ export function writeLibraryPaintCache(ownerUserId: string | null, books: Book[]
   if (!storage || !ownerUserId) return;
 
   try {
-    storage.setItem(LIBRARY_OWNER_STORAGE_KEY, ownerUserId);
     storage.setItem(
       LIBRARY_PAINT_CACHE_KEY,
       JSON.stringify({

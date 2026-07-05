@@ -27,6 +27,8 @@ mod dir_scanner;
 mod discord_rpc;
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(desktop)]
+mod native_sentry;
 mod transfer_file;
 use tauri::{command, Emitter, WebviewUrl, WebviewWindowBuilder, Window};
 #[cfg(target_os = "android")]
@@ -147,6 +149,9 @@ struct SingleInstancePayload {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(desktop)]
+    let _sentry_guard = native_sentry::init();
+
     let builder = tauri::Builder::default()
         .plugin(
             tauri_plugin_log::Builder::new()

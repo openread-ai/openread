@@ -68,6 +68,14 @@ objc2-authentication-services = "0.3"
 objc2-foundation = { version = "0.3", features = ["NSError", "NSArray"] }
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
+sentry = { version = "=0.36.0", default-features = false, features = [
+  "backtrace",
+  "contexts",
+  "panic",
+  "transport",
+  "reqwest",
+  "rustls",
+] }
 tauri-plugin-cli = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-updater = "2"

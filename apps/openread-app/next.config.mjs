@@ -35,6 +35,7 @@ const nextConfig = {
   reactStrictMode: true,
   serverExternalPackages: ['isows'],
   env: {
+    NEXT_PUBLIC_SENTRY_DSN: process.env['NEXT_PUBLIC_SENTRY_DSN'],
     NEXT_PUBLIC_SENTRY_ENVIRONMENT: sentryEnvironment,
     NEXT_PUBLIC_SENTRY_RELEASE: sentryRelease,
   },

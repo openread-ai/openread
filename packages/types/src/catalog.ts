@@ -92,6 +92,8 @@ export interface CatalogImportResponse {
 
 export interface CatalogStatusResponse {
   caching_status: string;
+  health_check_status?: string | null;
+  source_available?: boolean;
 }
 
 export interface CatalogDownloadUrlRequest {

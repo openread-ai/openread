@@ -256,7 +256,11 @@ describe('transformBookToDB / transformBookFromDB round-trip', () => {
       progress: [42, 300] as [number, number],
       readingStatus: 'reading' as const,
       sourceTitle: 'round-trip.epub',
-      metadata: { publisher: 'RT Press', isbn: '123-456' },
+      metadata: {
+        publisher: 'RT Press',
+        isbn: '123-456',
+        coverImageUrl: '/catalog/covers/catalog/covers/source/book/thumb.jpg',
+      },
       createdAt: now,
       updatedAt: now,
       deletedAt: null,
@@ -274,7 +278,11 @@ describe('transformBookToDB / transformBookFromDB round-trip', () => {
     expect(dbBook.author).toBe('RT Author');
     expect(dbBook.tags).toEqual(['sci-fi', 'classic']);
     expect(dbBook.progress).toEqual([42, 300]);
-    expect(dbBook.metadata).toEqual({ publisher: 'RT Press', isbn: '123-456' });
+    expect(dbBook.metadata).toEqual({
+      publisher: 'RT Press',
+      isbn: '123-456',
+      coverImageUrl: '/catalog/covers/catalog/covers/source/book/thumb.jpg',
+    });
     expect(dbBook.storage_path).toBe(book.storagePath);
     expect(dbBook.catalog_book_id).toBe(book.catalogBookId);
 

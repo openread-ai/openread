@@ -37,6 +37,7 @@ import type {
   CatalogCollectionDetail,
   CatalogCollectionsResponse,
   CatalogDownloadUrlResponse,
+  CatalogImportIntentResponse,
   CatalogImportResponse,
   CatalogStatusResponse,
   CatalogWishlistResponse,
@@ -221,6 +222,16 @@ class CatalogClient {
       ...init,
       method: 'POST',
     });
+  }
+
+  async getImportIntent(id: string, init?: RequestInit): Promise<CatalogImportIntentResponse> {
+    return this._sdk.fetch<CatalogImportIntentResponse>(
+      `/api/catalog/books/${encodeURIComponent(id)}/import-intent`,
+      {
+        ...init,
+        method: 'POST',
+      },
+    );
   }
 
   async importInternetArchiveBook(iaIdentifier: string, init?: RequestInit): Promise<CatalogImportResponse> {

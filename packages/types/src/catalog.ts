@@ -80,6 +80,44 @@ export interface CollectionWithBooks extends CatalogCollection {
 }
 
 export type CatalogImportStatus = 'ready' | 'preparing';
+export type CatalogImportIntentMode = 'cached' | 'user_device_fetch';
+export type CatalogImportIntentFormat = 'epub' | 'pdf';
+
+export interface CatalogImportIntentPolicy {
+  source: string;
+  sourceId: string;
+  provenanceLabel: string;
+  licenseType: string;
+  cacheRedistributionAllowed: boolean;
+  deviceFetchAllowed: boolean;
+  allowedFormats: CatalogImportIntentFormat[];
+}
+
+interface CatalogImportIntentBase {
+  mode: CatalogImportIntentMode;
+  catalogBookId: string;
+  format: CatalogImportIntentFormat;
+  policy: CatalogImportIntentPolicy;
+}
+
+export interface CatalogCachedImportIntentResponse extends CatalogImportIntentBase {
+  mode: 'cached';
+  downloadUrl: string;
+  expiresAt: number;
+  sizeBytes: number | null;
+  storagePath?: string | null;
+  bookId?: string;
+  bookHash?: SyncableBookRef | string;
+}
+
+export interface CatalogUserDeviceFetchImportIntentResponse extends CatalogImportIntentBase {
+  mode: 'user_device_fetch';
+  sourceUrl: string;
+}
+
+export type CatalogImportIntentResponse =
+  | CatalogCachedImportIntentResponse
+  | CatalogUserDeviceFetchImportIntentResponse;
 
 export interface CatalogImportResponse {
   status: CatalogImportStatus;

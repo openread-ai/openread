@@ -100,12 +100,21 @@ export interface CatalogDownloadUrlRequest {
   bookHash: SyncableBookRef | string;
 }
 
-export interface CatalogDownloadUrlResponse {
-  downloadUrl: string;
-  expiresAt: number;
-  sizeBytes: number | null;
-  format: string | null;
-}
+export type CatalogDownloadUrlResponse =
+  | {
+      status?: 'ready';
+      downloadUrl: string;
+      expiresAt: number;
+      sizeBytes: number | null;
+      format: string | null;
+      storagePath?: string | null;
+    }
+  | {
+      status: 'preparing';
+      catalogBookId: string;
+      retryAfterSeconds: number;
+      message: string;
+    };
 
 export type CatalogWishlistBook = CatalogBook & { wishlisted_at: string };
 

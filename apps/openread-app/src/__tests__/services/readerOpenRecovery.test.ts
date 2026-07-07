@@ -108,6 +108,29 @@ describe('loadReaderOpenDocument', () => {
     expect(appService.redownloadBookContent).toHaveBeenCalledTimes(1);
   });
 
+  it('recovers a corrupt catalog-owned local book even when storagePath is missing', async () => {
+    const book = createBook({
+      hash: 'catalog:7231ff9a-24b9-4074-9369-bc7f88ffb179' as Book['hash'],
+      catalogBookId: '7231ff9a-24b9-4074-9369-bc7f88ffb179',
+      storagePath: null,
+    });
+    const appService = createAppService();
+    const recoveredContent = createContent(book, 'valid.epub');
+    vi.mocked(appService.loadBookContent).mockResolvedValueOnce(
+      createContent(book, 'corrupt.epub'),
+    );
+    vi.mocked(appService.redownloadBookContent).mockResolvedValue(recoveredContent);
+    openMock.mockRejectedValueOnce(new Error('parse failed'));
+    openMock.mockResolvedValueOnce(doc);
+
+    await expect(loadReaderOpenDocument(appService, book)).resolves.toMatchObject({
+      recovered: true,
+      content: recoveredContent,
+      doc,
+    });
+    expect(appService.redownloadBookContent).toHaveBeenCalledTimes(1);
+  });
+
   it('does not treat downloadedAt as remote provenance for local-only imported books', async () => {
     const book = createBook({
       downloadedAt: 2,

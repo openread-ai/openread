@@ -31,6 +31,7 @@ import {
   formatAuthors,
   getPrimaryLanguage,
   getLibraryBackupFilename,
+  isCatalogBackedBook,
 } from '@/utils/book';
 import { md5, partialMD5 } from '@/utils/md5';
 import { computeFileHash } from '@/services/platform/storage';
@@ -747,11 +748,24 @@ export abstract class BaseAppService implements AppService {
     return this.cloudSync.downloadBook(book, this, onlyCover, redownload, onProgress);
   }
 
-  private async downloadStorageBackedBook(book: Book, onProgress?: ProgressHandler): Promise<void> {
-    if (!book.storagePath) throw new Error(BOOK_FILE_NOT_FOUND_ERROR);
-
+  private async downloadCatalogBackedBook(book: Book, onProgress?: ProgressHandler): Promise<void> {
     const data = await platform.catalog.getDownloadUrl(book.hash);
-    if (!data.downloadUrl) throw new Error('No download URL available');
+    const status = (data as { status?: string }).status;
+    if (status === 'preparing') {
+      throw new Error(
+        (data as { message?: string }).message ||
+          'Catalog book is still preparing. Try again shortly.',
+      );
+    }
+    const readyData = data as {
+      downloadUrl?: string;
+      sizeBytes?: number | string | null;
+      storagePath?: string | null;
+    };
+    if (!readyData.downloadUrl) throw new Error('No download URL available');
+
+    const storagePath = readyData.storagePath || book.storagePath;
+    if (!storagePath) throw new Error('Catalog book is still preparing. Try again shortly.');
 
     const localPath = getLocalBookFilename(book);
     if (!(await this.fs.exists(getDir(book), 'Books'))) {
@@ -761,12 +775,13 @@ export abstract class BaseAppService implements AppService {
     await downloadFile({
       appService: this,
       dst: `${this.localBooksDir}/${localPath}`,
-      cfp: book.storagePath,
-      url: data.downloadUrl,
-      expectedSizeBytes: data.sizeBytes,
+      cfp: storagePath,
+      url: readyData.downloadUrl,
+      expectedSizeBytes: readyData.sizeBytes,
       expectedSha256: book.platformHash,
       onProgress,
     });
+    book.storagePath = storagePath;
     book.downloadedAt = Date.now();
   }
 
@@ -846,8 +861,8 @@ export abstract class BaseAppService implements AppService {
     const fp = getLocalBookFilename(book);
     if (await this.fs.exists(fp, 'Books')) {
       file = await this.fs.openFile(fp, 'Books');
-    } else if (book.storagePath) {
-      await this.downloadStorageBackedBook(book, onProgress);
+    } else if (isCatalogBackedBook(book)) {
+      await this.downloadCatalogBackedBook(book, onProgress);
       file = await this.fs.openFile(fp, 'Books');
     } else {
       try {
@@ -889,8 +904,8 @@ export abstract class BaseAppService implements AppService {
   }
 
   async redownloadBookContent(book: Book, onProgress?: ProgressHandler): Promise<BookContent> {
-    if (book.storagePath) {
-      await this.downloadStorageBackedBook(book, onProgress);
+    if (isCatalogBackedBook(book)) {
+      await this.downloadCatalogBackedBook(book, onProgress);
       return this.loadBookContent(book, onProgress);
     }
 

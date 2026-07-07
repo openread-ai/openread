@@ -31,7 +31,13 @@ const {
     mockGetState: vi.fn(() => ({
       settings: { autoUpload: true },
     })),
-    mockGetDownloadUrl: vi.fn(async () => ({ downloadUrl: 'https://signed.example/book.epub' })),
+    mockGetDownloadUrl: vi.fn<() => Promise<CatalogDownloadUrlResponse>>(async () => ({
+      status: 'ready',
+      downloadUrl: 'https://signed.example/book.epub',
+      expiresAt: Date.now() + 30_000,
+      sizeBytes: null,
+      format: 'epub',
+    })),
     mockGetCover: getCover,
     MockDocumentLoader: FakeDocumentLoader,
   };
@@ -85,6 +91,10 @@ vi.mock('@/utils/book', () => ({
   formatTitle: vi.fn((t: string) => t || 'Untitled'),
   formatAuthors: vi.fn((a: string) => a || 'Unknown'),
   getPrimaryLanguage: vi.fn(() => 'en'),
+  isCatalogBackedBook: vi.fn(
+    (book: { catalogBookId?: string | null; hash?: string; storagePath?: string | null }) =>
+      Boolean(book.catalogBookId || book.storagePath || book.hash?.startsWith('catalog:')),
+  ),
 }));
 
 vi.mock('@/utils/path', () => ({
@@ -177,6 +187,7 @@ vi.mock('uuid', () => ({
   v4: vi.fn(() => 'mock-uuid'),
 }));
 
+import type { CatalogDownloadUrlResponse } from '@openread/types';
 import type { Book, BookFormat } from '@/types/book';
 import { BaseAppService, createImportBookContext } from '@/services/appService';
 import { CloudSyncService } from '@/services/cloudSync';
@@ -412,6 +423,76 @@ describe('appService book content loading', () => {
     );
     expect(content.file).toBeInstanceOf(File);
     expect(book.downloadedAt).toEqual(expect.any(Number));
+  });
+
+  it('routes catalog-backed books without local storagePath through the catalog signing path', async () => {
+    const fs = (appService as unknown as { fs: FileSystem }).fs;
+    vi.mocked(fs.exists).mockResolvedValue(false);
+    vi.mocked(downloadFile).mockResolvedValue({});
+    mockGetDownloadUrl.mockResolvedValueOnce({
+      status: 'ready',
+      downloadUrl: 'https://signed.example/catalog-missing-storage.epub',
+      expiresAt: Date.now() + 30_000,
+      sizeBytes: 123456,
+      format: 'epub',
+      storagePath: 'catalog/books/internet-archive/test/book.epub',
+    });
+
+    const book = createMockBook({
+      hash: testOpenReadBookRef('catalog:7231ff9a-24b9-4074-9369-bc7f88ffb179'),
+      catalogBookId: '7231ff9a-24b9-4074-9369-bc7f88ffb179',
+      storagePath: null,
+      uploadedAt: null,
+      downloadedAt: null,
+    });
+
+    const onProgress = vi.fn();
+
+    const content = await appService.loadBookContent(book, onProgress);
+
+    expect(mockGetDownloadUrl).toHaveBeenCalledWith(book.hash);
+    expect(downloadFile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appService,
+        dst: '/mock-local-filename',
+        cfp: 'catalog/books/internet-archive/test/book.epub',
+        url: 'https://signed.example/catalog-missing-storage.epub',
+        onProgress,
+      }),
+    );
+    expect(downloadFile).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        bookHash: book.hash,
+        kind: 'user_book_file',
+      }),
+    );
+    expect(book.storagePath).toBe('catalog/books/internet-archive/test/book.epub');
+    expect(content.file).toBeInstanceOf(File);
+    expect(book.downloadedAt).toEqual(expect.any(Number));
+  });
+
+  it('surfaces preparing catalog-backed downloads without falling through to file metadata', async () => {
+    const fs = (appService as unknown as { fs: FileSystem }).fs;
+    vi.mocked(fs.exists).mockResolvedValue(false);
+    mockGetDownloadUrl.mockResolvedValueOnce({
+      status: 'preparing',
+      catalogBookId: '7231ff9a-24b9-4074-9369-bc7f88ffb179',
+      retryAfterSeconds: 30,
+      message: 'Catalog book file is still preparing. Try again shortly.',
+    });
+
+    const book = createMockBook({
+      hash: testOpenReadBookRef('catalog:7231ff9a-24b9-4074-9369-bc7f88ffb179'),
+      catalogBookId: '7231ff9a-24b9-4074-9369-bc7f88ffb179',
+      storagePath: null,
+      uploadedAt: null,
+      downloadedAt: null,
+    });
+
+    await expect(appService.loadBookContent(book)).rejects.toThrow(
+      'Catalog book file is still preparing',
+    );
+    expect(downloadFile).not.toHaveBeenCalled();
   });
 
   it('downloads a remote book from active file metadata when book storagePath is missing', async () => {

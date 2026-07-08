@@ -7,7 +7,7 @@ import { SYNC_TIMEOUT_MS } from '@/services/sync/client';
 
 const getAccessToken = vi.fn();
 const fetchWithTimeout = vi.fn();
-const getNodeBaseUrl = vi.fn();
+const getNodeAPIBaseUrl = vi.fn();
 
 vi.mock('@/utils/access', () => ({ getAccessToken: () => getAccessToken() }));
 vi.mock('@/utils/fetch', () => ({
@@ -15,7 +15,7 @@ vi.mock('@/utils/fetch', () => ({
 }));
 vi.mock('@/services/environment', async (importOriginal) => ({
   ...((await importOriginal()) as Record<string, unknown>),
-  getNodeBaseUrl: () => getNodeBaseUrl(),
+  getNodeAPIBaseUrl: () => getNodeAPIBaseUrl(),
 }));
 
 const request: SyncPushRequest = {
@@ -41,7 +41,7 @@ describe('BackendSyncTransport', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     getAccessToken.mockResolvedValue('token-1');
-    getNodeBaseUrl.mockReturnValue('https://api.openread.ai');
+    getNodeAPIBaseUrl.mockReturnValue('https://api.openread.ai/api');
   });
 
   it('pushes canonical mutations to the backend sync API with auth and protocol headers', async () => {

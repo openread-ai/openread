@@ -4,7 +4,8 @@ import { memo, useState } from 'react';
 import { Heart, Globe, Check, Plus } from 'lucide-react';
 import { cn } from '@/utils/tailwind';
 import { Progress } from '@/components/primitives/progress';
-import type { CatalogBook } from '@/types/catalog';
+import { catalogAddModeLabel, type CatalogAddMode } from '@/services/catalogAddMode';
+import type { CatalogBook, ImportPhase } from '@/types/catalog';
 
 // ── Cover color palettes ────────────────────────────────
 // Matches the Figma design's gradient cover system:
@@ -57,12 +58,22 @@ export function getLanguageName(code: string): string {
 
 type CardState = 'default' | 'importing' | 'in-library';
 
+const IMPORT_PHASE_LABELS: Record<ImportPhase, string> = {
+  requesting_intent: 'Preparing...',
+  downloading: 'Downloading...',
+  validating: 'Validating...',
+  importing: 'Importing...',
+  opening: 'Opening...',
+};
+
 export interface ExploreBookCardProps {
   book: CatalogBook;
   isIA?: boolean;
   isWishlisted?: boolean;
   state?: CardState;
+  addMode?: CatalogAddMode | null;
   importProgress?: number; // 0-100
+  importPhase?: ImportPhase;
   onWishlistToggle?: (bookId: string) => void;
   onAction?: (bookId: string) => void;
   onOpen?: (bookId: string) => void;
@@ -161,7 +172,9 @@ export const ExploreBookCard = memo(function ExploreBookCard({
   isIA = false,
   isWishlisted = false,
   state = 'default',
+  addMode,
   importProgress = 0,
+  importPhase,
   onWishlistToggle,
   onAction,
   onOpen,
@@ -171,6 +184,9 @@ export const ExploreBookCard = memo(function ExploreBookCard({
   const palette = getCoverPalette(book.id || book.ia_identifier || book.title);
   const formatLabel = (book.format_type || 'epub').toUpperCase();
   const langLabel = getLanguageName(book.language);
+  const addLabel = addMode ? catalogAddModeLabel(addMode) : null;
+  const compactAddLabel = addMode === 'user_device_fetch' ? 'Get' : 'Add';
+  const importingLabel = importPhase ? IMPORT_PHASE_LABELS[importPhase] : 'Adding...';
 
   const handleCardClick = () => {
     onCardTap?.(book.id);
@@ -222,22 +238,22 @@ export const ExploreBookCard = memo(function ExploreBookCard({
           </button>
 
           {/* Action button / progress / in-library */}
-          {state === 'default' && (
+          {state === 'default' && addMode && onAction && (
             <button
               type='button'
               className='flex h-9 items-center gap-1 rounded-md bg-[#1C1C1A] px-3 text-[13px] font-medium text-white transition-colors hover:bg-[#2a2a28]'
-              aria-label='Add to Library'
-              onClick={() => onAction?.(book.id)}
+              aria-label={addLabel ?? 'Add to Library'}
+              onClick={() => onAction(book.id)}
             >
               <Plus className='h-4 w-4' />
-              <span>Add</span>
+              <span>{compactAddLabel}</span>
             </button>
           )}
 
           {state === 'importing' && (
             <div className='flex flex-1 flex-col gap-1 pl-2'>
               <div className='flex items-center justify-between text-[12px]'>
-                <span className='text-base-content/60'>Adding...</span>
+                <span className='text-base-content/60'>{importingLabel}</span>
                 <span className='text-base-content/40'>{importProgress}%</span>
               </div>
               <Progress value={importProgress} className='bg-base-content/10 h-1.5' />

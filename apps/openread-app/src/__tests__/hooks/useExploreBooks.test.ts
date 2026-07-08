@@ -254,110 +254,64 @@ describe('useExploreBooks', () => {
     });
   });
 
-  describe('blended search (with query)', () => {
-    it('should fetch both local and IA results when query is provided', async () => {
+  describe('canonical catalog search (with query)', () => {
+    it('should fetch canonical catalog results and not trigger legacy IA search', async () => {
       setupFetchRouter({
         local: { books: [makeLocalBook()], total: 1 },
         ia: { books: [makeIABook()], total: 100 },
       });
 
-      const { result } = renderHook(() => useExploreBooks({ q: 'test-blend' }));
-
-      await waitFor(() => {
-        expect(result.current.iaBooks).toHaveLength(1);
-      });
-
-      expect(result.current.books).toHaveLength(1);
-      expect(result.current.iaBooks[0]!.source).toBe('internet-archive');
-      expect(result.current.iaTotal).toBe(100);
-      expect(result.current.iaLoading).toBe(false);
-    });
-
-    it('should compute iaHasMore correctly', async () => {
-      setupFetchRouter({
-        local: { books: [makeLocalBook()], total: 1 },
-        ia: { books: [makeIABook()], total: 50 },
-      });
-
-      const { result } = renderHook(() => useExploreBooks({ q: 'test-hasmore', limit: 20 }));
-
-      await waitFor(() => {
-        expect(result.current.iaBooks).toHaveLength(1);
-      });
-
-      expect(result.current.iaHasMore).toBe(true);
-    });
-
-    it('should set iaHasMore to false when total fits in one page', async () => {
-      setupFetchRouter({
-        local: { books: [makeLocalBook()], total: 1 },
-        ia: { books: [makeIABook()], total: 1 },
-      });
-
-      const { result } = renderHook(() => useExploreBooks({ q: 'test-nomore', limit: 20 }));
-
-      await waitFor(() => {
-        expect(result.current.iaBooks).toHaveLength(1);
-      });
-
-      expect(result.current.iaHasMore).toBe(false);
-    });
-
-    it('should handle IA fetch failure gracefully', async () => {
-      setupFetchRouter({
-        local: { books: [makeLocalBook()], total: 1 },
-        ia: 'fail',
-      });
-
-      const { result } = renderHook(() => useExploreBooks({ q: 'test-fail' }));
+      const { result } = renderHook(() => useExploreBooks({ q: 'test-canonical' }));
 
       await waitFor(() => {
         expect(result.current.books).toHaveLength(1);
-        expect(result.current.iaLoading).toBe(false);
       });
 
-      expect(result.current.iaError).toBe('ia_unavailable');
       expect(result.current.iaBooks).toEqual([]);
+      expect(result.current.iaTotal).toBe(0);
+      expect(result.current.iaLoading).toBe(false);
+      expect(result.current.iaError).toBeNull();
+      expect(result.current.iaHasMore).toBe(false);
+
+      const urls = mockFetch.mock.calls.map((c: unknown[]) => c[0] as string);
+      expect(urls.every((u) => u.includes('/catalog/books'))).toBe(true);
+      expect(urls.some((u) => u.includes('/catalog/ia/search'))).toBe(false);
     });
 
-    it('should handle IA graceful degradation (error in body)', async () => {
-      setupFetchRouter({
-        local: { books: [makeLocalBook()], total: 1 },
-        ia: { books: [], total: 0, error: 'ia_unavailable' },
+    it('should keep IA compatibility state empty when canonical query pages append', async () => {
+      mockFetch.mockImplementation((url: string) => {
+        const page = new URL(url, 'https://api.openread.ai').searchParams.get('page');
+        const books =
+          page === '2'
+            ? [makeLocalBook({ id: 'local-2', title: 'Local Book 2' })]
+            : [makeLocalBook({ id: 'local-1', title: 'Local Book 1' })];
+
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ books, total: 40 }),
+        });
       });
 
-      const { result } = renderHook(() => useExploreBooks({ q: 'test-degrade' }));
+      const { result } = renderHook(() => useExploreBooks({ q: 'test-canonical-more', limit: 20 }));
 
       await waitFor(() => {
-        expect(result.current.iaError).toBe('ia_unavailable');
-      });
-    });
-
-    it('should deduplicate IA results against local results', async () => {
-      setupFetchRouter({
-        local: {
-          books: [makeLocalBook({ title: 'Same Book', author_name: 'Same Author' })],
-          total: 1,
-        },
-        ia: {
-          books: [
-            makeIABook({ title: 'Same Book', author_name: 'Same Author', ia_identifier: 'dup' }),
-            makeIABook({ title: 'Unique IA', author_name: 'IA Only', ia_identifier: 'uniq' }),
-          ],
-          total: 2,
-        },
+        expect(result.current.books.map((book) => book.id)).toEqual(['local-1']);
       });
 
-      const { result } = renderHook(() => useExploreBooks({ q: 'test-dedup' }));
+      act(() => {
+        result.current.loadMore();
+      });
 
       await waitFor(() => {
-        expect(result.current.iaBooks).toHaveLength(1);
+        expect(result.current.books.map((book) => book.id)).toEqual(['local-1', 'local-2']);
       });
 
-      expect(result.current.iaBooks[0]!.ia_identifier).toBe('uniq');
+      expect(result.current.iaBooks).toEqual([]);
+      expect(result.current.iaHasMore).toBe(false);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
     });
 
-    it('should clear IA state when query is removed', async () => {
+    it('should leave IA state empty when query is removed', async () => {
       setupFetchRouter({
         local: { books: [makeLocalBook()], total: 1 },
         ia: { books: [makeIABook()], total: 100 },
@@ -368,10 +322,9 @@ describe('useExploreBooks', () => {
       });
 
       await waitFor(() => {
-        expect(result.current.iaBooks).toHaveLength(1);
+        expect(result.current.books).toHaveLength(1);
       });
 
-      // Switch to browse mode (no query)
       rerender({ q: undefined });
 
       await waitFor(() => {

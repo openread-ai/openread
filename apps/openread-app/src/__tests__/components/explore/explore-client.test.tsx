@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import React from 'react';
 import ExploreClient from '@/app/(platform)/explore/client';
+import type { CatalogImportReadiness } from '@/hooks/useCatalogImport';
 import type { CatalogBook } from '@/types/catalog';
 
 // ── Mock Next.js navigation ───────────────────────────
@@ -29,11 +30,24 @@ let mockGetImportState = vi.fn(
     progress: 0,
   }),
 );
+let mockGetImportReadiness = vi.fn(
+  (_bookId: string): CatalogImportReadiness => ({
+    ready: true,
+    blockedReason: null,
+    isAuthenticated: true,
+    canAddBook: true,
+    libraryLimit: 10,
+    currentCount: 0,
+    isLibraryLimitLoading: false,
+    currentStatus: 'idle',
+  }),
+);
 
 vi.mock('@/hooks/useCatalogImport', () => ({
   useCatalogImport: () => ({
     importBook: mockImportBook,
     getImportState: (...args: unknown[]) => mockGetImportState(...(args as [string])),
+    getImportReadiness: (...args: unknown[]) => mockGetImportReadiness(...(args as [string])),
   }),
 }));
 
@@ -370,6 +384,8 @@ vi.mock('@/components/explore/BookDetailSheet', () => ({
     onClose,
     isWishlisted,
     importState,
+    importReady = true,
+    importBlockedReason = null,
     onWishlistToggle,
     onImport,
     onRead,
@@ -380,6 +396,8 @@ vi.mock('@/components/explore/BookDetailSheet', () => ({
     isWishlisted?: boolean;
     importState?: string;
     importProgress?: number;
+    importReady?: boolean;
+    importBlockedReason?: string | null;
     onWishlistToggle?: () => void;
     onImport?: () => void;
     onRead?: () => void;
@@ -399,7 +417,14 @@ vi.mock('@/components/explore/BookDetailSheet', () => ({
           </button>
         )}
         {onImport && (
-          <button type='button' data-testid='sheet-import-btn' onClick={onImport}>
+          <button
+            type='button'
+            data-testid='sheet-import-btn'
+            data-import-ready={importReady ? 'true' : 'false'}
+            data-import-blocked-reason={importBlockedReason ?? undefined}
+            disabled={!importReady}
+            onClick={importReady ? onImport : undefined}
+          >
             Import
           </button>
         )}
@@ -475,6 +500,18 @@ beforeEach(() => {
   mockRouterPush.mockClear();
   mockUseExploreBooks.mockClear();
   mockGetImportState = vi.fn(() => ({ status: 'idle', progress: 0 }));
+  mockGetImportReadiness = vi.fn(
+    (): CatalogImportReadiness => ({
+      ready: true,
+      blockedReason: null,
+      isAuthenticated: true,
+      canAddBook: true,
+      libraryLimit: 10,
+      currentCount: 0,
+      isLibraryLimitLoading: false,
+      currentStatus: 'idle',
+    }),
+  );
   mockExploreBooksReturn = {
     books: [],
     total: 0,
@@ -875,10 +912,10 @@ describe('ExploreClient', () => {
     });
   });
 
-  describe('IA Blended Search', () => {
-    const mockIaBooks: CatalogBook[] = [
+  describe('Canonical catalog search', () => {
+    const legacyIaBooks = [
       {
-        id: '',
+        id: 'internet-archive:ia-book-1',
         title: 'IA Book 1',
         author_name: 'IA Author',
         language: 'en',
@@ -894,219 +931,57 @@ describe('ExploreClient', () => {
         ia_identifier: 'ia-book-1',
         cover_url: 'https://archive.org/services/img/ia-book-1',
       },
-      {
-        id: '',
-        title: 'IA Book 2',
-        author_name: 'IA Author 2',
-        language: 'en',
-        format_type: 'epub',
-        cover_image_key: null,
-        cover_is_generated: false,
-        is_cached: false,
-        import_count: 50,
-        page_count: null,
-        file_size_bytes: null,
-        source: 'internet-archive',
-        source_id: 'ia-book-2',
-        ia_identifier: 'ia-book-2',
-        cover_url: 'https://archive.org/services/img/ia-book-2',
-      },
-    ];
+    ] satisfies CatalogBook[];
 
-    it('should show IA section when searching and IA results exist', () => {
+    it('should not render legacy IA blended section even if the hook exposes compatibility IA state', () => {
       mockSearchQuery = 'python';
       mockExploreBooksReturn = {
         ...mockExploreBooksReturn,
         books: mockBooks,
         total: 2,
-        iaBooks: mockIaBooks,
-        iaTotal: 500,
-        iaLoading: false,
-      };
-      render(<ExploreClient />);
-      expect(screen.getByTestId('ia-results-section')).toBeTruthy();
-      expect(screen.getByText('500+ more from Internet Archive')).toBeTruthy();
-    });
-
-    it('should show IA loading state with spinner text', () => {
-      mockSearchQuery = 'python';
-      mockExploreBooksReturn = {
-        ...mockExploreBooksReturn,
-        books: mockBooks,
-        total: 2,
-        iaBooks: [],
-        iaTotal: 0,
-        iaLoading: true,
-      };
-      render(<ExploreClient />);
-      expect(screen.getByTestId('ia-results-section')).toBeTruthy();
-      expect(screen.getByText('Searching Internet Archive...')).toBeTruthy();
-    });
-
-    it('should show IA skeleton cards while loading with no IA books yet', () => {
-      mockSearchQuery = 'python';
-      mockExploreBooksReturn = {
-        ...mockExploreBooksReturn,
-        books: mockBooks,
-        total: 2,
-        iaBooks: [],
-        iaTotal: 0,
-        iaLoading: true,
-      };
-      render(<ExploreClient />);
-      const iaSection = screen.getByTestId('ia-results-section');
-      const skeletons = iaSection.querySelectorAll('.animate-pulse');
-      expect(skeletons.length).toBe(4);
-    });
-
-    it('should render IA book cards with isIA prop', () => {
-      mockSearchQuery = 'python';
-      mockExploreBooksReturn = {
-        ...mockExploreBooksReturn,
-        books: mockBooks,
-        total: 2,
-        iaBooks: mockIaBooks,
-        iaTotal: 500,
-        iaLoading: false,
-      };
-      render(<ExploreClient />);
-      expect(screen.getByTestId('book-card-ia-book-1')).toBeTruthy();
-      expect(screen.getByTestId('book-card-ia-book-2')).toBeTruthy();
-      expect(screen.getByTestId('book-ia-badge-ia-book-1')).toBeTruthy();
-    });
-
-    it('should show and trigger visible Load more control when iaHasMore is true', () => {
-      const iaLoadMore = vi.fn();
-      mockSearchQuery = 'python';
-      mockExploreBooksReturn = {
-        ...mockExploreBooksReturn,
-        books: mockBooks,
-        total: 2,
-        iaBooks: mockIaBooks,
-        iaTotal: 500,
-        iaLoading: false,
-        iaHasMore: true,
-        iaLoadMore,
-      };
-      render(<ExploreClient />);
-
-      const iaSection = screen.getByTestId('ia-results-section');
-      expect(iaSection.textContent).toContain('Showing {{shown}} of {{total}} books');
-      const button = screen.getByRole('button', { name: 'Load more' });
-      expect(button).toBeTruthy();
-
-      fireEvent.click(button);
-      expect(iaLoadMore).toHaveBeenCalledTimes(1);
-    });
-
-    it('should show IA loading state when iaLoading and iaHasMore', () => {
-      mockSearchQuery = 'python';
-      mockExploreBooksReturn = {
-        ...mockExploreBooksReturn,
-        books: mockBooks,
-        total: 2,
-        iaBooks: mockIaBooks,
+        iaBooks: legacyIaBooks,
         iaTotal: 500,
         iaLoading: true,
         iaHasMore: true,
       };
       render(<ExploreClient />);
 
-      const button = screen.getByRole('button', { name: 'Loading more...' });
-      expect(button).toBeTruthy();
-      expect(button).toHaveProperty('disabled', true);
-    });
-
-    it('should not show IA section in browse mode', () => {
-      mockExploreBooksReturn = {
-        ...mockExploreBooksReturn,
-        iaBooks: mockIaBooks,
-        iaTotal: 500,
-      };
-      render(<ExploreClient />);
       expect(screen.queryByTestId('ia-results-section')).toBeNull();
+      expect(screen.queryByText('Searching Internet Archive...')).toBeNull();
+      expect(screen.queryByText(/more from Internet Archive/)).toBeNull();
+      expect(screen.queryByTestId('book-ia-badge-ia-book-1')).toBeNull();
     });
 
-    it('should not show IA section in category filter mode', () => {
-      mockSelectedCategory = 'Science';
-      mockExploreBooksReturn = {
-        ...mockExploreBooksReturn,
-        books: mockBooks,
-        total: 2,
-        iaBooks: mockIaBooks,
-        iaTotal: 500,
-      };
-      render(<ExploreClient />);
-      // Category mode is not "searching" so IA section should not appear
-      expect(screen.queryByTestId('ia-results-section')).toBeNull();
-    });
-
-    it('should show "No results in OpenRead library" when local is empty but IA has results', () => {
-      mockSearchQuery = 'obscure-topic';
-      mockExploreBooksReturn = {
-        ...mockExploreBooksReturn,
-        books: [],
-        total: 0,
-        isLoading: false,
-        iaBooks: mockIaBooks,
-        iaTotal: 500,
-        iaLoading: false,
-      };
-      render(<ExploreClient />);
-      expect(screen.getByText('No results in OpenRead library')).toBeTruthy();
-      // Should NOT show the full empty state
-      expect(screen.queryByText('No books found for')).toBeNull();
-      // Should still show IA section
-      expect(screen.getByTestId('ia-results-section')).toBeTruthy();
-    });
-
-    it('should show "No results in OpenRead library" when local is empty and IA is still loading', () => {
-      mockSearchQuery = 'obscure-topic';
-      mockExploreBooksReturn = {
-        ...mockExploreBooksReturn,
-        books: [],
-        total: 0,
-        isLoading: false,
-        iaBooks: [],
-        iaTotal: 0,
-        iaLoading: true,
-      };
-      render(<ExploreClient />);
-      expect(screen.getByText('No results in OpenRead library')).toBeTruthy();
-      expect(screen.getByText('Searching Internet Archive...')).toBeTruthy();
-    });
-
-    it('should show full empty state when both local and IA return nothing', () => {
+    it('should show the canonical empty state when executable catalog rows are absent', () => {
       mockSearchQuery = 'totally-nonexistent';
       mockExploreBooksReturn = {
         ...mockExploreBooksReturn,
         books: [],
         total: 0,
         isLoading: false,
-        iaBooks: [],
-        iaTotal: 0,
+        iaBooks: legacyIaBooks,
+        iaTotal: 500,
         iaLoading: false,
       };
       render(<ExploreClient />);
+
       expect(screen.getByText('No books found for')).toBeTruthy();
+      expect(screen.queryByText('No results in OpenRead library')).toBeNull();
       expect(screen.queryByTestId('ia-results-section')).toBeNull();
     });
 
-    it('should not show Load More from IA button when not loading and iaHasMore is false', () => {
+    it('should not select non-canonical IA compatibility rows for the detail sheet', () => {
       mockSearchQuery = 'python';
+      mockSearchParams = new URLSearchParams('book=internet-archive:ia-book-1');
       mockExploreBooksReturn = {
         ...mockExploreBooksReturn,
         books: mockBooks,
         total: 2,
-        iaBooks: mockIaBooks,
-        iaTotal: 2,
-        iaLoading: false,
-        iaHasMore: false,
+        iaBooks: legacyIaBooks,
       };
       render(<ExploreClient />);
-      const iaSection = screen.getByTestId('ia-results-section');
-      expect(iaSection.textContent).not.toContain('Showing {{shown}} of {{total}} books');
-      expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull();
+
+      expect(screen.queryByTestId('sheet-title')).toBeNull();
     });
   });
 
@@ -1393,7 +1268,37 @@ describe('ExploreClient', () => {
       };
       render(<ExploreClient />);
       fireEvent.click(screen.getByTestId('sheet-import-btn'));
-      expect(mockImportBook).toHaveBeenCalledWith('search-1', undefined);
+      expect(mockImportBook).toHaveBeenCalledWith('search-1');
+    });
+
+    it('should keep sheet import disabled when catalog import guards are not ready', () => {
+      mockSearchQuery = 'python';
+      mockSearchParams = new URLSearchParams('book=search-1');
+      mockGetImportReadiness = vi.fn(
+        (): CatalogImportReadiness => ({
+          ready: false,
+          blockedReason: 'library_limit_loading',
+          isAuthenticated: true,
+          canAddBook: false,
+          libraryLimit: 0,
+          currentCount: 0,
+          isLibraryLimitLoading: true,
+          currentStatus: 'idle',
+        }),
+      );
+      mockExploreBooksReturn = {
+        ...mockExploreBooksReturn,
+        books: mockBooks,
+        total: 2,
+      };
+      render(<ExploreClient />);
+
+      const importButton = screen.getByTestId('sheet-import-btn');
+      expect((importButton as HTMLButtonElement).disabled).toBe(true);
+      expect(importButton.getAttribute('data-import-ready')).toBe('false');
+      expect(importButton.getAttribute('data-import-blocked-reason')).toBe('library_limit_loading');
+      fireEvent.click(importButton);
+      expect(mockImportBook).not.toHaveBeenCalled();
     });
 
     it('should call navigateToReader when sheet read button is clicked', () => {

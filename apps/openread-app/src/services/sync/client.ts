@@ -9,14 +9,14 @@ import type {
 } from '@openread/sync';
 import { SYNC_PROTOCOL_VERSION } from '@openread/sync';
 
-import { getNodeBaseUrl } from '@/services/environment';
+import { getNodeAPIBaseUrl } from '@/services/environment';
 import { getDeviceId } from '@/services/deviceService';
 import type { AIConversation, AIMessage } from '@/services/ai/types';
 import { getAccessToken } from '@/utils/access';
 import { fetchWithTimeout } from '@/utils/fetch';
 import type { Book, BookConfig, BookDataRecord, BookNote } from '@/types/book';
 
-const syncEndpoint = (path: 'pull' | 'reconcile') => `${getNodeBaseUrl()}/api/sync/${path}`;
+const syncEndpoint = (path: 'pull' | 'reconcile') => `${getNodeAPIBaseUrl()}/sync/${path}`;
 
 /** Timeout for canonical sync HTTP requests. */
 export const SYNC_TIMEOUT_MS = 60_000;

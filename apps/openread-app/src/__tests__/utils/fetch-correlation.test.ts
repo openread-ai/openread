@@ -1,8 +1,16 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { OPENREAD_REQUEST_ID_HEADER, withOpenreadCorrelationHeaders } from '@/utils/fetch';
+import {
+  OPENREAD_REQUEST_ID_HEADER,
+  withOpenreadCorrelationHeaders,
+  withWebDevPlatformProxyUrl,
+} from '@/utils/fetch';
 
 describe('OpenRead fetch correlation headers', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
   it('adds a safe request ID to OpenRead API requests without touching auth headers', () => {
     vi.stubGlobal('crypto', { randomUUID: () => 'request-id-123' });
 
@@ -30,5 +38,38 @@ describe('OpenRead fetch correlation headers', () => {
     const init = { headers: { Accept: 'application/json' } };
 
     expect(withOpenreadCorrelationHeaders('https://openlibrary.org/search.json', init)).toBe(init);
+  });
+
+  it('routes local web platform API calls through same-origin proxy routes', () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    vi.stubEnv('NEXT_PUBLIC_APP_PLATFORM', 'web');
+    vi.stubGlobal('window', {
+      location: { href: 'http://localhost:3000/explore', origin: 'http://localhost:3000' },
+    });
+
+    expect(withWebDevPlatformProxyUrl('https://api.openread.ai/catalog/books?page=1')).toBe(
+      '/catalog/books?page=1',
+    );
+    expect(
+      withWebDevPlatformProxyUrl('https://api.openread.ai/api/catalog/books/cat-1/import-intent'),
+    ).toBe('/api/catalog/books/cat-1/import-intent');
+    expect(withWebDevPlatformProxyUrl('https://api.openread.ai/api/sync/push')).toBe(
+      '/api/sync/push',
+    );
+    expect(withWebDevPlatformProxyUrl('https://api.openread.ai/api/tier-config')).toBe(
+      '/api/tier-config',
+    );
+  });
+
+  it('keeps backend calls without local proxy routes on the configured backend host', () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    vi.stubEnv('NEXT_PUBLIC_APP_PLATFORM', 'web');
+    vi.stubGlobal('window', {
+      location: { href: 'http://localhost:3000/explore', origin: 'http://localhost:3000' },
+    });
+
+    expect(withWebDevPlatformProxyUrl('https://api.openread.ai/api/platform-books')).toBe(
+      'https://api.openread.ai/api/platform-books',
+    );
   });
 });

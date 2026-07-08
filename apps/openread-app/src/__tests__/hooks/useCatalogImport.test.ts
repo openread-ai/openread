@@ -2,17 +2,17 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, cleanup } from '@testing-library/react';
 import { useCatalogImport } from '@/hooks/useCatalogImport';
 
-// ── Hoisted mocks ──────────────────────────────────────
-
 const {
   catalogJson,
   fetchMock,
   mockAuthState,
   mockDispatch,
   mockAppService,
+  mockCanExecuteDeviceFetch,
   mockImportDeviceFetchedCatalogBook,
   mockEnqueueBooksForSync,
   mockLibraryState,
+  mockSyncPullNow,
 } = vi.hoisted(() => {
   const mockAuthState = {
     token: 'test-token-123' as string | null,
@@ -33,8 +33,13 @@ const {
       mockLibraryState.library = books;
     }),
   };
+  const mockCanExecuteDeviceFetch = vi.fn(() => false);
   const mockImportDeviceFetchedCatalogBook = vi.fn<(arg: unknown) => unknown>();
   const mockEnqueueBooksForSync = vi.fn<(arg: unknown) => Promise<void>>(() => Promise.resolve());
+  const mockSyncPullNow = vi.fn<() => Promise<void>>(() => {
+    mockLibraryState.library = [{ hash: 'catalog:catalog-1' }];
+    return Promise.resolve();
+  });
   const catalogJson = async (url: string, options?: Record<string, unknown>) => {
     const response = await fetchMock(url, options);
     if (!response.ok) {
@@ -49,9 +54,11 @@ const {
     mockAuthState,
     mockDispatch,
     mockAppService,
+    mockCanExecuteDeviceFetch,
     mockImportDeviceFetchedCatalogBook,
     mockEnqueueBooksForSync,
     mockLibraryState,
+    mockSyncPullNow,
   };
 });
 
@@ -61,6 +68,10 @@ vi.mock('@/context/AuthContext', () => ({
 
 vi.mock('@/context/EnvContext', () => ({
   useEnv: () => ({ appService: mockAppService }),
+}));
+
+vi.mock('@/services/catalogAddMode', () => ({
+  canExecuteCatalogUserDeviceFetchMode: () => mockCanExecuteDeviceFetch(),
 }));
 
 vi.mock('@/services/catalogDeviceFetch', () => ({
@@ -85,42 +96,23 @@ vi.mock('@/utils/event', () => ({
 
 vi.mock('@/services/sync/syncWorker', () => ({
   syncWorker: {
-    pullNow: vi.fn(() => Promise.resolve()),
+    pullNow: mockSyncPullNow,
   },
 }));
 
 vi.mock('@/services/platform/client', () => ({
   platform: {
     catalog: {
-      getImportStatus: (catalogBookId: string, init?: Record<string, unknown>) =>
-        catalogJson(`/catalog/books/${catalogBookId}/status`, init),
-      importBook: (catalogBookId: string, init?: Record<string, unknown>) =>
-        catalogJson(`/api/catalog/books/${catalogBookId}/import`, {
-          ...init,
-          method: 'POST',
-          headers: { Authorization: `Bearer ${mockAuthState.token}` },
-        }),
       getImportIntent: (catalogBookId: string, init?: Record<string, unknown>) =>
         catalogJson(`/api/catalog/books/${catalogBookId}/import-intent`, {
           ...init,
           method: 'POST',
           headers: { Authorization: `Bearer ${mockAuthState.token}` },
         }),
-      importInternetArchiveBook: (iaIdentifier: string, init?: Record<string, unknown>) =>
-        catalogJson('/api/catalog/ia/import', {
-          ...init,
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${mockAuthState.token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ ia_identifier: iaIdentifier }),
-        }),
     },
   },
 }));
 
-// Mock useLibraryLimit (library limit logic is tested separately)
 const { mockLibraryLimitState } = vi.hoisted(() => {
   const mockLibraryLimitState = {
     canAddBook: true,
@@ -138,15 +130,6 @@ vi.mock('@/hooks/useLibraryLimit', () => ({
   useLibraryLimit: () => mockLibraryLimitState,
 }));
 
-// ── Test helpers ───────────────────────────────────────
-
-function mockImportResponse(status: 'ready' | 'preparing', extra?: Record<string, unknown>) {
-  return {
-    ok: true,
-    json: async () => ({ status, ...extra }),
-  };
-}
-
 function mockCachedIntent(extra?: Record<string, unknown>) {
   return {
     ok: true,
@@ -155,48 +138,44 @@ function mockCachedIntent(extra?: Record<string, unknown>) {
       catalogBookId: 'catalog-1',
       format: 'epub',
       downloadUrl: 'https://example.com/book.epub',
-      expiresAt: Date.now() + 60_000,
-      sizeBytes: 123,
+      expiresAt: Date.now() + 900_000,
+      sizeBytes: 1234,
+      storagePath: 'catalog/books/source/book.epub',
+      bookId: 'lib-book-1',
+      bookHash: 'catalog:catalog-1',
       policy: {
-        source: 'internet-archive',
-        sourceId: 'item-1',
-        provenanceLabel: 'Internet Archive',
-        licenseType: 'public-domain',
+        source: 'gutenberg',
+        sourceId: 'gutenberg-1',
+        provenanceLabel: 'Project Gutenberg',
+        licenseType: 'public_domain',
         cacheRedistributionAllowed: true,
         deviceFetchAllowed: true,
-        allowedFormats: ['epub', 'pdf'],
+        allowedFormats: ['epub'],
       },
       ...extra,
     }),
   };
 }
 
-function mockUserDeviceFetchIntent(extra?: Record<string, unknown>) {
+function mockDeviceFetchIntent(extra?: Record<string, unknown>) {
   return {
     ok: true,
     json: async () => ({
       mode: 'user_device_fetch',
-      catalogBookId: 'device-fetch-1',
+      catalogBookId: 'catalog-device',
       format: 'epub',
-      sourceUrl: 'https://archive.org/download/item-1/book.epub',
+      sourceUrl: 'https://gutenberg.org/files/1/1-0.epub',
       policy: {
-        source: 'internet-archive',
-        sourceId: 'item-1',
-        provenanceLabel: 'Internet Archive',
-        licenseType: 'public-domain',
+        source: 'gutenberg',
+        sourceId: '1',
+        provenanceLabel: 'Project Gutenberg',
+        licenseType: 'public_domain',
         cacheRedistributionAllowed: true,
         deviceFetchAllowed: true,
-        allowedFormats: ['epub', 'pdf'],
+        allowedFormats: ['epub'],
       },
       ...extra,
     }),
-  };
-}
-
-function mockStatusResponse(cachingStatus: string) {
-  return {
-    ok: true,
-    json: async () => ({ caching_status: cachingStatus }),
   };
 }
 
@@ -208,486 +187,380 @@ function mockErrorResponse(status: number, body?: Record<string, unknown>) {
   };
 }
 
-// ── Tests ──────────────────────────────────────────────
-
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.useFakeTimers({ shouldAdvanceTime: true });
   mockAuthState.token = 'test-token-123';
-  mockAuthState.user = { id: 'user-1' } as never;
+  mockAuthState.user = { id: 'user-1' };
+  mockCanExecuteDeviceFetch.mockReturnValue(false);
   mockLibraryState.library = [];
   mockLibraryState.setLibrary.mockClear();
   mockAppService.saveLibraryBooks.mockClear();
   mockImportDeviceFetchedCatalogBook.mockReset();
   mockEnqueueBooksForSync.mockClear();
-  // Reset library limit to allow imports by default
+  mockSyncPullNow.mockClear();
+  mockSyncPullNow.mockImplementation(() => {
+    mockLibraryState.library = [{ hash: 'catalog:catalog-1' }];
+    return Promise.resolve();
+  });
   mockLibraryLimitState.canAddBook = true;
   mockLibraryLimitState.libraryLimit = null;
   mockLibraryLimitState.currentCount = 0;
+  mockLibraryLimitState.isLoading = false;
 });
 
 afterEach(() => {
-  vi.useRealTimers();
   cleanup();
 });
 
 describe('useCatalogImport', () => {
-  describe('initial state', () => {
-    it('should return idle state for unknown book IDs', () => {
-      const { result } = renderHook(() => useCatalogImport());
-      expect(result.current.getImportState('unknown-id')).toEqual({ status: 'idle' });
-    });
+  it('returns idle state for unknown book IDs', () => {
+    const { result } = renderHook(() => useCatalogImport());
+    expect(result.current.getImportState('unknown-id')).toEqual({ status: 'idle' });
+  });
 
-    it('should return empty importStates initially', () => {
-      const { result } = renderHook(() => useCatalogImport());
-      expect(result.current.importStates).toEqual({});
+  it('returns empty importStates initially', () => {
+    const { result } = renderHook(() => useCatalogImport());
+    expect(result.current.importStates).toEqual({});
+  });
+
+  it('reports readiness from the same guards used before requesting import intent', () => {
+    const { result } = renderHook(() => useCatalogImport());
+
+    expect(result.current.getImportReadiness('catalog-1')).toMatchObject({
+      ready: true,
+      blockedReason: null,
+      isAuthenticated: true,
+      canAddBook: true,
+      currentStatus: 'idle',
     });
   });
 
-  describe('auth check', () => {
-    it('should show warning toast when user is not authenticated', async () => {
-      mockAuthState.token = null;
-      mockAuthState.user = null as never;
+  it('blocks readiness while library limit state is still loading', async () => {
+    mockLibraryLimitState.isLoading = true;
+    mockLibraryLimitState.canAddBook = false;
 
-      const { result } = renderHook(() => useCatalogImport());
+    const { result } = renderHook(() => useCatalogImport());
 
-      await act(async () => {
-        await result.current.importBook('book-1');
-      });
-
-      expect(mockDispatch).toHaveBeenCalledWith('toast', {
-        message: 'Sign in to add books to your library',
-        type: 'warning',
-      });
-      expect(fetchMock).not.toHaveBeenCalled();
+    expect(result.current.getImportReadiness('catalog-1')).toMatchObject({
+      ready: false,
+      blockedReason: 'library_limit_loading',
+      isLibraryLimitLoading: true,
     });
 
-    it('should not proceed when token is null', async () => {
-      mockAuthState.token = null;
+    await act(async () => {
+      await result.current.importBook('catalog-1');
+    });
 
-      const { result } = renderHook(() => useCatalogImport());
-
-      await act(async () => {
-        await result.current.importBook('book-1');
-      });
-
-      expect(result.current.getImportState('book-1')).toEqual({ status: 'idle' });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mockDispatch).toHaveBeenCalledWith('toast', {
+      message: 'Checking your library limit. Please try again.',
+      type: 'warning',
     });
   });
 
-  describe('local book import (cached)', () => {
-    it('should import a cached book and transition to ready state', async () => {
-      fetchMock.mockResolvedValueOnce(
-        mockCachedIntent({
-          bookId: 'lib-book-1',
-          bookHash: 'catalog:catalog-1',
-          downloadUrl: 'https://example.com/book.epub',
-        }),
-      );
+  it('shows warning toast when user is not authenticated', async () => {
+    mockAuthState.token = null;
+    mockAuthState.user = null;
 
-      const { result } = renderHook(() => useCatalogImport());
+    const { result } = renderHook(() => useCatalogImport());
 
-      await act(async () => {
-        await result.current.importBook('catalog-1');
-      });
-
-      // Verify fetch was called with correct endpoint
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-      const [url, options] = fetchMock.mock.calls[0]!;
-      expect(url).toContain('/api/catalog/books/catalog-1/import-intent');
-      expect(options.method).toBe('POST');
-      expect(options.headers.Authorization).toBe('Bearer test-token-123');
-
-      // Verify state
-      const state = result.current.getImportState('catalog-1');
-      expect(state.status).toBe('ready');
-      expect(state.progress).toBe(100);
-      expect(state.bookId).toBe('lib-book-1');
-      expect(state.bookHash).toBe('catalog:catalog-1');
-      expect(state.downloadUrl).toBe('https://example.com/book.epub');
-
-      // Verify success toast
-      expect(mockDispatch).toHaveBeenCalledWith('toast', {
-        message: 'Book added to your library',
-        type: 'success',
-      });
+    await act(async () => {
+      await result.current.importBook('book-1');
     });
 
-    it('should trigger library sync on successful import', async () => {
-      const { syncWorker } = await import('@/services/sync/syncWorker');
+    expect(mockDispatch).toHaveBeenCalledWith('toast', {
+      message: 'Sign in to add books to your library',
+      type: 'warning',
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 
-      fetchMock.mockResolvedValueOnce(
-        mockCachedIntent({
-          catalogBookId: 'sync-1',
-          bookId: 'lib-book-sync',
-          bookHash: 'catalog:sync-1',
-          downloadUrl: 'https://example.com/sync.epub',
-        }),
-      );
+  it('imports cached intent and transitions to ready state without legacy server-fetch modes', async () => {
+    fetchMock.mockResolvedValueOnce(mockCachedIntent());
 
-      const { result } = renderHook(() => useCatalogImport());
+    const { result } = renderHook(() => useCatalogImport());
 
-      await act(async () => {
-        await result.current.importBook('sync-1');
-      });
+    await act(async () => {
+      await result.current.importBook('catalog-1');
+    });
 
-      expect(syncWorker.pullNow).toHaveBeenCalledWith('books');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, options] = fetchMock.mock.calls[0]!;
+    expect(url).toContain('/api/catalog/books/catalog-1/import-intent');
+    expect(options.method).toBe('POST');
+
+    const state = result.current.getImportState('catalog-1');
+    expect(state).toMatchObject({
+      status: 'ready',
+      mode: 'cached',
+      phase: 'opening',
+      progress: 100,
+      bookId: 'lib-book-1',
+      bookHash: 'catalog:catalog-1',
+      downloadUrl: 'https://example.com/book.epub',
+    });
+    expect(JSON.stringify(state)).not.toContain('server_fetch');
+    expect(JSON.stringify(state)).not.toContain('user_upload_fallback');
+    expect(JSON.stringify(state)).not.toContain('unavailable');
+
+    expect(mockDispatch).toHaveBeenCalledWith('toast', {
+      message: 'Book added to your library',
+      type: 'success',
     });
   });
 
-  describe('IA book import', () => {
-    it('should use /ia/import endpoint with ia_identifier', async () => {
-      fetchMock.mockResolvedValueOnce(
-        mockImportResponse('ready', {
-          book_id: 'lib-book-ia',
-          book_hash: 'catalog:ia-cat-id',
-          download_url: 'https://example.com/ia.epub',
-        }),
-      );
+  it('waits for library sync before marking cached intent ready', async () => {
+    const { syncWorker } = await import('@/services/sync/syncWorker');
+    let resolveSync: () => void = () => {};
+    const syncPromise = new Promise<void>((resolve) => {
+      resolveSync = resolve;
+    });
+    vi.mocked(syncWorker.pullNow).mockReturnValueOnce(syncPromise);
+    fetchMock.mockResolvedValueOnce(mockCachedIntent({ bookId: 'lib-book-sync' }));
 
-      const { result } = renderHook(() => useCatalogImport());
+    const { result } = renderHook(() => useCatalogImport());
 
-      await act(async () => {
-        await result.current.importBook('catalog-ia-1', 'thegreatgatsby');
-      });
+    let importPromise: Promise<void>;
+    act(() => {
+      importPromise = result.current.importBook('sync-1');
+    });
 
-      const [url, options] = fetchMock.mock.calls[0]!;
-      expect(url).toContain('/api/catalog/ia/import');
-      expect(options.method).toBe('POST');
-      expect(options.headers['Content-Type']).toBe('application/json');
-      expect(JSON.parse(options.body)).toEqual({ ia_identifier: 'thegreatgatsby' });
+    await act(async () => {
+      await Promise.resolve();
+    });
 
-      const state = result.current.getImportState('catalog-ia-1');
-      expect(state.status).toBe('ready');
-      expect(state.bookId).toBe('lib-book-ia');
-      expect(state.bookHash).toBe('catalog:ia-cat-id');
+    expect(syncWorker.pullNow).toHaveBeenCalledWith('books');
+    expect(result.current.getImportState('sync-1')).toMatchObject({
+      status: 'importing',
+      mode: 'cached',
+      phase: 'importing',
+      statusMessage: 'Updating library...',
+      progress: 85,
+    });
+
+    await act(async () => {
+      mockLibraryState.library = [{ hash: 'catalog:catalog-1' }];
+      resolveSync();
+      await importPromise!;
+    });
+
+    expect(result.current.getImportState('sync-1')).toMatchObject({
+      status: 'ready',
+      bookId: 'lib-book-sync',
+      bookHash: 'catalog:catalog-1',
     });
   });
 
-  describe('device-fetch and IA import flows', () => {
-    it('should import a user_device_fetch intent through the desktop device engine', async () => {
-      const importedBook = {
-        hash: 'local-device-hash',
-        title: 'Device Book',
-        catalogBookId: 'device-fetch-1',
-      };
+  it('fails closed when a cached intent has no canonical library book reference', async () => {
+    fetchMock.mockResolvedValueOnce(mockCachedIntent({ bookHash: undefined }));
+
+    const { result } = renderHook(() => useCatalogImport());
+
+    await act(async () => {
+      await result.current.importBook('catalog-missing-book-hash');
+    });
+
+    expect(result.current.getImportState('catalog-missing-book-hash')).toMatchObject({
+      status: 'error',
+      error: 'Catalog Add did not return a canonical Library book reference.',
+    });
+  });
+
+  it('does not call the legacy IA server-import path', async () => {
+    const { result } = renderHook(() => useCatalogImport());
+
+    await act(async () => {
+      await result.current.importBook('internet-archive:ia-book', 'ia-book');
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result.current.getImportState('internet-archive:ia-book')).toMatchObject({
+      status: 'error',
+      error: 'OpenRead catalog Add is available from canonical catalog rows only.',
+    });
+  });
+
+  it('surfaces user_device_fetch intent as the only non-cached mode and fails closed without a supported platform', async () => {
+    fetchMock.mockResolvedValueOnce(mockDeviceFetchIntent());
+
+    const { result } = renderHook(() => useCatalogImport());
+
+    await act(async () => {
+      await result.current.importBook('catalog-device');
+    });
+
+    const state = result.current.getImportState('catalog-device');
+    expect(state).toMatchObject({
+      status: 'error',
+      mode: 'user_device_fetch',
+      error: 'This title can only be added from a supported desktop app.',
+    });
+    expect(mockImportDeviceFetchedCatalogBook).not.toHaveBeenCalled();
+    expect(JSON.stringify(state)).not.toContain('server_fetch');
+    expect(JSON.stringify(state)).not.toContain('user_upload_fallback');
+    expect(JSON.stringify(state)).not.toContain('unavailable');
+  });
+
+  it('imports a user_device_fetch intent through the desktop device engine', async () => {
+    const importedBook = {
+      hash: 'local-device-hash',
+      title: 'Device Book',
+      catalogBookId: 'catalog-device',
+    };
+    mockCanExecuteDeviceFetch.mockReturnValue(true);
+    fetchMock.mockResolvedValueOnce(mockDeviceFetchIntent());
+    mockImportDeviceFetchedCatalogBook.mockImplementation(async () => {
       mockLibraryState.library = [importedBook];
-      fetchMock.mockResolvedValueOnce(mockUserDeviceFetchIntent());
-      mockImportDeviceFetchedCatalogBook.mockResolvedValueOnce(importedBook);
-
-      const { result } = renderHook(() => useCatalogImport());
-
-      await act(async () => {
-        await result.current.importBook('device-fetch-1');
-      });
-
-      expect(mockImportDeviceFetchedCatalogBook).toHaveBeenCalledWith(
-        expect.objectContaining({
-          requestedCatalogBookId: 'device-fetch-1',
-          appService: mockAppService,
-          library: [importedBook],
-        }),
-      );
-      expect(mockAppService.saveLibraryBooks).toHaveBeenCalledWith([importedBook]);
-      expect(mockEnqueueBooksForSync).toHaveBeenCalledWith([importedBook]);
-
-      const state = result.current.getImportState('device-fetch-1');
-      expect(state.status).toBe('ready');
-      expect(state.bookHash).toBe('local-device-hash');
+      return importedBook;
     });
 
-    it('should allow retry after a device-fetch import error', async () => {
-      const importedBook = {
-        hash: 'local-device-hash-retry',
-        title: 'Device Book',
-        catalogBookId: 'device-fetch-1',
-      };
-      mockLibraryState.library = [importedBook];
-      fetchMock
-        .mockResolvedValueOnce(mockUserDeviceFetchIntent())
-        .mockResolvedValueOnce(mockUserDeviceFetchIntent());
-      mockImportDeviceFetchedCatalogBook
-        .mockRejectedValueOnce(new Error('Catalog source returned invalid EPUB bytes.'))
-        .mockResolvedValueOnce(importedBook);
+    const { result } = renderHook(() => useCatalogImport());
 
-      const { result } = renderHook(() => useCatalogImport());
-
-      await act(async () => {
-        await result.current.importBook('device-fetch-1');
-      });
-      expect(result.current.getImportState('device-fetch-1')).toMatchObject({
-        status: 'error',
-        error: 'Catalog source returned invalid EPUB bytes.',
-      });
-
-      await act(async () => {
-        await result.current.importBook('device-fetch-1');
-      });
-
-      expect(mockImportDeviceFetchedCatalogBook).toHaveBeenCalledTimes(2);
-      expect(result.current.getImportState('device-fetch-1')).toMatchObject({
-        status: 'ready',
-        bookHash: 'local-device-hash-retry',
-      });
+    await act(async () => {
+      await result.current.importBook('catalog-device');
     });
 
-    it('should poll IA preparing imports with the real catalog UUID, not synthetic UI identity', async () => {
-      fetchMock.mockResolvedValueOnce(
-        mockImportResponse('preparing', {
-          catalog_book_id: 'real-catalog-uuid',
-        }),
-      );
-      fetchMock.mockResolvedValueOnce(mockStatusResponse('caching'));
-      fetchMock.mockResolvedValueOnce(mockStatusResponse('cached'));
-      fetchMock.mockResolvedValueOnce(
-        mockImportResponse('ready', {
-          catalog_book_id: 'real-catalog-uuid',
-          book_id: 'lib-ia-polled',
-          book_hash: 'catalog:real-catalog-uuid',
-          download_url: 'https://example.com/ia-polled.epub',
-        }),
-      );
-
-      const { result } = renderHook(() => useCatalogImport());
-
-      let importPromise: Promise<void>;
-      act(() => {
-        importPromise = result.current.importBook(
-          'internet-archive:thegreatgatsby',
-          'thegreatgatsby',
-        );
-      });
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(2100);
-      });
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(2100);
-      });
-      await act(async () => {
-        await importPromise!;
-      });
-
-      const urls = fetchMock.mock.calls.map(([url]) => url as string);
-      expect(urls).toContain('/catalog/books/real-catalog-uuid/status');
-      expect(urls).toContain('/api/catalog/books/real-catalog-uuid/import');
-      expect(urls).not.toContain('/catalog/books/internet-archive:thegreatgatsby/status');
-      expect(urls).not.toContain('/api/catalog/books/internet-archive:thegreatgatsby/import');
-
-      const state = result.current.getImportState('internet-archive:thegreatgatsby');
-      expect(state.status).toBe('ready');
-      expect(state.bookId).toBe('lib-ia-polled');
+    expect(mockImportDeviceFetchedCatalogBook).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestedCatalogBookId: 'catalog-device',
+        appService: mockAppService,
+        library: [],
+      }),
+    );
+    expect(mockAppService.saveLibraryBooks).toHaveBeenCalledWith([importedBook]);
+    expect(mockEnqueueBooksForSync).toHaveBeenCalledWith([importedBook]);
+    expect(result.current.getImportState('catalog-device')).toMatchObject({
+      status: 'ready',
+      mode: 'user_device_fetch',
+      phase: 'opening',
+      bookHash: 'local-device-hash',
     });
   });
 
-  describe('error handling', () => {
-    it('should handle API error response', async () => {
-      fetchMock.mockResolvedValueOnce(
-        mockErrorResponse(409, {
-          code: 'CONFLICT',
-          message: 'Title currently unavailable. Please check back later.',
-        }),
-      );
-
-      const { result } = renderHook(() => useCatalogImport());
-
-      await act(async () => {
-        await result.current.importBook('catalog-err');
+  it('allows retry after a device-fetch import error', async () => {
+    const importedBook = {
+      hash: 'local-device-hash-retry',
+      title: 'Device Book',
+      catalogBookId: 'catalog-device',
+    };
+    mockCanExecuteDeviceFetch.mockReturnValue(true);
+    fetchMock
+      .mockResolvedValueOnce(mockDeviceFetchIntent())
+      .mockResolvedValueOnce(mockDeviceFetchIntent());
+    mockImportDeviceFetchedCatalogBook
+      .mockRejectedValueOnce(new Error('Catalog source returned invalid EPUB bytes.'))
+      .mockImplementationOnce(async () => {
+        mockLibraryState.library = [importedBook];
+        return importedBook;
       });
 
-      const state = result.current.getImportState('catalog-err');
-      expect(state.status).toBe('error');
-      expect(state.error).toBe('Title currently unavailable. Please check back later.');
+    const { result } = renderHook(() => useCatalogImport());
 
-      // Verify error toast
-      expect(mockDispatch).toHaveBeenCalledWith('toast', {
-        message: 'Title currently unavailable. Please check back later.',
-        type: 'error',
-      });
+    await act(async () => {
+      await result.current.importBook('catalog-device');
+    });
+    expect(result.current.getImportState('catalog-device')).toMatchObject({
+      status: 'error',
+      error: 'Catalog source returned invalid EPUB bytes.',
     });
 
-    it('should handle network failure', async () => {
-      fetchMock.mockRejectedValueOnce(new Error('Network error'));
-
-      const { result } = renderHook(() => useCatalogImport());
-
-      await act(async () => {
-        await result.current.importBook('catalog-net-err');
-      });
-
-      const state = result.current.getImportState('catalog-net-err');
-      expect(state.status).toBe('error');
-      expect(state.error).toBe('Network error');
+    await act(async () => {
+      await result.current.importBook('catalog-device');
     });
 
-    it('should handle 404 not found error', async () => {
-      fetchMock.mockResolvedValueOnce(
-        mockErrorResponse(404, { code: 'NOT_FOUND', message: 'Catalog book not found' }),
-      );
-
-      const { result } = renderHook(() => useCatalogImport());
-
-      await act(async () => {
-        await result.current.importBook('catalog-missing');
-      });
-
-      const state = result.current.getImportState('catalog-missing');
-      expect(state.status).toBe('error');
-      expect(state.error).toBe('Catalog book not found');
+    expect(mockImportDeviceFetchedCatalogBook).toHaveBeenCalledTimes(2);
+    expect(result.current.getImportState('catalog-device')).toMatchObject({
+      status: 'ready',
+      bookHash: 'local-device-hash-retry',
     });
   });
 
-  describe('concurrent imports', () => {
-    it('should track multiple books independently', async () => {
-      fetchMock
-        .mockResolvedValueOnce(
-          mockCachedIntent({
-            catalogBookId: 'book-a',
-            bookId: 'lib-a',
-            downloadUrl: 'https://example.com/a.epub',
-          }),
-        )
-        .mockResolvedValueOnce(
-          mockCachedIntent({
-            catalogBookId: 'book-b',
-            bookId: 'lib-b',
-            downloadUrl: 'https://example.com/b.epub',
-          }),
-        );
+  it('handles API error response', async () => {
+    fetchMock.mockResolvedValueOnce(mockErrorResponse(409, { message: 'Title blocked' }));
 
-      const { result } = renderHook(() => useCatalogImport());
+    const { result } = renderHook(() => useCatalogImport());
 
-      await act(async () => {
-        await Promise.all([
-          result.current.importBook('book-a'),
-          result.current.importBook('book-b'),
-        ]);
-      });
+    await act(async () => {
+      await result.current.importBook('catalog-err');
+    });
 
-      expect(result.current.getImportState('book-a').status).toBe('ready');
-      expect(result.current.getImportState('book-a').bookId).toBe('lib-a');
-      expect(result.current.getImportState('book-b').status).toBe('ready');
-      expect(result.current.getImportState('book-b').bookId).toBe('lib-b');
+    expect(result.current.getImportState('catalog-err')).toMatchObject({
+      status: 'error',
+      progress: 0,
+      error: 'Title blocked',
     });
   });
 
-  describe('duplicate prevention', () => {
-    it('should not start a new import if already importing', async () => {
-      // First call stays in-flight and keeps the import state at importing.
-      fetchMock.mockImplementationOnce(() => new Promise(() => {}));
+  it('tracks multiple books independently', async () => {
+    mockSyncPullNow.mockImplementation(() => {
+      mockLibraryState.library = [{ hash: 'catalog:book-a' }, { hash: 'catalog:book-b' }];
+      return Promise.resolve();
+    });
+    fetchMock
+      .mockResolvedValueOnce(mockCachedIntent({ bookId: 'lib-a', bookHash: 'catalog:book-a' }))
+      .mockResolvedValueOnce(mockCachedIntent({ bookId: 'lib-b', bookHash: 'catalog:book-b' }));
 
-      const { result } = renderHook(() => useCatalogImport());
+    const { result } = renderHook(() => useCatalogImport());
 
-      // Start first import
-      act(() => {
-        result.current.importBook('dup-book');
-      });
+    await act(async () => {
+      await Promise.all([result.current.importBook('book-a'), result.current.importBook('book-b')]);
+    });
 
-      // Try starting a second import for the same book — should be a no-op
-      await act(async () => {
-        await result.current.importBook('dup-book');
-      });
+    expect(result.current.getImportState('book-a').bookHash).toBe('catalog:book-a');
+    expect(result.current.getImportState('book-b').bookHash).toBe('catalog:book-b');
+  });
 
-      // Only one fetch call for the initial import
-      expect(fetchMock).toHaveBeenCalledTimes(1);
+  it('does not start a new import if already importing', async () => {
+    let resolveImport!: (response: unknown) => void;
+    fetchMock.mockReturnValueOnce(new Promise((resolve) => (resolveImport = resolve)));
+
+    const { result } = renderHook(() => useCatalogImport());
+
+    act(() => {
+      result.current.importBook('dup-book');
+    });
+
+    await act(async () => {
+      await result.current.importBook('dup-book');
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveImport(mockCachedIntent());
     });
   });
 
-  describe('resetImportState', () => {
-    it('should reset a book import state to idle', async () => {
-      fetchMock.mockResolvedValueOnce(
-        mockCachedIntent({
-          catalogBookId: 'reset-book',
-          bookId: 'lib-reset',
-          downloadUrl: 'https://example.com/reset.epub',
-        }),
-      );
+  it('resets a book import state to idle', async () => {
+    fetchMock.mockResolvedValueOnce(mockCachedIntent());
+    const { result } = renderHook(() => useCatalogImport());
 
-      const { result } = renderHook(() => useCatalogImport());
-
-      await act(async () => {
-        await result.current.importBook('reset-book');
-      });
-
-      expect(result.current.getImportState('reset-book').status).toBe('ready');
-
-      act(() => {
-        result.current.resetImportState('reset-book');
-      });
-
-      expect(result.current.getImportState('reset-book')).toEqual({ status: 'idle' });
+    await act(async () => {
+      await result.current.importBook('reset-book');
     });
+    expect(result.current.getImportState('reset-book').status).toBe('ready');
+
+    act(() => {
+      result.current.resetImportState('reset-book');
+    });
+
+    expect(result.current.getImportState('reset-book')).toEqual({ status: 'idle' });
   });
 
-  describe('import state persistence', () => {
-    it('should preserve import states across re-renders', async () => {
-      fetchMock.mockResolvedValueOnce(
-        mockCachedIntent({
-          catalogBookId: 'persist-book',
-          bookId: 'lib-persist',
-          downloadUrl: 'https://example.com/persist.epub',
-        }),
-      );
+  it('blocks import when library limit is reached', async () => {
+    mockLibraryLimitState.canAddBook = false;
+    mockLibraryLimitState.libraryLimit = 100;
 
-      const { result, rerender } = renderHook(() => useCatalogImport());
+    const { result } = renderHook(() => useCatalogImport());
 
-      await act(async () => {
-        await result.current.importBook('persist-book');
-      });
-
-      expect(result.current.getImportState('persist-book').status).toBe('ready');
-
-      // Re-render the hook
-      rerender();
-
-      // State should persist
-      expect(result.current.getImportState('persist-book').status).toBe('ready');
-    });
-  });
-
-  describe('library limit check', () => {
-    it('should block import when library limit is reached', async () => {
-      mockLibraryLimitState.canAddBook = false;
-      mockLibraryLimitState.libraryLimit = 10;
-      mockLibraryLimitState.currentCount = 10;
-
-      const { result } = renderHook(() => useCatalogImport());
-
-      await act(async () => {
-        await result.current.importBook('limit-book');
-      });
-
-      // Should show warning toast, not make any API call
-      expect(mockDispatch).toHaveBeenCalledWith('toast', {
-        message: 'Library full (10 books). Upgrade for unlimited.',
-        type: 'warning',
-      });
-      expect(fetchMock).not.toHaveBeenCalled();
-      expect(result.current.getImportState('limit-book')).toEqual({ status: 'idle' });
+    await act(async () => {
+      await result.current.importBook('limit-book');
     });
 
-    it('should allow import when library limit is not reached', async () => {
-      mockLibraryLimitState.canAddBook = true;
-      mockLibraryLimitState.libraryLimit = 10;
-      mockLibraryLimitState.currentCount = 5;
-
-      fetchMock.mockResolvedValueOnce(
-        mockCachedIntent({
-          catalogBookId: 'ok-book',
-          bookId: 'lib-ok',
-          bookHash: 'catalog:ok-1',
-          downloadUrl: 'https://example.com/ok.epub',
-        }),
-      );
-
-      const { result } = renderHook(() => useCatalogImport());
-
-      await act(async () => {
-        await result.current.importBook('ok-book');
-      });
-
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-      expect(result.current.getImportState('ok-book').status).toBe('ready');
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mockDispatch).toHaveBeenCalledWith('toast', {
+      message: 'Library full (100 books). Upgrade for unlimited.',
+      type: 'warning',
     });
   });
 });

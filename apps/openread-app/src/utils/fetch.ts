@@ -1,10 +1,17 @@
 import { getAccessToken } from './access';
 import { createLogger } from '@/utils/logger';
-import { isTauriAppPlatform, isMobilePlatform } from '@/services/environment';
+import { isTauriAppPlatform, isMobilePlatform, isWebAppPlatform } from '@/services/environment';
 
 const logger = createLogger('fetch');
 
 export const OPENREAD_REQUEST_ID_HEADER = 'x-request-id';
+
+const WEB_DEV_PLATFORM_PROXY_PATH_PREFIXES = [
+  '/catalog',
+  '/api/catalog',
+  '/api/sync',
+  '/api/tier-config',
+] as const;
 
 function createOpenreadRequestId(): string {
   const random =
@@ -14,10 +21,46 @@ function createOpenreadRequestId(): string {
   return `web_${random}`;
 }
 
+function isWebDevPlatformProxyPath(pathname: string): boolean {
+  return WEB_DEV_PLATFORM_PROXY_PATH_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+}
+
+function isWebDevPlatformProxyEligible(url: URL): boolean {
+  if (process.env['NODE_ENV'] !== 'development' || !isWebAppPlatform()) return false;
+  if (!isWebDevPlatformProxyPath(url.pathname)) return false;
+
+  const configuredNodeBase = process.env['NEXT_PUBLIC_NODE_BASE_URL'];
+  const configuredNodeHost = configuredNodeBase ? new URL(configuredNodeBase).hostname : undefined;
+  return url.hostname === 'api.openread.ai' || url.hostname === configuredNodeHost;
+}
+
+export function withWebDevPlatformProxyUrl(input: RequestInfo | URL): RequestInfo | URL {
+  if (typeof window === 'undefined') return input;
+  if (typeof input !== 'string' && !(input instanceof URL)) return input;
+
+  try {
+    const url = new URL(String(input), window.location.href);
+    if (url.origin === window.location.origin || !isWebDevPlatformProxyEligible(url)) return input;
+    return input instanceof URL
+      ? new URL(`${url.pathname}${url.search}${url.hash}`, window.location.origin)
+      : `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return input;
+  }
+}
+
 function isOpenreadApiUrl(input: RequestInfo | URL): boolean {
   const rawUrl = typeof input === 'string' || input instanceof URL ? String(input) : input.url;
 
-  if (rawUrl.startsWith('/api/') || rawUrl === '/api') return true;
+  if (
+    rawUrl.startsWith('/api/') ||
+    rawUrl === '/api' ||
+    rawUrl.startsWith('/catalog/') ||
+    rawUrl === '/catalog'
+  )
+    return true;
 
   try {
     const base = typeof window === 'undefined' ? 'https://app.openread.ai' : window.location.href;
@@ -58,7 +101,8 @@ export async function correlatedPlatformFetch(
   init?: RequestInit,
 ): Promise<Response> {
   const platformFetch = await getPlatformFetch();
-  return platformFetch(input, withOpenreadCorrelationHeaders(input, init));
+  const proxiedInput = withWebDevPlatformProxyUrl(input);
+  return platformFetch(proxiedInput, withOpenreadCorrelationHeaders(proxiedInput, init));
 }
 
 /**

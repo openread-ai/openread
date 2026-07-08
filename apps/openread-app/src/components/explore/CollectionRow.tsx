@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { ChevronRight, ChevronLeft } from 'lucide-react';
 import { cn } from '@/utils/tailwind';
 import { ExploreBookCard } from '@/components/explore/ExploreBookCard';
+import { getCatalogAddModeForPlatform } from '@/services/catalogAddMode';
 import { usePlatformScrollableRowSkeletonCount } from '@/components/platform/platform-row-density';
 import type { ExploreBookCardProps } from '@/components/explore/ExploreBookCard';
 
@@ -199,6 +200,7 @@ export function CollectionRow({
               <ExploreBookCard
                 book={book}
                 isWishlisted={wishlistedIds?.has(book.id) ?? false}
+                addMode={getCatalogAddModeForPlatform(book)}
                 onWishlistToggle={onWishlistToggle}
                 onAction={onImport}
                 onOpen={onRead}

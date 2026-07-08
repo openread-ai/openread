@@ -60,6 +60,8 @@ const defaultProps: BookDetailSheetProps = {
   book: mockBook,
   isOpen: true,
   onClose: vi.fn(),
+  addMode: 'cached',
+  onImport: vi.fn(),
 };
 
 function renderSheet(overrides: Partial<BookDetailSheetProps> = {}) {
@@ -260,11 +262,24 @@ describe('BookDetailSheet', () => {
       expect(btn.getAttribute('aria-label')).toBe('Add to Library');
     });
 
-    it('should render "Import from IA" for IA books', () => {
-      renderSheet({ book: mockIABook, importState: 'idle' });
+    it('should render canonical Add for IA catalog books without legacy IA import copy', () => {
+      renderSheet({ book: mockIABook, importState: 'idle', addMode: 'cached' });
       const btn = screen.getByTestId('sheet-import-btn');
-      expect(btn.textContent).toContain('Import from IA');
-      expect(btn.getAttribute('aria-label')).toBe('Import from Internet Archive');
+      expect(btn.textContent).toContain('Add to Library');
+      expect(btn.textContent).not.toContain('Import from IA');
+      expect(btn.getAttribute('aria-label')).toBe('Add to Library');
+    });
+
+    it('should render user-device-fetch copy for non-cached executable books', () => {
+      renderSheet({ importState: 'idle', addMode: 'user_device_fetch' });
+      const btn = screen.getByTestId('sheet-import-btn');
+      expect(btn.textContent).toContain('Get from source');
+      expect(btn.getAttribute('aria-label')).toBe('Get from source');
+    });
+
+    it('should hide import button when no executable add mode is provided', () => {
+      renderSheet({ importState: 'idle', addMode: null });
+      expect(screen.queryByTestId('sheet-import-btn')).toBeNull();
     });
 
     it('should use dark bg for non-IA import button', () => {
@@ -277,6 +292,32 @@ describe('BookDetailSheet', () => {
       renderSheet({ book: mockIABook, importState: 'idle' });
       const btn = screen.getByTestId('sheet-import-btn');
       expect(btn.className).toContain('bg-[#2563EB]');
+    });
+
+    it('should expose non-user-facing readiness state for stable E2E Add clicks', () => {
+      renderSheet({ importState: 'idle', addMode: 'cached' });
+      const btn = screen.getByTestId('sheet-import-btn');
+      expect(btn.getAttribute('data-catalog-book-id')).toBe(mockBook.id);
+      expect(btn.getAttribute('data-add-mode')).toBe('cached');
+      expect(btn.getAttribute('data-import-state')).toBe('idle');
+      expect(btn.getAttribute('data-import-ready')).toBe('true');
+    });
+
+    it('should disable import when guard readiness is false', () => {
+      const onImport = vi.fn();
+      renderSheet({
+        onImport,
+        importState: 'idle',
+        addMode: 'cached',
+        importReady: false,
+        importBlockedReason: 'library_limit_loading',
+      });
+      const btn = screen.getByTestId('sheet-import-btn');
+      expect((btn as HTMLButtonElement).disabled).toBe(true);
+      expect(btn.getAttribute('data-import-ready')).toBe('false');
+      expect(btn.getAttribute('data-import-blocked-reason')).toBe('library_limit_loading');
+      fireEvent.click(btn);
+      expect(onImport).not.toHaveBeenCalled();
     });
 
     it('should call onImport when clicked', () => {

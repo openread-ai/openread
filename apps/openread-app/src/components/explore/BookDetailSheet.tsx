@@ -4,8 +4,9 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Heart, BookOpen, Globe, X, ChevronDown, Loader2 } from 'lucide-react';
 import { cn } from '@/utils/tailwind';
 import { Progress } from '@/components/primitives/progress';
+import { catalogAddModeLabel, type CatalogAddMode } from '@/services/catalogAddMode';
 import { getCoverPalette, getLanguageName } from './ExploreBookCard';
-import type { CatalogBook } from '@/types/catalog';
+import type { CatalogBook, ImportPhase } from '@/types/catalog';
 
 // ── Extended type for detail view ──────────────────────────
 
@@ -25,7 +26,11 @@ export interface BookDetailSheetProps {
   onClose: () => void;
   isWishlisted?: boolean;
   importState?: 'idle' | 'importing' | 'ready';
+  addMode?: CatalogAddMode | null;
   importProgress?: number;
+  importPhase?: ImportPhase;
+  importReady?: boolean;
+  importBlockedReason?: string | null;
   onWishlistToggle?: () => void;
   onImport?: () => void;
   onRead?: () => void;
@@ -52,6 +57,14 @@ function getSourceLabel(source?: string): string {
 function isIASource(source?: string): boolean {
   return source === 'internet-archive';
 }
+
+const IMPORT_PHASE_LABELS: Record<ImportPhase, string> = {
+  requesting_intent: 'Preparing Add...',
+  downloading: 'Downloading from source...',
+  validating: 'Validating file...',
+  importing: 'Importing...',
+  opening: 'Opening...',
+};
 
 // ── License display ────────────────────────────────────────
 
@@ -184,7 +197,11 @@ export function BookDetailSheet({
   onClose,
   isWishlisted = false,
   importState = 'idle',
+  addMode,
   importProgress = 0,
+  importPhase,
+  importReady = true,
+  importBlockedReason = null,
   onWishlistToggle,
   onImport,
   onRead,
@@ -271,6 +288,9 @@ export function BookDetailSheet({
   const langLabel = getLanguageName(book.language);
   const sourceLabel = getSourceLabel(book.source);
   const licenseLabel = formatLicense(book.license_type);
+  const addLabel = addMode ? catalogAddModeLabel(addMode) : null;
+  const importingLabel = importPhase ? IMPORT_PHASE_LABELS[importPhase] : 'Adding to library...';
+  const canStartImport = importState === 'idle' && Boolean(addMode && onImport && importReady);
 
   return (
     <>
@@ -381,25 +401,25 @@ export function BookDetailSheet({
             </button>
 
             {/* Import button (idle state) */}
-            {importState === 'idle' && (
+            {importState === 'idle' && addMode && onImport && (
               <button
                 type='button'
                 className={cn(
                   'flex h-11 w-full items-center justify-center gap-2 rounded-lg text-[14px] font-medium text-white transition-colors',
                   isIA ? 'bg-[#2563EB] hover:bg-[#1d4ed8]' : 'bg-[#1C1C1A] hover:bg-[#2a2a28]',
                 )}
-                onClick={onImport}
-                aria-label={isIA ? 'Import from Internet Archive' : 'Add to Library'}
+                onClick={canStartImport ? onImport : undefined}
+                aria-label={addLabel ?? 'Add to Library'}
+                disabled={!canStartImport}
                 data-testid='sheet-import-btn'
+                data-catalog-book-id={book.id}
+                data-add-mode={addMode}
+                data-import-state={importState}
+                data-import-ready={canStartImport ? 'true' : 'false'}
+                data-import-blocked-reason={importBlockedReason ?? undefined}
               >
-                {isIA ? (
-                  <>
-                    <Globe className='h-4 w-4' />
-                    Import from IA
-                  </>
-                ) : (
-                  'Add to Library'
-                )}
+                {isIA && <Globe className='h-4 w-4' />}
+                {addLabel ?? 'Add to Library'}
               </button>
             )}
 
@@ -413,7 +433,7 @@ export function BookDetailSheet({
                   aria-label='Importing'
                 >
                   <Loader2 className='h-4 w-4 animate-spin' />
-                  Importing... {importProgress}%
+                  {importingLabel} {importProgress}%
                 </button>
                 <Progress value={importProgress} className='bg-base-content/10 h-1.5' />
               </div>

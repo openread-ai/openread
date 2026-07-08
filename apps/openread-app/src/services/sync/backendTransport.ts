@@ -1,12 +1,12 @@
 import type { SyncPushRequest, SyncPushResponse } from '@openread/sync';
 
 import { SYNC_TIMEOUT_MS } from './client';
-import { getNodeBaseUrl } from '@/services/environment';
+import { getNodeAPIBaseUrl } from '@/services/environment';
 import { getAccessToken } from '@/utils/access';
 import { fetchWithTimeout } from '@/utils/fetch';
 import type { SyncTransport } from './engine';
 
-const pushUrl = (): string => `${getNodeBaseUrl()}/api/sync/push`;
+const pushUrl = (): string => `${getNodeAPIBaseUrl()}/sync/push`;
 
 const responseError = async (response: Response): Promise<Error> => {
   const body = await response.text().catch(() => '');

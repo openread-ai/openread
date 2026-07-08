@@ -6,7 +6,7 @@ import {
 } from '@/services/sync/client';
 
 vi.mock('@/services/environment', () => ({
-  getNodeBaseUrl: () => 'http://localhost:3001',
+  getNodeAPIBaseUrl: () => 'http://localhost:3001/api',
 }));
 
 vi.mock('@/utils/access', () => ({

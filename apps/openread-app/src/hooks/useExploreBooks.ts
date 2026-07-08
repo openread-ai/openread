@@ -112,8 +112,10 @@ export function useExploreBooks(params: UseExploreBooksParams = {}): UseExploreB
   const limit = params.limit ?? 20;
   const enabled = params.enabled ?? true;
 
-  // Whether we should also search IA (only when actively searching by query, not browsing/filtering)
-  const shouldSearchIA = enabled && !!params.q;
+  // Frozen Add contract requires every visible Explore row to have a canonical
+  // catalog import intent. Live IA search rows do not have catalog_book IDs yet,
+  // so keep blended IA disabled until the API exposes a canonical intent path.
+  const shouldSearchIA = false;
 
   // Stable serialized key for params (excluding page)
   const paramsKey = useMemo(

@@ -4,7 +4,16 @@ import { useCatalogImport } from '@/hooks/useCatalogImport';
 
 // ── Hoisted mocks ──────────────────────────────────────
 
-const { catalogJson, fetchMock, mockAuthState, mockDispatch } = vi.hoisted(() => {
+const {
+  catalogJson,
+  fetchMock,
+  mockAuthState,
+  mockDispatch,
+  mockAppService,
+  mockImportDeviceFetchedCatalogBook,
+  mockEnqueueBooksForSync,
+  mockLibraryState,
+} = vi.hoisted(() => {
   const mockAuthState = {
     token: 'test-token-123' as string | null,
     user: { id: 'user-1' } as { id: string } | null,
@@ -13,6 +22,19 @@ const { catalogJson, fetchMock, mockAuthState, mockDispatch } = vi.hoisted(() =>
   };
   const mockDispatch = vi.fn();
   const fetchMock = vi.fn();
+  const mockAppService = {
+    appPlatform: 'tauri',
+    isDesktopApp: true,
+    saveLibraryBooks: vi.fn(() => Promise.resolve()),
+  };
+  const mockLibraryState = {
+    library: [] as Array<Record<string, unknown>>,
+    setLibrary: vi.fn((books: Array<Record<string, unknown>>) => {
+      mockLibraryState.library = books;
+    }),
+  };
+  const mockImportDeviceFetchedCatalogBook = vi.fn<(arg: unknown) => unknown>();
+  const mockEnqueueBooksForSync = vi.fn<(arg: unknown) => Promise<void>>(() => Promise.resolve());
   const catalogJson = async (url: string, options?: Record<string, unknown>) => {
     const response = await fetchMock(url, options);
     if (!response.ok) {
@@ -21,11 +43,38 @@ const { catalogJson, fetchMock, mockAuthState, mockDispatch } = vi.hoisted(() =>
     }
     return response.json();
   };
-  return { catalogJson, fetchMock, mockAuthState, mockDispatch };
+  return {
+    catalogJson,
+    fetchMock,
+    mockAuthState,
+    mockDispatch,
+    mockAppService,
+    mockImportDeviceFetchedCatalogBook,
+    mockEnqueueBooksForSync,
+    mockLibraryState,
+  };
 });
 
 vi.mock('@/context/AuthContext', () => ({
   useAuth: () => mockAuthState,
+}));
+
+vi.mock('@/context/EnvContext', () => ({
+  useEnv: () => ({ appService: mockAppService }),
+}));
+
+vi.mock('@/services/catalogDeviceFetch', () => ({
+  importDeviceFetchedCatalogBook: (arg: unknown) => mockImportDeviceFetchedCatalogBook(arg),
+}));
+
+vi.mock('@/services/sync/helpers', () => ({
+  enqueueBooksForSync: (arg: unknown) => mockEnqueueBooksForSync(arg),
+}));
+
+vi.mock('@/store/libraryStore', () => ({
+  useLibraryStore: {
+    getState: () => mockLibraryState,
+  },
 }));
 
 vi.mock('@/utils/event', () => ({
@@ -47,6 +96,12 @@ vi.mock('@/services/platform/client', () => ({
         catalogJson(`/catalog/books/${catalogBookId}/status`, init),
       importBook: (catalogBookId: string, init?: Record<string, unknown>) =>
         catalogJson(`/api/catalog/books/${catalogBookId}/import`, {
+          ...init,
+          method: 'POST',
+          headers: { Authorization: `Bearer ${mockAuthState.token}` },
+        }),
+      getImportIntent: (catalogBookId: string, init?: Record<string, unknown>) =>
+        catalogJson(`/api/catalog/books/${catalogBookId}/import-intent`, {
           ...init,
           method: 'POST',
           headers: { Authorization: `Bearer ${mockAuthState.token}` },
@@ -92,6 +147,52 @@ function mockImportResponse(status: 'ready' | 'preparing', extra?: Record<string
   };
 }
 
+function mockCachedIntent(extra?: Record<string, unknown>) {
+  return {
+    ok: true,
+    json: async () => ({
+      mode: 'cached',
+      catalogBookId: 'catalog-1',
+      format: 'epub',
+      downloadUrl: 'https://example.com/book.epub',
+      expiresAt: Date.now() + 60_000,
+      sizeBytes: 123,
+      policy: {
+        source: 'internet-archive',
+        sourceId: 'item-1',
+        provenanceLabel: 'Internet Archive',
+        licenseType: 'public-domain',
+        cacheRedistributionAllowed: true,
+        deviceFetchAllowed: true,
+        allowedFormats: ['epub', 'pdf'],
+      },
+      ...extra,
+    }),
+  };
+}
+
+function mockUserDeviceFetchIntent(extra?: Record<string, unknown>) {
+  return {
+    ok: true,
+    json: async () => ({
+      mode: 'user_device_fetch',
+      catalogBookId: 'device-fetch-1',
+      format: 'epub',
+      sourceUrl: 'https://archive.org/download/item-1/book.epub',
+      policy: {
+        source: 'internet-archive',
+        sourceId: 'item-1',
+        provenanceLabel: 'Internet Archive',
+        licenseType: 'public-domain',
+        cacheRedistributionAllowed: true,
+        deviceFetchAllowed: true,
+        allowedFormats: ['epub', 'pdf'],
+      },
+      ...extra,
+    }),
+  };
+}
+
 function mockStatusResponse(cachingStatus: string) {
   return {
     ok: true,
@@ -114,6 +215,11 @@ beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   mockAuthState.token = 'test-token-123';
   mockAuthState.user = { id: 'user-1' } as never;
+  mockLibraryState.library = [];
+  mockLibraryState.setLibrary.mockClear();
+  mockAppService.saveLibraryBooks.mockClear();
+  mockImportDeviceFetchedCatalogBook.mockReset();
+  mockEnqueueBooksForSync.mockClear();
   // Reset library limit to allow imports by default
   mockLibraryLimitState.canAddBook = true;
   mockLibraryLimitState.libraryLimit = null;
@@ -172,10 +278,10 @@ describe('useCatalogImport', () => {
   describe('local book import (cached)', () => {
     it('should import a cached book and transition to ready state', async () => {
       fetchMock.mockResolvedValueOnce(
-        mockImportResponse('ready', {
-          book_id: 'lib-book-1',
-          book_hash: 'catalog:catalog-1',
-          download_url: 'https://example.com/book.epub',
+        mockCachedIntent({
+          bookId: 'lib-book-1',
+          bookHash: 'catalog:catalog-1',
+          downloadUrl: 'https://example.com/book.epub',
         }),
       );
 
@@ -188,7 +294,7 @@ describe('useCatalogImport', () => {
       // Verify fetch was called with correct endpoint
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [url, options] = fetchMock.mock.calls[0]!;
-      expect(url).toContain('/api/catalog/books/catalog-1/import');
+      expect(url).toContain('/api/catalog/books/catalog-1/import-intent');
       expect(options.method).toBe('POST');
       expect(options.headers.Authorization).toBe('Bearer test-token-123');
 
@@ -211,10 +317,11 @@ describe('useCatalogImport', () => {
       const { syncWorker } = await import('@/services/sync/syncWorker');
 
       fetchMock.mockResolvedValueOnce(
-        mockImportResponse('ready', {
-          book_id: 'lib-book-sync',
-          book_hash: 'catalog:sync-1',
-          download_url: 'https://example.com/sync.epub',
+        mockCachedIntent({
+          catalogBookId: 'sync-1',
+          bookId: 'lib-book-sync',
+          bookHash: 'catalog:sync-1',
+          downloadUrl: 'https://example.com/sync.epub',
         }),
       );
 
@@ -257,55 +364,71 @@ describe('useCatalogImport', () => {
     });
   });
 
-  describe('import with polling', () => {
-    it('should poll status when import returns preparing', async () => {
-      // Initial import returns 'preparing'
-      fetchMock.mockResolvedValueOnce(mockImportResponse('preparing'));
-
-      // First poll: still caching
-      fetchMock.mockResolvedValueOnce(mockStatusResponse('caching'));
-
-      // Second poll: cached
-      fetchMock.mockResolvedValueOnce(mockStatusResponse('cached'));
-
-      // Re-import after cached: returns ready
-      fetchMock.mockResolvedValueOnce(
-        mockImportResponse('ready', {
-          book_id: 'lib-polled',
-          book_hash: 'catalog:catalog-poll',
-          download_url: 'https://example.com/polled.epub',
-        }),
-      );
+  describe('device-fetch and IA import flows', () => {
+    it('should import a user_device_fetch intent through the desktop device engine', async () => {
+      const importedBook = {
+        hash: 'local-device-hash',
+        title: 'Device Book',
+        catalogBookId: 'device-fetch-1',
+      };
+      mockLibraryState.library = [importedBook];
+      fetchMock.mockResolvedValueOnce(mockUserDeviceFetchIntent());
+      mockImportDeviceFetchedCatalogBook.mockResolvedValueOnce(importedBook);
 
       const { result } = renderHook(() => useCatalogImport());
 
-      // Start import (don't await — it will poll asynchronously)
-      let importPromise: Promise<void>;
-      act(() => {
-        importPromise = result.current.importBook('catalog-poll');
-      });
-
-      // Should be in importing state
-      expect(result.current.getImportState('catalog-poll').status).toBe('importing');
-
-      // Advance past first poll interval (2s)
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(2100);
+        await result.current.importBook('device-fetch-1');
       });
 
-      // Advance past second poll interval (2s)
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(2100);
-      });
+      expect(mockImportDeviceFetchedCatalogBook).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestedCatalogBookId: 'device-fetch-1',
+          appService: mockAppService,
+          library: [importedBook],
+        }),
+      );
+      expect(mockAppService.saveLibraryBooks).toHaveBeenCalledWith([importedBook]);
+      expect(mockEnqueueBooksForSync).toHaveBeenCalledWith([importedBook]);
 
-      // Wait for import to complete
-      await act(async () => {
-        await importPromise!;
-      });
-
-      const state = result.current.getImportState('catalog-poll');
+      const state = result.current.getImportState('device-fetch-1');
       expect(state.status).toBe('ready');
-      expect(state.bookId).toBe('lib-polled');
+      expect(state.bookHash).toBe('local-device-hash');
+    });
+
+    it('should allow retry after a device-fetch import error', async () => {
+      const importedBook = {
+        hash: 'local-device-hash-retry',
+        title: 'Device Book',
+        catalogBookId: 'device-fetch-1',
+      };
+      mockLibraryState.library = [importedBook];
+      fetchMock
+        .mockResolvedValueOnce(mockUserDeviceFetchIntent())
+        .mockResolvedValueOnce(mockUserDeviceFetchIntent());
+      mockImportDeviceFetchedCatalogBook
+        .mockRejectedValueOnce(new Error('Catalog source returned invalid EPUB bytes.'))
+        .mockResolvedValueOnce(importedBook);
+
+      const { result } = renderHook(() => useCatalogImport());
+
+      await act(async () => {
+        await result.current.importBook('device-fetch-1');
+      });
+      expect(result.current.getImportState('device-fetch-1')).toMatchObject({
+        status: 'error',
+        error: 'Catalog source returned invalid EPUB bytes.',
+      });
+
+      await act(async () => {
+        await result.current.importBook('device-fetch-1');
+      });
+
+      expect(mockImportDeviceFetchedCatalogBook).toHaveBeenCalledTimes(2);
+      expect(result.current.getImportState('device-fetch-1')).toMatchObject({
+        status: 'ready',
+        bookHash: 'local-device-hash-retry',
+      });
     });
 
     it('should poll IA preparing imports with the real catalog UUID, not synthetic UI identity', async () => {
@@ -418,15 +541,17 @@ describe('useCatalogImport', () => {
     it('should track multiple books independently', async () => {
       fetchMock
         .mockResolvedValueOnce(
-          mockImportResponse('ready', {
-            book_id: 'lib-a',
-            download_url: 'https://example.com/a.epub',
+          mockCachedIntent({
+            catalogBookId: 'book-a',
+            bookId: 'lib-a',
+            downloadUrl: 'https://example.com/a.epub',
           }),
         )
         .mockResolvedValueOnce(
-          mockImportResponse('ready', {
-            book_id: 'lib-b',
-            download_url: 'https://example.com/b.epub',
+          mockCachedIntent({
+            catalogBookId: 'book-b',
+            bookId: 'lib-b',
+            downloadUrl: 'https://example.com/b.epub',
           }),
         );
 
@@ -448,8 +573,8 @@ describe('useCatalogImport', () => {
 
   describe('duplicate prevention', () => {
     it('should not start a new import if already importing', async () => {
-      // First call returns 'preparing' and will start polling
-      fetchMock.mockResolvedValueOnce(mockImportResponse('preparing'));
+      // First call stays in-flight and keeps the import state at importing.
+      fetchMock.mockImplementationOnce(() => new Promise(() => {}));
 
       const { result } = renderHook(() => useCatalogImport());
 
@@ -471,9 +596,10 @@ describe('useCatalogImport', () => {
   describe('resetImportState', () => {
     it('should reset a book import state to idle', async () => {
       fetchMock.mockResolvedValueOnce(
-        mockImportResponse('ready', {
-          book_id: 'lib-reset',
-          download_url: 'https://example.com/reset.epub',
+        mockCachedIntent({
+          catalogBookId: 'reset-book',
+          bookId: 'lib-reset',
+          downloadUrl: 'https://example.com/reset.epub',
         }),
       );
 
@@ -496,9 +622,10 @@ describe('useCatalogImport', () => {
   describe('import state persistence', () => {
     it('should preserve import states across re-renders', async () => {
       fetchMock.mockResolvedValueOnce(
-        mockImportResponse('ready', {
-          book_id: 'lib-persist',
-          download_url: 'https://example.com/persist.epub',
+        mockCachedIntent({
+          catalogBookId: 'persist-book',
+          bookId: 'lib-persist',
+          downloadUrl: 'https://example.com/persist.epub',
         }),
       );
 
@@ -545,10 +672,11 @@ describe('useCatalogImport', () => {
       mockLibraryLimitState.currentCount = 5;
 
       fetchMock.mockResolvedValueOnce(
-        mockImportResponse('ready', {
-          book_id: 'lib-ok',
-          book_hash: 'catalog:ok-1',
-          download_url: 'https://example.com/ok.epub',
+        mockCachedIntent({
+          catalogBookId: 'ok-book',
+          bookId: 'lib-ok',
+          bookHash: 'catalog:ok-1',
+          downloadUrl: 'https://example.com/ok.epub',
         }),
       );
 

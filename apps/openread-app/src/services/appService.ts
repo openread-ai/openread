@@ -534,6 +534,8 @@ export abstract class BaseAppService implements AppService {
         deletedAt: null,
         downloadedAt: Date.now(),
         updatedAt: Date.now(),
+        catalogBookId: importContext?.catalogBookId ?? null,
+        storagePath: importContext?.catalogBookId ? null : undefined,
       };
       currentFailureReason = 'book-file-write-failed';
       const bookDir = getDir(book);
@@ -649,6 +651,10 @@ export abstract class BaseAppService implements AppService {
         existingBook.primaryLanguage = existingBook.primaryLanguage ?? book.primaryLanguage;
         existingBook.platformHash = platformHash;
         existingBook.downloadedAt = Date.now();
+        if (importContext?.catalogBookId) {
+          existingBook.catalogBookId = importContext.catalogBookId;
+          existingBook.storagePath = null;
+        }
         if (book.url) existingBook.url = book.url;
       } else {
         books.splice(0, 0, book);
@@ -667,7 +673,11 @@ export abstract class BaseAppService implements AppService {
 
       // Auto-upload to cloud immediately (no delay)
       const resultBook = existingBook || book;
-      if (!resultBook.uploadedAt) {
+      if (
+        !resultBook.uploadedAt &&
+        !importContext?.suppressAutoUpload &&
+        !isCatalogBackedBook(resultBook)
+      ) {
         try {
           const settings = useSettingsStore.getState().settings;
           if (settings.autoUpload !== false && transferManager.isReady()) {

@@ -36,6 +36,9 @@ export type FileInfo = {
 
 export type ImportBookContext = {
   booksByHash: Map<Book['hash'], Book>;
+  catalogBookId?: string;
+  sourceUrl?: string;
+  suppressAutoUpload?: boolean;
 };
 
 export type NativeTouchEventType = {

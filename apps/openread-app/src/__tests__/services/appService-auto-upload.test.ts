@@ -984,6 +984,25 @@ describe('appService importBook auto-upload', () => {
     expect(mockQueueUpload).not.toHaveBeenCalled();
   });
 
+  it('should NOT queue upload for catalog device-fetch imports', async () => {
+    const mockFile = new File(['test content'], 'test.epub');
+    const books: Book[] = [];
+    const importContext = {
+      ...createImportBookContext(books),
+      catalogBookId: '7231ff9a-24b9-4074-9369-bc7f88ffb179',
+      sourceUrl: 'https://archive.org/download/source-id/book.epub',
+      suppressAutoUpload: true,
+    };
+
+    const result = await appService.importBook(mockFile, books, true, true, false, importContext);
+
+    expect(result).toMatchObject({
+      catalogBookId: '7231ff9a-24b9-4074-9369-bc7f88ffb179',
+      storagePath: null,
+    });
+    expect(mockQueueUpload).not.toHaveBeenCalled();
+  });
+
   it('should NOT queue upload when autoUpload setting is disabled', async () => {
     mockGetState.mockReturnValue({
       settings: { autoUpload: false },

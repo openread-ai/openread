@@ -259,7 +259,7 @@ describe('canonical sync mutation adapters', () => {
 
   it('builds file metadata mutations for uploaded book and cover records without bytes', () => {
     const mutations = buildFileMetadataMutationsFromBook(
-      book({ uploadedAt: 4_000, coverDownloadedAt: 4_100 }),
+      book({ uploadedAt: 4_000, coverDownloadedAt: 4_100, sizeBytes: 12_345 }),
       context,
     );
 
@@ -271,6 +271,7 @@ describe('canonical sync mutation adapters', () => {
       entity: 'fileMetadata',
       payload: {
         bookHash: testSyncableBookRef('d41d8cd98f00b204e9800998ecf8427e'),
+        sizeBytes: 12_345,
         status: 'uploaded',
       },
     });

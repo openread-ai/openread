@@ -80,6 +80,8 @@ export interface Book extends BookCore {
   groupName?: string;
   tags?: string[];
   coverImageUrl?: string | null;
+  /** Canonical local/library file size in bytes when known. */
+  sizeBytes?: number | null;
 
   deletedAt?: number | null;
 

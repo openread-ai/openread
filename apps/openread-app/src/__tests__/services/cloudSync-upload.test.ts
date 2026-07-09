@@ -66,6 +66,7 @@ describe('CloudSyncService storage lifecycle', () => {
     await service.uploadBook(book);
 
     expect(uploadFile).toHaveBeenCalledTimes(1);
+    expect(book.sizeBytes).toBe(4);
     expect(book.uploadedAt).toEqual(expect.any(Number));
     expect(book.downloadedAt).toEqual(expect.any(Number));
   });

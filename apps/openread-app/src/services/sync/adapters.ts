@@ -335,6 +335,7 @@ export function buildFileMetadataMutation(
     bookHash: requireSyncableBookRef(book.hash, 'fileMetadata.bookHash'),
     fileType: 'book',
     storageKey,
+    sizeBytes: book.sizeBytes ?? null,
     status: 'uploaded',
     updatedAt: uploadedAt || now,
   };

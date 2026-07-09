@@ -17,6 +17,7 @@ import { useDeviceControlStore } from '@/store/deviceStore';
 import { useScreenWakeLock } from '@/hooks/useScreenWakeLock';
 import { useTransferQueue } from '@/hooks/useTransferQueue';
 import { eventDispatcher } from '@/utils/event';
+import { navigateToLibrary } from '@/utils/nav';
 import { interceptWindowOpen } from '@/utils/open';
 import { mountAdditionalFonts } from '@/styles/fonts';
 import { isTauriAppPlatform } from '@/services/environment';
@@ -31,6 +32,7 @@ import { Toast } from '@/components/Toast';
 import { getLocale } from '@/utils/misc';
 import { initDayjs } from '@/utils/time';
 import ReaderContent from './ReaderContent';
+import ReaderErrorBoundary from './ReaderErrorBoundary';
 
 /*
 Z-Index Layering Guide:
@@ -120,6 +122,11 @@ const Reader: React.FC<{ ids?: string }> = ({ ids }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appService]);
 
+  const handleReaderBoundaryBackToLibrary = React.useCallback(() => {
+    eventDispatcher.dispatch('close-reader');
+    navigateToLibrary(router, '', undefined, true);
+  }, [router]);
+
   const handleKeyDown = (event: { keyName: string }) => {
     if (event.keyName === 'Back') {
       if (isSideBarVisible && !isSideBarPinned) {
@@ -188,14 +195,16 @@ const Reader: React.FC<{ ids?: string }> = ({ ids }) => {
         appService?.hasRoundedWindow && isRoundedWindow && 'window-border rounded-window',
       )}
     >
-      <Suspense fallback={<div className='full-height'></div>}>
-        <ReaderContent ids={ids} settings={settings} />
-        <AboutWindow />
-        <UpdaterWindow />
-        <KOSyncSettingsWindow />
-        <ProofreadRulesManager />
-        <Toast />
-      </Suspense>
+      <ReaderErrorBoundary onBackToLibrary={handleReaderBoundaryBackToLibrary}>
+        <Suspense fallback={<div className='full-height'></div>}>
+          <ReaderContent ids={ids} settings={settings} />
+          <AboutWindow />
+          <UpdaterWindow />
+          <KOSyncSettingsWindow />
+          <ProofreadRulesManager />
+          <Toast />
+        </Suspense>
+      </ReaderErrorBoundary>
     </div>
   ) : (
     <div className={clsx('full-height', !appService?.isLinuxApp && 'bg-base-100')}></div>

@@ -37,6 +37,8 @@ const mocks = vi.hoisted(() => {
     getProgress: vi.fn(() => mocks.progress),
     setHoveredBookKey: vi.fn(),
     dispatch: vi.fn(),
+    loggerWarn: vi.fn(),
+    enqueueBookConfigForSync: vi.fn(() => Promise.resolve()),
   };
 });
 
@@ -88,7 +90,16 @@ vi.mock('@/utils/event', () => ({
 }));
 
 vi.mock('@/services/sync/helpers', () => ({
-  enqueueBookConfigForSync: vi.fn(),
+  enqueueBookConfigForSync: mocks.enqueueBookConfigForSync,
+}));
+
+vi.mock('@/utils/logger', () => ({
+  createLogger: () => ({
+    warn: mocks.loggerWarn,
+    error: vi.fn(),
+    info: vi.fn(),
+    debug: vi.fn(),
+  }),
 }));
 
 vi.mock('@/utils/xcfi', () => ({
@@ -102,10 +113,47 @@ describe('useProgressSync', () => {
     vi.clearAllMocks();
     mocks.progress = undefined;
     mocks.syncConfigs.mockResolvedValue([]);
+    mocks.enqueueBookConfigForSync.mockResolvedValue(undefined);
+    mocks.loggerWarn.mockClear();
   });
 
   afterEach(() => {
     cleanup();
+  });
+
+  it('handles rejected fire-and-forget progress flush enqueue promises on unmount', async () => {
+    const unhandledRejections: unknown[] = [];
+    const onUnhandledRejection = (reason: unknown) => unhandledRejections.push(reason);
+    process.on('unhandledRejection', onUnhandledRejection);
+
+    try {
+      const enqueueError = new Error('enqueue failed');
+      mocks.enqueueBookConfigForSync.mockRejectedValueOnce(enqueueError);
+
+      const { unmount } = renderHook(() => useProgressSync(mocks.bookKey));
+
+      unmount();
+
+      expect(mocks.enqueueBookConfigForSync).toHaveBeenCalledWith(
+        expect.objectContaining({ bookHash: mocks.bookHash, metaHash: mocks.metaHash }),
+      );
+      await waitFor(() => {
+        expect(mocks.loggerWarn).toHaveBeenCalledWith(
+          'Failed to enqueue reader progress sync flush',
+          {
+            mutationType: 'bookConfig',
+            lifecycle: 'reader-progress-flush',
+            hasBookKey: true,
+            hasBookHash: true,
+            hasMetaHash: true,
+            error: enqueueError,
+          },
+        );
+      });
+      expect(unhandledRejections).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', onUnhandledRejection);
+    }
   });
 
   it('marks an empty initial scoped pull complete so later progress changes push locally', async () => {

@@ -100,6 +100,9 @@ vi.mock('@/utils/access', () => ({
 vi.mock('@/services/sync/helpers', () => ({
   enqueueBookForSync: vi.fn().mockResolvedValue(undefined),
   enqueueBooksForSync: vi.fn().mockResolvedValue(undefined),
+  handleFireAndForgetSyncEnqueue: vi.fn((promise: Promise<void>) => {
+    void promise.catch(() => {});
+  }),
 }));
 
 vi.mock('@/utils/logger', () => ({

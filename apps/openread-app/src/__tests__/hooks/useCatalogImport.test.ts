@@ -80,6 +80,9 @@ vi.mock('@/services/catalogDeviceFetch', () => ({
 
 vi.mock('@/services/sync/helpers', () => ({
   enqueueBooksForSync: (arg: unknown) => mockEnqueueBooksForSync(arg),
+  handleFireAndForgetSyncEnqueue: (promise: Promise<void>) => {
+    void promise.catch(() => {});
+  },
 }));
 
 vi.mock('@/store/libraryStore', () => ({

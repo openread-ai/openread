@@ -103,7 +103,21 @@ export const useProgressSync = (bookKey: string) => {
     const bookHash = parseSyncableBookRef(parseBookRefFromReaderBookKey(bookKey));
     if (!bookHash) return;
     if (config.updatedAt) {
-      void enqueueBookConfigForSync({ ...config, bookHash, metaHash: book.metaHash });
+      const enqueuePromise = enqueueBookConfigForSync({
+        ...config,
+        bookHash,
+        metaHash: book.metaHash,
+      });
+      void enqueuePromise.catch((error) => {
+        logger.warn('Failed to enqueue reader progress sync flush', {
+          mutationType: 'bookConfig',
+          lifecycle: 'reader-progress-flush',
+          hasBookKey: Boolean(bookKey),
+          hasBookHash: Boolean(bookHash),
+          hasMetaHash: Boolean(book.metaHash),
+          error,
+        });
+      });
     }
   }, [bookKey, getBookDataByReaderKey, getConfig, user]);
 

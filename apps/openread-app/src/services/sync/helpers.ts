@@ -4,6 +4,7 @@ import type { AIConversation, AIMessage } from '@/services/ai/types';
 import { getDeviceId } from '@/services/deviceService';
 import type { Book, BookConfig, BookNote } from '@/types/book';
 import type { SystemSettings } from '@/types/settings';
+import { createLogger } from '@/utils/logger';
 
 import {
   buildAIConversationMutation,
@@ -19,6 +20,26 @@ import {
 } from './adapters';
 import { syncOutbox } from './outbox';
 import { syncWorker } from './syncWorker';
+
+const logger = createLogger('sync-helpers');
+
+export interface FireAndForgetSyncEnqueueContext {
+  source: string;
+  mutationType?: string;
+  operation?: string;
+  hasBookHash?: boolean;
+  hasMetaHash?: boolean;
+  count?: number;
+}
+
+export function handleFireAndForgetSyncEnqueue(
+  enqueuePromise: Promise<void>,
+  context: FireAndForgetSyncEnqueueContext,
+): void {
+  void enqueuePromise.catch((error) => {
+    logger.warn('Fire-and-forget sync enqueue failed', { ...context, error });
+  });
+}
 
 function getSyncMutationContext(): SyncMutationContext | null {
   const userId = syncWorker.currentUserId;

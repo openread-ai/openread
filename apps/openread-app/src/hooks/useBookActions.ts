@@ -6,7 +6,11 @@ import { usePlatformSidebarStore } from '@/store/platformSidebarStore';
 import { useLibraryViewStore } from '@/store/libraryViewStore';
 import { eventDispatcher } from '@/utils/event';
 import envConfig from '@/services/environment';
-import { enqueueBookForSync, enqueueBooksForSync } from '@/services/sync/helpers';
+import {
+  enqueueBookForSync,
+  enqueueBooksForSync,
+  handleFireAndForgetSyncEnqueue,
+} from '@/services/sync/helpers';
 import { useBookDataStore } from '@/store/bookDataStore';
 import type { Book, ReadingStatus } from '@/types/book';
 import { createLogger } from '@/utils/logger';
@@ -95,7 +99,12 @@ export function useBookActions() {
           updatedAt: Date.now(),
         };
         await updateBook(envConfig, updatedBook);
-        void enqueueBookForSync(updatedBook);
+        handleFireAndForgetSyncEnqueue(enqueueBookForSync(updatedBook), {
+          source: 'book-actions.setReadingStatus',
+          mutationType: 'book',
+          operation: 'upsert',
+          hasBookHash: Boolean(updatedBook.hash),
+        });
       } catch (error) {
         logger.error('Failed to update reading status:', error);
         eventDispatcher.dispatch('toast', {
@@ -124,7 +133,12 @@ export function useBookActions() {
           updatedAt: Date.now(),
         };
         await updateBook(envConfig, updatedBook);
-        void enqueueBookForSync(updatedBook);
+        handleFireAndForgetSyncEnqueue(enqueueBookForSync(updatedBook), {
+          source: 'book-actions.renameBook',
+          mutationType: 'book',
+          operation: 'upsert',
+          hasBookHash: Boolean(updatedBook.hash),
+        });
       } catch (error) {
         logger.error('Failed to rename book:', error);
         eventDispatcher.dispatch('toast', {
@@ -165,7 +179,12 @@ export function useBookActions() {
 
         await Promise.all(updatePromises);
 
-        void enqueueBooksForSync(updatedBooks);
+        handleFireAndForgetSyncEnqueue(enqueueBooksForSync(updatedBooks), {
+          source: 'book-actions.bulkSetReadingStatus',
+          mutationType: 'book',
+          operation: 'upsert',
+          count: updatedBooks.length,
+        });
 
         clearSelection();
         setSelectMode(false);
@@ -227,8 +246,11 @@ export function useBookActions() {
 
     setLibrary(nextLibrary);
 
-    void enqueueBookForSync(deletedBook).catch((error) => {
-      logger.warn('Deleted book sync enqueue failed; tombstone remains local for retry:', error);
+    handleFireAndForgetSyncEnqueue(enqueueBookForSync(deletedBook), {
+      source: 'book-actions.permanentlyDeleteBook',
+      mutationType: 'book',
+      operation: 'delete',
+      hasBookHash: Boolean(deletedBook.hash),
     });
 
     const bookKey = `${book.hash}-${book.format}`;
@@ -273,8 +295,11 @@ export function useBookActions() {
 
       setLibrary(nextLibrary);
 
-      void enqueueBooksForSync(Array.from(deletedByHash.values())).catch((error) => {
-        logger.warn('Deleted books sync enqueue failed; tombstones remain local for retry:', error);
+      handleFireAndForgetSyncEnqueue(enqueueBooksForSync(Array.from(deletedByHash.values())), {
+        source: 'book-actions.bulkRemove',
+        mutationType: 'book',
+        operation: 'delete',
+        count: deletedByHash.size,
       });
 
       clearSelection();

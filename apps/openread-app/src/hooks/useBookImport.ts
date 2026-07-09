@@ -10,7 +10,7 @@ import { createImportBookContext } from '@/services/appService';
 import { transferManager } from '@/services/transferManager';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useLibraryStore } from '@/store/libraryStore';
-import { enqueueBooksForSync } from '@/services/sync/helpers';
+import { enqueueBooksForSync, handleFireAndForgetSyncEnqueue } from '@/services/sync/helpers';
 import { eventDispatcher } from '@/utils/event';
 import { createLogger } from '@/utils/logger';
 import { useTranslation } from './useTranslation';
@@ -249,7 +249,12 @@ export function useBookImport() {
         .getVisibleLibrary()
         .filter((b) => !activeBefore.has(b.hash));
       if (newBooks.length > 0) {
-        void enqueueBooksForSync(newBooks);
+        handleFireAndForgetSyncEnqueue(enqueueBooksForSync(newBooks), {
+          source: 'book-import.addImportedBooks',
+          mutationType: 'book',
+          operation: 'upsert',
+          count: newBooks.length,
+        });
       }
 
       if (successCount > 0) {

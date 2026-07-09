@@ -7,7 +7,7 @@ import { platform } from '@/services/platform/client';
 import { createLogger } from '@/utils/logger';
 import { eventDispatcher } from '@/utils/event';
 import { syncWorker } from '@/services/sync/syncWorker';
-import { enqueueBooksForSync } from '@/services/sync/helpers';
+import { enqueueBooksForSync, handleFireAndForgetSyncEnqueue } from '@/services/sync/helpers';
 import { importDeviceFetchedCatalogBook } from '@/services/catalogDeviceFetch';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useLibraryLimit } from '@/hooks/useLibraryLimit';
@@ -279,7 +279,13 @@ export function useCatalogImport(): UseCatalogImportReturn {
         const latestLibrary = [...useLibraryStore.getState().library];
         setLibrary(latestLibrary);
         await appService.saveLibraryBooks(latestLibrary);
-        void enqueueBooksForSync([importedBook]);
+        handleFireAndForgetSyncEnqueue(enqueueBooksForSync([importedBook]), {
+          source: 'catalog-import.userDeviceFetch',
+          mutationType: 'book',
+          operation: 'upsert',
+          hasBookHash: Boolean(importedBook.hash),
+          count: 1,
+        });
         updateState(catalogBookId, {
           status: 'ready',
           mode: 'user_device_fetch',

@@ -5,6 +5,7 @@ import { useBookDataStore } from '@/store/bookDataStore';
 import { useReaderStore } from '@/store/readerStore';
 import { SYNC_NOTES_INTERVAL_SEC } from '@/services/constants';
 import { throttle } from '@/utils/throttle';
+import { createLogger } from '@/utils/logger';
 import { enqueueBookNotesForSync } from '@/services/sync/helpers';
 import {
   getAnnotationTargetKey,
@@ -14,6 +15,8 @@ import {
 import { remoteApplyEventMatchesBook, subscribeRemoteApply } from '@/services/sync/remoteApply';
 import { NOTE_PREFIX } from '@/types/view';
 import { parseSyncableBookRef } from '@openread/types';
+
+const logger = createLogger('notes-sync');
 
 export const useNotesSync = (bookKey: string) => {
   const { user } = useAuth();
@@ -81,8 +84,19 @@ export const useNotesSync = (bookKey: string) => {
   const flushNotesToQueue = useCallback(() => {
     const { notes } = getNewNotes();
     if (!notes?.length || !user) return;
-    void enqueueBookNotesForSync(notes);
-  }, [getNewNotes, user]);
+    const enqueuePromise = enqueueBookNotesForSync(notes);
+    void enqueuePromise.catch((error) => {
+      logger.warn('Failed to enqueue reader notes sync flush', {
+        mutationType: 'bookNotes',
+        lifecycle: 'reader-notes-flush',
+        count: notes.length,
+        hasBookKey: Boolean(bookKey),
+        hasBookHash: Boolean(notes[0]?.bookHash),
+        hasMetaHash: Boolean(notes[0]?.metaHash),
+        error,
+      });
+    });
+  }, [bookKey, getNewNotes, user]);
 
   // Flush unsent notes to the durable outbox on unmount and mobile browser lifecycle
   // transitions so bookmark/highlight/note changes are not lost before throttled sync.

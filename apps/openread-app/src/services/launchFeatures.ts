@@ -8,7 +8,7 @@
 export const LAUNCH_TTS_ENABLED = false;
 export const LAUNCH_TRANSLATION_ENABLED = false;
 export const LAUNCH_KOREADER_SYNC_ENABLED = false;
-export const LAUNCH_MCP_ENABLED = process.env['OPENREAD_ENABLE_MCP_IN_TESTS'] === '1';
+export const LAUNCH_MCP_ENABLED = process.env['NEXT_PUBLIC_OPENREAD_MCP_ENABLED'] === '1';
 export const LAUNCH_BYOK_ENABLED = process.env['OPENREAD_ENABLE_BYOK_IN_TESTS'] === '1';
 
 export const LAUNCH_DISABLED_FEATURE_MESSAGE = 'This feature is not available for launch.';

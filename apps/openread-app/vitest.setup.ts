@@ -1,4 +1,4 @@
-process.env['OPENREAD_ENABLE_MCP_IN_TESTS'] = '1';
+process.env['NEXT_PUBLIC_OPENREAD_MCP_ENABLED'] = '1';
 process.env['OPENREAD_ENABLE_BYOK_IN_TESTS'] = '1';
 
 // localStorage mock

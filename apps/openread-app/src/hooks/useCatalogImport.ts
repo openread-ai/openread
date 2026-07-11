@@ -8,10 +8,13 @@ import { createLogger } from '@/utils/logger';
 import { eventDispatcher } from '@/utils/event';
 import { syncWorker } from '@/services/sync/syncWorker';
 import { enqueueBooksForSync, handleFireAndForgetSyncEnqueue } from '@/services/sync/helpers';
-import { importDeviceFetchedCatalogBook } from '@/services/catalogDeviceFetch';
+import {
+  CatalogBrowserSourceDownloadRequiredError,
+  importDeviceFetchedCatalogBook,
+  openCatalogBrowserSourceDownload,
+} from '@/services/catalogDeviceFetch';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useLibraryLimit } from '@/hooks/useLibraryLimit';
-import { canExecuteCatalogUserDeviceFetchMode } from '@/services/catalogAddMode';
 import type { ImportState } from '@/types/catalog';
 import type { CatalogCachedImportIntentResponse } from '@openread/types';
 
@@ -259,10 +262,6 @@ export function useCatalogImport(): UseCatalogImportReturn {
           statusMessage: 'Downloading from source...',
         });
 
-        if (!canExecuteCatalogUserDeviceFetchMode()) {
-          throw new Error('This title can only be added from a supported desktop app.');
-        }
-
         if (!appService) throw new Error('App service is not ready. Please try again.');
 
         const { library, setLibrary } = useLibraryStore.getState();
@@ -300,6 +299,20 @@ export function useCatalogImport(): UseCatalogImportReturn {
         });
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') return;
+
+        if (err instanceof CatalogBrowserSourceDownloadRequiredError) {
+          updateState(catalogBookId, { status: 'error', progress: 0, error: err.message });
+          eventDispatcher.dispatch('toast', {
+            message: err.message,
+            type: 'warning',
+            timeout: 15_000,
+            action: {
+              label: 'Open source download',
+              run: () => openCatalogBrowserSourceDownload(err),
+            },
+          });
+          return;
+        }
 
         const errorMessage = err instanceof Error ? err.message : 'Import failed';
         logger.error('Import failed', { catalogBookId, iaIdentifier, error: err });

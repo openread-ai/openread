@@ -8,8 +8,8 @@ const {
   mockAuthState,
   mockDispatch,
   mockAppService,
-  mockCanExecuteDeviceFetch,
   mockImportDeviceFetchedCatalogBook,
+  mockOpenCatalogBrowserSourceDownload,
   mockEnqueueBooksForSync,
   mockLibraryState,
   mockSyncPullNow,
@@ -33,8 +33,8 @@ const {
       mockLibraryState.library = books;
     }),
   };
-  const mockCanExecuteDeviceFetch = vi.fn(() => false);
   const mockImportDeviceFetchedCatalogBook = vi.fn<(arg: unknown) => unknown>();
+  const mockOpenCatalogBrowserSourceDownload = vi.fn();
   const mockEnqueueBooksForSync = vi.fn<(arg: unknown) => Promise<void>>(() => Promise.resolve());
   const mockSyncPullNow = vi.fn<() => Promise<void>>(() => {
     mockLibraryState.library = [{ hash: 'catalog:catalog-1' }];
@@ -54,8 +54,8 @@ const {
     mockAuthState,
     mockDispatch,
     mockAppService,
-    mockCanExecuteDeviceFetch,
     mockImportDeviceFetchedCatalogBook,
+    mockOpenCatalogBrowserSourceDownload,
     mockEnqueueBooksForSync,
     mockLibraryState,
     mockSyncPullNow,
@@ -70,13 +70,26 @@ vi.mock('@/context/EnvContext', () => ({
   useEnv: () => ({ appService: mockAppService }),
 }));
 
-vi.mock('@/services/catalogAddMode', () => ({
-  canExecuteCatalogUserDeviceFetchMode: () => mockCanExecuteDeviceFetch(),
-}));
+vi.mock('@/services/catalogDeviceFetch', () => {
+  class CatalogBrowserSourceDownloadRequiredError extends Error {
+    readonly sourceUrl: string;
 
-vi.mock('@/services/catalogDeviceFetch', () => ({
-  importDeviceFetchedCatalogBook: (arg: unknown) => mockImportDeviceFetchedCatalogBook(arg),
-}));
+    constructor(sourceUrl: URL | string) {
+      super(
+        'Your browser blocked the direct source download. Open the source download, then import the saved file from Library.',
+      );
+      this.name = 'CatalogBrowserSourceDownloadRequiredError';
+      this.sourceUrl = sourceUrl.toString();
+    }
+  }
+
+  return {
+    CatalogBrowserSourceDownloadRequiredError,
+    importDeviceFetchedCatalogBook: (arg: unknown) => mockImportDeviceFetchedCatalogBook(arg),
+    openCatalogBrowserSourceDownload: (error: unknown) =>
+      mockOpenCatalogBrowserSourceDownload(error),
+  };
+});
 
 vi.mock('@/services/sync/helpers', () => ({
   enqueueBooksForSync: (arg: unknown) => mockEnqueueBooksForSync(arg),
@@ -194,11 +207,11 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockAuthState.token = 'test-token-123';
   mockAuthState.user = { id: 'user-1' };
-  mockCanExecuteDeviceFetch.mockReturnValue(false);
   mockLibraryState.library = [];
   mockLibraryState.setLibrary.mockClear();
   mockAppService.saveLibraryBooks.mockClear();
   mockImportDeviceFetchedCatalogBook.mockReset();
+  mockOpenCatalogBrowserSourceDownload.mockReset();
   mockEnqueueBooksForSync.mockClear();
   mockSyncPullNow.mockClear();
   mockSyncPullNow.mockImplementation(() => {
@@ -383,34 +396,39 @@ describe('useCatalogImport', () => {
     });
   });
 
-  it('surfaces user_device_fetch intent as the only non-cached mode and fails closed without a supported platform', async () => {
+  it('offers an explicit source-download action without claiming import success on browser fallback', async () => {
+    const { CatalogBrowserSourceDownloadRequiredError } =
+      await import('@/services/catalogDeviceFetch');
     fetchMock.mockResolvedValueOnce(mockDeviceFetchIntent());
+    mockImportDeviceFetchedCatalogBook.mockRejectedValueOnce(
+      new CatalogBrowserSourceDownloadRequiredError(
+        new URL('https://gutenberg.org/files/1/1-0.epub'),
+      ),
+    );
 
     const { result } = renderHook(() => useCatalogImport());
-
     await act(async () => {
       await result.current.importBook('catalog-device');
     });
 
     const state = result.current.getImportState('catalog-device');
-    expect(state).toMatchObject({
-      status: 'error',
-      mode: 'user_device_fetch',
-      error: 'This title can only be added from a supported desktop app.',
+    expect(state).toMatchObject({ status: 'error', mode: 'user_device_fetch' });
+    expect(mockAppService.saveLibraryBooks).not.toHaveBeenCalled();
+    const toast = mockDispatch.mock.calls.find(([event]) => event === 'toast')?.[1];
+    expect(toast).toMatchObject({
+      type: 'warning',
+      action: { label: 'Open source download' },
     });
-    expect(mockImportDeviceFetchedCatalogBook).not.toHaveBeenCalled();
-    expect(JSON.stringify(state)).not.toContain('server_fetch');
-    expect(JSON.stringify(state)).not.toContain('user_upload_fallback');
-    expect(JSON.stringify(state)).not.toContain('unavailable');
+    toast.action.run();
+    expect(mockOpenCatalogBrowserSourceDownload).toHaveBeenCalledTimes(1);
   });
 
-  it('imports a user_device_fetch intent through the desktop device engine', async () => {
+  it('imports a user_device_fetch intent through the universal device engine', async () => {
     const importedBook = {
       hash: 'local-device-hash',
       title: 'Device Book',
       catalogBookId: 'catalog-device',
     };
-    mockCanExecuteDeviceFetch.mockReturnValue(true);
     fetchMock.mockResolvedValueOnce(mockDeviceFetchIntent());
     mockImportDeviceFetchedCatalogBook.mockImplementation(async () => {
       mockLibraryState.library = [importedBook];
@@ -446,7 +464,6 @@ describe('useCatalogImport', () => {
       title: 'Device Book',
       catalogBookId: 'catalog-device',
     };
-    mockCanExecuteDeviceFetch.mockReturnValue(true);
     fetchMock
       .mockResolvedValueOnce(mockDeviceFetchIntent())
       .mockResolvedValueOnce(mockDeviceFetchIntent());

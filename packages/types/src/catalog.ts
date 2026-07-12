@@ -58,6 +58,12 @@ export interface CatalogBrowseResponse {
   error?: string;
 }
 
+export interface CatalogStatsResponse {
+  total_active: number;
+  total_cached: number;
+  total_sources: number;
+}
+
 export interface CatalogCollection {
   id: string;
   slug: string;

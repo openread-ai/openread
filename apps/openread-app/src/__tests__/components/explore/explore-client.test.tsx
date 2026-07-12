@@ -69,6 +69,9 @@ const mockSetSearchQuery = vi.fn((q: string) => {
 const mockSetSelectedCategory = vi.fn((c: string) => {
   mockSelectedCategory = c;
 });
+const mockSetLanguages = vi.fn((languages: string[]) => {
+  mockLanguages = languages;
+});
 
 vi.mock('@/store/exploreStore', () => ({
   useExploreStore: () => ({
@@ -77,7 +80,7 @@ vi.mock('@/store/exploreStore', () => ({
     selectedCategory: mockSelectedCategory,
     setSelectedCategory: mockSetSelectedCategory,
     languages: mockLanguages,
-    setLanguages: vi.fn(),
+    setLanguages: mockSetLanguages,
     region: '',
     setRegion: vi.fn(),
     resetFilters: vi.fn(),
@@ -165,6 +168,8 @@ const mockRailBooks: CatalogBook[] = [
   },
 ];
 
+const mockUseExploreRails = vi.fn();
+
 let mockRailsReturn = {
   rails: [
     {
@@ -186,13 +191,17 @@ let mockRailsReturn = {
       total: 40,
     },
   ],
+  totalActive: 100,
   isLoading: false,
   error: null as string | null,
   refresh: vi.fn(),
 };
 
 vi.mock('@/hooks/useExploreRails', () => ({
-  useExploreRails: () => mockRailsReturn,
+  useExploreRails: (...args: unknown[]) => {
+    mockUseExploreRails(...args);
+    return mockRailsReturn;
+  },
 }));
 
 // ── Mock V2 components ─────────────────────────────────
@@ -499,6 +508,7 @@ beforeEach(() => {
   mockSearchParams = new URLSearchParams();
   mockRouterPush.mockClear();
   mockUseExploreBooks.mockClear();
+  mockUseExploreRails.mockClear();
   mockGetImportState = vi.fn(() => ({ status: 'idle', progress: 0 }));
   mockGetImportReadiness = vi.fn(
     (): CatalogImportReadiness => ({
@@ -549,6 +559,7 @@ beforeEach(() => {
         total: 40,
       },
     ],
+    totalActive: 100,
     isLoading: false,
     error: null,
     refresh: vi.fn(),
@@ -566,6 +577,24 @@ describe('ExploreClient', () => {
     it('should render dynamic rail rows when no search query or category', () => {
       render(<ExploreClient />);
       expect(screen.getByTestId('explore-rails')).toBeTruthy();
+    });
+
+    it('sends the default English filter to grids and browse rails', () => {
+      render(<ExploreClient />);
+
+      expect((screen.getByLabelText('Language') as HTMLSelectElement).value).toBe('en');
+      expect(mockUseExploreBooks).toHaveBeenCalledWith(
+        expect.objectContaining({ languages: ['en'] }),
+      );
+      expect(mockUseExploreRails).toHaveBeenCalledWith(10, ['en']);
+    });
+
+    it('maps All languages to the existing empty language contract', () => {
+      render(<ExploreClient />);
+
+      fireEvent.change(screen.getByLabelText('Language'), { target: { value: 'all' } });
+
+      expect(mockSetLanguages).toHaveBeenCalledWith([]);
     });
 
     it('should render all rails from useExploreRails', () => {
@@ -648,6 +677,7 @@ describe('ExploreClient', () => {
     it('should render skeleton rail rows when loading', () => {
       mockRailsReturn = {
         rails: [],
+        totalActive: 100,
         isLoading: true,
         error: null,
         refresh: vi.fn(),
@@ -664,6 +694,7 @@ describe('ExploreClient', () => {
     it('should display error message when rail fetch fails', () => {
       mockRailsReturn = {
         rails: [],
+        totalActive: 100,
         isLoading: false,
         error: 'Failed to load rails',
         refresh: vi.fn(),
@@ -674,15 +705,33 @@ describe('ExploreClient', () => {
   });
 
   describe('Browse Mode - Empty State', () => {
-    it('should show empty state when no rails and not loading', () => {
+    it('shows rebuilding only when the unfiltered canonical active total is zero', () => {
       mockRailsReturn = {
         rails: [],
+        totalActive: 0,
+        isLoading: false,
+        error: null,
+        refresh: vi.fn(),
+      };
+
+      render(<ExploreClient />);
+
+      expect(screen.getByText('Explore is being refreshed')).toBeTruthy();
+      expect(screen.getByText('New books will appear here soon')).toBeTruthy();
+      expect(screen.getByLabelText('Language')).toBeTruthy();
+    });
+
+    it('should show ordinary filtered empty state when no rails and not loading', () => {
+      mockRailsReturn = {
+        rails: [],
+        totalActive: 100,
         isLoading: false,
         error: null,
         refresh: vi.fn(),
       };
       render(<ExploreClient />);
-      expect(screen.getByText('Loading catalog...')).toBeTruthy();
+      expect(screen.getByText('No books found')).toBeTruthy();
+      expect(screen.queryByText('Explore is being refreshed')).toBeNull();
     });
   });
 

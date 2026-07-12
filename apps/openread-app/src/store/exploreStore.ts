@@ -18,35 +18,12 @@ interface ExploreState {
   resetFilters: () => void;
 }
 
-// Catalog DB stores ISO 639-1 (2-letter) codes: en, hi, ta, fr, etc.
-// Browser navigator.language also uses 2-letter BCP 47 primary subtags.
-const SUPPORTED_LANGUAGES = new Set([
-  'en',
-  'hi',
-  'ta',
-  'te',
-  'bn',
-  'mr',
-  'gu',
-  'kn',
-  'ml',
-  'pa',
-  'ur',
-  'sa',
-  'fr',
-  'de',
-  'es',
-  'pt',
-  'zh',
-  'ja',
-  'ko',
-]);
-
 function detectDefaultLanguages(): string[] {
-  if (typeof navigator === 'undefined') return ['en'];
-  const primary = navigator.language.split('-')[0]!.toLowerCase();
-  const lang = SUPPORTED_LANGUAGES.has(primary) ? primary : 'en';
-  return lang === 'en' ? ['en'] : ['en', lang];
+  return ['en'];
+}
+
+function normalizePersistedLanguages(value: unknown): string[] {
+  return Array.isArray(value) && value.length === 0 ? [] : ['en'];
 }
 
 function detectDefaultRegion(): string {
@@ -75,7 +52,7 @@ export const useExploreStore = create<ExploreState>()(
       selectedCategory: '',
       searchQuery: '',
 
-      setLanguages: (languages) => set({ languages }),
+      setLanguages: (languages) => set({ languages: normalizePersistedLanguages(languages) }),
       setRegion: (region) => set({ region }),
       setSelectedCategory: (category) => set({ selectedCategory: category }),
       setSearchQuery: (query) => set({ searchQuery: query }),
@@ -94,10 +71,14 @@ export const useExploreStore = create<ExploreState>()(
         region: state.region,
         // selectedCategory intentionally NOT persisted — should reset to browse mode on page load
       }),
-      merge: (persisted, current) => ({
-        ...current,
-        ...(persisted as Partial<ExploreState>),
-      }),
+      merge: (persisted, current) => {
+        const persistedState = persisted as Partial<ExploreState>;
+        return {
+          ...current,
+          ...persistedState,
+          languages: normalizePersistedLanguages(persistedState.languages),
+        };
+      },
     },
   ),
 );

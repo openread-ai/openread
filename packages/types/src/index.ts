@@ -104,6 +104,7 @@ export type {
   CatalogImportResponse,
   CatalogImportStatus,
   CatalogSort,
+  CatalogStatsResponse,
   CatalogUserDeviceFetchImportIntentResponse,
   CatalogStatusResponse,
   CatalogWishlistBook,

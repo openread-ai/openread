@@ -51,8 +51,8 @@ describe('OpenRead fetch correlation headers', () => {
       '/catalog/books?page=1',
     );
     expect(
-      withWebDevPlatformProxyUrl('https://api.openread.ai/api/catalog/books/cat-1/import-intent'),
-    ).toBe('/api/catalog/books/cat-1/import-intent');
+      withWebDevPlatformProxyUrl('https://api.openread.ai/api/catalog/books/cat-1/import'),
+    ).toBe('/api/catalog/books/cat-1/import');
     expect(withWebDevPlatformProxyUrl('https://api.openread.ai/api/sync/push')).toBe(
       '/api/sync/push',
     );

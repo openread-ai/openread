@@ -85,45 +85,26 @@ export interface CollectionWithBooks extends CatalogCollection {
   books: CatalogBook[];
 }
 
-export type CatalogImportStatus = 'ready' | 'preparing';
-export type CatalogImportIntentMode = 'cached' | 'user_device_fetch';
-export type CatalogImportIntentFormat = 'epub' | 'pdf';
+export type CatalogMaterializationState = 'pending' | 'running' | 'succeeded' | 'failed';
+export type CatalogAddRequestState =
+  | 'pending'
+  | 'waiting_for_materialization'
+  | 'finalizing'
+  | 'completed'
+  | 'failed';
+export type CatalogAddPublicState = 'preparing' | 'ready' | 'failed';
 
-export interface CatalogImportIntentPolicy {
-  source: string;
-  sourceId: string;
-  provenanceLabel: string;
-  licenseType: string;
-  cacheRedistributionAllowed: boolean;
-  deviceFetchAllowed: boolean;
-  allowedFormats: CatalogImportIntentFormat[];
-}
-
-interface CatalogImportIntentBase {
-  mode: CatalogImportIntentMode;
+export interface CatalogAddRequestResponse {
+  addRequestId: string;
   catalogBookId: string;
-  format: CatalogImportIntentFormat;
-  policy: CatalogImportIntentPolicy;
-}
-
-export interface CatalogCachedImportIntentResponse extends CatalogImportIntentBase {
-  mode: 'cached';
-  downloadUrl: string;
-  expiresAt: number;
-  sizeBytes: number | null;
-  storagePath?: string | null;
-  bookId?: string;
+  state: CatalogAddPublicState;
+  requestState: CatalogAddRequestState;
+  finalBookId?: string;
   bookHash?: SyncableBookRef | string;
+  failureCode?: string;
 }
 
-export interface CatalogUserDeviceFetchImportIntentResponse extends CatalogImportIntentBase {
-  mode: 'user_device_fetch';
-  sourceUrl: string;
-}
-
-export type CatalogImportIntentResponse =
-  | CatalogCachedImportIntentResponse
-  | CatalogUserDeviceFetchImportIntentResponse;
+export type CatalogImportStatus = 'ready' | 'preparing';
 
 export interface CatalogImportResponse {
   status: CatalogImportStatus;

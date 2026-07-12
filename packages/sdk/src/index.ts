@@ -36,8 +36,8 @@ import type {
   CatalogCollectionBooksResponse,
   CatalogCollectionDetail,
   CatalogCollectionsResponse,
+  CatalogAddRequestResponse,
   CatalogDownloadUrlResponse,
-  CatalogImportIntentResponse,
   CatalogImportResponse,
   CatalogStatsResponse,
   CatalogStatusResponse,
@@ -222,20 +222,20 @@ class CatalogClient {
     return this._sdk.fetch<CatalogStatusResponse>(`/catalog/books/${encodeURIComponent(id)}/status`, init);
   }
 
-  async importBook(id: string, init?: RequestInit): Promise<CatalogImportResponse> {
-    return this._sdk.fetch<CatalogImportResponse>(`/api/catalog/books/${encodeURIComponent(id)}/import`, {
-      ...init,
-      method: 'POST',
-    });
-  }
-
-  async getImportIntent(id: string, init?: RequestInit): Promise<CatalogImportIntentResponse> {
-    return this._sdk.fetch<CatalogImportIntentResponse>(
-      `/api/catalog/books/${encodeURIComponent(id)}/import-intent`,
+  async importBook(id: string, init?: RequestInit): Promise<CatalogAddRequestResponse> {
+    return this._sdk.fetch<CatalogAddRequestResponse>(
+      `/api/catalog/books/${encodeURIComponent(id)}/import`,
       {
         ...init,
         method: 'POST',
       },
+    );
+  }
+
+  async getAddRequest(id: string, init?: RequestInit): Promise<CatalogAddRequestResponse> {
+    return this._sdk.fetch<CatalogAddRequestResponse>(
+      `/api/catalog/add-requests/${encodeURIComponent(id)}`,
+      init,
     );
   }
 

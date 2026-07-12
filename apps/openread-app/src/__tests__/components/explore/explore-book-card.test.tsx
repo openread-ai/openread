@@ -102,7 +102,7 @@ describe('ExploreBookCard', () => {
 
   describe('Default state - Add button (local books)', () => {
     it('should render Add button for cached catalog books', () => {
-      render(<ExploreBookCard book={mockBook} addMode='cached' onAction={vi.fn()} />);
+      render(<ExploreBookCard book={mockBook} addMode='server' onAction={vi.fn()} />);
       const addBtn = screen.getByRole('button', { name: /add to library/i });
       expect(addBtn).toBeTruthy();
     });
@@ -114,7 +114,7 @@ describe('ExploreBookCard', () => {
 
     it('should call onAction when Add button is clicked', () => {
       const onAction = vi.fn();
-      render(<ExploreBookCard book={mockBook} addMode='cached' onAction={onAction} />);
+      render(<ExploreBookCard book={mockBook} addMode='server' onAction={onAction} />);
       fireEvent.click(screen.getByRole('button', { name: /add to library/i }));
       expect(onAction).toHaveBeenCalledWith('test-uuid-1234');
     });
@@ -122,14 +122,14 @@ describe('ExploreBookCard', () => {
 
   describe('IA state - Import button', () => {
     it('should render canonical Add button for executable IA catalog books', () => {
-      render(<ExploreBookCard book={mockBook} isIA addMode='cached' onAction={vi.fn()} />);
+      render(<ExploreBookCard book={mockBook} isIA addMode='server' onAction={vi.fn()} />);
       const importBtn = screen.getByRole('button', { name: /add to library/i });
       expect(importBtn).toBeTruthy();
     });
 
     it('should call onAction when canonical IA catalog Add is clicked', () => {
       const onAction = vi.fn();
-      render(<ExploreBookCard book={mockBook} isIA addMode='cached' onAction={onAction} />);
+      render(<ExploreBookCard book={mockBook} isIA addMode='server' onAction={onAction} />);
       fireEvent.click(screen.getByRole('button', { name: /add to library/i }));
       expect(onAction).toHaveBeenCalledWith('test-uuid-1234');
     });
@@ -144,7 +144,7 @@ describe('ExploreBookCard', () => {
         ia_identifier: 'stable-ia-id',
       };
 
-      render(<ExploreBookCard book={iaBook} isIA addMode='cached' onAction={onAction} />);
+      render(<ExploreBookCard book={iaBook} isIA addMode='server' onAction={onAction} />);
       fireEvent.click(screen.getByRole('button', { name: /add to library/i }));
 
       expect(onAction).toHaveBeenCalledWith('internet-archive:stable-ia-id');

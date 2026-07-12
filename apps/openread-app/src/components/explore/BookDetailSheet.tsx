@@ -59,10 +59,9 @@ function isIASource(source?: string): boolean {
 }
 
 const IMPORT_PHASE_LABELS: Record<ImportPhase, string> = {
-  requesting_intent: 'Preparing Add...',
-  downloading: 'Downloading from source...',
-  validating: 'Validating file...',
-  importing: 'Importing...',
+  requesting_add: 'Preparing Add...',
+  materializing: 'Preparing book...',
+  syncing: 'Updating Library...',
   opening: 'Opening...',
 };
 

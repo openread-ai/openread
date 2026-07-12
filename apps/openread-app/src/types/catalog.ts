@@ -3,7 +3,6 @@ import type {
   CatalogBookDetail,
   CatalogBrowseResponse,
   CatalogCollection,
-  CatalogImportIntentMode,
   CatalogImportResponse,
   CatalogStatusResponse,
   CollectionWithBooks,
@@ -11,17 +10,11 @@ import type {
 
 /** Import lifecycle states. */
 export type ImportStatus = 'idle' | 'importing' | 'ready' | 'error';
-export type ImportPhase =
-  | 'requesting_intent'
-  | 'downloading'
-  | 'validating'
-  | 'importing'
-  | 'opening';
+export type ImportPhase = 'requesting_add' | 'materializing' | 'syncing' | 'opening';
 
 export interface ImportState {
   status: ImportStatus;
   progress?: number;
-  mode?: CatalogImportIntentMode;
   phase?: ImportPhase;
   statusMessage?: string;
   bookId?: string;

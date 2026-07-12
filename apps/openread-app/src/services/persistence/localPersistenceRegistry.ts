@@ -61,6 +61,7 @@ export const LOCAL_PERSISTENCE_PREFIXES = {
   rsvpPunctuationPause: 'openread_rsvp_pause_',
   rsvpPosition: 'openread_rsvp_pos_',
   syncCursor: 'openread:sync-cursor',
+  catalogAdd: 'openread.catalog-add.v1.',
 } as const;
 
 export const LOCAL_PERSISTENCE_REGISTRY = [
@@ -119,6 +120,15 @@ export const LOCAL_PERSISTENCE_REGISTRY = [
     scope: 'sync-owned',
     description: 'Per-user/per-table canonical sync cursor keys.',
     deletionCriteria: 'Reset only through sync cursor reset helpers when account/context changes.',
+  },
+  {
+    key: `${LOCAL_PERSISTENCE_PREFIXES.catalogAdd}*`,
+    storage: 'localStorage',
+    owner: 'services/catalogAddCoordinator',
+    scope: 'sync-owned',
+    description:
+      'Per-user durable Catalog Add idempotency keys and request IDs used for crash/reload recovery.',
+    deletionCriteria: 'Remove only after terminal Add state or explicit user reset.',
   },
   {
     key: LOCAL_PERSISTENCE_KEYS.libraryOwnerUserId,

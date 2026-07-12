@@ -116,7 +116,7 @@ async function installE2ERateLimitIsolation(page: Page, testInfo: TestInfo) {
     process.env['OPENREAD_E2E_RATE_LIMIT_RUN_ID'] ??
     `lane3-${testInfo.workerIndex}-${Date.now().toString(36)}`;
 
-  await page.route(/\/api\/catalog\/books\/[^/]+\/import-intent(?:\?.*)?$/, (route) => {
+  await page.route(/\/api\/catalog\/books\/[^/]+\/import(?:\?.*)?$/, (route) => {
     const headers = {
       ...route.request().headers(),
       'x-openread-e2e-rate-limit-run-id': runId,
@@ -367,7 +367,7 @@ test.describe('Chromium Explore catalog', () => {
       )}"][data-import-state="idle"]`,
     );
     await expect(importButton).toBeVisible({ timeout: 30_000 });
-    await expect(importButton).toHaveAttribute('data-add-mode', /^(cached|user_device_fetch)$/);
+    await expect(importButton).toHaveAttribute('data-add-mode', 'server');
 
     const preClickButtonTarget = await describeButtonTarget(importButton);
     if (preClickButtonTarget.importReady !== 'true' || preClickButtonTarget.disabled) {
@@ -395,10 +395,7 @@ test.describe('Chromium Explore catalog', () => {
         ) {
           legacyImportRequests.push(path);
         }
-        if (
-          request.method() === 'POST' &&
-          /\/api\/catalog\/books\/[^/]+\/import-intent$/.test(path)
-        ) {
+        if (request.method() === 'POST' && /\/api\/catalog\/books\/[^/]+\/import$/.test(path)) {
           importIntentRequests.push(path);
         }
       });
@@ -407,7 +404,7 @@ test.describe('Chromium Explore catalog', () => {
         .waitForResponse(
           (response) =>
             response.request().method() === 'POST' &&
-            /\/api\/catalog\/books\/[^/]+\/import-intent$/.test(new URL(response.url()).pathname),
+            /\/api\/catalog\/books\/[^/]+\/import$/.test(new URL(response.url()).pathname),
           { timeout: 30_000 },
         )
         .then((response) => ({ kind: 'response' as const, response }))
@@ -425,18 +422,18 @@ test.describe('Chromium Explore catalog', () => {
       if (importOutcome.kind === 'blocked') {
         test.info().annotations.push({
           type: 'blocked',
-          description: `Catalog Add was blocked before import-intent: ${importOutcome.message}`,
+          description: `Catalog Add was blocked before import: ${importOutcome.message}`,
         });
-        test.skip(true, `Catalog Add blocked before import-intent: ${importOutcome.message}`);
+        test.skip(true, `Catalog Add blocked before import: ${importOutcome.message}`);
       }
       if (importOutcome.kind === 'no_response') {
         test.info().annotations.push({
           type: 'blocked',
-          description: `Catalog Add did not emit import-intent within 30s after click. button=${JSON.stringify(
+          description: `Catalog Add did not emit import within 30s after click. button=${JSON.stringify(
             buttonTarget,
           )}; importIntentRequests=${importIntentRequests.length}`,
         });
-        test.skip(true, 'Catalog Add did not emit import-intent within 30s after click.');
+        test.skip(true, 'Catalog Add did not emit import within 30s after click.');
       }
       const importResponse = importOutcome.response;
       if (!importResponse.ok()) {
@@ -456,14 +453,16 @@ test.describe('Chromium Explore catalog', () => {
       }
 
       const importPayload = (await importResponse.json()) as Record<string, unknown>;
-      expect(importPayload.mode).toBe('cached');
+      expect(importPayload.catalogBookId).toBe(selectedCatalogBookId);
+      expect(importPayload.addRequestId).toMatch(/^[0-9a-f-]{36}$/i);
+      expect(importPayload.state).toMatch(/^(preparing|ready)$/);
       expect(legacyImportRequests).toEqual([]);
-      importedBookHash = String(importPayload.bookHash ?? '');
+      importedBookHash = `catalog:${selectedCatalogBookId}`;
       expect(importedBookHash).toMatch(/^catalog:[0-9a-f-]{36}$/i);
 
       imported = true;
 
-      // The import-intent response only proves the backend accepted the Add request.
+      // The import response only proves the backend accepted the Add request.
       // For cached catalog books, the canonical product success signal is the sheet
       // transitioning to ready after `useCatalogImport` pulls books and observes the
       // returned `bookHash` in the Library store. Do not navigate away before that

@@ -19,10 +19,10 @@ function book(isCached = false) {
 
 describe('catalogAddMode', () => {
   it('uses cached mode for API-visible cached catalog rows', () => {
-    expect(getCatalogAddModeForPlatform(book(true))).toBe('cached');
+    expect(getCatalogAddModeForPlatform(book(true))).toBe('server');
   });
 
-  it('uses user_device_fetch for every API-visible uncached row on every platform', () => {
-    expect(getCatalogAddModeForPlatform(book(false))).toBe('user_device_fetch');
+  it('uses server-owned Add mode for uncached rows on every platform', () => {
+    expect(getCatalogAddModeForPlatform(book(false))).toBe('server');
   });
 });

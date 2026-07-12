@@ -59,10 +59,9 @@ export function getLanguageName(code: string): string {
 type CardState = 'default' | 'importing' | 'in-library';
 
 const IMPORT_PHASE_LABELS: Record<ImportPhase, string> = {
-  requesting_intent: 'Preparing...',
-  downloading: 'Downloading...',
-  validating: 'Validating...',
-  importing: 'Importing...',
+  requesting_add: 'Preparing...',
+  materializing: 'Preparing book...',
+  syncing: 'Updating Library...',
   opening: 'Opening...',
 };
 
@@ -185,7 +184,7 @@ export const ExploreBookCard = memo(function ExploreBookCard({
   const formatLabel = (book.format_type || 'epub').toUpperCase();
   const langLabel = getLanguageName(book.language);
   const addLabel = addMode ? catalogAddModeLabel(addMode) : null;
-  const compactAddLabel = addMode === 'user_device_fetch' ? 'Get' : 'Add';
+  const compactAddLabel = 'Add';
   const importingLabel = importPhase ? IMPORT_PHASE_LABELS[importPhase] : 'Adding...';
 
   const handleCardClick = () => {

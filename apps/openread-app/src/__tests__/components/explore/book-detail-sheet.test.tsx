@@ -60,7 +60,7 @@ const defaultProps: BookDetailSheetProps = {
   book: mockBook,
   isOpen: true,
   onClose: vi.fn(),
-  addMode: 'cached',
+  addMode: 'server',
   onImport: vi.fn(),
 };
 
@@ -263,18 +263,18 @@ describe('BookDetailSheet', () => {
     });
 
     it('should render canonical Add for IA catalog books without legacy IA import copy', () => {
-      renderSheet({ book: mockIABook, importState: 'idle', addMode: 'cached' });
+      renderSheet({ book: mockIABook, importState: 'idle', addMode: 'server' });
       const btn = screen.getByTestId('sheet-import-btn');
       expect(btn.textContent).toContain('Add to Library');
       expect(btn.textContent).not.toContain('Import from IA');
       expect(btn.getAttribute('aria-label')).toBe('Add to Library');
     });
 
-    it('should render user-device-fetch copy for non-cached executable books', () => {
-      renderSheet({ importState: 'idle', addMode: 'user_device_fetch' });
+    it('should render canonical server Add copy for every executable book', () => {
+      renderSheet({ importState: 'idle', addMode: 'server' });
       const btn = screen.getByTestId('sheet-import-btn');
-      expect(btn.textContent).toContain('Get from source');
-      expect(btn.getAttribute('aria-label')).toBe('Get from source');
+      expect(btn.textContent).toContain('Add to Library');
+      expect(btn.getAttribute('aria-label')).toBe('Add to Library');
     });
 
     it('should hide import button when no executable add mode is provided', () => {
@@ -295,10 +295,10 @@ describe('BookDetailSheet', () => {
     });
 
     it('should expose non-user-facing readiness state for stable E2E Add clicks', () => {
-      renderSheet({ importState: 'idle', addMode: 'cached' });
+      renderSheet({ importState: 'idle', addMode: 'server' });
       const btn = screen.getByTestId('sheet-import-btn');
       expect(btn.getAttribute('data-catalog-book-id')).toBe(mockBook.id);
-      expect(btn.getAttribute('data-add-mode')).toBe('cached');
+      expect(btn.getAttribute('data-add-mode')).toBe('server');
       expect(btn.getAttribute('data-import-state')).toBe('idle');
       expect(btn.getAttribute('data-import-ready')).toBe('true');
     });
@@ -308,7 +308,7 @@ describe('BookDetailSheet', () => {
       renderSheet({
         onImport,
         importState: 'idle',
-        addMode: 'cached',
+        addMode: 'server',
         importReady: false,
         importBlockedReason: 'library_limit_loading',
       });

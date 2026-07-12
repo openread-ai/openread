@@ -1,26 +1,19 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { useEnv } from '@/context/EnvContext';
-import { platform } from '@/services/platform/client';
-import { createLogger } from '@/utils/logger';
-import { eventDispatcher } from '@/utils/event';
-import { syncWorker } from '@/services/sync/syncWorker';
-import { enqueueBooksForSync, handleFireAndForgetSyncEnqueue } from '@/services/sync/helpers';
-import {
-  CatalogBrowserSourceDownloadRequiredError,
-  importDeviceFetchedCatalogBook,
-  openCatalogBrowserSourceDownload,
-} from '@/services/catalogDeviceFetch';
-import { useLibraryStore } from '@/store/libraryStore';
 import { useLibraryLimit } from '@/hooks/useLibraryLimit';
+import {
+  activateCatalogAddUser,
+  resetCatalogAdd,
+  resumeCatalogAdds,
+  startCatalogAdd,
+} from '@/services/catalogAddCoordinator';
+import { useCatalogAddStore } from '@/store/catalogAddStore';
+import { eventDispatcher } from '@/utils/event';
 import type { ImportState } from '@/types/catalog';
-import type { CatalogCachedImportIntentResponse } from '@openread/types';
 
 export type { ImportStatus, ImportState } from '@/types/catalog';
-
-const logger = createLogger('catalog-import');
 
 export type CatalogImportBlockedReason =
   | 'auth_required'
@@ -47,26 +40,7 @@ export interface UseCatalogImportReturn {
   resetImportState: (catalogBookId: string) => void;
 }
 
-function cachedIntentReadyState(intent: CatalogCachedImportIntentResponse): Partial<ImportState> {
-  return {
-    status: 'ready',
-    mode: 'cached',
-    phase: 'opening',
-    statusMessage: 'Ready to open',
-    progress: 100,
-    bookId: intent.bookId,
-    bookHash: intent.bookHash,
-    downloadUrl: intent.downloadUrl,
-  };
-}
-
-function hasVisibleLibraryBook(bookHash: string): boolean {
-  return useLibraryStore
-    .getState()
-    .library.some((book) => book.hash === bookHash && !book.deletedAt);
-}
-
-interface ResolveCatalogImportReadinessInput {
+export function resolveCatalogImportReadiness(input: {
   token: string | null;
   user: unknown;
   current: ImportState;
@@ -74,110 +48,44 @@ interface ResolveCatalogImportReadinessInput {
   libraryLimit: number | null;
   currentCount: number;
   isLibraryLimitLoading: boolean;
-}
-
-export function resolveCatalogImportReadiness({
-  token,
-  user,
-  current,
-  canAddBook,
-  libraryLimit,
-  currentCount,
-  isLibraryLimitLoading,
-}: ResolveCatalogImportReadinessInput): CatalogImportReadiness {
-  const currentStatus = current.status;
+}): CatalogImportReadiness {
   const base = {
-    isAuthenticated: Boolean(token && user),
-    canAddBook,
-    libraryLimit,
-    currentCount,
-    isLibraryLimitLoading,
-    currentStatus,
+    isAuthenticated: Boolean(input.token && input.user),
+    canAddBook: input.canAddBook,
+    libraryLimit: input.libraryLimit,
+    currentCount: input.currentCount,
+    isLibraryLimitLoading: input.isLibraryLimitLoading,
+    currentStatus: input.current.status,
   };
-
-  if (!base.isAuthenticated) {
-    return { ...base, ready: false, blockedReason: 'auth_required' };
-  }
-
-  if (currentStatus === 'importing') {
+  if (!base.isAuthenticated) return { ...base, ready: false, blockedReason: 'auth_required' };
+  if (base.currentStatus === 'importing')
     return { ...base, ready: false, blockedReason: 'already_importing' };
-  }
-
-  if (isLibraryLimitLoading) {
+  if (base.isLibraryLimitLoading)
     return { ...base, ready: false, blockedReason: 'library_limit_loading' };
-  }
-
-  if (!canAddBook) {
-    return { ...base, ready: false, blockedReason: 'library_full' };
-  }
-
+  if (!base.canAddBook) return { ...base, ready: false, blockedReason: 'library_full' };
   return { ...base, ready: true, blockedReason: null };
-}
-
-async function wait(ms: number, signal: AbortSignal): Promise<void> {
-  if (signal.aborted) return;
-  await new Promise<void>((resolve) => {
-    const timeout = window.setTimeout(resolve, ms);
-    signal.addEventListener(
-      'abort',
-      () => {
-        window.clearTimeout(timeout);
-        resolve();
-      },
-      { once: true },
-    );
-  });
-}
-
-async function syncCachedCatalogBookIntoLibrary(
-  bookHash: string,
-  catalogBookId: string,
-  signal: AbortSignal,
-): Promise<void> {
-  const retryDelays = [0, 1_000, 2_000, 4_000] as const;
-  let lastError: unknown;
-
-  for (const delay of retryDelays) {
-    if (delay > 0) await wait(delay, signal);
-    if (signal.aborted) return;
-
-    try {
-      await syncWorker.pullNow('books');
-      if (hasVisibleLibraryBook(bookHash)) return;
-    } catch (syncError) {
-      lastError = syncError;
-      logger.warn('Cached catalog import library sync failed', { catalogBookId, syncError });
-    }
-  }
-
-  if (lastError instanceof Error) throw lastError;
-  throw new Error(
-    'Book was added, but Library sync has not made it visible yet. Please try again.',
-  );
 }
 
 export function useCatalogImport(): UseCatalogImportReturn {
   const { token, user } = useAuth();
-  const { appService } = useEnv();
   const {
     canAddBook,
     libraryLimit,
     currentCount,
     isLoading: isLibraryLimitLoading,
   } = useLibraryLimit();
-  const [importStates, setImportStates] = useState<Record<string, ImportState>>({});
-  const abortRefs = useRef<Record<string, AbortController>>({});
+  const importStates = useCatalogAddStore((state) => state.importStates);
 
-  const updateState = useCallback((bookId: string, update: Partial<ImportState>) => {
-    setImportStates((prev) => ({
-      ...prev,
-      [bookId]: { ...prev[bookId]!, ...update } as ImportState,
-    }));
-  }, []);
+  useEffect(() => {
+    if (user) resumeCatalogAdds(user.id);
+    else activateCatalogAddUser(null);
+  }, [user]);
 
   const importBook = useCallback(
     async (catalogBookId: string, iaIdentifier?: string) => {
-      const current = importStates[catalogBookId] ?? { status: 'idle' };
+      const current = useCatalogAddStore.getState().importStates[catalogBookId] ?? {
+        status: 'idle',
+      };
       const readiness = resolveCatalogImportReadiness({
         token,
         user,
@@ -187,168 +95,37 @@ export function useCatalogImport(): UseCatalogImportReturn {
         currentCount,
         isLibraryLimitLoading,
       });
-
       if (!readiness.ready) {
-        if (readiness.blockedReason === 'auth_required') {
-          eventDispatcher.dispatch('toast', {
-            message: 'Sign in to add books to your library',
-            type: 'warning',
-          });
-        } else if (readiness.blockedReason === 'library_limit_loading') {
-          eventDispatcher.dispatch('toast', {
-            message: 'Checking your library limit. Please try again.',
-            type: 'warning',
-          });
-        } else if (readiness.blockedReason === 'library_full') {
-          eventDispatcher.dispatch('toast', {
-            message: `Library full (${libraryLimit} books). Upgrade for unlimited.`,
-            type: 'warning',
-          });
-        }
+        const message =
+          readiness.blockedReason === 'auth_required'
+            ? 'Sign in to add books to your library'
+            : readiness.blockedReason === 'library_limit_loading'
+              ? 'Checking your library limit. Please try again.'
+              : readiness.blockedReason === 'library_full'
+                ? `Library full (${libraryLimit} books). Upgrade for unlimited.`
+                : null;
+        if (message) eventDispatcher.dispatch('toast', { message, type: 'warning' });
         return;
       }
-
-      if (abortRefs.current[catalogBookId]) {
-        abortRefs.current[catalogBookId]!.abort();
-      }
-      const controller = new AbortController();
-      abortRefs.current[catalogBookId] = controller;
-
-      updateState(catalogBookId, {
-        status: 'importing',
-        progress: 5,
-        phase: 'requesting_intent',
-        statusMessage: 'Preparing Add...',
-        error: undefined,
-      });
-
-      try {
-        if (iaIdentifier) {
-          throw new Error('OpenRead catalog Add is available from canonical catalog rows only.');
-        }
-
-        const intent = await platform.catalog.getImportIntent(catalogBookId, {
-          signal: controller.signal,
-        });
-
-        if (controller.signal.aborted) return;
-
-        if (intent.mode === 'cached') {
-          updateState(catalogBookId, {
-            status: 'importing',
-            mode: 'cached',
-            phase: 'importing',
-            statusMessage: 'Updating library...',
-            progress: 85,
-          });
-          if (!intent.bookHash) {
-            throw new Error('Catalog Add did not return a canonical Library book reference.');
-          }
-          await syncCachedCatalogBookIntoLibrary(intent.bookHash, catalogBookId, controller.signal);
-          if (controller.signal.aborted) return;
-
-          updateState(catalogBookId, cachedIntentReadyState(intent));
-          eventDispatcher.dispatch('toast', {
-            message: 'Book added to your library',
-            type: 'success',
-          });
-          return;
-        }
-
-        updateState(catalogBookId, {
-          mode: 'user_device_fetch',
-          phase: 'downloading',
-          progress: 20,
-          statusMessage: 'Downloading from source...',
-        });
-
-        if (!appService) throw new Error('App service is not ready. Please try again.');
-
-        const { library, setLibrary } = useLibraryStore.getState();
-        const importedBook = await importDeviceFetchedCatalogBook({
-          requestedCatalogBookId: catalogBookId,
-          intent,
-          appService,
-          library,
-          signal: controller.signal,
-        });
-
-        if (controller.signal.aborted) return;
-
-        const latestLibrary = [...useLibraryStore.getState().library];
-        setLibrary(latestLibrary);
-        await appService.saveLibraryBooks(latestLibrary);
-        handleFireAndForgetSyncEnqueue(enqueueBooksForSync([importedBook]), {
-          source: 'catalog-import.userDeviceFetch',
-          mutationType: 'book',
-          operation: 'upsert',
-          hasBookHash: Boolean(importedBook.hash),
-          count: 1,
-        });
-        updateState(catalogBookId, {
-          status: 'ready',
-          mode: 'user_device_fetch',
-          phase: 'opening',
-          progress: 100,
-          statusMessage: 'Ready to open',
-          bookHash: importedBook.hash,
-        });
+      if (!user) return;
+      if (iaIdentifier) {
         eventDispatcher.dispatch('toast', {
-          message: 'Book added to your library',
-          type: 'success',
-        });
-      } catch (err) {
-        if (err instanceof Error && err.name === 'AbortError') return;
-
-        if (err instanceof CatalogBrowserSourceDownloadRequiredError) {
-          updateState(catalogBookId, { status: 'error', progress: 0, error: err.message });
-          eventDispatcher.dispatch('toast', {
-            message: err.message,
-            type: 'warning',
-            timeout: 15_000,
-            action: {
-              label: 'Open source download',
-              run: () => openCatalogBrowserSourceDownload(err),
-            },
-          });
-          return;
-        }
-
-        const errorMessage = err instanceof Error ? err.message : 'Import failed';
-        logger.error('Import failed', { catalogBookId, iaIdentifier, error: err });
-        updateState(catalogBookId, { status: 'error', progress: 0, error: errorMessage });
-        eventDispatcher.dispatch('toast', {
-          message: errorMessage,
+          message: 'Internet Archive Add is not part of the OAPEN Catalog Add path.',
           type: 'error',
         });
-      } finally {
-        if (abortRefs.current[catalogBookId] === controller) {
-          delete abortRefs.current[catalogBookId];
-        }
+        return;
       }
+      await startCatalogAdd(user.id, catalogBookId).catch(() => undefined);
     },
-    [
-      token,
-      user,
-      importStates,
-      updateState,
-      canAddBook,
-      libraryLimit,
-      currentCount,
-      isLibraryLimitLoading,
-      appService,
-    ],
+    [canAddBook, currentCount, isLibraryLimitLoading, libraryLimit, token, user],
   );
 
   const getImportState = useCallback(
-    (catalogBookId: string): ImportState => {
-      return importStates[catalogBookId] || { status: 'idle' };
-    },
+    (catalogBookId: string): ImportState => importStates[catalogBookId] ?? { status: 'idle' },
     [importStates],
   );
-
   const getImportReadiness = useCallback(
-    (catalogBookId: string): CatalogImportReadiness =>
+    (catalogBookId: string) =>
       resolveCatalogImportReadiness({
         token,
         user,
@@ -358,20 +135,15 @@ export function useCatalogImport(): UseCatalogImportReturn {
         currentCount,
         isLibraryLimitLoading,
       }),
-    [token, user, importStates, canAddBook, libraryLimit, currentCount, isLibraryLimitLoading],
+    [canAddBook, currentCount, importStates, isLibraryLimitLoading, libraryLimit, token, user],
   );
-
-  const resetImportState = useCallback((catalogBookId: string) => {
-    if (abortRefs.current[catalogBookId]) {
-      abortRefs.current[catalogBookId]!.abort();
-      delete abortRefs.current[catalogBookId];
-    }
-    setImportStates((prev) => {
-      const next = { ...prev };
-      delete next[catalogBookId];
-      return next;
-    });
-  }, []);
+  const resetImportState = useCallback(
+    (catalogBookId: string) => {
+      if (user) resetCatalogAdd(user.id, catalogBookId);
+      else useCatalogAddStore.getState().reset(catalogBookId);
+    },
+    [user],
+  );
 
   return { importStates, importBook, getImportState, getImportReadiness, resetImportState };
 }

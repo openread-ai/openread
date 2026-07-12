@@ -285,7 +285,7 @@ export function catalogRetrievableSourceSqlCondition(alias = 'cb'): string {
     'OR',
     `(${source} = 'greenteapress' AND ${sourceUrl} ~* '^https://(?:www\\.)?greenteapress\\.com/')`,
     'OR',
-    `(${source} = 'oapen' AND CHAR_LENGTH(${sourceId}) <= 160 AND ${sourceId} ~ '^oapen-${ACADEMIC_SOURCE_ID_SUFFIX_PATTERN}$' AND ${sourceUrl} ~* '^https://library\\.oapen\\.org/bitstream/(?:handle/)?20\\.500\\.[0-9]+/[0-9]+/(?:[0-9]+/)?[^/?#]+\\.pdf(?:[?#].*)?$')`,
+    `(${source} = 'oapen' AND CHAR_LENGTH(${sourceId}) <= 160 AND (${sourceId} ~ '^oapen-${ACADEMIC_SOURCE_ID_SUFFIX_PATTERN}$' OR (${sourceId} ~ '^20\\.500\\.12657/[0-9]+$' AND SUBSTRING(${sourceUrl} FROM '/bitstream/(?:handle/)?(20\\.500\\.12657/[0-9]+)(?:/|$)') = ${sourceId})) AND ${sourceUrl} ~* '^https://library\\.oapen\\.org/bitstream/(?:handle/)?20\\.500\\.[0-9]+/[0-9]+/(?:[0-9]+/)?[^/?#]+\\.pdf(?:[?#].*)?$')`,
     'OR',
     `(${source} = 'doab' AND CHAR_LENGTH(${sourceId}) <= 160 AND ${sourceId} ~ '^doab-${ACADEMIC_SOURCE_ID_SUFFIX_PATTERN}$' AND (${sourceUrl} ~* '^https://(?:library\\.oapen\\.org|directory\\.doabooks\\.org)/bitstream/(?:handle/)?20\\.500\\.[0-9]+/[0-9]+/(?:[0-9]+/)?[^/?#]+\\.pdf(?:[?#].*)?$' OR ${sourceUrl} ~* '^https://www\\.brepolsonline\\.net/doi/pdf/[^?#]+(?:[?#].*)?$' OR ${sourceUrl} ~* '^https://(?:www\\.)?mdpi\\.com/books/pdfview/book/[0-9]+/?(?:[?#].*)?$' OR ${sourceUrl} ~* '^https://(?:www\\.)?mdpi-res\\.com/bookfiles/book/[0-9]+/[^/?#]+\\.pdf(?:[?#].*)?$'))`,
     ')',
@@ -330,6 +330,120 @@ export function catalogBookSupportsUserDeviceFetchIntent(
   if (!catalogSourcePolicySupportsFormat(policy, format)) return false;
   catalogSourceVerificationContract(catalogBook);
   return true;
+}
+
+export const CATALOG_SERVER_MATERIALIZATION_POLICY = 'oapen-act-2056-v1';
+export const CATALOG_SERVER_MATERIALIZATION_VERSION = 1;
+
+export type CatalogServerMaterializationSnapshot = {
+  policy: typeof CATALOG_SERVER_MATERIALIZATION_POLICY;
+  source: 'oapen';
+  sourceId: string;
+  sourceUrl: string;
+  format: 'pdf';
+  licenseType: string;
+  redistributionApproved: true;
+  admissionEvidence: Record<string, unknown>;
+};
+
+export type CatalogServerMaterializationEligibility =
+  | { eligible: true; snapshot: CatalogServerMaterializationSnapshot }
+  | {
+      eligible: false;
+      reason: 'unsupported-source' | 'invalid-edition' | 'rights-denied' | 'not-admitted';
+    };
+
+const OAPEN_SERVER_HANDLE_PATTERN = /^20\.500\.12657\/[0-9]+$/;
+const OAPEN_SERVER_PDF_PATH_PATTERN =
+  /^\/bitstream\/(?:handle\/)?(20\.500\.12657\/[0-9]+)(?:\/[0-9]+)?\/[^/?#]+\.pdf$/i;
+const OAPEN_SERVER_RIGHTS_PATTERN =
+  /^(?:cc0|cc-by|cc-by-sa)-(?:1\.0|2\.0|2\.5|3\.0|4\.0)$/;
+const SHA256_PATTERN = /^[0-9a-f]{64}$/;
+
+function oapenAdmissionEvidence(value: unknown): Record<string, unknown> | null {
+  let decoded = value;
+  if (typeof decoded === 'string') {
+    try {
+      decoded = JSON.parse(decoded) as unknown;
+    } catch {
+      return null;
+    }
+  }
+  if (!decoded || typeof decoded !== 'object' || Array.isArray(decoded)) return null;
+  const evidence = decoded as Record<string, unknown>;
+  if (evidence.activity !== 'ACT-2056') return null;
+  for (const key of ['manifestChecksum', 'entryChecksum', 'rowChecksum', 'officialCsvSha256']) {
+    if (typeof evidence[key] !== 'string' || !SHA256_PATTERN.test(evidence[key])) return null;
+  }
+  return evidence;
+}
+
+/**
+ * Canonical eligibility gate for private server-side catalog materialization.
+ * This deliberately does not alter the generic OAPEN cache policy: only the
+ * bounded ACT-2056 editions with checksum-bound admission evidence are eligible.
+ */
+export function catalogServerMaterializationEligibility(
+  catalogBook: Record<string, unknown>,
+): CatalogServerMaterializationEligibility {
+  if (
+    catalogBook.source !== 'oapen' ||
+    String(catalogBook.format_type ?? '').trim().toLowerCase() !== 'pdf'
+  ) {
+    return { eligible: false, reason: 'unsupported-source' };
+  }
+  const sourceId = typeof catalogBook.source_id === 'string' ? catalogBook.source_id.trim() : '';
+  const sourceUrl =
+    typeof catalogBook.source_download_url === 'string'
+      ? catalogBook.source_download_url.trim()
+      : '';
+  if (!OAPEN_SERVER_HANDLE_PATTERN.test(sourceId)) {
+    return { eligible: false, reason: 'invalid-edition' };
+  }
+  let url: URL;
+  try {
+    url = new URL(sourceUrl);
+  } catch {
+    return { eligible: false, reason: 'invalid-edition' };
+  }
+  let pathMatch: RegExpMatchArray | null;
+  try {
+    pathMatch = decodeURIComponent(url.pathname).match(OAPEN_SERVER_PDF_PATH_PATTERN);
+  } catch {
+    return { eligible: false, reason: 'invalid-edition' };
+  }
+  if (
+    url.protocol !== 'https:' ||
+    url.hostname !== 'library.oapen.org' ||
+    url.port !== '' ||
+    url.username !== '' ||
+    url.password !== '' ||
+    url.hash !== '' ||
+    /%(?:2f|5c|3f|23)/i.test(url.pathname) ||
+    pathMatch?.[1] !== sourceId
+  ) {
+    return { eligible: false, reason: 'invalid-edition' };
+  }
+  const licenseType =
+    typeof catalogBook.license_type === 'string' ? catalogBook.license_type.trim() : '';
+  if (!OAPEN_SERVER_RIGHTS_PATTERN.test(licenseType)) {
+    return { eligible: false, reason: 'rights-denied' };
+  }
+  const admissionEvidence = oapenAdmissionEvidence(catalogBook.admission_evidence);
+  if (!admissionEvidence) return { eligible: false, reason: 'not-admitted' };
+  return {
+    eligible: true,
+    snapshot: {
+      policy: CATALOG_SERVER_MATERIALIZATION_POLICY,
+      source: 'oapen',
+      sourceId,
+      sourceUrl,
+      format: 'pdf',
+      licenseType,
+      redistributionApproved: true,
+      admissionEvidence,
+    },
+  };
 }
 
 const CATALOG_SOURCE_ALLOWED_HOSTS: Record<string, CatalogSourceHostPolicy> = {
@@ -534,14 +648,23 @@ function isInternetArchiveSourcePath(url: URL, sourceId: string): boolean {
   return false;
 }
 
-function isAcademicSourceIdValid(source: string | undefined, sourceId: string | undefined): boolean {
+function isAcademicSourceIdValid(
+  source: string | undefined,
+  sourceId: string | undefined,
+  url: URL,
+): boolean {
   if (source !== 'oapen' && source !== 'doab') return true;
-  return Boolean(
-    sourceId &&
-      sourceId.length <= 160 &&
-      sourceId.startsWith(`${source}-`) &&
-      ACADEMIC_SOURCE_ID_PATTERN.test(sourceId),
-  );
+  if (!sourceId || sourceId.length > 160) return false;
+  if (source === 'oapen' && OAPEN_SERVER_HANDLE_PATTERN.test(sourceId)) {
+    try {
+      return (
+        decodeURIComponent(url.pathname).match(OAPEN_SERVER_PDF_PATH_PATTERN)?.[1] === sourceId
+      );
+    } catch {
+      return false;
+    }
+  }
+  return sourceId.startsWith(`${source}-`) && ACADEMIC_SOURCE_ID_PATTERN.test(sourceId);
 }
 
 function isOapenSourceUrl(url: URL, format: CatalogDownloadFormat): boolean {
@@ -612,7 +735,7 @@ export function catalogSourceUrl(
     }
   }
 
-  if (!isAcademicSourceIdValid(source, sourceId)) {
+  if (!isAcademicSourceIdValid(source, sourceId, url)) {
     throw new Error(`Catalog source id is not valid for ${source || 'unknown source'}`);
   }
 

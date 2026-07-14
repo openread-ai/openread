@@ -85,13 +85,80 @@ export interface CollectionWithBooks extends CatalogCollection {
   books: CatalogBook[];
 }
 
+export const CATALOG_TERMINAL_MATERIALIZATION_FAILURE_CODES = [
+  'SOURCE_URL_REJECTED',
+  'SOURCE_REDIRECT_REJECTED',
+  'SOURCE_RATE_LIMITED',
+  'SOURCE_HTTP_REJECTED',
+  'SOURCE_SIZE_INVALID',
+  'SOURCE_MEDIA_TYPE_INVALID',
+  'SOURCE_TOO_LARGE',
+  'SOURCE_SIZE_MISMATCH',
+  'PDF_SIGNATURE_INVALID',
+  'PDF_ENCRYPTED',
+  'PDF_STRUCTURE_INVALID',
+  'UNSUPPORTED_SOURCE',
+  'PDF_READER_INCOMPATIBLE',
+  'OBJECT_MISMATCH',
+] as const;
+
+export const CATALOG_RETRYABLE_MATERIALIZATION_FAILURE_CODES = [
+  'SOURCE_FETCH_TIMEOUT',
+  'MATERIALIZATION_HEARTBEAT_LOST',
+  'MATERIALIZATION_OPERATIONAL_FAILURE',
+] as const;
+
+export const CATALOG_MATERIALIZATION_FAILURE_CODES = [
+  ...CATALOG_TERMINAL_MATERIALIZATION_FAILURE_CODES,
+  ...CATALOG_RETRYABLE_MATERIALIZATION_FAILURE_CODES,
+  'MATERIALIZATION_RETRY_EXHAUSTED',
+] as const;
+
+export const CATALOG_ADD_FAILURE_CODES = [
+  ...CATALOG_TERMINAL_MATERIALIZATION_FAILURE_CODES,
+  'MATERIALIZATION_RETRY_EXHAUSTED',
+  'LIBRARY_LIMIT_REACHED',
+] as const;
+
+export type CatalogTerminalMaterializationFailureCode =
+  (typeof CATALOG_TERMINAL_MATERIALIZATION_FAILURE_CODES)[number];
+export type CatalogRetryableMaterializationFailureCode =
+  (typeof CATALOG_RETRYABLE_MATERIALIZATION_FAILURE_CODES)[number];
+export type CatalogMaterializationFailureCode =
+  (typeof CATALOG_MATERIALIZATION_FAILURE_CODES)[number];
+export type CatalogAddFailureCode = (typeof CATALOG_ADD_FAILURE_CODES)[number];
+
+const catalogMaterializationFailureCodes: ReadonlySet<string> = new Set(
+  CATALOG_MATERIALIZATION_FAILURE_CODES,
+);
+const catalogAddFailureCodes: ReadonlySet<string> = new Set(CATALOG_ADD_FAILURE_CODES);
+
+export function isCatalogMaterializationFailureCode(
+  value: unknown,
+): value is CatalogMaterializationFailureCode {
+  return typeof value === 'string' && catalogMaterializationFailureCodes.has(value);
+}
+
+export function isCatalogAddFailureCode(value: unknown): value is CatalogAddFailureCode {
+  return typeof value === 'string' && catalogAddFailureCodes.has(value);
+}
+
+export const CATALOG_ADD_REQUEST_STATES = [
+  'pending',
+  'waiting_for_materialization',
+  'finalizing',
+  'completed',
+  'failed',
+] as const;
+
+const catalogAddRequestStates: ReadonlySet<string> = new Set(CATALOG_ADD_REQUEST_STATES);
+
+export function isCatalogAddRequestState(value: unknown): value is CatalogAddRequestState {
+  return typeof value === 'string' && catalogAddRequestStates.has(value);
+}
+
 export type CatalogMaterializationState = 'pending' | 'running' | 'succeeded' | 'failed';
-export type CatalogAddRequestState =
-  | 'pending'
-  | 'waiting_for_materialization'
-  | 'finalizing'
-  | 'completed'
-  | 'failed';
+export type CatalogAddRequestState = (typeof CATALOG_ADD_REQUEST_STATES)[number];
 export type CatalogAddPublicState = 'preparing' | 'ready' | 'failed';
 
 export interface CatalogAddRequestResponse {
@@ -101,7 +168,7 @@ export interface CatalogAddRequestResponse {
   requestState: CatalogAddRequestState;
   finalBookId?: string;
   bookHash?: SyncableBookRef | string;
-  failureCode?: string;
+  failureCode?: CatalogAddFailureCode;
 }
 
 export type CatalogImportStatus = 'ready' | 'preparing';

@@ -85,6 +85,16 @@ export type {
 } from './platform-books.js';
 
 // Catalog API contracts
+export {
+  CATALOG_ADD_FAILURE_CODES,
+  CATALOG_ADD_REQUEST_STATES,
+  CATALOG_MATERIALIZATION_FAILURE_CODES,
+  CATALOG_RETRYABLE_MATERIALIZATION_FAILURE_CODES,
+  CATALOG_TERMINAL_MATERIALIZATION_FAILURE_CODES,
+  isCatalogAddFailureCode,
+  isCatalogAddRequestState,
+  isCatalogMaterializationFailureCode,
+} from './catalog.js';
 export type {
   CatalogBook,
   CatalogBookDetail,
@@ -96,6 +106,10 @@ export type {
   CatalogAddRequestResponse,
   CatalogAddRequestState,
   CatalogMaterializationState,
+  CatalogMaterializationFailureCode,
+  CatalogRetryableMaterializationFailureCode,
+  CatalogTerminalMaterializationFailureCode,
+  CatalogAddFailureCode,
   CatalogCollectionDetail,
   CatalogCollectionsResponse,
   CatalogDownloadUrlRequest,

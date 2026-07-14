@@ -2,9 +2,37 @@ import type { Locator, Page, Response, TestInfo } from '@playwright/test';
 import { test, expect } from '../../fixtures';
 import { ReaderPage } from '../../pages/ReaderPage';
 
+const finalProofMode = process.env['OPENREAD_E2E_CATALOG_FINAL_PROOF'] === '1';
+const configuredCatalogBookId = process.env['OPENREAD_E2E_CATALOG_BOOK_ID'];
+
+function finalProofCatalogBookId(): string | null {
+  if (!configuredCatalogBookId) {
+    if (finalProofMode) throw new Error('Final proof requires OPENREAD_E2E_CATALOG_BOOK_ID');
+    return null;
+  }
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      configuredCatalogBookId,
+    )
+  ) {
+    throw new Error('OPENREAD_E2E_CATALOG_BOOK_ID must be a UUID');
+  }
+  return configuredCatalogBookId;
+}
+
+function blockOrFailFinalProof(testInfo: TestInfo, description: string): never {
+  testInfo.annotations.push({ type: 'blocked', description });
+  if (finalProofMode) throw new Error(description);
+  test.skip(true, description);
+  throw new Error(description);
+}
+
 async function firstCatalogCard(page: Page): Promise<Locator> {
   await expect(page.getByTestId('explore-rails')).toBeVisible({ timeout: 30_000 });
-  const card = page.locator('[data-testid^="card-tap-"]').first();
+  const catalogBookId = finalProofCatalogBookId();
+  const card = catalogBookId
+    ? page.getByTestId(`card-tap-${catalogBookId}`)
+    : page.locator('[data-testid^="card-tap-"]').first();
   await expect(card).toBeVisible({ timeout: 45_000 });
   return card;
 }
@@ -37,13 +65,9 @@ function skipIfTierConfigBlocked(tierConfigResponse: Response | null, testInfo: 
     tierConfigResponse?.headers()['ratelimit-reset'] ??
     tierConfigResponse?.headers()['x-ratelimit-reset'] ??
     'absent';
-  testInfo.annotations.push({
-    type: 'blocked',
-    description: `Tier config unavailable before catalog Add smoke; status=${status}; retry-after=${retryAfter}; rate-limit-reset=${rateLimitReset}`,
-  });
-  test.skip(
-    true,
-    `Tier config unavailable before catalog Add smoke; status=${status}. Add is fail-closed without tier config.`,
+  blockOrFailFinalProof(
+    testInfo,
+    `Tier config unavailable before catalog Add smoke; status=${status}; retry-after=${retryAfter}; rate-limit-reset=${rateLimitReset}. Add is fail-closed without tier config.`,
   );
 }
 
@@ -347,6 +371,14 @@ test.describe('Chromium Explore catalog', () => {
     authenticatedPage: page,
   }, testInfo) => {
     test.setTimeout(300_000);
+    const browserOapenRequests: string[] = [];
+    if (finalProofMode) {
+      page.on('request', (request) => {
+        if (new URL(request.url()).hostname.toLowerCase() === 'library.oapen.org') {
+          browserOapenRequests.push(request.url());
+        }
+      });
+    }
     await installE2ERateLimitIsolation(page, testInfo);
     skipIfTierConfigBlocked(await gotoExploreWithAddPrereqs(page), testInfo);
 
@@ -361,6 +393,7 @@ test.describe('Chromium Explore catalog', () => {
     const finalImportedTitle = (await sheet.getByTestId('sheet-title').innerText()).trim();
     const selectedCatalogBookId = new URL(page.url()).searchParams.get('book') ?? '';
     expect(selectedCatalogBookId).toMatch(/^[0-9a-f-]{36}$/i);
+    if (finalProofMode) expect(selectedCatalogBookId).toBe(finalProofCatalogBookId());
     const importButton = sheet.locator(
       `[data-testid="sheet-import-btn"][data-catalog-book-id="${escapeCssAttributeValue(
         selectedCatalogBookId,
@@ -371,13 +404,10 @@ test.describe('Chromium Explore catalog', () => {
 
     const preClickButtonTarget = await describeButtonTarget(importButton);
     if (preClickButtonTarget.importReady !== 'true' || preClickButtonTarget.disabled) {
-      test.info().annotations.push({
-        type: 'blocked',
-        description: `Catalog Add guard not ready before click. button=${JSON.stringify(
-          preClickButtonTarget,
-        )}`,
-      });
-      test.skip(true, 'Catalog Add guard not ready before click.');
+      blockOrFailFinalProof(
+        testInfo,
+        `Catalog Add guard not ready before click. button=${JSON.stringify(preClickButtonTarget)}`,
+      );
     }
 
     let imported = false;
@@ -420,20 +450,16 @@ test.describe('Chromium Explore catalog', () => {
       await importButton.click();
       const importOutcome = await Promise.race([importResponsePromise, blockedToastPromise]);
       if (importOutcome.kind === 'blocked') {
-        test.info().annotations.push({
-          type: 'blocked',
-          description: `Catalog Add was blocked before import: ${importOutcome.message}`,
-        });
-        test.skip(true, `Catalog Add blocked before import: ${importOutcome.message}`);
+        blockOrFailFinalProof(
+          testInfo,
+          `Catalog Add blocked before import: ${importOutcome.message}`,
+        );
       }
       if (importOutcome.kind === 'no_response') {
-        test.info().annotations.push({
-          type: 'blocked',
-          description: `Catalog Add did not emit import within 30s after click. button=${JSON.stringify(
-            buttonTarget,
-          )}; importIntentRequests=${importIntentRequests.length}`,
-        });
-        test.skip(true, 'Catalog Add did not emit import within 30s after click.');
+        blockOrFailFinalProof(
+          testInfo,
+          `Catalog Add did not emit import within 30s after click. button=${JSON.stringify(buttonTarget)}; importIntentRequests=${importIntentRequests.length}`,
+        );
       }
       const importResponse = importOutcome.response;
       if (!importResponse.ok()) {
@@ -442,13 +468,9 @@ test.describe('Chromium Explore catalog', () => {
           importResponse.headers()['ratelimit-reset'] ??
           importResponse.headers()['x-ratelimit-reset'] ??
           'absent';
-        test.info().annotations.push({
-          type: 'blocked',
-          description: `Live catalog import endpoint returned ${importResponse.status()} for ${finalImportedTitle}; retry-after=${retryAfter}; rate-limit-reset=${rateLimitReset}`,
-        });
-        test.skip(
-          true,
-          `Live catalog import endpoint returned ${importResponse.status()}; success-path assertion requires backend fixture/stability.`,
+        blockOrFailFinalProof(
+          testInfo,
+          `Live catalog import endpoint returned ${importResponse.status()} for ${finalImportedTitle}; retry-after=${retryAfter}; rate-limit-reset=${rateLimitReset}; success-path assertion requires backend fixture/stability.`,
         );
       }
 
@@ -489,6 +511,7 @@ test.describe('Chromium Explore catalog', () => {
       await expect(page.getByRole('document', { name: 'Book Content' })).toBeVisible({
         timeout: 60_000,
       });
+      if (finalProofMode) expect(browserOapenRequests).toEqual([]);
       await attachRedactedPageScreenshot(page, testInfo, 'library-import-reader-open');
 
       const header = await revealHeader(page);

@@ -1,4 +1,8 @@
-import { createCatalogBookRef, type CatalogAddRequestResponse } from '@openread/types';
+import {
+  createCatalogBookRef,
+  isCatalogAddFailureCode,
+  type CatalogAddRequestResponse,
+} from '@openread/types';
 import { platform } from '@/services/platform/client';
 import { LOCAL_PERSISTENCE_PREFIXES } from '@/services/persistence/localPersistenceRegistry';
 import { syncWorker } from '@/services/sync/syncWorker';
@@ -100,6 +104,10 @@ function wait(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
+export function catalogAddFailureMessage(failureCode: unknown): string {
+  return isCatalogAddFailureCode(failureCode) ? failureCode : 'Catalog Add failed';
+}
+
 function visibleCanonicalBook(bookHash: string): boolean {
   return useLibraryStore
     .getState()
@@ -188,7 +196,14 @@ async function runPoll(
     const current = response;
     if (current.state === 'failed') {
       removePending(userId, catalogBookId);
-      throw new Error(current.failureCode ?? 'Catalog Add failed');
+      const message = catalogAddFailureMessage(current.failureCode);
+      if (message === 'Catalog Add failed') {
+        logger.error('Catalog Add returned an unknown failure code', {
+          catalogBookId,
+          failureCode: current.failureCode,
+        });
+      }
+      throw new Error(message);
     }
     if (current.state === 'ready') {
       if (!current.bookHash || current.bookHash !== createCatalogBookRef(catalogBookId)) {

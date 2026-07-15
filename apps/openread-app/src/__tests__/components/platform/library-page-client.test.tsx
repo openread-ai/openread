@@ -89,11 +89,6 @@ vi.mock('next/link', () => ({
   ),
 }));
 
-// Mock useLibrary (initializes library store)
-vi.mock('@/hooks/useLibrary', () => ({
-  useLibrary: vi.fn(() => ({ libraryLoaded: true })),
-}));
-
 // Mock useLibraryBooks
 vi.mock('@/hooks/useLibraryBooks', () => ({
   useLibraryBooks: vi.fn(() => ({

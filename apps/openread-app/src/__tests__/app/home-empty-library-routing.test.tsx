@@ -11,8 +11,8 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ replace: mockReplace }),
 }));
 
-vi.mock('@/hooks/useLibrary', () => ({
-  useLibrary: () => ({ libraryLoaded: mockLibraryLoaded }),
+vi.mock('@/context/LibraryLifecycleContext', () => ({
+  useLibraryLifecycle: () => ({ libraryLoaded: mockLibraryLoaded }),
 }));
 
 vi.mock('@/hooks/useTranslation', () => ({

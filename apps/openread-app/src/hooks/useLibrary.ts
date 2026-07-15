@@ -85,8 +85,8 @@ export const useLibrary = () => {
           }
         }
 
-        // Auth lifecycle may restore a local session before this hook mounts.
-        // Starting here is idempotent and keeps worker ownership with account-library lifecycle.
+        // The shared authenticated Platform boundary owns this hook for platform routes;
+        // the standalone Reader owns it outside that layout. Starting is idempotent per account.
         syncWorker.start(userId);
         await syncWorker.pullNow('books');
 

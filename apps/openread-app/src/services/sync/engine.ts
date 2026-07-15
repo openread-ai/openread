@@ -44,6 +44,24 @@ export interface SyncDrainResult {
   remaining: number;
 }
 
+export interface SyncMutationDeliveryResult {
+  status: 'accepted' | 'pending' | 'failed';
+  mutationIds: string[];
+  acceptedMutationIds: string[];
+  pendingMutationIds: string[];
+  failedMutationIds: string[];
+}
+
+export class SyncMutationDeliveryError extends Error {
+  constructor(
+    readonly failedMutationIds: string[],
+    readonly unknownMutationIds: string[],
+  ) {
+    super('Sync delivery could not be confirmed for every mutation');
+    this.name = 'SyncMutationDeliveryError';
+  }
+}
+
 export class SyncEngineTransportError extends Error {
   constructor() {
     super('SyncEngine transport is not configured');
@@ -128,6 +146,59 @@ export class SyncEngine {
 
   async recoverFailed(): Promise<StoredSyncMutation[]> {
     return this.outbox.recoverFailed({ userId: this.options.userId });
+  }
+
+  async resolveDelivery(
+    enqueuedRecords: StoredSyncMutation[],
+    expectedUserId: UserId,
+  ): Promise<SyncMutationDeliveryResult> {
+    const recordsById = new Map(enqueuedRecords.map((record) => [record.id, record]));
+    const exactRecords = [...recordsById.values()];
+    const mutationIds = exactRecords.map((record) => record.id);
+    const identityMismatch =
+      expectedUserId !== this.options.userId ||
+      exactRecords.some((record) => record.userId !== expectedUserId);
+    if (identityMismatch) {
+      throw new SyncMutationDeliveryError([], mutationIds);
+    }
+
+    const durableRecords = new Map(
+      (await this.outbox.getAll(expectedUserId)).map((record) => [record.id, record]),
+    );
+    const failedMutationIds: string[] = [];
+    const pendingMutationIds: string[] = [];
+    const acceptedMutationIds: string[] = [];
+    const unknownMutationIds: string[] = [];
+
+    for (const record of exactRecords) {
+      const durableRecord = durableRecords.get(record.id);
+      if (!durableRecord) {
+        acceptedMutationIds.push(record.id);
+      } else if (durableRecord.status === 'failed') {
+        failedMutationIds.push(record.id);
+      } else if (durableRecord.status === 'pending' || durableRecord.status === 'pushing') {
+        pendingMutationIds.push(record.id);
+      } else {
+        unknownMutationIds.push(record.id);
+      }
+    }
+
+    if (unknownMutationIds.length > 0) {
+      throw new SyncMutationDeliveryError([], unknownMutationIds);
+    }
+
+    return {
+      status:
+        failedMutationIds.length > 0
+          ? 'failed'
+          : pendingMutationIds.length > 0
+            ? 'pending'
+            : 'accepted',
+      mutationIds,
+      acceptedMutationIds,
+      pendingMutationIds,
+      failedMutationIds,
+    };
   }
 
   async drainOnce(): Promise<SyncDrainResult> {

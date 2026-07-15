@@ -1,13 +1,19 @@
 import { testOpenReadBookRef } from '../../utils/bookIdentityFixtures';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 import { RemoveBookDialog } from '@/components/platform/remove-book-dialog';
 import type { Book } from '@/types/book';
 
+const { mockDispatch } = vi.hoisted(() => ({ mockDispatch: vi.fn() }));
+
 // Mock useBookActions hook
 const mockPermanentlyDeleteBook = vi.fn();
 const mockBulkRemove = vi.fn();
+
+vi.mock('@/utils/event', () => ({
+  eventDispatcher: { dispatch: mockDispatch },
+}));
 
 vi.mock('@/hooks/useBookActions', () => ({
   useBookActions: () => ({
@@ -94,6 +100,8 @@ const createMockBook = (overrides: Partial<Book> = {}): Book => ({
 describe('RemoveBookDialog', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockPermanentlyDeleteBook.mockResolvedValue(undefined);
+    mockBulkRemove.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -191,7 +199,7 @@ describe('RemoveBookDialog', () => {
   });
 
   describe('Single book deletion', () => {
-    it('should call permanentlyDeleteBook after full 2-step confirmation', () => {
+    it('closes only after single-book deletion is durably queued', async () => {
       const mockBook = createMockBook();
       const onOpenChange = vi.fn();
       render(<RemoveBookDialog book={mockBook} open={true} onOpenChange={onOpenChange} />);
@@ -203,7 +211,8 @@ describe('RemoveBookDialog', () => {
       fireEvent.click(screen.getByText('Yes, Delete Permanently'));
 
       expect(mockPermanentlyDeleteBook).toHaveBeenCalledWith(mockBook);
-      expect(onOpenChange).toHaveBeenCalledWith(false);
+      expect(onOpenChange).not.toHaveBeenCalledWith(false);
+      await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
     });
 
     it('should not call bulkRemove for single book deletion', () => {
@@ -279,7 +288,7 @@ describe('RemoveBookDialog', () => {
       );
     });
 
-    it('should call bulkRemove after full 2-step confirmation', () => {
+    it('closes only after bulk deletion is durably queued', async () => {
       const hashes = ['book-1', 'book-2', 'book-3'];
       const onOpenChange = vi.fn();
       render(<RemoveBookDialog bookHashes={hashes} open={true} onOpenChange={onOpenChange} />);
@@ -288,7 +297,8 @@ describe('RemoveBookDialog', () => {
       fireEvent.click(screen.getByText('Yes, Delete Permanently'));
 
       expect(mockBulkRemove).toHaveBeenCalledWith(hashes);
-      expect(onOpenChange).toHaveBeenCalledWith(false);
+      expect(onOpenChange).not.toHaveBeenCalledWith(false);
+      await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
     });
 
     it('should not call permanentlyDeleteBook for bulk operation', () => {
@@ -380,7 +390,7 @@ describe('RemoveBookDialog', () => {
       expect(screen.getByText('Delete Permanently')).toBeTruthy();
     });
 
-    it('should reset confirming state via handleClose when dialog dismisses', () => {
+    it('should reset confirming state via handleClose when dialog dismisses', async () => {
       // The handleClose function resets confirming when called with false.
       // This is tested indirectly: after deletion, confirming is reset.
       const mockBook = createMockBook();
@@ -393,8 +403,8 @@ describe('RemoveBookDialog', () => {
       fireEvent.click(screen.getByText('Delete Permanently'));
       fireEvent.click(screen.getByText('Yes, Delete Permanently'));
 
-      // Dialog closed
-      expect(onOpenChange).toHaveBeenCalledWith(false);
+      // Dialog closes only after the deletion promise settles.
+      await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
 
       // Rerender as closed then reopened
       rerender(<RemoveBookDialog book={mockBook} open={false} onOpenChange={onOpenChange} />);
@@ -403,6 +413,92 @@ describe('RemoveBookDialog', () => {
       // confirming was reset to false by handleDelete before dialog closed
       expect(screen.getByTestId('alert-dialog-title').textContent).toBe('Delete Book?');
       expect(screen.getByText('Delete Permanently')).toBeTruthy();
+    });
+  });
+
+  describe('Delivery state', () => {
+    it('stays open with visible progress until durable delivery resolves', async () => {
+      const mockBook = createMockBook();
+      const onOpenChange = vi.fn();
+      let resolveDelivery!: (value: { status: 'accepted' }) => void;
+      mockPermanentlyDeleteBook.mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveDelivery = resolve;
+        }),
+      );
+      render(<RemoveBookDialog book={mockBook} open={true} onOpenChange={onOpenChange} />);
+
+      fireEvent.click(screen.getByText('Delete Permanently'));
+      fireEvent.click(screen.getByText('Yes, Delete Permanently'));
+
+      expect(screen.getByText('Deleting…')).toBeTruthy();
+      expect(onOpenChange).not.toHaveBeenCalledWith(false);
+      resolveDelivery({ status: 'accepted' });
+      await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+    });
+
+    it('closes after durable pending delivery and reports the pending state', async () => {
+      const mockBook = createMockBook();
+      const onOpenChange = vi.fn();
+      mockPermanentlyDeleteBook.mockResolvedValueOnce({
+        status: 'pending',
+        mutationIds: ['mutation-1'],
+        acceptedMutationIds: [],
+        pendingMutationIds: ['mutation-1'],
+        failedMutationIds: [],
+      });
+      render(<RemoveBookDialog book={mockBook} open={true} onOpenChange={onOpenChange} />);
+
+      fireEvent.click(screen.getByText('Delete Permanently'));
+      fireEvent.click(screen.getByText('Yes, Delete Permanently'));
+
+      await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+      expect(mockDispatch).toHaveBeenCalledWith('toast', {
+        type: 'info',
+        message: 'Deletion saved. Sync is pending.',
+      });
+    });
+
+    it('closes after a durable terminal failure and reports automatic retry', async () => {
+      const mockBook = createMockBook();
+      const onOpenChange = vi.fn();
+      mockPermanentlyDeleteBook.mockResolvedValueOnce({
+        status: 'failed',
+        mutationIds: ['mutation-1'],
+        acceptedMutationIds: [],
+        pendingMutationIds: [],
+        failedMutationIds: ['mutation-1'],
+      });
+      render(<RemoveBookDialog book={mockBook} open={true} onOpenChange={onOpenChange} />);
+
+      fireEvent.click(screen.getByText('Delete Permanently'));
+      fireEvent.click(screen.getByText('Yes, Delete Permanently'));
+
+      await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+      expect(mockDispatch).toHaveBeenCalledWith('toast', {
+        type: 'error',
+        message: 'Deletion saved, but sync failed. It will retry automatically.',
+      });
+    });
+
+    it('keeps confirmation visible and reports an enqueue failure', async () => {
+      const mockBook = createMockBook();
+      const onOpenChange = vi.fn();
+      mockPermanentlyDeleteBook.mockRejectedValueOnce(new Error('Sync outbox unavailable'));
+      render(<RemoveBookDialog book={mockBook} open={true} onOpenChange={onOpenChange} />);
+
+      fireEvent.click(screen.getByText('Delete Permanently'));
+      fireEvent.click(screen.getByText('Yes, Delete Permanently'));
+
+      await waitFor(() =>
+        expect(mockDispatch).toHaveBeenCalledWith('toast', {
+          type: 'error',
+          message: 'Sync outbox unavailable',
+        }),
+      );
+      expect(onOpenChange).not.toHaveBeenCalledWith(false);
+      expect(screen.getByText('This action cannot be undone')).toBeTruthy();
+      expect(screen.getByText('Yes, Delete Permanently')).toBeTruthy();
     });
   });
 

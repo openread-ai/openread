@@ -10,8 +10,12 @@ import {
   enqueueBookForSync,
   enqueueBooksForSync,
   handleFireAndForgetSyncEnqueue,
+  requireSyncMutationUserId,
+  SyncMutationContextUnavailableError,
 } from '@/services/sync/helpers';
+import { runAccountLibraryMutation } from '@/services/accountLibraryLifecycle';
 import { useBookDataStore } from '@/store/bookDataStore';
+import { SyncMutationDeliveryError } from '@/services/sync/engine';
 import type { Book, ReadingStatus } from '@/types/book';
 import { createLogger } from '@/utils/logger';
 
@@ -21,46 +25,38 @@ const logger = createLogger('bookActions');
  * Background cleanup for a permanently deleted book.
  * Runs after the book is already removed from the UI — all steps are best-effort.
  */
-async function cleanupDeletedBook(book: Book): Promise<void> {
-  try {
-    const appService = await envConfig.getAppService();
+const toDeletedBook = (book: Book, deletedAt: number): Book => ({
+  ...book,
+  deletedAt: Math.max(book.deletedAt ?? 0, deletedAt),
+  updatedAt: Math.max(book.updatedAt ?? 0, deletedAt),
+  downloadedAt: null,
+  coverDownloadedAt: null,
+});
 
-    // Remove local files/config/AI/collection references only. The foreground
-    // delete path already persisted the tombstoned library before hiding it.
-    const [, sidebarStore] = await Promise.all([
-      appService.deleteBook(book, 'both').catch((error) => {
-        logger.warn('Deleted book file/cloud cleanup failed:', error);
-      }),
-      import('@/store/platformSidebarStore'),
-    ]);
+const applyDeletionTombstones = (
+  library: Book[],
+  targetHashes: ReadonlySet<string>,
+  deletedAt: number,
+): Book[] =>
+  library.map((book) => (targetHashes.has(book.hash) ? toDeletedBook(book, deletedAt) : book));
 
-    // Remove from all collections
-    const { collections, removeBookFromCollection } =
-      sidebarStore.usePlatformSidebarStore.getState();
-    for (const col of collections) {
-      if (col.bookHashes.includes(book.hash)) {
-        removeBookFromCollection(col.id, book.hash);
+const requireDeletionLibraryState = (expectedUserId: string) => {
+  requireSyncMutationUserId(expectedUserId);
+  const state = useLibraryStore.getState();
+  if (state.libraryOwnerUserId !== expectedUserId) {
+    throw new SyncMutationContextUnavailableError();
+  }
+  return state;
+};
+
+function removeDeletedBooksFromCollections(targetHashes: ReadonlySet<string>): void {
+  const { collections, removeBookFromCollection } = usePlatformSidebarStore.getState();
+  for (const collection of collections) {
+    for (const hash of targetHashes) {
+      if (collection.bookHashes.includes(hash)) {
+        removeBookFromCollection(collection.id, hash);
       }
     }
-
-    // Delete local config directory
-    appService.deleteDir(`${book.hash}`, 'Books').catch((error) => {
-      logger.warn('Deleted book config directory cleanup failed:', error);
-    });
-
-    // Delete AI conversations from IndexedDB
-    import('@/services/ai/storage/aiStore')
-      .then(async ({ aiStore }) => {
-        const conversations = await aiStore.getConversations(book.hash);
-        for (const conv of conversations) {
-          await aiStore.deleteConversation(conv.id);
-        }
-      })
-      .catch((error) => {
-        logger.warn('Deleted book AI cleanup failed:', error);
-      });
-  } catch (error) {
-    logger.error('Background cleanup failed:', error);
   }
 }
 
@@ -216,105 +212,105 @@ export function useBookActions() {
   );
 
   /**
-   * Permanently delete a book. The local tombstone is the foreground commit:
-   * persist first, then hide from UI, then enqueue sync/cleanup best-effort.
+   * Permanently delete a book only after its exact tombstone is durably queued.
+   * The outbox is the first durable commit; local persistence and visibility
+   * are finalized only while the initiating account still owns the library.
    */
   const permanentlyDeleteBook = useCallback(async (book: Book) => {
-    const now = Date.now();
-    const deletedBook: Book = {
-      ...book,
-      deletedAt: now,
-      updatedAt: now,
-      downloadedAt: null,
-      coverDownloadedAt: null,
-    };
+    const expectedUserId = requireSyncMutationUserId();
+    requireDeletionLibraryState(expectedUserId);
+    const deletedAt = Date.now();
+    const targetHashes = new Set([book.hash]);
+    const deletedBook = toDeletedBook(book, deletedAt);
 
-    const { library, setLibrary } = useLibraryStore.getState();
-    const previousLibrary = library;
-    const nextLibrary = library.map((existing) =>
-      existing.hash === book.hash ? deletedBook : existing,
-    );
-    const appService = await envConfig.getAppService();
-
+    let delivery: Awaited<ReturnType<typeof enqueueBooksForSync>>;
     try {
-      await appService.saveLibraryBooks(nextLibrary);
+      delivery = await enqueueBooksForSync([deletedBook], expectedUserId);
     } catch (error) {
-      logger.error('Failed to durably save deleted book tombstone:', error);
-      setLibrary(previousLibrary);
-      throw new Error('Failed to delete book locally. Your library was not changed.');
+      logger.error('Failed to durably queue deleted book tombstone:', error);
+      if (error instanceof SyncMutationDeliveryError) throw error;
+      throw new Error('Failed to queue book deletion. Your library was not changed.');
     }
 
-    setLibrary(nextLibrary);
-
-    handleFireAndForgetSyncEnqueue(enqueueBookForSync(deletedBook), {
-      source: 'book-actions.permanentlyDeleteBook',
-      mutationType: 'book',
-      operation: 'delete',
-      hasBookHash: Boolean(deletedBook.hash),
+    const appService = await envConfig.getAppService();
+    await runAccountLibraryMutation(async () => {
+      const { library: currentLibrary } = requireDeletionLibraryState(expectedUserId);
+      const committedLibrary = applyDeletionTombstones(currentLibrary, targetHashes, deletedAt);
+      try {
+        await appService.saveLibraryBooks(committedLibrary);
+      } catch (error) {
+        logger.error('Failed to finalize deleted book tombstone:', error);
+        throw new Error('Deletion was queued, but the local library could not be updated.');
+      }
+      const { setLibrary } = requireDeletionLibraryState(expectedUserId);
+      setLibrary(
+        applyDeletionTombstones(useLibraryStore.getState().library, targetHashes, deletedAt),
+      );
+      const bookKey = `${book.hash}-${book.format}`;
+      useBookDataStore.getState().setConfig(bookKey, { booknotes: [], progress: undefined });
+      removeDeletedBooksFromCollections(targetHashes);
     });
 
-    const bookKey = `${book.hash}-${book.format}`;
-    useBookDataStore.getState().setConfig(bookKey, { booknotes: [], progress: undefined });
-
-    void cleanupDeletedBook(deletedBook);
+    // Hash-addressed book bytes and AI records can be shared across account
+    // projections. The durable outbox tombstone owns remote deletion; eager
+    // destructive cleanup here could delete another account's resources.
+    return delivery;
   }, []);
 
   /**
-   * Permanently delete multiple books. Persist tombstones first, then hide.
+   * Permanently delete only the selected books after their exact tombstones are
+   * durably queued for the account that initiated the action.
    */
   const bulkRemove = useCallback(
     async (hashes: string[]) => {
-      const books = hashes.map((hash) => getBookByHash(hash)).filter(Boolean) as Book[];
+      const expectedUserId = requireSyncMutationUserId();
+      const initialState = requireDeletionLibraryState(expectedUserId);
+      const books = hashes
+        .map((hash) => initialState.library.find((book) => book.hash === hash))
+        .filter(Boolean) as Book[];
       if (books.length === 0) return;
 
-      const now = Date.now();
-      const deletedByHash = new Map(
-        books.map((book) => [
-          book.hash,
-          {
-            ...book,
-            deletedAt: now,
-            updatedAt: now,
-            downloadedAt: null,
-            coverDownloadedAt: null,
-          } satisfies Book,
-        ]),
-      );
-      const { library, setLibrary } = useLibraryStore.getState();
-      const previousLibrary = library;
-      const nextLibrary = library.map((book) => deletedByHash.get(book.hash) ?? book);
-      const appService = await envConfig.getAppService();
+      const deletedAt = Date.now();
+      const targetHashes = new Set(books.map((book) => book.hash));
+      const deletedBooks = books.map((book) => toDeletedBook(book, deletedAt));
 
+      let delivery: Awaited<ReturnType<typeof enqueueBooksForSync>>;
       try {
-        await appService.saveLibraryBooks(nextLibrary);
+        delivery = await enqueueBooksForSync(deletedBooks, expectedUserId);
       } catch (error) {
-        logger.error('Failed to durably save deleted book tombstones:', error);
-        setLibrary(previousLibrary);
-        throw new Error('Failed to delete books locally. Your library was not changed.');
+        logger.error('Failed to durably queue deleted book tombstones:', error);
+        if (error instanceof SyncMutationDeliveryError) throw error;
+        throw new Error('Failed to queue book deletions. Your library was not changed.');
       }
 
-      setLibrary(nextLibrary);
-
-      handleFireAndForgetSyncEnqueue(enqueueBooksForSync(Array.from(deletedByHash.values())), {
-        source: 'book-actions.bulkRemove',
-        mutationType: 'book',
-        operation: 'delete',
-        count: deletedByHash.size,
+      const appService = await envConfig.getAppService();
+      await runAccountLibraryMutation(async () => {
+        const { library: currentLibrary } = requireDeletionLibraryState(expectedUserId);
+        const committedLibrary = applyDeletionTombstones(currentLibrary, targetHashes, deletedAt);
+        try {
+          await appService.saveLibraryBooks(committedLibrary);
+        } catch (error) {
+          logger.error('Failed to finalize deleted book tombstones:', error);
+          throw new Error('Deletions were queued, but the local library could not be updated.');
+        }
+        const { setLibrary } = requireDeletionLibraryState(expectedUserId);
+        setLibrary(
+          applyDeletionTombstones(useLibraryStore.getState().library, targetHashes, deletedAt),
+        );
+        clearSelection();
+        setSelectMode(false);
+        for (const book of books) {
+          const bookKey = `${book.hash}-${book.format}`;
+          useBookDataStore.getState().setConfig(bookKey, { booknotes: [], progress: undefined });
+        }
+        removeDeletedBooksFromCollections(targetHashes);
       });
 
-      clearSelection();
-      setSelectMode(false);
-
-      for (const book of books) {
-        const bookKey = `${book.hash}-${book.format}`;
-        useBookDataStore.getState().setConfig(bookKey, { booknotes: [], progress: undefined });
-      }
-
-      void Promise.all(
-        Array.from(deletedByHash.values()).map((deletedBook) => cleanupDeletedBook(deletedBook)),
-      );
+      // Hash-addressed bytes remain untouched; the durable outbox tombstones
+      // are the canonical cross-platform deletion mechanism.
+      return delivery;
     },
-    [getBookByHash, clearSelection, setSelectMode],
+    [clearSelection, setSelectMode],
   );
 
   return {

@@ -1,5 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { Book, BookConfig } from '@/types/book';
+import type { StoredSyncMutation } from '@/services/sync/outbox';
+import { SyncMutationDeliveryError } from '@/services/sync/engine';
 
 type TestFileRecord = {
   id?: string;
@@ -188,6 +190,26 @@ vi.mock('@/utils/fetch', () => ({
 
 const flushMicrotasks = () => new Promise((resolve) => setTimeout(resolve, 0));
 
+const deletionRecord = (): StoredSyncMutation => ({
+  id: 'mutation-delete-1',
+  entity: 'book',
+  entityId: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  op: 'delete',
+  baseRevision: null,
+  userId: 'user-1',
+  deviceId: 'device-1',
+  clientUpdatedAt: 2,
+  tombstone: { deletedAt: 2 },
+  status: 'pending',
+  retryCount: 0,
+  createdAt: 2,
+  updatedAt: 2,
+  nextAttemptAt: 2,
+  leaseOwner: null,
+  leaseExpiresAt: null,
+  lastError: null,
+});
+
 describe('SyncWorker book reconcile queue', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -236,6 +258,209 @@ describe('SyncWorker book reconcile queue', () => {
       totalPages: 1,
     });
     mocks.pullChanges.mockResolvedValue({ books: [] });
+  });
+
+  it('keeps a busy delivery caller pending until its requested rerun completes', async () => {
+    const { SyncWorker } = await import('@/services/sync/syncWorker');
+    const worker = new SyncWorker();
+    const successfulDrain = {
+      attempted: 1,
+      accepted: 1,
+      conflicted: 0,
+      failed: 0,
+      remaining: 0,
+    };
+    const record = deletionRecord();
+    const delivery = {
+      status: 'accepted' as const,
+      mutationIds: [record.id],
+      acceptedMutationIds: [record.id],
+      pendingMutationIds: [],
+      failedMutationIds: [],
+    };
+    let resolveFirstDrain!: (result: typeof successfulDrain) => void;
+    let resolveQueuedDrain!: (result: typeof successfulDrain) => void;
+    const firstDrain = new Promise<typeof successfulDrain>((resolve) => {
+      resolveFirstDrain = resolve;
+    });
+    const queuedDrain = new Promise<typeof successfulDrain>((resolve) => {
+      resolveQueuedDrain = resolve;
+    });
+    const drainOnce = vi.fn().mockReturnValueOnce(firstDrain).mockReturnValueOnce(queuedDrain);
+    const resolveDelivery = vi.fn(async () => delivery);
+    const engine = { drainOnce, pendingCount: vi.fn(async () => 0), resolveDelivery };
+    const testWorker = worker as unknown as {
+      stopped: boolean;
+      userId: string;
+      canonicalEngine: typeof engine;
+    };
+    testWorker.stopped = false;
+    testWorker.userId = 'user-1';
+    testWorker.canonicalEngine = engine;
+
+    const activeCall = worker.syncNow();
+    await vi.waitFor(() => expect(drainOnce).toHaveBeenCalledTimes(1));
+
+    let busyCallSettled = false;
+    const busyCall = worker.syncNow([record], record.userId).then((result) => {
+      busyCallSettled = true;
+      return result;
+    });
+    await flushMicrotasks();
+    expect(busyCallSettled).toBe(false);
+    expect(resolveDelivery).not.toHaveBeenCalled();
+
+    resolveFirstDrain(successfulDrain);
+    await vi.waitFor(() => expect(drainOnce).toHaveBeenCalledTimes(2));
+    expect(busyCallSettled).toBe(false);
+    expect(resolveDelivery).not.toHaveBeenCalled();
+
+    resolveQueuedDrain(successfulDrain);
+    await expect(busyCall).resolves.toEqual(delivery);
+    await expect(activeCall).resolves.toBeUndefined();
+    expect(resolveDelivery).toHaveBeenCalledWith([record], record.userId);
+  });
+
+  it('returns a truthful durable failed delivery result for the same user', async () => {
+    const { SyncWorker } = await import('@/services/sync/syncWorker');
+    const worker = new SyncWorker();
+    const record = deletionRecord();
+    const failedDelivery = {
+      status: 'failed' as const,
+      mutationIds: [record.id],
+      acceptedMutationIds: [],
+      pendingMutationIds: [],
+      failedMutationIds: [record.id],
+    };
+    const drainOnce = vi.fn(async () => ({
+      attempted: 1,
+      accepted: 0,
+      conflicted: 1,
+      failed: 0,
+      remaining: 0,
+    }));
+    const resolveDelivery = vi.fn(async () => failedDelivery);
+    const engine = { drainOnce, pendingCount: vi.fn(async () => 0), resolveDelivery };
+    const testWorker = worker as unknown as {
+      stopped: boolean;
+      userId: string;
+      canonicalEngine: typeof engine;
+    };
+    testWorker.stopped = false;
+    testWorker.userId = 'user-1';
+    testWorker.canonicalEngine = engine;
+
+    await expect(worker.syncNow([record], record.userId)).resolves.toEqual(failedDelivery);
+    expect(resolveDelivery).toHaveBeenCalledWith([record], record.userId);
+  });
+
+  it('fails closed when the active user changes before delivery resolution', async () => {
+    const { SyncWorker } = await import('@/services/sync/syncWorker');
+    const worker = new SyncWorker();
+    const record = deletionRecord();
+    const drainResult = {
+      attempted: 0,
+      accepted: 0,
+      conflicted: 0,
+      failed: 0,
+      remaining: 1,
+    };
+    let resolveDrain!: (result: typeof drainResult) => void;
+    const drainOnce = vi.fn(
+      () =>
+        new Promise<typeof drainResult>((resolve) => {
+          resolveDrain = resolve;
+        }),
+    );
+    const resolveDelivery = vi.fn();
+    const engine = { drainOnce, pendingCount: vi.fn(async () => 1), resolveDelivery };
+    const testWorker = worker as unknown as {
+      stopped: boolean;
+      userId: string;
+      canonicalEngine: typeof engine | null;
+    };
+    testWorker.stopped = false;
+    testWorker.userId = 'user-1';
+    testWorker.canonicalEngine = engine;
+
+    const result = worker.syncNow([record], record.userId);
+    await vi.waitFor(() => expect(drainOnce).toHaveBeenCalledTimes(1));
+    testWorker.userId = 'user-2';
+    testWorker.canonicalEngine = null;
+    resolveDrain(drainResult);
+
+    await expect(result).rejects.toBeInstanceOf(SyncMutationDeliveryError);
+    expect(resolveDelivery).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when the user changes during durable delivery resolution', async () => {
+    const { SyncWorker } = await import('@/services/sync/syncWorker');
+    const worker = new SyncWorker();
+    const record = deletionRecord();
+    const delivery = {
+      status: 'pending' as const,
+      mutationIds: [record.id],
+      acceptedMutationIds: [],
+      pendingMutationIds: [record.id],
+      failedMutationIds: [],
+    };
+    let resolveDelivery!: (result: typeof delivery) => void;
+    const deliveryPromise = new Promise<typeof delivery>((resolve) => {
+      resolveDelivery = resolve;
+    });
+    const engine = {
+      drainOnce: vi.fn(async () => ({
+        attempted: 0,
+        accepted: 0,
+        conflicted: 0,
+        failed: 0,
+        remaining: 1,
+      })),
+      pendingCount: vi.fn(async () => 1),
+      resolveDelivery: vi.fn(() => deliveryPromise),
+    };
+    const testWorker = worker as unknown as {
+      stopped: boolean;
+      userId: string;
+      canonicalEngine: typeof engine | null;
+    };
+    testWorker.stopped = false;
+    testWorker.userId = 'user-1';
+    testWorker.canonicalEngine = engine;
+
+    const result = worker.syncNow([record], record.userId);
+    await vi.waitFor(() => expect(engine.resolveDelivery).toHaveBeenCalledTimes(1));
+    testWorker.userId = 'user-2';
+    testWorker.canonicalEngine = null;
+    resolveDelivery(delivery);
+
+    await expect(result).rejects.toBeInstanceOf(SyncMutationDeliveryError);
+  });
+
+  it('fails closed without draining when delivery is requested after stop', async () => {
+    const { SyncWorker } = await import('@/services/sync/syncWorker');
+    const worker = new SyncWorker();
+    const record = deletionRecord();
+    const drainOnce = vi.fn();
+    const engine = {
+      drainOnce,
+      pendingCount: vi.fn(async () => 1),
+      resolveDelivery: vi.fn(),
+    };
+    const testWorker = worker as unknown as {
+      stopped: boolean;
+      userId: string;
+      canonicalEngine: typeof engine;
+    };
+    testWorker.stopped = true;
+    testWorker.userId = 'user-1';
+    testWorker.canonicalEngine = engine;
+
+    await expect(worker.syncNow([record], record.userId)).rejects.toBeInstanceOf(
+      SyncMutationDeliveryError,
+    );
+    expect(drainOnce).not.toHaveBeenCalled();
+    expect(engine.resolveDelivery).not.toHaveBeenCalled();
   });
 
   it('recovers terminal failed outbox records before lifecycle drain', async () => {

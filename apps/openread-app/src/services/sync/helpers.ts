@@ -18,6 +18,7 @@ import {
   type CollectionSyncInput,
   type SyncMutationContext,
 } from './adapters';
+import { SyncMutationDeliveryError, type SyncMutationDeliveryResult } from './engine';
 import { syncOutbox } from './outbox';
 import { syncWorker } from './syncWorker';
 
@@ -32,8 +33,8 @@ export interface FireAndForgetSyncEnqueueContext {
   count?: number;
 }
 
-export function handleFireAndForgetSyncEnqueue(
-  enqueuePromise: Promise<void>,
+export function handleFireAndForgetSyncEnqueue<T>(
+  enqueuePromise: Promise<T>,
   context: FireAndForgetSyncEnqueueContext,
 ): void {
   void enqueuePromise.catch((error) => {
@@ -41,28 +42,73 @@ export function handleFireAndForgetSyncEnqueue(
   });
 }
 
-function getSyncMutationContext(): SyncMutationContext | null {
+export class SyncMutationContextUnavailableError extends Error {
+  constructor() {
+    super('Cannot queue deletion without an authenticated sync user');
+    this.name = 'SyncMutationContextUnavailableError';
+  }
+}
+
+export function requireSyncMutationUserId(expectedUserId?: string): string {
   const userId = syncWorker.currentUserId;
-  if (!userId) return null;
+  if (!userId || (expectedUserId && userId !== expectedUserId)) {
+    throw new SyncMutationContextUnavailableError();
+  }
+  return userId;
+}
+
+function getSyncMutationContext(
+  required = false,
+  expectedUserId?: string,
+): SyncMutationContext | null {
+  const userId = syncWorker.currentUserId;
+  if (!userId) {
+    if (required || expectedUserId) throw new SyncMutationContextUnavailableError();
+    return null;
+  }
+  if (expectedUserId && userId !== expectedUserId) {
+    throw new SyncMutationContextUnavailableError();
+  }
   return { userId, deviceId: getDeviceId() };
 }
 
-export async function enqueueCanonicalSyncMutations(mutations: SyncMutation[]): Promise<void> {
+const isDeletion = (book: Book): boolean =>
+  typeof book.deletedAt === 'number' && book.deletedAt > 0;
+
+export async function enqueueCanonicalSyncMutations(
+  mutations: SyncMutation[],
+): Promise<SyncMutationDeliveryResult | undefined> {
   if (mutations.length === 0) return;
-  await syncOutbox.enqueueBatch(mutations);
-  await syncWorker.syncNow();
+  const expectedUserId = mutations[0]!.userId;
+  const records = await syncOutbox.enqueueBatch(mutations);
+  try {
+    return await syncWorker.syncNow(records, expectedUserId);
+  } catch (error) {
+    if (error instanceof SyncMutationDeliveryError) throw error;
+    throw new SyncMutationDeliveryError(
+      [],
+      records.map((record) => record.id),
+    );
+  }
 }
 
-export async function enqueueBookForSync(book: Book): Promise<void> {
-  const context = getSyncMutationContext();
+export async function enqueueBookForSync(
+  book: Book,
+  expectedUserId?: string,
+): Promise<SyncMutationDeliveryResult | undefined> {
+  const context = getSyncMutationContext(isDeletion(book), expectedUserId);
   if (!context) return;
-  await enqueueCanonicalSyncMutations([buildBookMutation(book, context)]);
+  return enqueueCanonicalSyncMutations([buildBookMutation(book, context)]);
 }
 
-export async function enqueueBooksForSync(books: Book[]): Promise<void> {
-  const context = getSyncMutationContext();
-  if (!context || books.length === 0) return;
-  await enqueueCanonicalSyncMutations(books.map((book) => buildBookMutation(book, context)));
+export async function enqueueBooksForSync(
+  books: Book[],
+  expectedUserId?: string,
+): Promise<SyncMutationDeliveryResult | undefined> {
+  if (books.length === 0) return;
+  const context = getSyncMutationContext(books.some(isDeletion), expectedUserId);
+  if (!context) return;
+  return enqueueCanonicalSyncMutations(books.map((book) => buildBookMutation(book, context)));
 }
 
 export async function enqueueBookConfigForSync(config: BookConfig): Promise<void> {

@@ -54,7 +54,7 @@ describe('canonical SyncEngine skeleton', () => {
     });
     const transport: SyncTransport = { push };
     const { engine, outbox } = createEngine(transport);
-    await engine.enqueue(bookMutation());
+    const enqueuedRecord = await engine.enqueue(bookMutation());
 
     const result = await engine.drainOnce();
 
@@ -71,6 +71,13 @@ describe('canonical SyncEngine skeleton', () => {
     });
     expect(receivedRequest?.mutations[0]).not.toHaveProperty('status');
     await expect(outbox.getAll('user-1')).resolves.toHaveLength(0);
+    await expect(engine.resolveDelivery([enqueuedRecord], enqueuedRecord.userId)).resolves.toEqual({
+      status: 'accepted',
+      mutationIds: ['mutation-1'],
+      acceptedMutationIds: ['mutation-1'],
+      pendingMutationIds: [],
+      failedMutationIds: [],
+    });
   });
 
   it('durably claims pending batches so two engine instances do not duplicate pushes', async () => {
@@ -132,6 +139,61 @@ describe('canonical SyncEngine skeleton', () => {
       conflicted: 0,
       failed: 0,
       remaining: 0,
+    });
+  });
+
+  it('resolves acceptance from durable absence after a separate engine acknowledges the row', async () => {
+    const records = new Map<string, StoredSyncMutation>();
+    const outboxA = new SyncOutbox(new MemorySyncOutboxStorage(records), () => 1_000);
+    const outboxB = new SyncOutbox(new MemorySyncOutboxStorage(records), () => 1_000);
+    const enqueuedRecord = await outboxA.enqueue(bookMutation());
+    const engineA = new SyncEngine({
+      userId: 'user-1',
+      deviceId: 'device-1',
+      outbox: outboxA,
+    });
+    const engineB = new SyncEngine({
+      userId: 'user-1',
+      deviceId: 'device-2',
+      outbox: outboxB,
+      transport: {
+        push: async (request) => ({
+          accepted: request.mutations.map((mutation) => ({
+            mutationId: mutation.id,
+            entity: mutation.entity,
+            entityId: mutation.entityId,
+            serverRevision: 'server-rev-2',
+            serverUpdatedAt: 200,
+          })),
+          conflicts: [],
+        }),
+      },
+    });
+
+    await expect(engineB.drainOnce()).resolves.toMatchObject({ accepted: 1, remaining: 0 });
+    await expect(engineA.resolveDelivery([enqueuedRecord], enqueuedRecord.userId)).resolves.toEqual(
+      {
+        status: 'accepted',
+        mutationIds: ['mutation-1'],
+        acceptedMutationIds: ['mutation-1'],
+        pendingMutationIds: [],
+        failedMutationIds: [],
+      },
+    );
+  });
+
+  it('fails closed when exact enqueue proof belongs to another user', async () => {
+    const transport: SyncTransport = {
+      push: vi.fn(async (): Promise<SyncPushResponse> => ({ accepted: [], conflicts: [] })),
+    };
+    const { engine } = createEngine(transport);
+    const enqueuedRecord = await engine.enqueue(bookMutation());
+
+    await expect(
+      engine.resolveDelivery([enqueuedRecord], 'user-2' as typeof enqueuedRecord.userId),
+    ).rejects.toMatchObject({
+      failedMutationIds: [],
+      unknownMutationIds: ['mutation-1'],
     });
   });
 
@@ -440,7 +502,7 @@ describe('canonical SyncEngine skeleton', () => {
       ),
     };
     const { engine, outbox } = createEngine(transport);
-    await engine.enqueue(bookMutation());
+    const enqueuedRecord = await engine.enqueue(bookMutation());
 
     const result = await engine.drainOnce();
 
@@ -450,6 +512,93 @@ describe('canonical SyncEngine skeleton', () => {
       status: 'failed',
       lastError: 'Server rejected sync mutation',
     });
+    await expect(engine.resolveDelivery([enqueuedRecord], enqueuedRecord.userId)).resolves.toEqual({
+      status: 'failed',
+      mutationIds: ['mutation-1'],
+      acceptedMutationIds: [],
+      pendingMutationIds: [],
+      failedMutationIds: ['mutation-1'],
+    });
+  });
+
+  it('keeps a pending row across engine restart and pushes it exactly once on retry', async () => {
+    let now = 1_000;
+    const records = new Map<string, StoredSyncMutation>();
+    const outboxA = new SyncOutbox(new MemorySyncOutboxStorage(records), () => now);
+    const enqueuedRecord = await outboxA.enqueue(bookMutation());
+    const firstPush = vi.fn(async (): Promise<SyncPushResponse> => {
+      throw new Error('offline');
+    });
+    const engineA = new SyncEngine({
+      userId: 'user-1',
+      deviceId: 'device-1',
+      outbox: outboxA,
+      transport: { push: firstPush },
+      retryBackoffMs: 1_000,
+    });
+
+    await expect(engineA.drainOnce()).resolves.toMatchObject({ accepted: 0, failed: 1 });
+    await expect(outboxA.getAll('user-1')).resolves.toMatchObject([
+      { id: enqueuedRecord.id, status: 'pending', nextAttemptAt: 2_000 },
+    ]);
+
+    now = 2_000;
+    const outboxB = new SyncOutbox(new MemorySyncOutboxStorage(records), () => now);
+    const secondPush = vi.fn(
+      async (request: SyncPushRequest): Promise<SyncPushResponse> => ({
+        accepted: request.mutations.map((mutation) => ({
+          mutationId: mutation.id,
+          entity: mutation.entity,
+          entityId: mutation.entityId,
+          serverRevision: 'server-rev-retry',
+          serverUpdatedAt: now,
+        })),
+        conflicts: [],
+      }),
+    );
+    const engineB = new SyncEngine({
+      userId: 'user-1',
+      deviceId: 'device-2',
+      outbox: outboxB,
+      transport: { push: secondPush },
+    });
+
+    await expect(engineB.drainOnce()).resolves.toMatchObject({ accepted: 1, remaining: 0 });
+    expect(firstPush).toHaveBeenCalledTimes(1);
+    expect(secondPush).toHaveBeenCalledTimes(1);
+    await expect(outboxB.getAll('user-1')).resolves.toHaveLength(0);
+    await expect(engineB.resolveDelivery([enqueuedRecord], enqueuedRecord.userId)).resolves.toEqual(
+      {
+        status: 'accepted',
+        mutationIds: [enqueuedRecord.id],
+        acceptedMutationIds: [enqueuedRecord.id],
+        pendingMutationIds: [],
+        failedMutationIds: [],
+      },
+    );
+  });
+
+  it('reports an exact actively pushing durable record as pending', async () => {
+    const outbox = new SyncOutbox(new MemorySyncOutboxStorage(), () => 1_000);
+    const enqueuedRecord = await outbox.enqueue(bookMutation());
+    await outbox.claimPending({
+      userId: enqueuedRecord.userId,
+      leaseOwner: 'other-engine',
+      leaseDurationMs: 30_000,
+    });
+    const engine = new SyncEngine({
+      userId: 'user-1',
+      deviceId: 'device-1',
+      outbox,
+    });
+
+    await expect(engine.resolveDelivery([enqueuedRecord], enqueuedRecord.userId)).resolves.toEqual({
+      status: 'pending',
+      mutationIds: ['mutation-1'],
+      acceptedMutationIds: [],
+      pendingMutationIds: ['mutation-1'],
+      failedMutationIds: [],
+    });
   });
 
   it('backs off retryable transport failures and keeps mutations pending', async () => {
@@ -457,7 +606,7 @@ describe('canonical SyncEngine skeleton', () => {
       push: vi.fn(async (): Promise<SyncPushResponse> => Promise.reject(new Error('offline'))),
     };
     const { engine, outbox } = createEngine(transport, 1_000);
-    await engine.enqueue(bookMutation());
+    const enqueuedRecord = await engine.enqueue(bookMutation());
 
     const result = await engine.drainOnce();
 
@@ -465,6 +614,13 @@ describe('canonical SyncEngine skeleton', () => {
     const records = await outbox.getAll('user-1');
     expect(records[0]).toMatchObject({ status: 'pending', retryCount: 1, lastError: 'offline' });
     expect(engine.status.lastError).toBe('offline');
+    await expect(engine.resolveDelivery([enqueuedRecord], enqueuedRecord.userId)).resolves.toEqual({
+      status: 'pending',
+      mutationIds: ['mutation-1'],
+      acceptedMutationIds: [],
+      pendingMutationIds: ['mutation-1'],
+      failedMutationIds: [],
+    });
   });
 
   it('coalesces concurrent drain requests into one transport push', async () => {

@@ -8,11 +8,16 @@
  * - Single source of truth for all sync operations and watermarks
  */
 
-import type { SyncTombstone } from '@openread/sync';
+import type { SyncTombstone, UserId } from '@openread/sync';
 import type { MetaHash, SyncableBookRef } from '@openread/types';
 
 import { createBackendSyncTransport } from './backendTransport';
-import { SyncEngine, type SyncDrainResult } from './engine';
+import {
+  SyncEngine,
+  SyncMutationDeliveryError,
+  type SyncDrainResult,
+  type SyncMutationDeliveryResult,
+} from './engine';
 import { pullCanonicalSyncChanges, reconcileCanonicalBooks, type SyncType } from './client';
 import { listFiles } from '@/libs/storage';
 import { supabase } from '@/utils/supabase';
@@ -40,6 +45,7 @@ import { useAIChatStore } from '@/store/aiChatStore';
 import { isSyncableBookRef, parseSyncableBookRef } from '@openread/types';
 import { getDeviceId } from '@/services/deviceService';
 import { getCanonicalSyncCursor, setCanonicalSyncCursor } from './cursors';
+import type { StoredSyncMutation } from './outbox';
 
 const RECONCILE_RETRY_DELAYS_MS = [500, 1_500] as const;
 
@@ -266,9 +272,53 @@ function createCoalescingGuard() {
   };
 }
 
+interface QueuedCoalescedRun {
+  promise: Promise<void>;
+  resolve: () => void;
+  reject: (error: unknown) => void;
+}
+
+function createAwaitableCoalescingGuard() {
+  let busy = false;
+  let generation = 0;
+  let queuedRun: QueuedCoalescedRun | null = null;
+
+  return {
+    enter(): { generation: number } | { wait: Promise<void> } {
+      if (!busy) {
+        busy = true;
+        return { generation };
+      }
+      if (!queuedRun) {
+        let resolve!: () => void;
+        let reject!: (error: unknown) => void;
+        const promise = new Promise<void>((resolvePromise, rejectPromise) => {
+          resolve = resolvePromise;
+          reject = rejectPromise;
+        });
+        queuedRun = { promise, resolve, reject };
+      }
+      return { wait: queuedRun.promise };
+    },
+    exit(runGeneration: number): QueuedCoalescedRun | null {
+      if (runGeneration !== generation) return null;
+      busy = false;
+      const nextRun = queuedRun;
+      queuedRun = null;
+      return nextRun;
+    },
+    reset(): void {
+      generation += 1;
+      busy = false;
+      queuedRun?.resolve();
+      queuedRun = null;
+    },
+  };
+}
+
 export class SyncWorker {
   private intervalId: ReturnType<typeof setInterval> | null = null;
-  private drainGuard = createCoalescingGuard();
+  private drainGuard = createAwaitableCoalescingGuard();
   private aiPullGuard = createCoalescingGuard();
   private reconcileRun: Promise<void> | null = null;
   private reconcileRerunRequested = false;
@@ -385,10 +435,36 @@ export class SyncWorker {
    * If a drain is already running, schedules a re-drain so the new item
    * isn't stuck waiting for the next periodic cycle.
    */
-  async syncNow(): Promise<void> {
-    // drainQueue uses drainGuard internally — if already running,
-    // tryEnter() queues a re-run instead of silently dropping.
+  async syncNow(): Promise<void>;
+  async syncNow(
+    enqueuedRecords: StoredSyncMutation[],
+    expectedUserId: UserId,
+  ): Promise<SyncMutationDeliveryResult>;
+  async syncNow(
+    enqueuedRecords?: StoredSyncMutation[],
+    expectedUserId?: UserId,
+  ): Promise<void | SyncMutationDeliveryResult> {
+    if (!enqueuedRecords || !expectedUserId) {
+      await this.drainQueue();
+      return;
+    }
+
+    const engine = this.requireDeliveryEngine(enqueuedRecords, expectedUserId);
     await this.drainQueue();
+    if (this.requireDeliveryEngine(enqueuedRecords, expectedUserId) !== engine) {
+      throw new SyncMutationDeliveryError(
+        [],
+        enqueuedRecords.map((record) => record.id),
+      );
+    }
+    const delivery = await engine.resolveDelivery(enqueuedRecords, expectedUserId);
+    if (this.requireDeliveryEngine(enqueuedRecords, expectedUserId) !== engine) {
+      throw new SyncMutationDeliveryError(
+        [],
+        enqueuedRecords.map((record) => record.id),
+      );
+    }
+    return delivery;
   }
 
   /**
@@ -400,6 +476,24 @@ export class SyncWorker {
 
   get currentUserId(): string | null {
     return this.userId;
+  }
+
+  private requireDeliveryEngine(
+    enqueuedRecords: StoredSyncMutation[],
+    expectedUserId: UserId,
+  ): SyncEngine {
+    if (
+      this.stopped ||
+      this.userId !== expectedUserId ||
+      !this.canonicalEngine ||
+      enqueuedRecords.some((record) => record.userId !== expectedUserId)
+    ) {
+      throw new SyncMutationDeliveryError(
+        [],
+        enqueuedRecords.map((record) => record.id),
+      );
+    }
+    return this.canonicalEngine;
   }
 
   /**
@@ -496,7 +590,8 @@ export class SyncWorker {
       return;
     }
 
-    if (!this.drainGuard.tryEnter()) return;
+    const entry = this.drainGuard.enter();
+    if ('wait' in entry) return entry.wait;
     this.updateStatus({ syncing: true, error: null });
 
     try {
@@ -532,8 +627,9 @@ export class SyncWorker {
         error: error instanceof Error ? error.message : 'Sync failed',
       });
     } finally {
-      if (this.drainGuard.exit()) {
-        this.drainQueue();
+      const queuedRun = this.drainGuard.exit(entry.generation);
+      if (queuedRun) {
+        void this.drainQueue().then(queuedRun.resolve, queuedRun.reject);
       }
     }
   }

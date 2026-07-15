@@ -34,6 +34,14 @@ const mocks = vi.hoisted(() => {
   const loadSettings = vi.fn().mockResolvedValue({});
   const resetAccountScopedCollections = vi.fn();
   const setCollectionsOwnerUserId = vi.fn();
+  const libraryViewState = { selectedBooks: [] as string[], isSelectMode: false };
+  const clearSelection = vi.fn(() => {
+    libraryViewState.selectedBooks = [];
+  });
+  const setSelectMode = vi.fn((enabled: boolean) => {
+    libraryViewState.isSelectMode = enabled;
+    if (!enabled) libraryViewState.selectedBooks = [];
+  });
   const pullNow = vi.fn().mockResolvedValue(undefined);
   const start = vi.fn();
   const stop = vi.fn();
@@ -76,6 +84,9 @@ const mocks = vi.hoisted(() => {
     loadSettings,
     resetAccountScopedCollections,
     setCollectionsOwnerUserId,
+    libraryViewState,
+    clearSelection,
+    setSelectMode,
     pullNow,
     start,
     stop,
@@ -130,6 +141,15 @@ vi.mock('@/store/settingsStore', () => ({
   useSettingsStore: () => ({ setSettings: mocks.setSettings }),
 }));
 
+vi.mock('@/store/libraryViewStore', () => ({
+  useLibraryViewStore: {
+    getState: () => ({
+      clearSelection: mocks.clearSelection,
+      setSelectMode: mocks.setSelectMode,
+    }),
+  },
+}));
+
 vi.mock('@/store/platformSidebarStore', () => ({
   usePlatformSidebarStore: {
     getState: () => ({
@@ -148,6 +168,8 @@ describe('useLibrary account isolation', () => {
     mocks.state.isReconciling = false;
     mocks.state.syncError = null;
     mocks.state.libraryOwnerUserId = null;
+    mocks.libraryViewState.selectedBooks = [];
+    mocks.libraryViewState.isSelectMode = false;
     mocks.setUser(null);
     mocks.setLibraryOwnerUserId.mockClear();
     mocks.setIsReconciling.mockClear();
@@ -158,20 +180,24 @@ describe('useLibrary account isolation', () => {
     mocks.loadSettings.mockResolvedValue({});
     mocks.resetAccountScopedCollections.mockClear();
     mocks.setCollectionsOwnerUserId.mockClear();
+    mocks.clearSelection.mockClear();
+    mocks.setSelectMode.mockClear();
     mocks.pullNow.mockResolvedValue(undefined);
     mocks.start.mockClear();
     mocks.stop.mockClear();
     mocks.resetCanonicalSyncCursors.mockClear();
   });
 
-  it('clears stale local library when the authenticated user changes', async () => {
+  it('clears stale local library and same-hash selection when the user changes', async () => {
     const staleBook = {
-      hash: 'account-a-book',
+      hash: 'shared-account-book',
       title: 'Account A',
       author: 'A',
       format: 'epub',
     } as Book;
     mocks.state.library = [staleBook];
+    mocks.libraryViewState.selectedBooks = [staleBook.hash];
+    mocks.libraryViewState.isSelectMode = true;
     localStorage.setItem('openread_library_owner_user_id', 'account-a');
     mocks.setUser({ id: 'account-b' });
 
@@ -188,6 +214,16 @@ describe('useLibrary account isolation', () => {
     );
     expect(mocks.saveLibraryBooks).toHaveBeenCalledWith([]);
     expect(mocks.resetAccountScopedCollections).toHaveBeenCalled();
+    expect(mocks.clearSelection).toHaveBeenCalled();
+    expect(mocks.setSelectMode).toHaveBeenCalledWith(false);
+    expect(mocks.libraryViewState.selectedBooks).toEqual([]);
+    expect(mocks.libraryViewState.isSelectMode).toBe(false);
+    expect(mocks.clearSelection.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.setLibrary.mock.invocationCallOrder[0]!,
+    );
+    expect(mocks.setSelectMode.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.setLibraryOwnerUserId.mock.invocationCallOrder[0]!,
+    );
     expect(mocks.setCollectionsOwnerUserId).toHaveBeenCalledWith('account-b');
     expect(mocks.saveSettings).not.toHaveBeenCalled();
     expect(mocks.resetCanonicalSyncCursors).toHaveBeenCalledWith('account-b');
@@ -216,6 +252,8 @@ describe('useLibrary account isolation', () => {
 
     await waitFor(() => expect(mocks.setSyncError).toHaveBeenCalledWith('disk wipe failed'));
     expect(result.current.libraryLoaded).toBe(false);
+    expect(mocks.clearSelection).toHaveBeenCalled();
+    expect(mocks.setSelectMode).toHaveBeenCalledWith(false);
     expect(mocks.stop).toHaveBeenCalled();
     expect(mocks.setLibrary).toHaveBeenCalledWith([]);
     expect(mocks.stop.mock.invocationCallOrder[0]).toBeLessThan(

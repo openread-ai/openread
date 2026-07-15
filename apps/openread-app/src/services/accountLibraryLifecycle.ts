@@ -1,5 +1,6 @@
 import { usePlatformSidebarStore } from '@/store/platformSidebarStore';
 import { useLibraryStore } from '@/store/libraryStore';
+import { useLibraryViewStore } from '@/store/libraryViewStore';
 import envConfig, { type EnvConfigType } from '@/services/environment';
 import {
   clearLibraryPaintCache,
@@ -18,6 +19,12 @@ interface AccountLibraryTransitionResult {
 
 function visibleBooks(books: Book[]): Book[] {
   return books.filter((book) => !book.deletedAt);
+}
+
+function resetAccountScopedLibraryView(): void {
+  const viewStore = useLibraryViewStore.getState();
+  viewStore.clearSelection();
+  viewStore.setSelectMode(false);
 }
 
 export function hydrateLibraryPaintProjection(userId: string | null): boolean {
@@ -44,9 +51,9 @@ export function persistLibraryPaintProjection(userId: string | null, books: Book
   writeLibraryPaintCache(userId, durableBooks);
 }
 
-export async function transitionAccountLibraryOwner(
+async function transitionAccountLibraryOwnerUnlocked(
   userId: string | null,
-  appEnvConfig: EnvConfigType = envConfig,
+  appEnvConfig: EnvConfigType,
 ): Promise<AccountLibraryTransitionResult> {
   const store = useLibraryStore.getState();
   const previousOwnerUserId = readLibraryOwnerUserId();
@@ -58,6 +65,7 @@ export async function transitionAccountLibraryOwner(
   );
 
   if (!userId) {
+    resetAccountScopedLibraryView();
     const { syncWorker } = await import('@/services/sync/syncWorker');
     syncWorker.stop();
     store.setLibrary([]);
@@ -70,6 +78,7 @@ export async function transitionAccountLibraryOwner(
   }
 
   if (ownerMismatch) {
+    resetAccountScopedLibraryView();
     const { syncWorker } = await import('@/services/sync/syncWorker');
     syncWorker.stop();
     store.setLibrary([]);
@@ -92,4 +101,30 @@ export async function transitionAccountLibraryOwner(
   store.setLibraryOwnerUserId(userId);
   usePlatformSidebarStore.getState().setCollectionsOwnerUserId(userId);
   return { ownerMismatch: false, hadPaintProjection: hydrateLibraryPaintProjection(userId) };
+}
+
+let accountLibraryMutationTail = Promise.resolve();
+
+export async function runAccountLibraryMutation<T>(operation: () => Promise<T>): Promise<T> {
+  const previous = accountLibraryMutationTail;
+  let release!: () => void;
+  accountLibraryMutationTail = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  await previous;
+  try {
+    return await operation();
+  } finally {
+    release();
+  }
+}
+
+export async function transitionAccountLibraryOwner(
+  userId: string | null,
+  appEnvConfig: EnvConfigType = envConfig,
+): Promise<AccountLibraryTransitionResult> {
+  return runAccountLibraryMutation(() =>
+    transitionAccountLibraryOwnerUnlocked(userId, appEnvConfig),
+  );
 }

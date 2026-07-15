@@ -2,7 +2,13 @@ import { testOpenReadBookRef } from '../utils/bookIdentityFixtures';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useBookActions } from '@/hooks/useBookActions';
-import { enqueueBookForSync, enqueueBooksForSync } from '@/services/sync/helpers';
+import { runAccountLibraryMutation } from '@/services/accountLibraryLifecycle';
+import {
+  enqueueBookForSync,
+  enqueueBooksForSync,
+  requireSyncMutationUserId,
+} from '@/services/sync/helpers';
+import { SyncMutationDeliveryError } from '@/services/sync/engine';
 import type { Book } from '@/types/book';
 
 // Use vi.hoisted so these variables are available inside vi.mock factories (which are hoisted)
@@ -15,6 +21,7 @@ const {
 } = vi.hoisted(() => {
   const mockLibraryStoreState = {
     library: [] as Book[],
+    libraryOwnerUserId: 'user-1' as string | null,
     updateBook: vi.fn().mockResolvedValue(undefined),
     setLibrary: vi.fn(),
   };
@@ -103,6 +110,8 @@ vi.mock('@/services/sync/helpers', () => ({
   handleFireAndForgetSyncEnqueue: vi.fn((promise: Promise<void>) => {
     void promise.catch(() => {});
   }),
+  requireSyncMutationUserId: vi.fn().mockReturnValue('user-1'),
+  SyncMutationContextUnavailableError: class extends Error {},
 }));
 
 vi.mock('@/utils/logger', () => ({
@@ -129,6 +138,7 @@ describe('useBookActions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockLibraryStoreState.library = [];
+    mockLibraryStoreState.libraryOwnerUserId = 'user-1';
     mockLibraryStoreState.updateBook = vi.fn().mockResolvedValue(undefined);
     mockLibraryStoreState.setLibrary = vi.fn();
     mockPlatformSidebarStoreState.addBookToCollection = vi.fn();
@@ -141,6 +151,7 @@ describe('useBookActions', () => {
     mockAppService.saveLibraryBooks = vi.fn().mockResolvedValue(undefined);
     vi.mocked(enqueueBookForSync).mockResolvedValue(undefined);
     vi.mocked(enqueueBooksForSync).mockResolvedValue(undefined);
+    vi.mocked(requireSyncMutationUserId).mockReturnValue('user-1');
   });
 
   describe('setReadingStatus', () => {
@@ -298,9 +309,10 @@ describe('useBookActions', () => {
   });
 
   describe('permanentlyDeleteBook', () => {
-    it('saves the tombstoned library before hiding and enqueueing sync', async () => {
+    it('durably enqueues the exact single-book tombstone before local persistence and hiding', async () => {
       const book = createMockBook({ hash: testOpenReadBookRef('book-delete-1') });
-      mockLibraryStoreState.library = [book];
+      const unrelated = createMockBook({ hash: testOpenReadBookRef('book-unrelated-1') });
+      mockLibraryStoreState.library = [book, unrelated];
       const { result } = renderHook(() => useBookActions());
 
       await act(async () => {
@@ -308,20 +320,168 @@ describe('useBookActions', () => {
       });
 
       expect(mockAppService.saveLibraryBooks).toHaveBeenCalledTimes(1);
-      const savedLibrary = mockAppService.saveLibraryBooks.mock.calls[0]?.[0] as Book[];
-      expect(savedLibrary[0]).toMatchObject({ hash: book.hash, downloadedAt: null });
-      expect(savedLibrary[0]?.deletedAt).toEqual(expect.any(Number));
-      expect(mockLibraryStoreState.setLibrary).toHaveBeenCalledWith(savedLibrary);
-      expect(enqueueBookForSync).toHaveBeenCalledWith(savedLibrary[0]);
+      const [enqueuedBook] = vi.mocked(enqueueBooksForSync).mock.calls[0]![0];
+      const committedLibrary = mockAppService.saveLibraryBooks.mock.calls[0]?.[0] as Book[];
+      expect(enqueuedBook).toMatchObject({ hash: book.hash, downloadedAt: null });
+      expect(enqueuedBook?.deletedAt).toEqual(expect.any(Number));
+      expect(committedLibrary[1]).toBe(unrelated);
+      expect(enqueueBooksForSync).toHaveBeenCalledWith([enqueuedBook], 'user-1');
+      expect(mockLibraryStoreState.setLibrary).toHaveBeenCalledWith(committedLibrary);
+      expect(vi.mocked(enqueueBooksForSync).mock.invocationCallOrder[0]).toBeLessThan(
+        mockAppService.saveLibraryBooks.mock.invocationCallOrder[0],
+      );
       expect(mockAppService.saveLibraryBooks.mock.invocationCallOrder[0]).toBeLessThan(
         mockLibraryStoreState.setLibrary.mock.invocationCallOrder[0],
       );
-      expect(mockAppService.saveLibraryBooks.mock.invocationCallOrder[0]).toBeLessThan(
-        vi.mocked(enqueueBookForSync).mock.invocationCallOrder[0],
-      );
     });
 
-    it('rolls back and does not enqueue sync when durable save fails', async () => {
+    it('rebases a deferred single success onto current unrelated and target updates', async () => {
+      const book = createMockBook({ hash: testOpenReadBookRef('book-deferred-success') });
+      const unrelated = createMockBook({ hash: testOpenReadBookRef('unrelated-before') });
+      const added = createMockBook({ hash: testOpenReadBookRef('added-during-delivery') });
+      mockLibraryStoreState.library = [book, unrelated];
+      const accepted = {
+        status: 'accepted' as const,
+        mutationIds: ['mutation-delete'],
+        acceptedMutationIds: ['mutation-delete'],
+        pendingMutationIds: [],
+        failedMutationIds: [],
+      };
+      let resolveDelivery!: (result: typeof accepted) => void;
+      vi.mocked(enqueueBooksForSync).mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveDelivery = resolve;
+        }),
+      );
+      const { result } = renderHook(() => useBookActions());
+
+      const deletion = result.current.permanentlyDeleteBook(book);
+      await vi.waitFor(() => expect(enqueueBooksForSync).toHaveBeenCalledTimes(1));
+      const concurrentTarget = {
+        ...book,
+        title: 'Renamed during delivery',
+        updatedAt: Date.now() + 1,
+      };
+      const concurrentUnrelated = { ...unrelated, readingStatus: 'finished' as const };
+      mockLibraryStoreState.library = [concurrentTarget, concurrentUnrelated, added];
+      resolveDelivery(accepted);
+      await expect(deletion).resolves.toEqual(accepted);
+
+      const committedLibrary = mockAppService.saveLibraryBooks.mock.calls[0]?.[0] as Book[];
+      expect(committedLibrary).toHaveLength(3);
+      expect(committedLibrary[0]).toMatchObject({
+        hash: book.hash,
+        title: 'Renamed during delivery',
+        deletedAt: expect.any(Number),
+      });
+      expect(committedLibrary[1]).toBe(concurrentUnrelated);
+      expect(committedLibrary[2]).toBe(added);
+      expect(mockLibraryStoreState.setLibrary).toHaveBeenCalledWith(committedLibrary);
+    });
+
+    it('fails closed before single enqueue when the initiating owner is unavailable', async () => {
+      const book = createMockBook({ hash: testOpenReadBookRef('single-owner-mismatch') });
+      mockLibraryStoreState.libraryOwnerUserId = 'user-2';
+      mockLibraryStoreState.library = [book];
+      const { result } = renderHook(() => useBookActions());
+
+      await expect(result.current.permanentlyDeleteBook(book)).rejects.toThrow();
+      expect(enqueueBooksForSync).not.toHaveBeenCalled();
+      expect(mockAppService.saveLibraryBooks).not.toHaveBeenCalled();
+      expect(mockLibraryStoreState.setLibrary).not.toHaveBeenCalled();
+    });
+
+    it('fails closed when the library owner changes during single delivery', async () => {
+      const book = createMockBook({ hash: testOpenReadBookRef('single-account-switch') });
+      mockLibraryStoreState.library = [book];
+      const accepted = {
+        status: 'accepted' as const,
+        mutationIds: ['mutation-delete'],
+        acceptedMutationIds: ['mutation-delete'],
+        pendingMutationIds: [],
+        failedMutationIds: [],
+      };
+      let resolveDelivery!: (result: typeof accepted) => void;
+      vi.mocked(enqueueBooksForSync).mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveDelivery = resolve;
+        }),
+      );
+      const { result } = renderHook(() => useBookActions());
+
+      const deletion = result.current.permanentlyDeleteBook(book);
+      await vi.waitFor(() => expect(enqueueBooksForSync).toHaveBeenCalledTimes(1));
+      const accountBBook = createMockBook({ hash: book.hash, title: 'Account B copy' });
+      mockLibraryStoreState.libraryOwnerUserId = 'user-2';
+      mockLibraryStoreState.library = [accountBBook];
+      resolveDelivery(accepted);
+
+      await expect(deletion).rejects.toThrow();
+      expect(enqueueBooksForSync).toHaveBeenCalledWith([expect.any(Object)], 'user-1');
+      expect(mockAppService.saveLibraryBooks).not.toHaveBeenCalled();
+      expect(mockLibraryStoreState.setLibrary).not.toHaveBeenCalled();
+      expect(mockLibraryStoreState.library).toEqual([accountBBook]);
+      expect(mockAppService.deleteBook).not.toHaveBeenCalled();
+    });
+
+    it('fails closed when the owner changes before the final single commit', async () => {
+      const book = createMockBook({ hash: testOpenReadBookRef('single-switch-before-commit') });
+      mockLibraryStoreState.library = [book];
+      let releaseBoundary!: () => void;
+      const boundary = runAccountLibraryMutation(
+        () =>
+          new Promise<void>((resolve) => {
+            releaseBoundary = resolve;
+          }),
+      );
+      await vi.waitFor(() => expect(releaseBoundary).toBeTypeOf('function'));
+      const { result } = renderHook(() => useBookActions());
+
+      const deletion = result.current.permanentlyDeleteBook(book);
+      await vi.waitFor(() => expect(enqueueBooksForSync).toHaveBeenCalledTimes(1));
+      mockLibraryStoreState.libraryOwnerUserId = 'user-2';
+      mockLibraryStoreState.library = [
+        createMockBook({ hash: book.hash, title: 'Account B copy' }),
+      ];
+      releaseBoundary();
+      await boundary;
+
+      await expect(deletion).rejects.toThrow();
+      expect(mockAppService.saveLibraryBooks).not.toHaveBeenCalled();
+      expect(mockLibraryStoreState.setLibrary).not.toHaveBeenCalled();
+    });
+
+    it('never writes a local tombstone when deferred single enqueue fails pre-durability', async () => {
+      const book = createMockBook({ hash: testOpenReadBookRef('book-deferred-compensation') });
+      const unrelated = createMockBook({ hash: testOpenReadBookRef('unrelated-compensation') });
+      const added = createMockBook({ hash: testOpenReadBookRef('added-before-compensation') });
+      mockLibraryStoreState.library = [book, unrelated];
+      let rejectEnqueue!: (error: Error) => void;
+      vi.mocked(enqueueBooksForSync).mockReturnValueOnce(
+        new Promise((_resolve, reject) => {
+          rejectEnqueue = reject;
+        }),
+      );
+      const { result } = renderHook(() => useBookActions());
+
+      const deletion = result.current.permanentlyDeleteBook(book);
+      await vi.waitFor(() => expect(enqueueBooksForSync).toHaveBeenCalledTimes(1));
+      const concurrentTarget = { ...book, title: 'Keep concurrent title' };
+      const concurrentUnrelated = { ...unrelated, readingStatus: 'reading' as const };
+      const currentLibrary = [concurrentTarget, concurrentUnrelated, added];
+      mockLibraryStoreState.library = currentLibrary;
+      rejectEnqueue(new Error('outbox unavailable'));
+
+      await expect(deletion).rejects.toThrow(
+        'Failed to queue book deletion. Your library was not changed.',
+      );
+      expect(mockAppService.saveLibraryBooks).not.toHaveBeenCalled();
+      expect(mockLibraryStoreState.library).toBe(currentLibrary);
+      expect(mockLibraryStoreState.setLibrary).not.toHaveBeenCalled();
+      expect(mockAppService.deleteBook).not.toHaveBeenCalled();
+    });
+
+    it('keeps the durable outbox intent when local finalization fails', async () => {
       const book = createMockBook({ hash: testOpenReadBookRef('book-delete-rollback') });
       const previousLibrary = [book];
       mockLibraryStoreState.library = previousLibrary;
@@ -329,29 +489,83 @@ describe('useBookActions', () => {
       const { result } = renderHook(() => useBookActions());
 
       await expect(result.current.permanentlyDeleteBook(book)).rejects.toThrow(
-        'Failed to delete book locally. Your library was not changed.',
+        'Deletion was queued, but the local library could not be updated.',
       );
 
-      expect(mockLibraryStoreState.setLibrary).toHaveBeenCalledTimes(1);
-      expect(mockLibraryStoreState.setLibrary).toHaveBeenCalledWith(previousLibrary);
-      expect(enqueueBookForSync).not.toHaveBeenCalled();
+      expect(mockLibraryStoreState.setLibrary).not.toHaveBeenCalled();
+      expect(enqueueBooksForSync).toHaveBeenCalledWith([expect.any(Object)], 'user-1');
       expect(mockAppService.deleteBook).not.toHaveBeenCalled();
     });
 
-    it('does not fail the foreground delete when background cleanup fails', async () => {
-      const book = createMockBook({ hash: testOpenReadBookRef('book-cleanup-fails') });
+    it('leaves durable and visible state untouched when sync enqueue fails', async () => {
+      const book = createMockBook({ hash: testOpenReadBookRef('book-enqueue-rollback') });
+      const unrelated = createMockBook({ hash: testOpenReadBookRef('unrelated-book') });
+      const previousLibrary = [book, unrelated];
+      mockLibraryStoreState.library = previousLibrary;
+      vi.mocked(enqueueBooksForSync).mockRejectedValueOnce(new Error('outbox unavailable'));
+      const { result } = renderHook(() => useBookActions());
+
+      await expect(result.current.permanentlyDeleteBook(book)).rejects.toThrow(
+        'Failed to queue book deletion. Your library was not changed.',
+      );
+
+      expect(mockAppService.saveLibraryBooks).not.toHaveBeenCalled();
+      expect(mockLibraryStoreState.library).toBe(previousLibrary);
+      expect(mockLibraryStoreState.setLibrary).not.toHaveBeenCalled();
+      expect(mockAppService.deleteBook).not.toHaveBeenCalled();
+    });
+
+    it('commits and hides a durable terminal failed deletion intent', async () => {
+      const book = createMockBook({ hash: testOpenReadBookRef('book-delivery-fails') });
       mockLibraryStoreState.library = [book];
-      mockAppService.deleteBook.mockRejectedValueOnce(new Error('local file already gone'));
+      const failedDelivery = {
+        status: 'failed' as const,
+        mutationIds: ['mutation-delete'],
+        acceptedMutationIds: [],
+        pendingMutationIds: [],
+        failedMutationIds: ['mutation-delete'],
+      };
+      vi.mocked(enqueueBooksForSync).mockResolvedValueOnce(failedDelivery);
+      const { result } = renderHook(() => useBookActions());
+
+      await expect(result.current.permanentlyDeleteBook(book)).resolves.toEqual(failedDelivery);
+
+      const committedLibrary = mockAppService.saveLibraryBooks.mock.calls[0]?.[0] as Book[];
+      expect(mockAppService.saveLibraryBooks).toHaveBeenCalledTimes(1);
+      expect(committedLibrary[0]?.deletedAt).toEqual(expect.any(Number));
+      expect(mockLibraryStoreState.setLibrary).toHaveBeenCalledWith(committedLibrary);
+      expect(mockAppService.deleteBook).not.toHaveBeenCalled();
+    });
+
+    it('fails closed on unknown delivery identity without visible mutation or cleanup', async () => {
+      const book = createMockBook({ hash: testOpenReadBookRef('book-identity-changed') });
+      mockLibraryStoreState.library = [book];
+      vi.mocked(enqueueBooksForSync).mockRejectedValueOnce(
+        new SyncMutationDeliveryError([], ['mutation-delete']),
+      );
+      const { result } = renderHook(() => useBookActions());
+
+      await expect(result.current.permanentlyDeleteBook(book)).rejects.toBeInstanceOf(
+        SyncMutationDeliveryError,
+      );
+
+      expect(mockAppService.saveLibraryBooks).not.toHaveBeenCalled();
+      expect(mockLibraryStoreState.setLibrary).not.toHaveBeenCalled();
+      expect(mockAppService.deleteBook).not.toHaveBeenCalled();
+    });
+
+    it('does not eagerly delete hash-addressed bytes or cloud assets', async () => {
+      const book = createMockBook({ hash: testOpenReadBookRef('book-shared-bytes') });
+      mockLibraryStoreState.library = [book];
       const { result } = renderHook(() => useBookActions());
 
       await act(async () => {
         await result.current.permanentlyDeleteBook(book);
       });
 
-      expect(mockDispatch).not.toHaveBeenCalledWith(
-        'toast',
-        expect.objectContaining({ message: 'Failed to delete book' }),
-      );
+      expect(mockAppService.deleteBook).not.toHaveBeenCalled();
+      expect(mockAppService.deleteDir).not.toHaveBeenCalled();
+      expect(mockLibraryStoreState.setLibrary).toHaveBeenCalled();
     });
   });
 
@@ -372,32 +586,227 @@ describe('useBookActions', () => {
       expect(mockLibraryViewStoreState.setSelectMode).toHaveBeenCalledWith(false);
     });
 
-    it('saves tombstones before hiding and enqueueing bulk sync', async () => {
+    it('durably enqueues exact selected tombstones before local persistence and hiding', async () => {
       const books = [
         createMockBook({ hash: testOpenReadBookRef('bulk-book-1') }),
         createMockBook({ hash: testOpenReadBookRef('bulk-book-2') }),
       ];
-      mockLibraryStoreState.library = books;
+      const unrelated = createMockBook({ hash: testOpenReadBookRef('bulk-unrelated-success') });
+      mockLibraryStoreState.library = [...books, unrelated];
       const { result } = renderHook(() => useBookActions());
 
       await act(async () => {
         await result.current.bulkRemove(books.map((book) => book.hash));
       });
 
-      const savedLibrary = mockAppService.saveLibraryBooks.mock.calls[0]?.[0] as Book[];
-      expect(savedLibrary).toHaveLength(2);
-      expect(savedLibrary.every((book) => Boolean(book.deletedAt))).toBe(true);
-      expect(mockLibraryStoreState.setLibrary).toHaveBeenCalledWith(savedLibrary);
-      expect(enqueueBooksForSync).toHaveBeenCalledWith(savedLibrary);
+      const deletedBooks = vi.mocked(enqueueBooksForSync).mock.calls[0]![0];
+      const committedLibrary = mockAppService.saveLibraryBooks.mock.calls[0]?.[0] as Book[];
+      expect(committedLibrary).toHaveLength(3);
+      expect(deletedBooks.every((book) => Boolean(book.deletedAt))).toBe(true);
+      expect(committedLibrary.find((book) => book.hash === unrelated.hash)).toBe(unrelated);
+      expect(enqueueBooksForSync).toHaveBeenCalledWith(deletedBooks, 'user-1');
+      expect(mockLibraryStoreState.setLibrary).toHaveBeenCalledWith(committedLibrary);
+      expect(vi.mocked(enqueueBooksForSync).mock.invocationCallOrder[0]).toBeLessThan(
+        mockAppService.saveLibraryBooks.mock.invocationCallOrder[0],
+      );
       expect(mockAppService.saveLibraryBooks.mock.invocationCallOrder[0]).toBeLessThan(
         mockLibraryStoreState.setLibrary.mock.invocationCallOrder[0],
       );
-      expect(mockAppService.saveLibraryBooks.mock.invocationCallOrder[0]).toBeLessThan(
-        vi.mocked(enqueueBooksForSync).mock.invocationCallOrder[0],
-      );
     });
 
-    it('rolls back and keeps selection when bulk durable save fails', async () => {
+    it('rebases deferred bulk success without deleting concurrent unrelated changes', async () => {
+      const books = [
+        createMockBook({ hash: testOpenReadBookRef('bulk-deferred-1') }),
+        createMockBook({ hash: testOpenReadBookRef('bulk-deferred-2') }),
+      ];
+      const unrelated = createMockBook({ hash: testOpenReadBookRef('bulk-deferred-unrelated') });
+      const added = createMockBook({ hash: testOpenReadBookRef('bulk-added-during-delivery') });
+      mockLibraryStoreState.library = [...books, unrelated];
+      const accepted = {
+        status: 'accepted' as const,
+        mutationIds: ['mutation-1', 'mutation-2'],
+        acceptedMutationIds: ['mutation-1', 'mutation-2'],
+        pendingMutationIds: [],
+        failedMutationIds: [],
+      };
+      let resolveDelivery!: (result: typeof accepted) => void;
+      vi.mocked(enqueueBooksForSync).mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveDelivery = resolve;
+        }),
+      );
+      const { result } = renderHook(() => useBookActions());
+
+      const deletion = result.current.bulkRemove(books.map((book) => book.hash));
+      await vi.waitFor(() => expect(enqueueBooksForSync).toHaveBeenCalledTimes(1));
+      const updatedSelected = { ...books[0]!, title: 'Selected renamed concurrently' };
+      const concurrentUnrelated = { ...unrelated, readingStatus: 'finished' as const };
+      mockLibraryStoreState.library = [updatedSelected, books[1]!, concurrentUnrelated, added];
+      resolveDelivery(accepted);
+      await expect(deletion).resolves.toEqual(accepted);
+
+      const committedLibrary = mockAppService.saveLibraryBooks.mock.calls[0]?.[0] as Book[];
+      expect(committedLibrary).toHaveLength(4);
+      expect(committedLibrary[0]).toMatchObject({
+        title: 'Selected renamed concurrently',
+        deletedAt: expect.any(Number),
+      });
+      expect(committedLibrary[1]?.deletedAt).toEqual(expect.any(Number));
+      expect(committedLibrary[2]).toBe(concurrentUnrelated);
+      expect(committedLibrary[3]).toBe(added);
+      expect(mockLibraryStoreState.setLibrary).toHaveBeenCalledWith(committedLibrary);
+    });
+
+    it('fails closed before bulk enqueue when the initiating owner is unavailable', async () => {
+      const books = [
+        createMockBook({ hash: testOpenReadBookRef('bulk-owner-mismatch-1') }),
+        createMockBook({ hash: testOpenReadBookRef('bulk-owner-mismatch-2') }),
+      ];
+      mockLibraryStoreState.libraryOwnerUserId = 'user-2';
+      mockLibraryStoreState.library = books;
+      const { result } = renderHook(() => useBookActions());
+
+      await expect(result.current.bulkRemove(books.map((book) => book.hash))).rejects.toThrow();
+      expect(enqueueBooksForSync).not.toHaveBeenCalled();
+      expect(mockAppService.saveLibraryBooks).not.toHaveBeenCalled();
+      expect(mockLibraryStoreState.setLibrary).not.toHaveBeenCalled();
+    });
+
+    it('fails closed when the library owner changes during bulk delivery', async () => {
+      const books = [
+        createMockBook({ hash: testOpenReadBookRef('bulk-account-switch-1') }),
+        createMockBook({ hash: testOpenReadBookRef('bulk-account-switch-2') }),
+      ];
+      mockLibraryStoreState.library = books;
+      const accepted = {
+        status: 'accepted' as const,
+        mutationIds: ['mutation-1', 'mutation-2'],
+        acceptedMutationIds: ['mutation-1', 'mutation-2'],
+        pendingMutationIds: [],
+        failedMutationIds: [],
+      };
+      let resolveDelivery!: (result: typeof accepted) => void;
+      vi.mocked(enqueueBooksForSync).mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveDelivery = resolve;
+        }),
+      );
+      const { result } = renderHook(() => useBookActions());
+
+      const deletion = result.current.bulkRemove(books.map((book) => book.hash));
+      await vi.waitFor(() => expect(enqueueBooksForSync).toHaveBeenCalledTimes(1));
+      const accountBBook = createMockBook({ hash: books[0]!.hash, title: 'Account B bulk copy' });
+      mockLibraryStoreState.libraryOwnerUserId = 'user-2';
+      mockLibraryStoreState.library = [accountBBook];
+      resolveDelivery(accepted);
+
+      await expect(deletion).rejects.toThrow();
+      expect(enqueueBooksForSync).toHaveBeenCalledWith(expect.any(Array), 'user-1');
+      expect(mockAppService.saveLibraryBooks).not.toHaveBeenCalled();
+      expect(mockLibraryStoreState.setLibrary).not.toHaveBeenCalled();
+      expect(mockLibraryStoreState.library).toEqual([accountBBook]);
+      expect(mockLibraryViewStoreState.clearSelection).not.toHaveBeenCalled();
+      expect(mockAppService.deleteBook).not.toHaveBeenCalled();
+    });
+
+    it('fails closed when the owner changes before the final bulk commit', async () => {
+      const books = [
+        createMockBook({ hash: testOpenReadBookRef('bulk-switch-before-commit-1') }),
+        createMockBook({ hash: testOpenReadBookRef('bulk-switch-before-commit-2') }),
+      ];
+      mockLibraryStoreState.library = books;
+      let releaseBoundary!: () => void;
+      const boundary = runAccountLibraryMutation(
+        () =>
+          new Promise<void>((resolve) => {
+            releaseBoundary = resolve;
+          }),
+      );
+      await vi.waitFor(() => expect(releaseBoundary).toBeTypeOf('function'));
+      const { result } = renderHook(() => useBookActions());
+
+      const deletion = result.current.bulkRemove(books.map((book) => book.hash));
+      await vi.waitFor(() => expect(enqueueBooksForSync).toHaveBeenCalledTimes(1));
+      mockLibraryStoreState.libraryOwnerUserId = 'user-2';
+      mockLibraryStoreState.library = [
+        createMockBook({ hash: books[0]!.hash, title: 'Account B bulk copy' }),
+      ];
+      releaseBoundary();
+      await boundary;
+
+      await expect(deletion).rejects.toThrow();
+      expect(mockAppService.saveLibraryBooks).not.toHaveBeenCalled();
+      expect(mockLibraryStoreState.setLibrary).not.toHaveBeenCalled();
+      expect(mockLibraryViewStoreState.clearSelection).not.toHaveBeenCalled();
+    });
+
+    it('never writes local tombstones when deferred bulk enqueue fails pre-durability', async () => {
+      const books = [
+        createMockBook({ hash: testOpenReadBookRef('bulk-compensation-1') }),
+        createMockBook({ hash: testOpenReadBookRef('bulk-compensation-2') }),
+      ];
+      const unrelated = createMockBook({
+        hash: testOpenReadBookRef('bulk-compensation-unrelated'),
+      });
+      const added = createMockBook({ hash: testOpenReadBookRef('bulk-compensation-added') });
+      mockLibraryStoreState.library = [...books, unrelated];
+      let rejectEnqueue!: (error: Error) => void;
+      vi.mocked(enqueueBooksForSync).mockReturnValueOnce(
+        new Promise((_resolve, reject) => {
+          rejectEnqueue = reject;
+        }),
+      );
+      const { result } = renderHook(() => useBookActions());
+
+      const deletion = result.current.bulkRemove(books.map((book) => book.hash));
+      await vi.waitFor(() => expect(enqueueBooksForSync).toHaveBeenCalledTimes(1));
+      const concurrentSelected = { ...books[0]!, title: 'Keep selected concurrent update' };
+      const concurrentUnrelated = { ...unrelated, readingStatus: 'reading' as const };
+      const currentLibrary = [concurrentSelected, books[1]!, concurrentUnrelated, added];
+      mockLibraryStoreState.library = currentLibrary;
+      rejectEnqueue(new Error('outbox unavailable'));
+
+      await expect(deletion).rejects.toThrow(
+        'Failed to queue book deletions. Your library was not changed.',
+      );
+      expect(mockAppService.saveLibraryBooks).not.toHaveBeenCalled();
+      expect(mockLibraryStoreState.library).toBe(currentLibrary);
+      expect(mockLibraryStoreState.setLibrary).not.toHaveBeenCalled();
+      expect(mockLibraryViewStoreState.clearSelection).not.toHaveBeenCalled();
+      expect(mockAppService.deleteBook).not.toHaveBeenCalled();
+    });
+
+    it('commits only selected tombstones when bulk delivery is durably failed', async () => {
+      const books = [
+        createMockBook({ hash: testOpenReadBookRef('bulk-failed-1') }),
+        createMockBook({ hash: testOpenReadBookRef('bulk-failed-2') }),
+      ];
+      const unrelated = createMockBook({ hash: testOpenReadBookRef('bulk-failed-unrelated') });
+      mockLibraryStoreState.library = [...books, unrelated];
+      const failedDelivery = {
+        status: 'failed' as const,
+        mutationIds: ['mutation-1', 'mutation-2'],
+        acceptedMutationIds: [],
+        pendingMutationIds: [],
+        failedMutationIds: ['mutation-1', 'mutation-2'],
+      };
+      vi.mocked(enqueueBooksForSync).mockResolvedValueOnce(failedDelivery);
+      const { result } = renderHook(() => useBookActions());
+
+      await expect(result.current.bulkRemove(books.map((book) => book.hash))).resolves.toEqual(
+        failedDelivery,
+      );
+
+      const committedLibrary = mockAppService.saveLibraryBooks.mock.calls[0]?.[0] as Book[];
+      expect(committedLibrary.filter((book) => book.deletedAt)).toHaveLength(2);
+      expect(committedLibrary.find((book) => book.hash === unrelated.hash)).toBe(unrelated);
+      expect(mockLibraryStoreState.setLibrary).toHaveBeenCalledWith(committedLibrary);
+      expect(mockLibraryViewStoreState.clearSelection).toHaveBeenCalled();
+      expect(mockLibraryViewStoreState.setSelectMode).toHaveBeenCalledWith(false);
+      expect(mockAppService.deleteBook).not.toHaveBeenCalled();
+    });
+
+    it('keeps durable bulk outbox intent when local finalization fails', async () => {
       const books = [
         createMockBook({ hash: testOpenReadBookRef('bulk-rollback-1') }),
         createMockBook({ hash: testOpenReadBookRef('bulk-rollback-2') }),
@@ -408,12 +817,33 @@ describe('useBookActions', () => {
       const { result } = renderHook(() => useBookActions());
 
       await expect(result.current.bulkRemove(books.map((book) => book.hash))).rejects.toThrow(
-        'Failed to delete books locally. Your library was not changed.',
+        'Deletions were queued, but the local library could not be updated.',
       );
 
-      expect(mockLibraryStoreState.setLibrary).toHaveBeenCalledTimes(1);
-      expect(mockLibraryStoreState.setLibrary).toHaveBeenCalledWith(previousLibrary);
-      expect(enqueueBooksForSync).not.toHaveBeenCalled();
+      expect(mockLibraryStoreState.setLibrary).not.toHaveBeenCalled();
+      expect(enqueueBooksForSync).toHaveBeenCalledWith(expect.any(Array), 'user-1');
+      expect(mockLibraryViewStoreState.clearSelection).not.toHaveBeenCalled();
+      expect(mockLibraryViewStoreState.setSelectMode).not.toHaveBeenCalled();
+    });
+
+    it('leaves every book untouched and keeps selection when bulk enqueue fails', async () => {
+      const books = [
+        createMockBook({ hash: testOpenReadBookRef('bulk-enqueue-rollback-1') }),
+        createMockBook({ hash: testOpenReadBookRef('bulk-enqueue-rollback-2') }),
+      ];
+      const unrelated = createMockBook({ hash: testOpenReadBookRef('bulk-unrelated') });
+      const previousLibrary = [...books, unrelated];
+      mockLibraryStoreState.library = previousLibrary;
+      vi.mocked(enqueueBooksForSync).mockRejectedValueOnce(new Error('outbox unavailable'));
+      const { result } = renderHook(() => useBookActions());
+
+      await expect(result.current.bulkRemove(books.map((book) => book.hash))).rejects.toThrow(
+        'Failed to queue book deletions. Your library was not changed.',
+      );
+
+      expect(mockAppService.saveLibraryBooks).not.toHaveBeenCalled();
+      expect(mockLibraryStoreState.library).toBe(previousLibrary);
+      expect(mockLibraryStoreState.setLibrary).not.toHaveBeenCalled();
       expect(mockLibraryViewStoreState.clearSelection).not.toHaveBeenCalled();
       expect(mockLibraryViewStoreState.setSelectMode).not.toHaveBeenCalled();
     });

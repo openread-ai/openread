@@ -88,21 +88,21 @@ export interface CollectionWithBooks extends CatalogCollection {
 export const CATALOG_TERMINAL_MATERIALIZATION_FAILURE_CODES = [
   'SOURCE_URL_REJECTED',
   'SOURCE_REDIRECT_REJECTED',
-  'SOURCE_RATE_LIMITED',
   'SOURCE_HTTP_REJECTED',
   'SOURCE_SIZE_INVALID',
   'SOURCE_MEDIA_TYPE_INVALID',
   'SOURCE_TOO_LARGE',
   'SOURCE_SIZE_MISMATCH',
-  'PDF_SIGNATURE_INVALID',
-  'PDF_ENCRYPTED',
-  'PDF_STRUCTURE_INVALID',
+  'SOURCE_SIGNATURE_INVALID',
+  'SOURCE_ARCHIVE_AMBIGUOUS',
+  'SOURCE_FORMAT_MISMATCH',
   'UNSUPPORTED_SOURCE',
-  'PDF_READER_INCOMPATIBLE',
   'OBJECT_MISMATCH',
 ] as const;
 
 export const CATALOG_RETRYABLE_MATERIALIZATION_FAILURE_CODES = [
+  'SOURCE_RATE_LIMITED',
+  'SOURCE_HTTP_RETRYABLE',
   'SOURCE_FETCH_TIMEOUT',
   'MATERIALIZATION_HEARTBEAT_LOST',
   'MATERIALIZATION_OPERATIONAL_FAILURE',
@@ -171,16 +171,10 @@ export interface CatalogAddRequestResponse {
   failureCode?: CatalogAddFailureCode;
 }
 
-export type CatalogImportStatus = 'ready' | 'preparing';
-
-export interface CatalogImportResponse {
-  status: CatalogImportStatus;
-  /** Canonical catalog_book UUID used by backend status/import routes. */
-  catalog_book_id?: string;
-  download_url?: string;
-  book_id?: string;
-  book_hash?: SyncableBookRef | string;
-}
+/** @deprecated Catalog imports use the durable Catalog Add request contract. */
+export type CatalogImportStatus = CatalogAddPublicState;
+/** @deprecated Use CatalogAddRequestResponse. */
+export type CatalogImportResponse = CatalogAddRequestResponse;
 
 export interface CatalogStatusResponse {
   caching_status: string;

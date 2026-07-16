@@ -13,17 +13,15 @@ import {
 const terminalCodes = [
   'SOURCE_URL_REJECTED',
   'SOURCE_REDIRECT_REJECTED',
-  'SOURCE_RATE_LIMITED',
   'SOURCE_HTTP_REJECTED',
   'SOURCE_SIZE_INVALID',
   'SOURCE_MEDIA_TYPE_INVALID',
   'SOURCE_TOO_LARGE',
   'SOURCE_SIZE_MISMATCH',
-  'PDF_SIGNATURE_INVALID',
-  'PDF_ENCRYPTED',
-  'PDF_STRUCTURE_INVALID',
+  'SOURCE_SIGNATURE_INVALID',
+  'SOURCE_ARCHIVE_AMBIGUOUS',
+  'SOURCE_FORMAT_MISMATCH',
   'UNSUPPORTED_SOURCE',
-  'PDF_READER_INCOMPATIBLE',
   'OBJECT_MISMATCH',
 ] as const;
 
@@ -31,6 +29,8 @@ describe('catalog failure contracts', () => {
   it('keeps the materialization code set exact and exhaustive', () => {
     expect(CATALOG_TERMINAL_MATERIALIZATION_FAILURE_CODES).toEqual(terminalCodes);
     expect(CATALOG_RETRYABLE_MATERIALIZATION_FAILURE_CODES).toEqual([
+      'SOURCE_RATE_LIMITED',
+      'SOURCE_HTTP_RETRYABLE',
       'SOURCE_FETCH_TIMEOUT',
       'MATERIALIZATION_HEARTBEAT_LOST',
       'MATERIALIZATION_OPERATIONAL_FAILURE',
@@ -55,6 +55,8 @@ describe('catalog failure contracts', () => {
       expect(isCatalogAddFailureCode(code)).toBe(true);
     }
     for (const internalCode of [
+      'SOURCE_RATE_LIMITED',
+      'SOURCE_HTTP_RETRYABLE',
       'SOURCE_FETCH_TIMEOUT',
       'MATERIALIZATION_HEARTBEAT_LOST',
       'MATERIALIZATION_OPERATIONAL_FAILURE',

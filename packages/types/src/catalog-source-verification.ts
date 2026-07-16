@@ -3,7 +3,22 @@ import type { BookFormat } from './book.js';
 export const CATALOG_SOURCE_FETCH_TIMEOUT_MS = 120_000;
 export const CATALOG_SOURCE_FETCH_REDIRECT_LIMIT = 3;
 
-export type CatalogDownloadFormat = Extract<BookFormat, 'epub' | 'pdf'>;
+export type CatalogDownloadFormat = BookFormat;
+export type CatalogArchiveFormat = Extract<CatalogDownloadFormat, 'epub' | 'fbz' | 'cbz'>;
+export type CatalogArchiveInputFormat = CatalogArchiveFormat | 'zip';
+export type CatalogNonArchiveFormat = Exclude<CatalogDownloadFormat, CatalogArchiveFormat>;
+export type CatalogMaterializationInputFormat = CatalogDownloadFormat | 'zip';
+export const CATALOG_ARCHIVE_INPUT_FORMATS = [
+  'epub',
+  'fbz',
+  'cbz',
+  'zip',
+] as const satisfies readonly CatalogArchiveInputFormat[];
+export function isCatalogArchiveInputFormat(
+  value: unknown,
+): value is CatalogArchiveInputFormat {
+  return CATALOG_ARCHIVE_INPUT_FORMATS.includes(value as CatalogArchiveInputFormat);
+}
 export type CatalogSourceUnavailableHealthStatus = 'source_blocked' | 'source_unavailable';
 export type CatalogSourceHealthStatus = 'pending' | 'verified' | CatalogSourceUnavailableHealthStatus;
 export type CatalogSourceFailureCategory =
@@ -14,7 +29,6 @@ export type CatalogSourceFailureCategory =
   | 'source_http'
   | 'source_validation';
 
-export const CATALOG_IMPORT_FORMATS = ['epub', 'pdf'] as const satisfies readonly CatalogDownloadFormat[];
 export const CATALOG_SOURCE_UNAVAILABLE_HEALTH_STATUSES = [
   'source_blocked',
   'source_unavailable',
@@ -31,9 +45,13 @@ export type CatalogContentTypeClass =
   | 'xml'
   | 'pdf'
   | 'epub'
+  | 'mobi'
+  | 'fictionbook'
+  | 'archive'
   | 'binary'
   | 'json'
   | 'text'
+  | 'markdown'
   | 'other';
 
 export type BookFormatRegistryEntry = {
@@ -56,11 +74,11 @@ const CATALOG_IMPORT_FORMAT_SUPPORT = {
   catalogImport: true,
 } as const;
 
-const NON_PLATFORM_FORMAT_SUPPORT = {
+const CATALOG_ONLY_FORMAT_SUPPORT = {
   reader: true,
   localImport: true,
   platformUpload: false,
-  catalogImport: false,
+  catalogImport: true,
 } as const;
 
 export const BOOK_FORMAT_REGISTRY = {
@@ -87,58 +105,85 @@ export const BOOK_FORMAT_REGISTRY = {
     extensions: ['mobi'],
     mimeType: 'application/x-mobipocket-ebook',
     maxBytes: 100 * 1024 * 1024,
-    ...NON_PLATFORM_FORMAT_SUPPORT,
+    ...CATALOG_ONLY_FORMAT_SUPPORT,
+    catalogAcceptHeader: 'application/x-mobipocket-ebook,application/octet-stream,*/*',
+    catalogContentTypeClasses: ['mobi', 'binary', 'missing'],
   },
   azw: {
     extension: 'azw',
     extensions: ['azw'],
     mimeType: 'application/vnd.amazon.ebook',
     maxBytes: 100 * 1024 * 1024,
-    ...NON_PLATFORM_FORMAT_SUPPORT,
+    ...CATALOG_ONLY_FORMAT_SUPPORT,
+    catalogAcceptHeader: 'application/vnd.amazon.ebook,application/octet-stream,*/*',
+    catalogContentTypeClasses: ['mobi', 'binary', 'missing'],
   },
   azw3: {
     extension: 'azw3',
     extensions: ['azw3'],
     mimeType: 'application/vnd.amazon.ebook',
     maxBytes: 100 * 1024 * 1024,
-    ...NON_PLATFORM_FORMAT_SUPPORT,
+    ...CATALOG_ONLY_FORMAT_SUPPORT,
+    catalogAcceptHeader: 'application/vnd.amazon.ebook,application/octet-stream,*/*',
+    catalogContentTypeClasses: ['mobi', 'binary', 'missing'],
   },
   fb2: {
     extension: 'fb2',
     extensions: ['fb2'],
     mimeType: 'application/x-fictionbook+xml',
     maxBytes: 50 * 1024 * 1024,
-    ...NON_PLATFORM_FORMAT_SUPPORT,
+    ...CATALOG_ONLY_FORMAT_SUPPORT,
+    catalogAcceptHeader: 'application/x-fictionbook+xml,application/xml,text/xml,*/*',
+    catalogContentTypeClasses: ['fictionbook', 'xml', 'text', 'binary', 'missing'],
   },
   fbz: {
     extension: 'fbz',
     extensions: ['fbz'],
-    mimeType: 'application/x-fictionbook+xml',
+    mimeType: 'application/zip',
     maxBytes: 50 * 1024 * 1024,
-    ...NON_PLATFORM_FORMAT_SUPPORT,
+    ...CATALOG_ONLY_FORMAT_SUPPORT,
+    catalogAcceptHeader: 'application/zip,application/x-zip-compressed,*/*',
+    catalogContentTypeClasses: ['archive', 'binary', 'missing'],
   },
   cbz: {
     extension: 'cbz',
     extensions: ['cbz'],
     mimeType: 'application/vnd.comicbook+zip',
     maxBytes: 500 * 1024 * 1024,
-    ...NON_PLATFORM_FORMAT_SUPPORT,
+    ...CATALOG_ONLY_FORMAT_SUPPORT,
+    catalogAcceptHeader: 'application/vnd.comicbook+zip,application/zip,application/x-zip-compressed,*/*',
+    catalogContentTypeClasses: ['archive', 'binary', 'missing'],
   },
   txt: {
     extension: 'txt',
     extensions: ['txt'],
     mimeType: 'text/plain',
     maxBytes: 10 * 1024 * 1024,
-    ...NON_PLATFORM_FORMAT_SUPPORT,
+    ...CATALOG_ONLY_FORMAT_SUPPORT,
+    catalogAcceptHeader: 'text/plain,*/*',
+    catalogContentTypeClasses: ['text', 'binary', 'missing'],
   },
   md: {
     extension: 'md',
     extensions: ['md', 'markdown'],
     mimeType: 'text/markdown',
     maxBytes: 10 * 1024 * 1024,
-    ...NON_PLATFORM_FORMAT_SUPPORT,
+    ...CATALOG_ONLY_FORMAT_SUPPORT,
+    catalogAcceptHeader: 'text/markdown,text/plain,*/*',
+    catalogContentTypeClasses: ['markdown', 'text', 'binary', 'missing'],
   },
 } as const satisfies Record<BookFormat, BookFormatRegistryEntry>;
+
+export const CATALOG_IMPORT_FORMATS = Object.freeze(
+  (Object.keys(BOOK_FORMAT_REGISTRY) as BookFormat[]).filter(
+    (format) => BOOK_FORMAT_REGISTRY[format].catalogImport,
+  ),
+) as readonly CatalogDownloadFormat[];
+
+export const CATALOG_MATERIALIZATION_INPUT_FORMATS = Object.freeze([
+  ...CATALOG_IMPORT_FORMATS,
+  'zip' as const,
+]) as readonly CatalogMaterializationInputFormat[];
 
 export const FORMAT_MIME_TYPES: Record<BookFormat, string> = Object.fromEntries(
   Object.entries(BOOK_FORMAT_REGISTRY).map(([format, entry]) => [format, entry.mimeType]),
@@ -337,18 +382,25 @@ export function catalogBookSupportsUserDeviceFetchIntent(
   return true;
 }
 
-export const CATALOG_SERVER_MATERIALIZATION_POLICY = 'oapen-act-2056-v2';
+export const CATALOG_SERVER_MATERIALIZATION_POLICY = 'format-agnostic-streaming-v2';
 export const CATALOG_SERVER_MATERIALIZATION_VERSION = 2;
 
 export type CatalogServerMaterializationSnapshot = {
   policy: typeof CATALOG_SERVER_MATERIALIZATION_POLICY;
-  source: 'oapen';
+  source: string;
   sourceId: string;
   sourceUrl: string;
-  format: 'pdf';
+  format: CatalogMaterializationInputFormat;
   licenseType: string;
   redistributionApproved: true;
   admissionEvidence: Record<string, unknown>;
+  existingProof?: {
+    key: string;
+    sha256: string;
+    size: number;
+    format: CatalogDownloadFormat;
+    mediaType: string;
+  };
 };
 
 export type CatalogServerMaterializationEligibility =
@@ -366,6 +418,20 @@ const OAPEN_SERVER_PDF_PATH_PATTERN =
 const OAPEN_SERVER_RIGHTS_PATTERN =
   /^(?:cc0|cc-by|cc-by-sa)-(?:1\.0|2\.0|2\.5|3\.0|4\.0)$/;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
+
+function catalogJsonObject(value: unknown): Record<string, unknown> | null {
+  let decoded = value;
+  if (typeof decoded === 'string') {
+    try {
+      decoded = JSON.parse(decoded) as unknown;
+    } catch {
+      return null;
+    }
+  }
+  return decoded && typeof decoded === 'object' && !Array.isArray(decoded)
+    ? (decoded as Record<string, unknown>)
+    : null;
+}
 
 function oapenAdmissionEvidence(value: unknown): Record<string, unknown> | null {
   let decoded = value;
@@ -400,75 +466,93 @@ function oapenAdmissionEvidence(value: unknown): Record<string, unknown> | null 
   return evidence;
 }
 
-/**
- * Canonical eligibility gate for private server-side catalog materialization.
- * This deliberately does not alter the generic OAPEN cache policy: only the
- * bounded ACT-2056 editions with checksum-bound admission evidence are eligible.
- */
+function catalogMaterializationInputFormat(value: unknown): CatalogMaterializationInputFormat | null {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (normalized === 'zip') return 'zip';
+  return catalogSupportedDownloadFormat(normalized) ?? null;
+}
+
+function existingCatalogMaterializationProof(
+  catalogBook: Record<string, unknown>,
+  format: CatalogMaterializationInputFormat,
+): CatalogServerMaterializationSnapshot['existingProof'] {
+  if (format === 'zip' || catalogBook.caching_status !== 'cached') return undefined;
+  const key = typeof catalogBook.cached_file_key === 'string' ? catalogBook.cached_file_key.trim() : '';
+  const sha256 = typeof catalogBook.file_hash === 'string' ? catalogBook.file_hash.trim() : '';
+  const size = Number(catalogBook.file_size_bytes);
+  if (!key || !SHA256_PATTERN.test(sha256) || !Number.isSafeInteger(size) || size <= 0) {
+    return undefined;
+  }
+  return {
+    key,
+    sha256,
+    size,
+    format,
+    mediaType: BOOK_FORMAT_REGISTRY[format].mimeType,
+  };
+}
+
+/** Canonical eligibility gate for private server-side catalog materialization. */
 export function catalogServerMaterializationEligibility(
   catalogBook: Record<string, unknown>,
 ): CatalogServerMaterializationEligibility {
-  if (
-    catalogBook.source !== 'oapen' ||
-    String(catalogBook.format_type ?? '').trim().toLowerCase() !== 'pdf'
-  ) {
-    return { eligible: false, reason: 'unsupported-source' };
-  }
+  const source = typeof catalogBook.source === 'string' ? catalogBook.source.trim() : '';
   const sourceId = typeof catalogBook.source_id === 'string' ? catalogBook.source_id.trim() : '';
   const sourceUrl =
     typeof catalogBook.source_download_url === 'string'
       ? catalogBook.source_download_url.trim()
       : '';
-  if (!OAPEN_SERVER_HANDLE_PATTERN.test(sourceId)) {
-    return { eligible: false, reason: 'invalid-edition' };
+  const format = catalogMaterializationInputFormat(catalogBook.format_type);
+  const policy = catalogSourcePolicyForCatalogBook(catalogBook);
+  if (!source || !sourceId || !sourceUrl || !format || !policy) {
+    return { eligible: false, reason: 'unsupported-source' };
   }
-  let url: URL;
-  try {
-    url = new URL(sourceUrl);
-  } catch {
-    return { eligible: false, reason: 'invalid-edition' };
-  }
-  let pathMatch: RegExpMatchArray | null;
-  try {
-    pathMatch = decodeURIComponent(url.pathname).match(OAPEN_SERVER_PDF_PATH_PATTERN);
-  } catch {
-    return { eligible: false, reason: 'invalid-edition' };
-  }
-  const admissionEvidence = oapenAdmissionEvidence(catalogBook.admission_evidence);
-  if (!admissionEvidence) return { eligible: false, reason: 'not-admitted' };
-  const resourceEvidence = admissionEvidence.oapenRestResource as Record<string, unknown>;
   if (
-    url.protocol !== 'https:' ||
-    url.hostname !== 'library.oapen.org' ||
-    url.port !== '' ||
-    url.username !== '' ||
-    url.password !== '' ||
-    url.search !== '' ||
-    url.hash !== '' ||
-    /%(?:2f|5c|3f|23)/i.test(url.pathname) ||
-    !pathMatch ||
-    resourceEvidence?.sourceId !== sourceId ||
-    resourceEvidence.originalPdfBitstreamUuid !== pathMatch[1] ||
-    resourceEvidence.originalPdfRetrievePath !== url.pathname
+    format === 'zip'
+      ? !policy.allowedFormats.some((candidate) => candidate === 'cbz' || candidate === 'fbz')
+      : !catalogSourcePolicySupportsFormat(policy, format)
   ) {
-    return { eligible: false, reason: 'invalid-edition' };
+    return { eligible: false, reason: 'unsupported-source' };
   }
+
   const licenseType =
     typeof catalogBook.license_type === 'string' ? catalogBook.license_type.trim() : '';
-  if (!OAPEN_SERVER_RIGHTS_PATTERN.test(licenseType)) {
+  let admissionEvidence = catalogJsonObject(catalogBook.admission_evidence) ?? {};
+
+  if (source === 'oapen') {
+    if (format !== 'pdf' || !OAPEN_SERVER_HANDLE_PATTERN.test(sourceId)) {
+      return { eligible: false, reason: 'invalid-edition' };
+    }
+    const oapenEvidence = oapenAdmissionEvidence(catalogBook.admission_evidence);
+    if (!oapenEvidence) return { eligible: false, reason: 'not-admitted' };
+    admissionEvidence = oapenEvidence;
+    if (!OAPEN_SERVER_RIGHTS_PATTERN.test(licenseType)) {
+      return { eligible: false, reason: 'rights-denied' };
+    }
+  } else if (!policy.cacheRedistributionAllowed) {
     return { eligible: false, reason: 'rights-denied' };
   }
+
+  try {
+    catalogSourceUrl(catalogBook, sourceUrl, format);
+  } catch {
+    return { eligible: false, reason: 'invalid-edition' };
+  }
+
   return {
     eligible: true,
     snapshot: {
       policy: CATALOG_SERVER_MATERIALIZATION_POLICY,
-      source: 'oapen',
+      source,
       sourceId,
       sourceUrl,
-      format: 'pdf',
+      format,
       licenseType,
       redistributionApproved: true,
       admissionEvidence,
+      ...(existingCatalogMaterializationProof(catalogBook, format)
+        ? { existingProof: existingCatalogMaterializationProof(catalogBook, format) }
+        : {}),
     },
   };
 }
@@ -537,6 +621,10 @@ export class CatalogSourceAvailabilityError extends Error {
 
 export function catalogImportFormatSqlList(): string {
   return CATALOG_IMPORT_FORMATS.map((format) => `'${format}'`).join(', ');
+}
+
+export function catalogMaterializationInputFormatSqlList(): string {
+  return CATALOG_MATERIALIZATION_INPUT_FORMATS.map((format) => `'${format}'`).join(', ');
 }
 
 export function isCatalogSourceUnavailableHealthStatus(
@@ -648,11 +736,15 @@ export function catalogSourceVerificationContract(
   };
 }
 
-export function catalogSourceAcceptHeader(format: CatalogDownloadFormat): string {
+export function catalogSourceAcceptHeader(format: CatalogMaterializationInputFormat): string {
+  if (format === 'zip') return 'application/zip,application/x-zip-compressed,*/*';
   return BOOK_FORMAT_REGISTRY[format].catalogAcceptHeader!;
 }
 
-export function catalogSourceMaxBytes(format: CatalogDownloadFormat): number {
+export function catalogSourceMaxBytes(format: CatalogMaterializationInputFormat): number {
+  if (format === 'zip') {
+    return Math.max(BOOK_FORMAT_REGISTRY.cbz.maxBytes, BOOK_FORMAT_REGISTRY.fbz.maxBytes);
+  }
   return BOOK_FORMAT_REGISTRY[format].maxBytes;
 }
 
@@ -688,7 +780,7 @@ function isAcademicSourceIdValid(
 function isOapenSourceUrl(
   catalogBook: Record<string, unknown>,
   url: URL,
-  format: CatalogDownloadFormat,
+  format: CatalogMaterializationInputFormat,
 ): boolean {
   if (
     format !== 'pdf' ||
@@ -713,7 +805,7 @@ function isOapenSourceUrl(
   );
 }
 
-function isDoabSourceUrl(url: URL, format: CatalogDownloadFormat): boolean {
+function isDoabSourceUrl(url: URL, format: CatalogMaterializationInputFormat): boolean {
   if (format !== 'pdf') return false;
 
   const hostname = url.hostname.toLowerCase();
@@ -736,7 +828,7 @@ function isDoabSourceUrl(url: URL, format: CatalogDownloadFormat): boolean {
 export function catalogSourceUrl(
   catalogBook: Record<string, unknown>,
   sourceUrl: string,
-  format = catalogDownloadFormat(catalogBook.format_type),
+  format: CatalogMaterializationInputFormat = catalogDownloadFormat(catalogBook.format_type),
 ): URL {
   const source = catalogBook.source as string | undefined;
   const sourceId = catalogBook.source_id as string | undefined;
@@ -795,23 +887,37 @@ export function catalogContentTypeClass(contentType: string | null): CatalogCont
   const normalizedContentType = (contentType || '').toLowerCase();
   if (!normalizedContentType) return 'missing';
   if (normalizedContentType.includes('html')) return 'html';
+  if (normalizedContentType.includes('fictionbook')) return 'fictionbook';
   if (normalizedContentType.includes('xml')) return 'xml';
   if (normalizedContentType.includes('pdf')) return 'pdf';
-  if (normalizedContentType.includes('epub') || normalizedContentType.includes('zip')) {
-    return 'epub';
+  if (normalizedContentType.includes('epub')) return 'epub';
+  if (
+    normalizedContentType.includes('mobipocket') ||
+    normalizedContentType.includes('amazon.ebook')
+  ) {
+    return 'mobi';
+  }
+  if (normalizedContentType.includes('comicbook') || normalizedContentType.includes('zip')) {
+    return 'archive';
   }
   if (normalizedContentType.includes('octet-stream') || normalizedContentType.includes('binary')) {
     return 'binary';
   }
   if (normalizedContentType.includes('json')) return 'json';
+  if (normalizedContentType.includes('markdown')) return 'markdown';
   if (normalizedContentType.includes('text/')) return 'text';
   return 'other';
 }
 
 export function catalogExpectedContentTypeMatches(
-  format: CatalogDownloadFormat,
+  format: CatalogMaterializationInputFormat,
   contentTypeClass: CatalogContentTypeClass,
 ): boolean {
+  if (format === 'zip') {
+    return (['archive', 'binary', 'missing'] as const).includes(
+      contentTypeClass as 'archive' | 'binary' | 'missing',
+    );
+  }
   const allowedContentTypeClasses = BOOK_FORMAT_REGISTRY[format].catalogContentTypeClasses as
     | readonly CatalogContentTypeClass[]
     | undefined;
@@ -820,7 +926,7 @@ export function catalogExpectedContentTypeMatches(
 
 export function catalogSourceAvailabilityErrorForResponse(
   response: Response,
-  format: CatalogDownloadFormat,
+  format: CatalogMaterializationInputFormat,
 ): CatalogSourceAvailabilityError {
   const contentTypeClass = catalogContentTypeClass(response.headers.get('content-type'));
   const upstreamStatus = response.status;
@@ -883,7 +989,7 @@ export function catalogSourceAvailabilityErrorForResponse(
 
 export function catalogSourceAvailabilityErrorForContentType(
   contentType: string,
-  format: CatalogDownloadFormat,
+  format: CatalogMaterializationInputFormat,
 ): CatalogSourceAvailabilityError | null {
   const contentTypeClass = catalogContentTypeClass(contentType);
   if (catalogExpectedContentTypeMatches(format, contentTypeClass)) return null;
@@ -908,60 +1014,80 @@ export function catalogSourceAvailabilityErrorForContentType(
   );
 }
 
-export function catalogPdfBytesAreValid(bytes: Uint8Array): boolean {
-  return bytes.length >= 4 && asciiAt(bytes, 0, 4) === '%PDF';
-}
+export type CatalogFileSignatureResult =
+  | { ok: true; format: CatalogDownloadFormat }
+  | { ok: false; reason: 'invalid' | 'ambiguous' };
 
-export function catalogEpubBytesAreValid(bytes: Uint8Array): boolean {
+function zipSignature(bytes: Uint8Array): boolean {
   return (
     bytes.length >= 4 &&
     bytes[0] === 0x50 &&
     bytes[1] === 0x4b &&
-    (bytesContainAscii(bytes, 'mimetypeapplication/epub+zip') ||
-      bytesContainAscii(bytes, 'META-INF/container.xml'))
+    ((bytes[2] === 0x03 && bytes[3] === 0x04) ||
+      (bytes[2] === 0x05 && bytes[3] === 0x06) ||
+      (bytes[2] === 0x07 && bytes[3] === 0x08))
   );
-}
-
-export function catalogFileBytesAreValid(bytes: Uint8Array, format: CatalogDownloadFormat): boolean {
-  return format === 'pdf' ? catalogPdfBytesAreValid(bytes) : catalogEpubBytesAreValid(bytes);
-}
-
-export function catalogFileBytesAvailabilityError(
-  bytes: Uint8Array,
-  format: CatalogDownloadFormat,
-): CatalogSourceAvailabilityError | null {
-  if (catalogFileBytesAreValid(bytes, format)) return null;
-  return new CatalogSourceAvailabilityError(`Source returned invalid ${format.toUpperCase()} bytes`, {
-    failureCategory: 'source_unavailable',
-    errorType: 'source_unavailable',
-    healthCheckStatus: 'source_unavailable',
-  });
-}
-
-export function catalogFileBytesValidationError(
-  bytes: Uint8Array,
-  format: CatalogDownloadFormat,
-): Error | null {
-  return catalogFileBytesAvailabilityError(bytes, format);
 }
 
 function asciiAt(bytes: Uint8Array, start: number, end: number): string {
   return String.fromCharCode(...bytes.subarray(start, end));
 }
 
-function bytesContainAscii(bytes: Uint8Array, needle: string): boolean {
-  if (!needle) return true;
-  const needleBytes = Array.from(needle, (char) => char.charCodeAt(0));
-  const limit = bytes.length - needleBytes.length;
-  for (let index = 0; index <= limit; index++) {
-    let matched = true;
-    for (let needleIndex = 0; needleIndex < needleBytes.length; needleIndex++) {
-      if (bytes[index + needleIndex] !== needleBytes[needleIndex]) {
-        matched = false;
-        break;
+function textProbeBytesAreValid(bytes: Uint8Array): boolean {
+  if (bytes.length === 0) return false;
+  try {
+    new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    return false;
+  }
+  return !bytes.some((byte) => byte === 0 || byte < 0x09 || (byte > 0x0d && byte < 0x20));
+}
+
+/** Validate only bounded leading bytes collected by remote source-health probes. */
+export function catalogFileProbeBytesAreValid(
+  bytes: Uint8Array,
+  format: CatalogDownloadFormat,
+): boolean {
+  switch (format) {
+    case 'pdf':
+      return bytes.length >= 4 && asciiAt(bytes, 0, 4) === '%PDF';
+    case 'epub':
+    case 'fbz':
+    case 'cbz':
+      return zipSignature(bytes);
+    case 'mobi':
+    case 'azw':
+    case 'azw3':
+      return bytes.length >= 68 && asciiAt(bytes, 60, 68) === 'BOOKMOBI';
+    case 'fb2': {
+      try {
+        const text = new TextDecoder('utf-8', { fatal: true })
+          .decode(bytes)
+          .replace(/^\uFEFF/, '')
+          .trimStart();
+        return text.startsWith('<FictionBook') ||
+          (text.startsWith('<?xml') && text.includes('<FictionBook'));
+      } catch {
+        return false;
       }
     }
-    if (matched) return true;
+    case 'txt':
+    case 'md':
+      return textProbeBytesAreValid(bytes);
   }
-  return false;
+}
+
+export function catalogFileProbeBytesAvailabilityError(
+  bytes: Uint8Array,
+  format: CatalogDownloadFormat,
+): CatalogSourceAvailabilityError | null {
+  if (catalogFileProbeBytesAreValid(bytes, format)) return null;
+  return new CatalogSourceAvailabilityError(
+    `Source returned invalid ${format.toUpperCase()} probe bytes`,
+    {
+      failureCategory: 'source_unavailable',
+      errorType: 'source_unavailable',
+      healthCheckStatus: 'source_unavailable',
+    },
+  );
 }

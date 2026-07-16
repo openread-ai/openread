@@ -3,7 +3,7 @@ import { catalogAddFailureMessage } from '@/services/catalogAddCoordinator';
 
 describe('catalogAddCoordinator failure boundary', () => {
   it.each([
-    'PDF_READER_INCOMPATIBLE',
+    'SOURCE_SIGNATURE_INVALID',
     'SOURCE_SIZE_MISMATCH',
     'MATERIALIZATION_RETRY_EXHAUSTED',
     'LIBRARY_LIMIT_REACHED',

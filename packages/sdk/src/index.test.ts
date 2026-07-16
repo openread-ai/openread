@@ -954,3 +954,48 @@ describe('BooksClient', () => {
     });
   });
 });
+
+describe('CatalogClient', () => {
+  let sdk: Openread;
+  let mockFetch: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 202,
+      json: async () => ({
+        addRequestId: '11111111-1111-4111-8111-111111111111',
+        catalogBookId: '22222222-2222-4222-8222-222222222222',
+        state: 'preparing',
+        requestState: 'waiting_for_materialization',
+      }),
+    });
+    global.fetch = mockFetch;
+    sdk = new Openread({
+      baseUrl: 'https://api.example.com',
+      getAccessToken: async () => 'test-token',
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('adds a durable idempotency key to canonical Catalog imports', async () => {
+    await sdk.catalog.importBook('book-1');
+    await sdk.catalog.importInternetArchiveBook('ia-book');
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    for (const call of mockFetch.mock.calls) {
+      expect(call[1].headers['idempotency-key']).toMatch(/^catalog-(?:ia-)?add-/);
+    }
+  });
+
+  it('preserves caller-owned idempotency across retryable Catalog Add calls', async () => {
+    await sdk.catalog.importInternetArchiveBook('ia-book', {
+      headers: { 'Idempotency-Key': 'caller-owned-key' },
+    });
+
+    expect(mockFetch.mock.calls[0][1].headers['idempotency-key']).toBe('caller-owned-key');
+  });
+});

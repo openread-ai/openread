@@ -38,7 +38,6 @@ import type {
   CatalogCollectionsResponse,
   CatalogAddRequestResponse,
   CatalogDownloadUrlResponse,
-  CatalogImportResponse,
   CatalogStatsResponse,
   CatalogStatusResponse,
   CatalogWishlistResponse,
@@ -223,11 +222,16 @@ class CatalogClient {
   }
 
   async importBook(id: string, init?: RequestInit): Promise<CatalogAddRequestResponse> {
+    const headers = new Headers(init?.headers);
+    if (!headers.has('idempotency-key')) {
+      headers.set('idempotency-key', `catalog-add-${globalThis.crypto.randomUUID()}`);
+    }
     return this._sdk.fetch<CatalogAddRequestResponse>(
       `/api/catalog/books/${encodeURIComponent(id)}/import`,
       {
         ...init,
         method: 'POST',
+        headers,
       },
     );
   }
@@ -239,10 +243,18 @@ class CatalogClient {
     );
   }
 
-  async importInternetArchiveBook(iaIdentifier: string, init?: RequestInit): Promise<CatalogImportResponse> {
-    return this._sdk.fetch<CatalogImportResponse>('/api/catalog/ia/import', {
+  async importInternetArchiveBook(
+    iaIdentifier: string,
+    init?: RequestInit,
+  ): Promise<CatalogAddRequestResponse> {
+    const headers = new Headers(init?.headers);
+    if (!headers.has('idempotency-key')) {
+      headers.set('idempotency-key', `catalog-ia-add-${globalThis.crypto.randomUUID()}`);
+    }
+    return this._sdk.fetch<CatalogAddRequestResponse>('/api/catalog/ia/import', {
       ...init,
       method: 'POST',
+      headers,
       body: JSON.stringify({ ia_identifier: iaIdentifier }),
     });
   }
@@ -660,6 +672,24 @@ export class Openread {
     return this.config.fetch ?? globalThis.fetch.bind(globalThis);
   }
 
+  private requestHeaders(init: RequestInit | undefined, token: string | null): Record<string, string> {
+    const initHeaders = init?.headers;
+    const input = new Headers(initHeaders);
+    const headers: Record<string, string> = {};
+    if (initHeaders instanceof Headers) {
+      initHeaders.forEach((value, key) => {
+        headers[key] = value;
+      });
+    } else if (Array.isArray(initHeaders)) {
+      for (const [key, value] of initHeaders) headers[key] = value;
+    } else if (initHeaders) {
+      Object.assign(headers, initHeaders);
+    }
+    if (!input.has('content-type')) headers['Content-Type'] = 'application/json';
+    if (token) headers.Authorization = `Bearer ${token}`;
+    return headers;
+  }
+
   /**
    * Make an authenticated request to the API.
    *
@@ -676,15 +706,7 @@ export class Openread {
     const token = await this.tokenProvider.getAccessToken();
 
     const url = `${this.config.baseUrl}${path}`;
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      ...((init?.headers as Record<string, string>) || {}),
-    };
-
-    // Only add Authorization header if we have a token
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
+    const headers = this.requestHeaders(init, token);
 
     const response = await this.fetcher(url, {
       ...init,
@@ -778,11 +800,7 @@ export class Openread {
     token: string
   ): Promise<T> {
     const url = `${this.config.baseUrl}${path}`;
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-      ...((init?.headers as Record<string, string>) || {}),
-    };
+    const headers = this.requestHeaders(init, token);
 
     const response = await this.fetcher(url, {
       ...init,

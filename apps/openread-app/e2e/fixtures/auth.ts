@@ -135,11 +135,13 @@ async function proxyR2Downloads(page: Page): Promise<void> {
 
   await page.route(/r2\.cloudflarestorage\.com/, async (route) => {
     const url = route.request().url();
+    const parsedUrl = new URL(url);
+    const evidenceUrl = `${parsedUrl.origin}${parsedUrl.pathname}`;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30_000);
 
     try {
-      console.log(`[R2 proxy] Fetching: ${url.slice(0, 80)}...`);
+      console.log(`[R2 proxy] Fetching: ${evidenceUrl}`);
       const response = await fetch(url, { signal: controller.signal });
       console.log(
         `[R2 proxy] Status: ${response.status}, size: ${response.headers.get('content-length')}`,

@@ -1,9 +1,72 @@
-import type { Locator, Page, Response, TestInfo } from '@playwright/test';
+import { createHash } from 'node:crypto';
+import type { Locator, Page, Request, Response, TestInfo } from '@playwright/test';
 import { test, expect } from '../../fixtures';
 import { ReaderPage } from '../../pages/ReaderPage';
 
 const finalProofMode = process.env['OPENREAD_E2E_CATALOG_FINAL_PROOF'] === '1';
 const configuredCatalogBookId = process.env['OPENREAD_E2E_CATALOG_BOOK_ID'];
+const CATALOG_ADD_PREFLIGHT_BUDGET_MS = 300_000;
+const CATALOG_ADD_ACCEPTANCE_BUDGET_MS = 30_000;
+const CATALOG_ADD_TERMINAL_BUDGET_MS = 840_000;
+const CATALOG_ADD_CLEANUP_VISIBILITY_MS = 120_000;
+const CATALOG_ADD_CLEANUP_BUDGET_MS = 180_000;
+const CATALOG_ADD_TEST_OVERHEAD_BUDGET_MS = 60_000;
+const CATALOG_ADD_TEST_TIMEOUT_MS =
+  CATALOG_ADD_PREFLIGHT_BUDGET_MS +
+  CATALOG_ADD_ACCEPTANCE_BUDGET_MS +
+  CATALOG_ADD_TERMINAL_BUDGET_MS +
+  CATALOG_ADD_CLEANUP_BUDGET_MS +
+  CATALOG_ADD_TEST_OVERHEAD_BUDGET_MS;
+
+type SanitizedNetworkTarget = {
+  origin: string;
+  pathSha256: string;
+};
+
+type SanitizedNetworkRequest = SanitizedNetworkTarget & {
+  method: string;
+  resourceType: string;
+};
+
+function sanitizedNetworkTarget(rawUrl: string): SanitizedNetworkTarget {
+  const url = new URL(rawUrl);
+  return {
+    origin: url.origin,
+    pathSha256: createHash('sha256').update(url.pathname).digest('hex'),
+  };
+}
+
+function sanitizedNetworkRequest(request: Request): SanitizedNetworkRequest {
+  return {
+    ...sanitizedNetworkTarget(request.url()),
+    method: request.method(),
+    resourceType: request.resourceType(),
+  };
+}
+
+function isCatalogUpstreamHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  return (
+    host === 'library.oapen.org' ||
+    host.endsWith('.oapen.org') ||
+    host === 'archive.org' ||
+    host.endsWith('.archive.org') ||
+    host === 'doabooks.org' ||
+    host.endsWith('.doabooks.org')
+  );
+}
+
+function isR2Host(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  return host.endsWith('.r2.cloudflarestorage.com') || host.endsWith('.r2.dev');
+}
+
+function sameNetworkTarget(
+  request: SanitizedNetworkTarget,
+  expected: SanitizedNetworkTarget,
+): boolean {
+  return request.origin === expected.origin && request.pathSha256 === expected.pathSha256;
+}
 
 function finalProofCatalogBookId(): string | null {
   if (!configuredCatalogBookId) {
@@ -222,17 +285,43 @@ async function removeLibraryBooksUntilRoom(
   return removed;
 }
 
+async function waitForCatalogAddTerminal(
+  page: Page,
+  addRequestId: string,
+  timeoutMs: number,
+): Promise<'ready' | 'failed' | 'timed_out'> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const response = await page.request
+      .get(`/api/catalog/add-requests/${encodeURIComponent(addRequestId)}`, {
+        failOnStatusCode: false,
+      })
+      .catch(() => null);
+    if (response?.ok()) {
+      const payload = (await response.json().catch(() => null)) as Record<string, unknown> | null;
+      if (payload?.state === 'ready' || payload?.state === 'failed') return payload.state;
+    }
+    await page.waitForTimeout(Math.min(2_000, Math.max(0, deadline - Date.now())));
+  }
+  return 'timed_out';
+}
+
 async function removeLibraryBookByHashIfPresent(
   page: Page,
   bookHash: string,
   title?: string,
+  visibilityTimeoutMs = 10_000,
 ): Promise<Response | null> {
   await page.goto('/library', { waitUntil: 'domcontentloaded' });
   await expect(page.getByRole('heading', { name: 'All Books' })).toBeVisible({ timeout: 30_000 });
-  if (title) await page.getByTestId('search-input').fill(title);
+  await page.getByTestId('search-input').fill(title ?? '');
 
   const bookLink = libraryBookLinkByHash(page, bookHash);
-  if (!(await bookLink.isVisible({ timeout: 10_000 }).catch(() => false))) return null;
+  const becameVisible = await bookLink
+    .waitFor({ state: 'visible', timeout: visibilityTimeoutMs })
+    .then(() => true)
+    .catch(() => false);
+  if (!becameVisible) return null;
 
   const card = page.locator('div.group').filter({ has: bookLink }).first();
   await card.getByRole('button', { name: 'Book options' }).click();
@@ -269,6 +358,36 @@ async function expectCatalogBookCleanup(syncResponse: Response | null, bookHash:
   expect(syncBody.accepted ?? []).toContainEqual(
     expect.objectContaining({ entity: 'book', entityId: bookHash }),
   );
+}
+
+async function teardownAcceptedCatalogAdd(
+  page: Page,
+  addRequestId: string | null,
+  terminalDeadline: number,
+  bookHash: string,
+): Promise<void> {
+  const remainingTerminalMs = Math.max(0, terminalDeadline - Date.now());
+  const terminalState = addRequestId
+    ? await waitForCatalogAddTerminal(page, addRequestId, remainingTerminalMs)
+    : null;
+  const cleanupResponse = await removeLibraryBookByHashIfPresent(
+    page,
+    bookHash,
+    undefined,
+    addRequestId ? CATALOG_ADD_CLEANUP_VISIBILITY_MS : Math.max(1, remainingTerminalMs),
+  );
+
+  if (terminalState === 'failed') {
+    if (!cleanupResponse) return;
+    await expectCatalogBookCleanup(cleanupResponse, bookHash);
+    throw new Error('CATALOG_ADD_FAILED_WITH_OWNERSHIP');
+  }
+  if (!cleanupResponse) throw new Error('CATALOG_ADD_CLEANUP_UNPROVEN');
+
+  await expectCatalogBookCleanup(cleanupResponse, bookHash);
+  if (terminalState === 'timed_out') {
+    throw new Error('CATALOG_ADD_TERMINAL_TIMEOUT_AFTER_CLEANUP');
+  }
 }
 
 async function attachRedactedPageScreenshot(page: Page, testInfo: TestInfo, name: string) {
@@ -370,59 +489,71 @@ test.describe('Chromium Explore catalog', () => {
   test('imports a live catalog book, opens it from library, and cleans it up', async ({
     authenticatedPage: page,
   }, testInfo) => {
-    test.setTimeout(300_000);
-    const browserOapenRequests: string[] = [];
+    test.setTimeout(CATALOG_ADD_TEST_TIMEOUT_MS);
+    const preflightDeadline = Date.now() + CATALOG_ADD_PREFLIGHT_BUDGET_MS;
+    const upstreamRequests: SanitizedNetworkRequest[] = [];
+    const readerR2Requests: SanitizedNetworkRequest[] = [];
+    const privateStagingRequests: SanitizedNetworkRequest[] = [];
+    let captureReaderNetwork = false;
+    let expectedOwnedDownload: SanitizedNetworkTarget | null = null;
+    let acceptedImportStatus: number | null = null;
+    let acceptedImportState: string | null = null;
+    let acceptedAddRequestId: string | null = null;
+    let acceptedAddTerminalDeadline: number | null = null;
     if (finalProofMode) {
       page.on('request', (request) => {
-        if (new URL(request.url()).hostname.toLowerCase() === 'library.oapen.org') {
-          browserOapenRequests.push(request.url());
+        const url = new URL(request.url());
+        const evidence = sanitizedNetworkRequest(request);
+        if (isCatalogUpstreamHost(url.hostname)) upstreamRequests.push(evidence);
+        if (
+          url.pathname.includes('/temp/catalog-materialization/') ||
+          url.pathname.toLowerCase().includes('/temp%2fcatalog-materialization%2f')
+        ) {
+          privateStagingRequests.push(evidence);
         }
+        if (captureReaderNetwork && isR2Host(url.hostname)) readerR2Requests.push(evidence);
       });
     }
-    await installE2ERateLimitIsolation(page, testInfo);
-    skipIfTierConfigBlocked(await gotoExploreWithAddPrereqs(page), testInfo);
-
-    let sheet = await openFirstCatalogBook(page);
-    const importedTitle = (await sheet.getByTestId('sheet-title').innerText()).trim();
-    expect(importedTitle).toBeTruthy();
-
-    await removeLibraryBooksByTitleIfPresent(page, importedTitle);
-    await removeLibraryBooksUntilRoom(page);
-    skipIfTierConfigBlocked(await gotoExploreWithAddPrereqs(page), testInfo);
-    sheet = await openFirstCatalogBook(page);
-    const finalImportedTitle = (await sheet.getByTestId('sheet-title').innerText()).trim();
-    const selectedCatalogBookId = new URL(page.url()).searchParams.get('book') ?? '';
-    expect(selectedCatalogBookId).toMatch(/^[0-9a-f-]{36}$/i);
-    if (finalProofMode) expect(selectedCatalogBookId).toBe(finalProofCatalogBookId());
-    const importButton = sheet.locator(
-      `[data-testid="sheet-import-btn"][data-catalog-book-id="${escapeCssAttributeValue(
-        selectedCatalogBookId,
-      )}"][data-import-state="idle"]`,
-    );
-    await expect(importButton).toBeVisible({ timeout: 30_000 });
-    await expect(importButton).toHaveAttribute('data-add-mode', 'server');
-
-    const preClickButtonTarget = await describeButtonTarget(importButton);
-    if (preClickButtonTarget.importReady !== 'true' || preClickButtonTarget.disabled) {
-      blockOrFailFinalProof(
-        testInfo,
-        `Catalog Add guard not ready before click. button=${JSON.stringify(preClickButtonTarget)}`,
-      );
-    }
-
-    let imported = false;
-    let cleanupComplete = false;
+    let acceptedAdd = false;
     let importedBookHash = '';
+    let finalImportedTitle = '';
     try {
+      await installE2ERateLimitIsolation(page, testInfo);
+      skipIfTierConfigBlocked(await gotoExploreWithAddPrereqs(page), testInfo);
+
+      let sheet = await openFirstCatalogBook(page);
+      const importedTitle = (await sheet.getByTestId('sheet-title').innerText()).trim();
+      expect(importedTitle).toBeTruthy();
+
+      await removeLibraryBooksByTitleIfPresent(page, importedTitle);
+      await removeLibraryBooksUntilRoom(page);
+      skipIfTierConfigBlocked(await gotoExploreWithAddPrereqs(page), testInfo);
+      sheet = await openFirstCatalogBook(page);
+      finalImportedTitle = (await sheet.getByTestId('sheet-title').innerText()).trim();
+      const selectedCatalogBookId = new URL(page.url()).searchParams.get('book') ?? '';
+      expect(selectedCatalogBookId).toMatch(/^[0-9a-f-]{36}$/i);
+      if (finalProofMode) expect(selectedCatalogBookId).toBe(finalProofCatalogBookId());
+      const importButton = sheet.locator(
+        `[data-testid="sheet-import-btn"][data-catalog-book-id="${escapeCssAttributeValue(
+          selectedCatalogBookId,
+        )}"][data-import-state="idle"]`,
+      );
+      await expect(importButton).toBeVisible({ timeout: 30_000 });
+      await expect(importButton).toHaveAttribute('data-add-mode', 'server');
+
+      const preClickButtonTarget = await describeButtonTarget(importButton);
+      if (preClickButtonTarget.importReady !== 'true' || preClickButtonTarget.disabled) {
+        blockOrFailFinalProof(
+          testInfo,
+          `Catalog Add guard not ready before click. button=${JSON.stringify(preClickButtonTarget)}`,
+        );
+      }
+
       const legacyImportRequests: string[] = [];
       const importIntentRequests: string[] = [];
       page.on('request', (request) => {
         const path = new URL(request.url()).pathname;
-        if (
-          request.method() === 'POST' &&
-          (/\/api\/catalog\/books\/[^/]+\/import$/.test(path) ||
-            path.endsWith('/api/catalog/ia/import'))
-        ) {
+        if (request.method() === 'POST' && path.endsWith('/api/catalog/ia/import')) {
           legacyImportRequests.push(path);
         }
         if (request.method() === 'POST' && /\/api\/catalog\/books\/[^/]+\/import$/.test(path)) {
@@ -430,23 +561,27 @@ test.describe('Chromium Explore catalog', () => {
         }
       });
 
+      await importButton.scrollIntoViewIfNeeded();
+      const buttonTarget = await describeButtonTarget(importButton);
+      if (Date.now() > preflightDeadline) {
+        throw new Error('CATALOG_ADD_PREFLIGHT_BUDGET_EXCEEDED');
+      }
+
       const importResponsePromise = page
         .waitForResponse(
           (response) =>
             response.request().method() === 'POST' &&
             /\/api\/catalog\/books\/[^/]+\/import$/.test(new URL(response.url()).pathname),
-          { timeout: 30_000 },
+          { timeout: CATALOG_ADD_ACCEPTANCE_BUDGET_MS },
         )
         .then((response) => ({ kind: 'response' as const, response }))
         .catch(() => ({ kind: 'no_response' as const }));
       const blockedToastPromise = page
         .getByRole('alert')
         .filter({ hasText: /Library full|Upgrade|Sign in|not authenticated/i })
-        .textContent({ timeout: 30_000 })
+        .textContent({ timeout: CATALOG_ADD_ACCEPTANCE_BUDGET_MS })
         .then((message) => ({ kind: 'blocked' as const, message: message?.trim() ?? '' }));
 
-      await importButton.scrollIntoViewIfNeeded();
-      const buttonTarget = await describeButtonTarget(importButton);
       await importButton.click();
       const importOutcome = await Promise.race([importResponsePromise, blockedToastPromise]);
       if (importOutcome.kind === 'blocked') {
@@ -474,15 +609,27 @@ test.describe('Chromium Explore catalog', () => {
         );
       }
 
+      acceptedImportStatus = importResponse.status();
+      acceptedAddTerminalDeadline = Date.now() + CATALOG_ADD_TERMINAL_BUDGET_MS;
+      importedBookHash = `catalog:${selectedCatalogBookId}`;
+      acceptedAdd = true;
+
       const importPayload = (await importResponse.json()) as Record<string, unknown>;
       expect(importPayload.catalogBookId).toBe(selectedCatalogBookId);
-      expect(importPayload.addRequestId).toMatch(/^[0-9a-f-]{36}$/i);
-      expect(importPayload.state).toMatch(/^(preparing|ready)$/);
+      acceptedAddRequestId =
+        typeof importPayload.addRequestId === 'string' &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+          importPayload.addRequestId,
+        )
+          ? importPayload.addRequestId
+          : null;
+      expect(acceptedAddRequestId).not.toBeNull();
+      acceptedImportState = String(importPayload.state);
+      expect(acceptedImportState).toMatch(/^(preparing|ready)$/);
+      expect(acceptedImportStatus).toBe(acceptedImportState === 'preparing' ? 202 : 200);
+      expect(importIntentRequests).toEqual([`/api/catalog/books/${selectedCatalogBookId}/import`]);
       expect(legacyImportRequests).toEqual([]);
-      importedBookHash = `catalog:${selectedCatalogBookId}`;
       expect(importedBookHash).toMatch(/^catalog:[0-9a-f-]{36}$/i);
-
-      imported = true;
 
       // The import response only proves the backend accepted the Add request.
       // For cached catalog books, the canonical product success signal is the sheet
@@ -504,14 +651,43 @@ test.describe('Chromium Explore catalog', () => {
 
       await attachRedactedPageScreenshot(page, testInfo, 'library-import-visible');
 
+      const downloadResponsePromise = finalProofMode
+        ? page.waitForResponse(
+            (response) =>
+              response.request().method() === 'POST' &&
+              new URL(response.url()).pathname.endsWith('/api/catalog/books/download-url'),
+            { timeout: 60_000 },
+          )
+        : null;
+      captureReaderNetwork = finalProofMode;
       await importedBook.click();
+      if (downloadResponsePromise) {
+        const downloadResponse = await downloadResponsePromise;
+        expect(downloadResponse.status()).toBe(200);
+        const downloadPayload = (await downloadResponse.json()) as Record<string, unknown>;
+        expect(downloadPayload.status).toBe('ready');
+        expect(typeof downloadPayload.downloadUrl).toBe('string');
+        expectedOwnedDownload = sanitizedNetworkTarget(String(downloadPayload.downloadUrl));
+      }
+
       const reader = new ReaderPage(page);
       await reader.waitForReaderUrl();
       await expect(reader.inlineQuestionBar()).toBeVisible({ timeout: 60_000 });
       await expect(page.getByRole('document', { name: 'Book Content' })).toBeVisible({
         timeout: 60_000,
       });
-      if (finalProofMode) expect(browserOapenRequests).toEqual([]);
+      if (finalProofMode) {
+        expect(upstreamRequests).toEqual([]);
+        expect(privateStagingRequests).toEqual([]);
+        expect(expectedOwnedDownload).not.toBeNull();
+        expect(readerR2Requests.length).toBeGreaterThan(0);
+        expect(
+          readerR2Requests.every(
+            (request) => expectedOwnedDownload && sameNetworkTarget(request, expectedOwnedDownload),
+          ),
+        ).toBe(true);
+      }
+      captureReaderNetwork = false;
       await attachRedactedPageScreenshot(page, testInfo, 'library-import-reader-open');
 
       const header = await revealHeader(page);
@@ -523,13 +699,48 @@ test.describe('Chromium Explore catalog', () => {
 
       const cleanupResponse = await removeLibraryBookByHashIfPresent(page, importedBookHash);
       await expectCatalogBookCleanup(cleanupResponse, importedBookHash);
-      cleanupComplete = true;
-      imported = false;
+      acceptedAdd = false;
 
       await attachRedactedPageScreenshot(page, testInfo, 'library-import-cleanup-complete');
     } finally {
-      if (imported && !cleanupComplete && importedBookHash) {
-        await removeLibraryBookByHashIfPresent(page, importedBookHash, finalImportedTitle);
+      captureReaderNetwork = false;
+      try {
+        if (finalProofMode) {
+          await testInfo.attach('catalog-network-evidence', {
+            body: Buffer.from(
+              JSON.stringify(
+                {
+                  schemaVersion: 1,
+                  import: {
+                    status: acceptedImportStatus,
+                    state: acceptedImportState,
+                  },
+                  selectedBookHash: importedBookHash || null,
+                  policy: 'api-authorized-owned-download-origin-path',
+                  expectedOwnedDownload,
+                  upstreamRequests,
+                  privateStagingRequests,
+                  readerR2Requests,
+                },
+                null,
+                2,
+              ),
+            ),
+            contentType: 'application/json',
+          });
+        }
+      } finally {
+        if (acceptedAdd && importedBookHash) {
+          if (!acceptedAddTerminalDeadline) {
+            throw new Error('CATALOG_ADD_TERMINAL_DEADLINE_MISSING');
+          }
+          await teardownAcceptedCatalogAdd(
+            page,
+            acceptedAddRequestId,
+            acceptedAddTerminalDeadline,
+            importedBookHash,
+          );
+        }
       }
     }
   });

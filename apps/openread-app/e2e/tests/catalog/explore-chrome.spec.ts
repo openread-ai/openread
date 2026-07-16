@@ -90,13 +90,17 @@ function blockOrFailFinalProof(testInfo: TestInfo, description: string): never {
   throw new Error(description);
 }
 
-async function firstCatalogCard(page: Page): Promise<Locator> {
-  await expect(page.getByTestId('explore-rails')).toBeVisible({ timeout: 30_000 });
-  const catalogBookId = finalProofCatalogBookId();
+async function firstCatalogCard(
+  page: Page,
+  catalogBookId = finalProofCatalogBookId(),
+  visibilityTimeoutMs = 45_000,
+): Promise<Locator> {
+  const rails = page.getByTestId('explore-rails');
+  await expect(rails).toBeVisible({ timeout: 30_000 });
   const card = catalogBookId
-    ? page.getByTestId(`card-tap-${catalogBookId}`)
-    : page.locator('[data-testid^="card-tap-"]').first();
-  await expect(card).toBeVisible({ timeout: 45_000 });
+    ? rails.getByTestId(`card-tap-${catalogBookId}`).filter({ visible: true }).first()
+    : rails.locator('[data-testid^="card-tap-"]').first();
+  await expect(card).toBeVisible({ timeout: visibilityTimeoutMs });
   return card;
 }
 
@@ -403,6 +407,44 @@ async function attachRedactedPageScreenshot(page: Page, testInfo: TestInfo, name
 }
 
 test.describe('Chromium Explore catalog', () => {
+  test('target card selection narrows valid duplicate rail instances deterministically', async ({
+    page,
+  }) => {
+    const catalogBookId = '11111111-1111-4111-8111-111111111111';
+    await page.setContent(`
+      <div data-testid="explore-rails">
+        <section data-testid="collection-row-trending" hidden>
+          <button data-testid="card-tap-${catalogBookId}">Trending target</button>
+        </section>
+        <section data-testid="collection-row-recently-added">
+          <button data-testid="card-tap-${catalogBookId}">Recently added target</button>
+        </section>
+        <section data-testid="collection-row-open-textbooks">
+          <button data-testid="card-tap-${catalogBookId}">Open textbooks target</button>
+        </section>
+      </div>
+    `);
+
+    await expect(page.getByTestId(`card-tap-${catalogBookId}`)).toHaveCount(3);
+    await expect(page.getByText('Trending target')).toBeHidden();
+    await expect(await firstCatalogCard(page, catalogBookId, 500)).toHaveText(
+      'Recently added target',
+    );
+  });
+
+  test('target card selection fails closed when the exact target is missing', async ({ page }) => {
+    const catalogBookId = '11111111-1111-4111-8111-111111111111';
+    await page.setContent(`
+      <div data-testid="explore-rails">
+        <button data-testid="card-tap-22222222-2222-4222-8222-222222222222">
+          Different catalog book
+        </button>
+      </div>
+    `);
+
+    await expect(firstCatalogCard(page, catalogBookId, 100)).rejects.toThrow();
+  });
+
   test('sidebar Explore route is primary and active from Home', async ({
     authenticatedPage: page,
   }) => {

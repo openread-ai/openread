@@ -17,6 +17,7 @@ import { TEST_USER, SUPABASE_CONFIG, getSupabaseProjectRef } from './test-users'
 
 const SUPABASE_STORAGE_KEY = `sb-${getSupabaseProjectRef()}-auth-token`;
 const SESSION_REFRESH_MARGIN_MS = 5 * 60 * 1000;
+const SESSION_CAPTURE_TIMEOUT_MS = 5_000;
 
 let cachedSession: Session | null = null;
 let inFlightSession: Promise<Session> | null = null;
@@ -78,16 +79,24 @@ async function signInTestUser(): Promise<Session> {
 }
 
 export async function captureSession(page: Page): Promise<void> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
-    const session = await page.evaluate((supabaseStorageKey) => {
-      const rawSession = localStorage.getItem(supabaseStorageKey);
-      if (!rawSession) return null;
-      return JSON.parse(rawSession) as Session;
-    }, SUPABASE_STORAGE_KEY);
+    const session = await Promise.race([
+      page
+        .evaluate((supabaseStorageKey) => {
+          const rawSession = localStorage.getItem(supabaseStorageKey);
+          if (!rawSession) return null;
+          return JSON.parse(rawSession) as Session;
+        }, SUPABASE_STORAGE_KEY)
+        .catch(() => null),
+      new Promise<null>((resolve) => {
+        timeout = setTimeout(resolve, SESSION_CAPTURE_TIMEOUT_MS, null);
+      }),
+    ]);
 
     if (session && isSessionFresh(session)) cachedSession = session;
-  } catch {
-    // Ignore teardown races after failed tests; the next test can sign in again.
+  } finally {
+    if (timeout) clearTimeout(timeout);
   }
 }
 

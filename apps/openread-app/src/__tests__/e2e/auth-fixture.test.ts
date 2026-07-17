@@ -7,11 +7,30 @@ vi.mock('../../../e2e/fixtures/test-users', () => ({
   getSupabaseProjectRef: () => 'example',
 }));
 
-import { captureSession } from '../../../e2e/fixtures/auth';
+import { captureSession, resolveFixtureFailure } from '../../../e2e/fixtures/auth';
 
 describe('authenticatedPage teardown', () => {
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('preserves the primary test error when audit persistence and assertions also fail', () => {
+    const primaryError = new Error('primary test failure');
+    const auditPersistenceError = new Error('contract audit persistence failure');
+    const auditAssertionError = new Error('contract audit assertion failure');
+    let finalizationError: unknown;
+    finalizationError ??= auditPersistenceError;
+    finalizationError ??= auditAssertionError;
+
+    const result = resolveFixtureFailure({
+      useFailed: true,
+      useError: primaryError,
+      testError: primaryError,
+      finalizationError,
+    });
+
+    expect(result).toEqual({ shouldThrow: true, error: primaryError });
+    expect(result.error).toBe(primaryError);
   });
 
   it('bounds session capture when page evaluation never settles', async () => {

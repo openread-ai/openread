@@ -1,5 +1,11 @@
 import { expect, test, type Browser, type Page, type TestInfo } from '@playwright/test';
 import {
+  buildContractAuditArtifact,
+  hashContractEvidence,
+  startContractAudit,
+  type ContractAudit,
+} from '../../helpers/contract-audit';
+import {
   attachScenarioEvidenceArtifact,
   attachViewportEvidence,
 } from '../../helpers/settings-contract';
@@ -30,8 +36,6 @@ const BOOK_DELETE_ENV = [
 ] as const;
 
 type EnvName = (typeof ACCOUNT_A_ENV | typeof ACCOUNT_B_ENV | typeof BOOK_DELETE_ENV)[number];
-
-type ContractAudit = ReturnType<typeof startContractAudit>;
 
 type QaAccount = {
   email: string;
@@ -104,62 +108,6 @@ function accountB(): QaAccount {
   };
 }
 
-function startContractAudit(page: Page) {
-  const network: Array<{ method: string; url: string; status?: number }> = [];
-  const consoleEvents: Array<{ type: string; text: string }> = [];
-
-  page.on('request', (request) => {
-    const url = request.url();
-    if (isRelevantNetworkUrl(url)) network.push({ method: request.method(), url: redactUrl(url) });
-  });
-
-  page.on('response', (response) => {
-    const request = response.request();
-    const url = request.url();
-    if (!isRelevantNetworkUrl(url)) return;
-    network.push({ method: request.method(), url: redactUrl(url), status: response.status() });
-  });
-
-  page.on('console', (message) => {
-    if (!['error', 'warning'].includes(message.type())) return;
-    consoleEvents.push({ type: message.type(), text: redactText(message.text()) });
-  });
-
-  return {
-    network,
-    consoleEvents,
-    snapshot: () => ({ network, consoleEvents }),
-  };
-}
-
-function isRelevantNetworkUrl(url: string) {
-  return /\/api\/|\/auth\/v1\/|\/sync|\/books|\/files|supabase/i.test(url);
-}
-
-function redactUrl(url: string) {
-  try {
-    const parsed = new URL(url);
-    for (const key of [...parsed.searchParams.keys()]) {
-      if (/token|key|signature|auth|jwt|secret|password/i.test(key)) {
-        parsed.searchParams.set(key, '[redacted]');
-      }
-    }
-    return parsed.toString();
-  } catch {
-    return redactText(url);
-  }
-}
-
-function redactText(value: string) {
-  return value
-    .replace(
-      /(access_token|refresh_token|apikey|authorization|token|password|secret)=([^\s&]+)/gi,
-      '$1=[redacted]',
-    )
-    .replace(/Bearer\s+[A-Za-z0-9._-]+/g, 'Bearer [redacted]')
-    .replace(/https:\/\/[^\s]+X-Amz-[^\s]+/gi, 'https://[redacted-signed-url]');
-}
-
 async function signIn(email: string, password: string) {
   const { createClient } = await import('@supabase/supabase-js');
   const supabase = createClient(
@@ -222,18 +170,21 @@ async function attachAudit(
   audit: ContractAudit,
   extra: object = {},
 ) {
-  await attachScenarioEvidenceArtifact(testInfo, name, {
-    target: QA_TARGET,
-    generatedAt: new Date().toISOString(),
-    guardrails: {
-      mockedBrowserRoutes: false,
-      localStorageOrIndexedDbProofAfterAuthBootstrap: false,
-      hiddenAfterEachCleanup: false,
-      manuallyCuratedEvidence: false,
-    },
-    ...extra,
-    ...audit.snapshot(),
-  });
+  await attachScenarioEvidenceArtifact(
+    testInfo,
+    name,
+    buildContractAuditArtifact(audit, {
+      target: QA_TARGET,
+      generatedAt: new Date().toISOString(),
+      guardrails: {
+        mockedBrowserRoutes: false,
+        localStorageOrIndexedDbProofAfterAuthBootstrap: false,
+        hiddenAfterEachCleanup: false,
+        manuallyCuratedEvidence: false,
+      },
+      ...extra,
+    }),
+  );
 }
 
 test.describe('Account/book-delete/persistence contract red baseline', () => {
@@ -255,6 +206,7 @@ test.describe('Account/book-delete/persistence contract red baseline', () => {
       testInfo,
       'ACCT-001-start-account-a-library-isolation',
     );
+    auditA.stop();
     await accountAPage.context.close();
 
     const accountBPage = await newAuthenticatedPage(browser, accountB());
@@ -266,6 +218,7 @@ test.describe('Account/book-delete/persistence contract red baseline', () => {
       testInfo,
       'ACCT-001-terminal-account-b-library-isolation',
     );
+    auditB.stop();
     await accountBPage.context.close();
 
     const accountAReturnPage = await newAuthenticatedPage(browser, accountA());
@@ -279,8 +232,14 @@ test.describe('Account/book-delete/persistence contract red baseline', () => {
     await accountAReturnPage.context.close();
 
     await attachAudit(testInfo, 'ACCT-001-ACCT-002-ACCT-003-network-console-audit', auditA, {
-      accountA: { email: accountA().email, sentinelTitle: accountA().sentinelTitle },
-      accountB: { email: accountB().email, sentinelTitle: accountB().sentinelTitle },
+      accountA: {
+        emailSha256: hashContractEvidence(accountA().email),
+        sentinelTitleSha256: hashContractEvidence(accountA().sentinelTitle),
+      },
+      accountB: {
+        emailSha256: hashContractEvidence(accountB().email),
+        sentinelTitleSha256: hashContractEvidence(accountB().sentinelTitle),
+      },
       accountBAudit: auditB.snapshot(),
     });
   });
@@ -303,6 +262,7 @@ test.describe('Account/book-delete/persistence contract red baseline', () => {
         'quota/storage reconciliation note',
       ],
     });
+    audit.stop();
     await attachAudit(testInfo, 'DEL-001-DEL-002-network-console-audit', audit);
 
     expect(

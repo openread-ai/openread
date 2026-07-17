@@ -1,6 +1,12 @@
 /* eslint-disable react-hooks/rules-of-hooks -- Playwright fixture, not React — `use` is a teardown callback. */
 import { test as base, type Page } from '@playwright/test';
 import { createClient, type Session } from '@supabase/supabase-js';
+import {
+  assertContractAudit,
+  hashContractEvidence,
+  persistContractAudit,
+  startContractAudit,
+} from '../helpers/contract-audit';
 import { TEST_USER, SUPABASE_CONFIG, getSupabaseProjectRef } from './test-users';
 
 /**
@@ -100,6 +106,19 @@ export async function captureSession(page: Page): Promise<void> {
   }
 }
 
+export function resolveFixtureFailure(input: {
+  useFailed: boolean;
+  useError: unknown;
+  testError: unknown;
+  finalizationError: unknown;
+}): { shouldThrow: boolean; error: unknown } {
+  if (input.useFailed) return { shouldThrow: true, error: input.useError };
+  if (input.testError || input.finalizationError === undefined) {
+    return { shouldThrow: false, error: undefined };
+  }
+  return { shouldThrow: true, error: input.finalizationError };
+}
+
 export async function injectSession(page: Page, session: Session): Promise<void> {
   await page.addInitScript(
     ({ session, supabaseStorageKey }) => {
@@ -144,13 +163,12 @@ async function proxyR2Downloads(page: Page): Promise<void> {
 
   await page.route(/r2\.cloudflarestorage\.com/, async (route) => {
     const url = route.request().url();
-    const parsedUrl = new URL(url);
-    const evidenceUrl = `${parsedUrl.origin}${parsedUrl.pathname}`;
+    const pathSha256 = hashContractEvidence(new URL(url).pathname);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30_000);
 
     try {
-      console.log(`[R2 proxy] Fetching: ${evidenceUrl}`);
+      console.log(`[R2 proxy] Fetching: host=r2.cloudflarestorage.com, pathSha256=${pathSha256}`);
       const response = await fetch(url, { signal: controller.signal });
       console.log(
         `[R2 proxy] Status: ${response.status}, size: ${response.headers.get('content-length')}`,
@@ -173,15 +191,53 @@ async function proxyR2Downloads(page: Page): Promise<void> {
 }
 
 export const test = base.extend<{ authenticatedPage: Page }>({
-  authenticatedPage: async ({ page }, use) => {
+  authenticatedPage: async ({ page }, use, testInfo) => {
     const session = await getTestSession();
     await injectSession(page, session);
     await proxyR2Downloads(page);
+    const audit = process.env.OPENREAD_E2E_CONTRACT_AUDIT === '1' ? startContractAudit(page) : null;
+    let useFailed = false;
+    let useError: unknown;
+    let finalizationError: unknown;
+
     try {
       await use(page);
+    } catch (error) {
+      useFailed = true;
+      useError = error;
     } finally {
+      const finalizationStartedAt = Date.now();
+      const sessionCaptureStartedAt = Date.now();
       await captureSession(page);
+      const sessionCaptureMs = Date.now() - sessionCaptureStartedAt;
+
+      if (audit) {
+        audit.stop();
+        try {
+          await persistContractAudit(testInfo, audit, {
+            finalizationStartedAt: new Date(finalizationStartedAt).toISOString(),
+            sessionCaptureMs,
+          });
+        } catch (error) {
+          finalizationError = error;
+        }
+        try {
+          assertContractAudit(audit, {
+            runtimeErrors: process.env.OPENREAD_E2E_CONTRACT_RUNTIME_ERRORS === '1',
+          });
+        } catch (error) {
+          finalizationError ??= error;
+        }
+      }
     }
+
+    const failure = resolveFixtureFailure({
+      useFailed,
+      useError,
+      testError: testInfo.error,
+      finalizationError,
+    });
+    if (failure.shouldThrow) throw failure.error;
   },
 });
 

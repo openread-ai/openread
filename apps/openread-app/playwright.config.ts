@@ -11,6 +11,14 @@ import { defineConfig, devices } from '@playwright/test';
 import { existsSync, readFileSync } from 'fs';
 import { homedir } from 'os';
 import { resolve } from 'path';
+import { assertPlaywrightNodeRuntime } from './e2e/helpers/runtime';
+
+const rootPackage = JSON.parse(readFileSync(resolve(__dirname, '../../package.json'), 'utf8')) as {
+  engines?: { node?: string };
+};
+const expectedNodeRange = rootPackage.engines?.node;
+if (!expectedNodeRange) throw new Error('PLAYWRIGHT_NODE_RUNTIME_CONFIG_MISSING');
+assertPlaywrightNodeRuntime(process.versions.node, expectedNodeRange);
 
 // Load env files into process.env for the test RUNNER (test-users.ts's
 // requireEnv, auth.ts's Supabase client). Order = precedence: earlier

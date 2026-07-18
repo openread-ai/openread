@@ -121,7 +121,7 @@ const activityLogDatabaseId =
 const notionToken = process.env.NOTION_TOKEN ?? process.env.NOTION_API_KEY;
 
 if (!config.activityId || config.activityId === 'sandbox-activity') {
-  fail('Activity ID is required. Run /start-dev first and pass --activity ACT-...');
+  fail('Activity ID is required. Initialize one with pnpm activity:init or pass --activity ACT-...');
 }
 
 const expectations = STAGE_EXPECTATIONS[stage];
@@ -136,7 +136,7 @@ const activityPage = await findActivityPage({
   activityId: config.activityId,
 });
 if (!activityPage)
-  fail(`Activity Log row not found for ${config.activityId}. Run /start-dev first.`);
+  fail(`Activity Log row not found for ${config.activityId}. Verify the Activity ID and synced Activity state.`);
 
 const context = {
   schemaVersion: 1,

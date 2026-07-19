@@ -63,6 +63,7 @@ export type BookFormatRegistryEntry = {
   localImport: boolean;
   platformUpload: boolean;
   catalogImport: boolean;
+  catalogSelectionPriority: number;
   catalogAcceptHeader?: string;
   catalogContentTypeClasses?: readonly CatalogContentTypeClass[];
 };
@@ -84,6 +85,7 @@ const CATALOG_ONLY_FORMAT_SUPPORT = {
 export const BOOK_FORMAT_REGISTRY = {
   epub: {
     extension: 'epub',
+    catalogSelectionPriority: 0,
     extensions: ['epub'],
     mimeType: 'application/epub+zip',
     maxBytes: 100 * 1024 * 1024,
@@ -93,6 +95,7 @@ export const BOOK_FORMAT_REGISTRY = {
   },
   pdf: {
     extension: 'pdf',
+    catalogSelectionPriority: 1,
     extensions: ['pdf'],
     mimeType: 'application/pdf',
     maxBytes: 200 * 1024 * 1024,
@@ -102,6 +105,7 @@ export const BOOK_FORMAT_REGISTRY = {
   },
   mobi: {
     extension: 'mobi',
+    catalogSelectionPriority: 2,
     extensions: ['mobi'],
     mimeType: 'application/x-mobipocket-ebook',
     maxBytes: 100 * 1024 * 1024,
@@ -111,6 +115,7 @@ export const BOOK_FORMAT_REGISTRY = {
   },
   azw: {
     extension: 'azw',
+    catalogSelectionPriority: 3,
     extensions: ['azw'],
     mimeType: 'application/vnd.amazon.ebook',
     maxBytes: 100 * 1024 * 1024,
@@ -120,6 +125,7 @@ export const BOOK_FORMAT_REGISTRY = {
   },
   azw3: {
     extension: 'azw3',
+    catalogSelectionPriority: 4,
     extensions: ['azw3'],
     mimeType: 'application/vnd.amazon.ebook',
     maxBytes: 100 * 1024 * 1024,
@@ -129,6 +135,7 @@ export const BOOK_FORMAT_REGISTRY = {
   },
   fb2: {
     extension: 'fb2',
+    catalogSelectionPriority: 5,
     extensions: ['fb2'],
     mimeType: 'application/x-fictionbook+xml',
     maxBytes: 50 * 1024 * 1024,
@@ -138,6 +145,7 @@ export const BOOK_FORMAT_REGISTRY = {
   },
   fbz: {
     extension: 'fbz',
+    catalogSelectionPriority: 6,
     extensions: ['fbz'],
     mimeType: 'application/zip',
     maxBytes: 50 * 1024 * 1024,
@@ -147,6 +155,7 @@ export const BOOK_FORMAT_REGISTRY = {
   },
   cbz: {
     extension: 'cbz',
+    catalogSelectionPriority: 7,
     extensions: ['cbz'],
     mimeType: 'application/vnd.comicbook+zip',
     maxBytes: 500 * 1024 * 1024,
@@ -156,6 +165,7 @@ export const BOOK_FORMAT_REGISTRY = {
   },
   txt: {
     extension: 'txt',
+    catalogSelectionPriority: 8,
     extensions: ['txt'],
     mimeType: 'text/plain',
     maxBytes: 10 * 1024 * 1024,
@@ -165,6 +175,7 @@ export const BOOK_FORMAT_REGISTRY = {
   },
   md: {
     extension: 'md',
+    catalogSelectionPriority: 9,
     extensions: ['md', 'markdown'],
     mimeType: 'text/markdown',
     maxBytes: 10 * 1024 * 1024,
@@ -204,6 +215,31 @@ export type CatalogSourceVerificationContract = {
   acceptHeader: string;
   maxBytes: number;
 };
+
+export type CatalogFormatSelectionCandidate = {
+  source: string;
+  sourceId: string;
+  sourceUrl: string;
+  format: CatalogDownloadFormat;
+  artifactRevisionId: string;
+  artifactExtentBytes: number;
+  artifactMediaTypes: readonly string[];
+  verification: CatalogSourceVerificationContract;
+};
+
+export type CatalogFormatSelectionFailureReason =
+  | 'missing-candidate'
+  | 'invalid-candidate'
+  | 'ambiguous-candidate';
+
+export type CatalogFormatSelectionResult<T extends CatalogFormatSelectionCandidate> =
+  | {
+      ok: true;
+      candidate: T;
+      format: CatalogDownloadFormat;
+      rejectedCandidateCount: number;
+    }
+  | { ok: false; reason: CatalogFormatSelectionFailureReason };
 
 type CatalogSourceHostPolicy = { exact: ReadonlySet<string>; suffix?: ReadonlySet<string> };
 
@@ -733,6 +769,269 @@ export function catalogSourceVerificationContract(
     format,
     acceptHeader: catalogSourceAcceptHeader(format),
     maxBytes: catalogSourceMaxBytes(format),
+  };
+}
+
+type NormalizedCatalogFormatSelectionCandidate<T extends CatalogFormatSelectionCandidate> = {
+  candidate: T;
+  sourceUrl: string;
+  artifactRevisionId: string;
+  format: CatalogDownloadFormat;
+  priority: number;
+  fingerprint: string;
+};
+
+const CATALOG_SOURCE_FILENAME_VARIANTS = ['', '.images', '.noimages'] as const;
+
+function canonicalMediaType(value: unknown): string | null {
+  if (typeof value !== 'string' || value !== value.trim()) return null;
+  const mediaType = value.toLowerCase().split(';', 1)[0]?.trim() ?? '';
+  return /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(mediaType) ? mediaType : null;
+}
+
+function filenameMatchesRegistryExtension(
+  filename: string,
+  extensions: readonly string[],
+): boolean {
+  return extensions.some((extension) =>
+    CATALOG_SOURCE_FILENAME_VARIANTS.some((variant) =>
+      filename.endsWith(`.${extension}${variant}`),
+    ),
+  );
+}
+
+function normalizeCatalogFormatSelectionCandidate<T extends CatalogFormatSelectionCandidate>(
+  candidate: T,
+): NormalizedCatalogFormatSelectionCandidate<T> | null {
+  const source = typeof candidate.source === 'string' ? candidate.source.trim() : '';
+  const sourceId = typeof candidate.sourceId === 'string' ? candidate.sourceId.trim() : '';
+  const sourceUrl = typeof candidate.sourceUrl === 'string' ? candidate.sourceUrl.trim() : '';
+  const artifactRevisionId =
+    typeof candidate.artifactRevisionId === 'string' ? candidate.artifactRevisionId.trim() : '';
+  const format = catalogSupportedDownloadFormat(candidate.format);
+  if (
+    !source ||
+    source !== candidate.source ||
+    !sourceId ||
+    sourceId !== candidate.sourceId ||
+    !sourceUrl ||
+    sourceUrl !== candidate.sourceUrl ||
+    !artifactRevisionId ||
+    artifactRevisionId !== candidate.artifactRevisionId ||
+    !format ||
+    format !== candidate.format ||
+    !Number.isSafeInteger(candidate.artifactExtentBytes) ||
+    candidate.artifactExtentBytes <= 0 ||
+    !Array.isArray(candidate.artifactMediaTypes) ||
+    candidate.artifactMediaTypes.length === 0
+  ) {
+    return null;
+  }
+
+  const registry = BOOK_FORMAT_REGISTRY[format];
+  if (
+    !registry.reader ||
+    !registry.catalogImport ||
+    !Number.isSafeInteger(registry.catalogSelectionPriority) ||
+    registry.catalogSelectionPriority < 0 ||
+    candidate.artifactExtentBytes > registry.maxBytes
+  ) {
+    return null;
+  }
+
+  const mediaTypes = candidate.artifactMediaTypes.map(canonicalMediaType);
+  if (mediaTypes.some((mediaType) => mediaType === null)) return null;
+  const normalizedMediaTypes = [...new Set(mediaTypes as string[])].sort((left, right) =>
+    left.localeCompare(right, 'en'),
+  );
+
+  let url: URL;
+  let filename: string;
+  try {
+    url = new URL(sourceUrl);
+    filename = decodeURIComponent(url.pathname.split('/').pop() ?? '').toLowerCase();
+  } catch {
+    return null;
+  }
+  if (
+    url.protocol !== 'https:' ||
+    url.username ||
+    url.password ||
+    !filename ||
+    filename.includes('/')
+  ) {
+    return null;
+  }
+  const registryEntries = Object.entries(BOOK_FORMAT_REGISTRY) as Array<
+    [CatalogDownloadFormat, (typeof BOOK_FORMAT_REGISTRY)[CatalogDownloadFormat]]
+  >;
+  const recognizedMediaTypes = new Set(
+    registryEntries.flatMap(([, entry]) => {
+      const mediaType = canonicalMediaType(entry.mimeType);
+      return entry.reader &&
+        entry.catalogImport &&
+        mediaType !== null &&
+        normalizedMediaTypes.includes(mediaType)
+        ? [mediaType]
+        : [];
+    }),
+  );
+  if (recognizedMediaTypes.size !== 1) return null;
+
+  const matchingFormats = registryEntries
+    .filter(([, entry]) => {
+      const mediaType = canonicalMediaType(entry.mimeType);
+      return (
+        entry.reader &&
+        entry.catalogImport &&
+        candidate.artifactExtentBytes <= entry.maxBytes &&
+        filenameMatchesRegistryExtension(filename, entry.extensions) &&
+        mediaType !== null &&
+        normalizedMediaTypes.includes(mediaType)
+      );
+    })
+    .map(([candidateFormat]) => candidateFormat);
+  if (matchingFormats.length !== 1 || matchingFormats[0] !== format) return null;
+
+  const verification = candidate.verification;
+  if (
+    !verification ||
+    !(verification.url instanceof URL) ||
+    verification.sourceUrl !== sourceUrl ||
+    verification.url.toString() !== sourceUrl ||
+    verification.format !== format ||
+    verification.acceptHeader !== registry.catalogAcceptHeader ||
+    verification.maxBytes !== registry.maxBytes
+  ) {
+    return null;
+  }
+
+  const fingerprint = JSON.stringify({
+    source,
+    sourceId,
+    sourceUrl,
+    artifactRevisionId,
+    artifactExtentBytes: candidate.artifactExtentBytes,
+    artifactMediaTypes: normalizedMediaTypes,
+    format,
+    verification: {
+      sourceUrl: verification.sourceUrl,
+      url: verification.url.toString(),
+      format: verification.format,
+      acceptHeader: verification.acceptHeader,
+      maxBytes: verification.maxBytes,
+    },
+  });
+  return {
+    candidate,
+    sourceUrl,
+    artifactRevisionId,
+    format,
+    priority: registry.catalogSelectionPriority,
+    fingerprint,
+  };
+}
+
+function formatSelectionClaimFingerprint(candidate: CatalogFormatSelectionCandidate): string {
+  const verification = candidate.verification as CatalogSourceVerificationContract | undefined;
+  return JSON.stringify([
+    candidate.source,
+    candidate.sourceId,
+    candidate.sourceUrl,
+    candidate.format,
+    candidate.artifactRevisionId,
+    candidate.artifactExtentBytes,
+    Array.isArray(candidate.artifactMediaTypes)
+      ? [...candidate.artifactMediaTypes].map(String).sort((left, right) =>
+          left.localeCompare(right, 'en'),
+        )
+      : null,
+    verification?.sourceUrl,
+    verification?.url instanceof URL ? verification.url.toString() : verification?.url,
+    verification?.format,
+    verification?.acceptHeader,
+    verification?.maxBytes,
+  ]);
+}
+
+export function catalogFormatSelectionCandidateIsValid(
+  candidate: CatalogFormatSelectionCandidate,
+): boolean {
+  return Boolean(candidate && normalizeCatalogFormatSelectionCandidate(candidate));
+}
+
+export function selectCanonicalCatalogFormat<T extends CatalogFormatSelectionCandidate>(
+  candidates: readonly T[],
+): CatalogFormatSelectionResult<T> {
+  if (candidates.length === 0) return { ok: false, reason: 'missing-candidate' };
+
+  const claimsByUrl = new Map<string, string>();
+  const claimsByRevision = new Map<string, string>();
+  for (const candidate of candidates) {
+    if (!candidate || typeof candidate !== 'object') {
+      return { ok: false, reason: 'invalid-candidate' };
+    }
+    const fingerprint = formatSelectionClaimFingerprint(candidate);
+    const sourceUrl = typeof candidate.sourceUrl === 'string' ? candidate.sourceUrl.trim() : '';
+    const revision =
+      typeof candidate.artifactRevisionId === 'string' ? candidate.artifactRevisionId.trim() : '';
+    if (
+      (sourceUrl && claimsByUrl.has(sourceUrl) && claimsByUrl.get(sourceUrl) !== fingerprint) ||
+      (revision && claimsByRevision.has(revision) && claimsByRevision.get(revision) !== fingerprint)
+    ) {
+      return { ok: false, reason: 'ambiguous-candidate' };
+    }
+    if (sourceUrl) claimsByUrl.set(sourceUrl, fingerprint);
+    if (revision) claimsByRevision.set(revision, fingerprint);
+  }
+
+  const normalizedCandidates = candidates.map((candidate) =>
+    normalizeCatalogFormatSelectionCandidate(candidate),
+  );
+  if (normalizedCandidates.some((candidate) => candidate === null)) {
+    return { ok: false, reason: 'invalid-candidate' };
+  }
+  const normalized = normalizedCandidates as Array<NormalizedCatalogFormatSelectionCandidate<T>>;
+
+  const fingerprintsByUrl = new Map<string, string>();
+  const fingerprintsByRevision = new Map<string, string>();
+  const unique = new Map<string, NormalizedCatalogFormatSelectionCandidate<T>>();
+  for (const candidate of normalized) {
+    const urlFingerprint = fingerprintsByUrl.get(candidate.sourceUrl);
+    const revisionFingerprint = fingerprintsByRevision.get(candidate.artifactRevisionId);
+    if (
+      (urlFingerprint && urlFingerprint !== candidate.fingerprint) ||
+      (revisionFingerprint && revisionFingerprint !== candidate.fingerprint)
+    ) {
+      return { ok: false, reason: 'ambiguous-candidate' };
+    }
+    fingerprintsByUrl.set(candidate.sourceUrl, candidate.fingerprint);
+    fingerprintsByRevision.set(candidate.artifactRevisionId, candidate.fingerprint);
+    unique.set(candidate.fingerprint, candidate);
+  }
+
+  const ordered = [...unique.values()].sort(
+    (left, right) =>
+      left.priority - right.priority ||
+      left.format.localeCompare(right.format, 'en') ||
+      left.artifactRevisionId.localeCompare(right.artifactRevisionId, 'en') ||
+      left.sourceUrl.localeCompare(right.sourceUrl, 'en'),
+  );
+  const selected = ordered[0];
+  if (!selected) return { ok: false, reason: 'invalid-candidate' };
+  if (
+    ordered.some(
+      (candidate) => candidate.priority === selected.priority && candidate.format !== selected.format,
+    )
+  ) {
+    return { ok: false, reason: 'ambiguous-candidate' };
+  }
+
+  return {
+    ok: true,
+    candidate: selected.candidate,
+    format: selected.format,
+    rejectedCandidateCount: candidates.length - unique.size,
   };
 }
 

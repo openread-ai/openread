@@ -987,7 +987,7 @@ test.describe('Chromium Explore catalog', () => {
 
         const reader = new ReaderPage(page);
         await reader.waitForReaderUrl();
-        await expect(reader.inlineQuestionBar()).toBeVisible({ timeout: 60_000 });
+        await expect(page.getByTestId('reader-content-ready')).toBeVisible({ timeout: 60_000 });
         await expect(page.getByRole('document', { name: 'Book Content' })).toBeVisible({
           timeout: 60_000,
         });

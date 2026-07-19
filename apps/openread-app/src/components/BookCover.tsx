@@ -3,6 +3,7 @@ import Image from 'next/image';
 import { memo, useRef, useState } from 'react';
 import { Book } from '@/types/book';
 import { LibraryCoverFitType, LibraryViewModeType } from '@/types/settings';
+import { getCatalogBookCoverUrl } from '@/services/environment';
 import { formatAuthors, formatTitle } from '@/utils/book';
 
 interface BookCoverProps {
@@ -28,13 +29,15 @@ const BookCover: React.FC<BookCoverProps> = memo<BookCoverProps>(
     onImageError,
   }) => {
     const coverRef = useRef<HTMLDivElement>(null);
+    const failedImageRef = useRef<string | null>(null);
     const [imageLoaded, setImageLoaded] = useState(false);
     // Track which coverSrc failed so error resets when source changes
     const [failedSrc, setFailedSrc] = useState<string | null>(null);
 
-    const catalogCoverSrc = book.catalogBookId ? book.metadata?.coverImageUrl : null;
-    const rawCoverSrc =
-      catalogCoverSrc || book.coverImageUrl || book.metadata?.coverImageUrl || null;
+    const catalogBookId = book.catalogBookId?.trim();
+    const rawCoverSrc = catalogBookId
+      ? getCatalogBookCoverUrl(catalogBookId)
+      : book.coverImageUrl || book.metadata?.coverImageUrl || null;
     const coverSrc = rawCoverSrc === '_blank' ? null : rawCoverSrc;
     const imageError = coverSrc !== null && failedSrc === coverSrc;
     const isGeneratedPdfCover =
@@ -50,6 +53,14 @@ const BookCover: React.FC<BookCoverProps> = memo<BookCoverProps>(
     // - Missing cover source or image load failure → show title/author fallback
     const showImage = !!coverSrc && !imageError;
     const showTextFallback = !coverSrc || imageError;
+
+    const handleImageError = () => {
+      if (!coverSrc || failedImageRef.current === coverSrc) return;
+      failedImageRef.current = coverSrc;
+      setImageLoaded(false);
+      setFailedSrc(coverSrc);
+      onImageError?.();
+    };
 
     return (
       <div
@@ -71,11 +82,7 @@ const BookCover: React.FC<BookCoverProps> = memo<BookCoverProps>(
               onLoad={() => {
                 setImageLoaded(true);
               }}
-              onError={() => {
-                setImageLoaded(false);
-                setFailedSrc(coverSrc);
-                onImageError?.();
-              }}
+              onError={handleImageError}
             />
           ) : (
             <div className={clsx('flex h-full w-full justify-start')}>
@@ -99,11 +106,7 @@ const BookCover: React.FC<BookCoverProps> = memo<BookCoverProps>(
                   onLoad={() => {
                     setImageLoaded(true);
                   }}
-                  onError={() => {
-                    setImageLoaded(false);
-                    setFailedSrc(coverSrc);
-                    onImageError?.();
-                  }}
+                  onError={handleImageError}
                 />
                 <div
                   className={`book-spine absolute inset-0 ${shouldShowSpine ? 'visible' : 'invisible'}`}

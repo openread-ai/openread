@@ -43,7 +43,7 @@ describe('libraryStore.updateBooks', () => {
     });
   });
 
-  it('merges incoming catalog cover metadata when the local book is newer', async () => {
+  it('does not graft copied catalog cover metadata into a newer local row', async () => {
     useLibraryStore.getState().setLibrary([
       book({
         hash: testOpenReadBookRef('catalog:7231ff9a-24b9-4074-9369-bc7f88ffb179'),
@@ -64,9 +64,11 @@ describe('libraryStore.updateBooks', () => {
 
     const [updated] = useLibraryStore.getState().library;
     expect(updated?.updatedAt).toBe(200);
-    expect(updated?.metadata).toMatchObject({
+    expect(updated?.metadata).toEqual({
+      title: 'Pride and Prejudice',
+      author: 'Jane Austen',
+      language: 'en',
       publisher: 'Local Publisher',
-      coverImageUrl: '/api/catalog-covers/catalog/covers/standard-ebooks/pride/abc/thumb.jpg',
     });
     expect(saveLibraryBooks).toHaveBeenCalledWith(useLibraryStore.getState().library);
   });

@@ -565,6 +565,47 @@ describe('SyncWorker book reconcile queue', () => {
     expect(mocks.appService.saveLibraryBooks).toHaveBeenCalledWith(mocks.libraryState.library);
   });
 
+  it('never treats catalog books as private cover download candidates', async () => {
+    const { SyncWorker } = await import('@/services/sync/syncWorker');
+    const catalogBook = {
+      ...mocks.libraryBook,
+      hash: 'catalog:11111111-1111-4111-8111-111111111111',
+      catalogBookId: '11111111-1111-4111-8111-111111111111',
+      storagePath: 'catalog/books/source/book.epub',
+      uploadedAt: 123,
+      coverImageUrl: null,
+    } as Book;
+    mocks.libraryState.library = [catalogBook];
+    mocks.listFiles.mockResolvedValueOnce({
+      files: [
+        {
+          id: 'catalog-cover-file',
+          file_key: `user-1/Openread/Books/${catalogBook.hash}/cover.png`,
+          file_size: 1234,
+          file_type: 'cover',
+          book_hash: catalogBook.hash,
+          created_at: '2026-06-16T00:00:00.000Z',
+          updated_at: '2026-06-16T00:00:00.000Z',
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 1,
+      totalPages: 1,
+    });
+    mocks.pushChanges.mockResolvedValueOnce({ reconcile: { upsert: [], remove: [] } });
+    const worker = new SyncWorker();
+    (worker as unknown as { stopped: boolean; userId: string }).stopped = false;
+    (worker as unknown as { stopped: boolean; userId: string }).userId = 'user-1';
+
+    await worker.pullNow('books');
+
+    expect(mocks.listFiles).toHaveBeenCalled();
+    expect(mocks.appService.exists).not.toHaveBeenCalled();
+    expect(mocks.appService.downloadBookCovers).not.toHaveBeenCalled();
+    expect(mocks.appService.generateCoverImageUrl).not.toHaveBeenCalled();
+  });
+
   it('keeps pullNow(books) pending until an active and queued reconcile settle', async () => {
     const { SyncWorker } = await import('@/services/sync/syncWorker');
     const worker = new SyncWorker();

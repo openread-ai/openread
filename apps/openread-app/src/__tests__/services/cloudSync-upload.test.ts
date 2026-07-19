@@ -90,7 +90,7 @@ describe('CloudSyncService storage lifecycle', () => {
     expect(book.downloadedAt).toBeNull();
   });
 
-  it('bounds catalog cover downloads at the shared cover sync seam', async () => {
+  it('bounds private cloud cover downloads at the shared cover sync seam', async () => {
     const books = createCoverBooks(48);
     vi.mocked(batchGetDownloadUrls).mockResolvedValue(
       books.map((book) => ({
@@ -123,7 +123,7 @@ describe('CloudSyncService storage lifecycle', () => {
     expect(Math.max(...books.map((book) => book.coverDownloadedAt ?? 0))).toBeGreaterThan(0);
   });
 
-  it('keeps catalog cover download failures non-fatal', async () => {
+  it('keeps private cloud cover download failures non-fatal', async () => {
     const books = createCoverBooks(3);
     vi.mocked(batchGetDownloadUrls).mockResolvedValue(
       books.map((book) => ({
@@ -145,6 +145,35 @@ describe('CloudSyncService storage lifecycle', () => {
     expect(books[0]!.coverDownloadedAt).toBeUndefined();
     expect(books[1]!.coverDownloadedAt).toEqual(expect.any(Number));
     expect(books[2]!.coverDownloadedAt).toEqual(expect.any(Number));
+  });
+
+  it('does not request private cover URLs for catalog books', async () => {
+    const catalogBook = baseBook({
+      hash: testOpenReadBookRef('catalog:11111111-1111-4111-8111-111111111111'),
+      catalogBookId: '11111111-1111-4111-8111-111111111111',
+      storagePath: 'catalog/books/source/book.epub',
+    });
+    const service = new CloudSyncService(createFs(new Set()), '/books', async (path) => path);
+
+    await service.downloadBookCovers([catalogBook], {} as never);
+
+    expect(batchGetDownloadUrls).not.toHaveBeenCalled();
+    expect(downloadFile).not.toHaveBeenCalled();
+    expect(catalogBook.coverDownloadedAt).toBeUndefined();
+  });
+
+  it('skips the private cover leg when a direct catalog download is requested', async () => {
+    const catalogBook = baseBook({
+      hash: testOpenReadBookRef('catalog:11111111-1111-4111-8111-111111111111'),
+      catalogBookId: '11111111-1111-4111-8111-111111111111',
+      storagePath: 'catalog/books/source/book.epub',
+    });
+    const service = new CloudSyncService(createFs(new Set()), '/books', async (path) => path);
+
+    await service.downloadBook(catalogBook, {} as never, true);
+
+    expect(downloadFile).not.toHaveBeenCalled();
+    expect(catalogBook.coverDownloadedAt).toBeUndefined();
   });
 
   it('does not gate cloud file deletion on uploadedAt alone', async () => {

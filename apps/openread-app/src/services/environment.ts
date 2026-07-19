@@ -27,6 +27,9 @@ export const getBaseUrl = () =>
 export const getNodeBaseUrl = () =>
   process.env['NEXT_PUBLIC_NODE_BASE_URL'] ?? OPENREAD_NODE_BASE_URL;
 
+export const getCatalogBookCoverUrl = (catalogBookId: string) =>
+  `${getNodeBaseUrl().replace(/\/+$/, '')}/catalog/books/${encodeURIComponent(catalogBookId)}/cover`;
+
 export const isMacPlatform = () =>
   typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 

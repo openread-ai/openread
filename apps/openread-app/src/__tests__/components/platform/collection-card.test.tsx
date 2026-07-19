@@ -60,6 +60,16 @@ const mockLibrary: Book[] = [
     updatedAt: Date.now(),
     coverImageUrl: null,
   },
+  {
+    hash: bookThreeHash,
+    title: 'Catalog Book',
+    author: 'Catalog Author',
+    format: 'epub',
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    coverImageUrl: null,
+    catalogBookId: 'catalog-3',
+  },
 ];
 
 const mockDeleteCollection = vi.fn();
@@ -256,6 +266,12 @@ describe('CollectionCard', () => {
       const collection = createMockCollection({ bookHashes: [bookOneHash] });
       render(<CollectionCard collection={collection} />);
       expect(screen.getByTestId('book-cover')).toBeTruthy();
+    });
+
+    it('renders the canonical BookCover path for a catalog book without copied cover URLs', () => {
+      const collection = createMockCollection({ bookHashes: [bookThreeHash] });
+      render(<CollectionCard collection={collection} />);
+      expect(screen.getByTestId('book-cover').textContent).toBe('Catalog Book cover');
     });
 
     it('should show folder icon when collection is empty', () => {

@@ -4,6 +4,7 @@ import { EnvConfigType, isTauriAppPlatform } from '@/services/environment';
 import { BOOK_UNGROUPED_NAME } from '@/services/constants';
 import { md5Fingerprint } from '@/utils/md5';
 import { getBookIdFromCatalogBookRef } from '@openread/types';
+import { isCatalogBackedBook } from '@/utils/book';
 
 const latestBookMutationTime = (book: Book): number =>
   Math.max(book.updatedAt || 0, book.deletedAt || 0);
@@ -38,14 +39,16 @@ export function mergeLibraryBook(existing: Book, incoming: Book): Book {
     winner.storagePath = incomingStoragePath;
   }
 
-  const coverImageUrl =
-    existing.metadata?.coverImageUrl ??
-    incoming.metadata?.coverImageUrl ??
-    winner.metadata?.coverImageUrl;
-  if (coverImageUrl && !winner.metadata?.coverImageUrl) {
-    winner.metadata = { ...(winner.metadata ?? {}), coverImageUrl } as NonNullable<
-      Book['metadata']
-    >;
+  if (!isCatalogBackedBook(existing) && !isCatalogBackedBook(incoming)) {
+    const coverImageUrl =
+      existing.metadata?.coverImageUrl ??
+      incoming.metadata?.coverImageUrl ??
+      winner.metadata?.coverImageUrl;
+    if (coverImageUrl && !winner.metadata?.coverImageUrl) {
+      winner.metadata = { ...(winner.metadata ?? {}), coverImageUrl } as NonNullable<
+        Book['metadata']
+      >;
+    }
   }
   return winner;
 }

@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import React, { useRef } from 'react';
+import React from 'react';
 import { MdInfoOutline } from 'react-icons/md';
 import { Book } from '@/types/book';
 import { useThemeStore } from '@/store/themeStore';
@@ -14,7 +14,6 @@ const BookCard = ({ book }: { book: Book }) => {
   const _ = useTranslation();
   const { isDarkMode } = useThemeStore();
   const iconSize18 = useResponsiveSize(18);
-  const bookCoverRef = useRef<HTMLDivElement | null>(null);
 
   const showBookDetails = () => {
     eventDispatcher.dispatchSync('show-book-details', book);
@@ -23,19 +22,12 @@ const BookCard = ({ book }: { book: Book }) => {
   return (
     <div className='flex h-20 w-full items-center'>
       <div
-        ref={bookCoverRef}
         className={clsx(
           'me-4 aspect-[28/41] max-h-16 w-[15%] max-w-12 overflow-hidden rounded-sm shadow-md',
           isDarkMode ? 'mix-blend-screen' : 'mix-blend-multiply',
         )}
       >
-        <BookCover
-          book={book}
-          mode='list'
-          coverFit='crop'
-          imageClassName='rounded-sm'
-          onImageError={() => (bookCoverRef.current!.style.display = 'none')}
-        />
+        <BookCover book={book} mode='list' coverFit='crop' imageClassName='rounded-sm' />
       </div>
       <div className='min-w-0 flex-1'>
         <h4 className='line-clamp-2 w-[90%] text-sm font-semibold'>

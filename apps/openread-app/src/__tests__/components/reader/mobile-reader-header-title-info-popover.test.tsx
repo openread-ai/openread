@@ -242,7 +242,9 @@ describe('mobile web reader header title info popover', () => {
     expect(popover.className).toContain('-translate-x-1/2');
     expect(popover.className).toContain(MOBILE_BOOK_INFO_POPOVER_TOP_OFFSET_CLASS);
     expect(screen.getByText('Herman Melville')).toBeTruthy();
-    expect(screen.getByAltText('Moby-Dick').getAttribute('src')).toBe('/catalog-cover.jpg');
+    expect(screen.getByAltText('Moby-Dick').getAttribute('src')).toBe(
+      'https://api.openread.ai/catalog/books/catalog-1/cover',
+    );
     expect(screen.queryByText('Progress')).toBeNull();
     expect(screen.queryByText('Location')).toBeNull();
     expect(screen.queryByText('Format')).toBeNull();

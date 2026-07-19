@@ -802,7 +802,7 @@ export class SyncWorker {
   private async downloadMissingCovers(): Promise<void> {
     try {
       const appService = await envConfig.getAppService();
-      const { getCoverFilename } = await import('@/utils/book');
+      const { getCoverFilename, isCatalogBackedBook } = await import('@/utils/book');
 
       const coverFileBookHashes = new Set<string>();
       try {
@@ -820,6 +820,7 @@ export class SyncWorker {
       const candidates = library.filter(
         (book) =>
           !book.deletedAt &&
+          !isCatalogBackedBook(book) &&
           !book.coverImageUrl &&
           (Boolean(book.uploadedAt) || coverFileBookHashes.has(book.hash)),
       );

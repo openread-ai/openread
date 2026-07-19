@@ -319,6 +319,61 @@ export type CatalogMetadataRightsEvidenceResult =
   | { ok: true; evidence: CatalogMetadataRightsEvidence }
   | { ok: false; reason: CatalogMetadataRightsEvidenceFailureReason };
 
+export const CATALOG_COVER_EVIDENCE_MAX_BYTES = 10 * 1024 * 1024;
+
+export type CatalogCoverEvidenceCandidate = {
+  source: string;
+  sourceId: string;
+  editionId: string;
+  sourceUrl: string;
+  coverRevisionId: string;
+  extentBytes: number;
+  modifiedAt: string;
+  mediaTypes: readonly string[];
+};
+
+export type CatalogCoverEvidenceInput = {
+  edition: CatalogMetadataRightsEvidence;
+  formatCandidates: readonly CatalogFormatSelectionCandidate[];
+  coverCandidates: readonly CatalogCoverEvidenceCandidate[];
+};
+
+export type CatalogCoverEvidence = {
+  schemaVersion: 1;
+  activation: 'inactive';
+  source: string;
+  sourceId: string;
+  editionId: string;
+  metadataRevisionId: string;
+  artifact: CatalogMetadataRightsArtifactBinding;
+  cover: {
+    sourceUrl: string;
+    coverRevisionId: string;
+    extentBytes: number;
+    modifiedAt: string;
+    mediaType: string;
+  };
+  storage: {
+    state: 'not-written';
+    keyIntent: {
+      kind: 'catalog_cover';
+      owner: { source: string; sourceId: string };
+      outputExtension: 'jpg';
+    };
+  };
+};
+
+export type CatalogCoverEvidenceFailureReason =
+  | 'invalid-edition-evidence'
+  | 'artifact-evidence-mismatch'
+  | 'missing-cover-evidence'
+  | 'invalid-cover-evidence'
+  | 'ambiguous-cover-evidence';
+
+export type CatalogCoverEvidenceResult =
+  | { ok: true; evidence: CatalogCoverEvidence; rejectedCandidateCount: number }
+  | { ok: false; reason: CatalogCoverEvidenceFailureReason };
+
 type CatalogSourceHostPolicy = { exact: ReadonlySet<string>; suffix?: ReadonlySet<string> };
 
 export type CatalogSourcePolicy = {
@@ -1254,6 +1309,250 @@ export function buildCatalogMetadataRightsEvidence(
       },
     },
   };
+}
+
+const CATALOG_COVER_MEDIA_TYPES = {
+  'image/jpeg': { extensions: ['jpg', 'jpeg'], priority: 0 },
+  'image/png': { extensions: ['png'], priority: 1 },
+  'image/webp': { extensions: ['webp'], priority: 2 },
+  'image/avif': { extensions: ['avif'], priority: 3 },
+  'image/gif': { extensions: ['gif'], priority: 4 },
+} as const;
+
+type NormalizedCatalogCoverCandidate = {
+  candidate: CatalogCoverEvidenceCandidate;
+  sourceUrl: string;
+  coverRevisionId: string;
+  extentBytes: number;
+  modifiedAt: string;
+  mediaType: keyof typeof CATALOG_COVER_MEDIA_TYPES;
+  mediaPriority: number;
+  fingerprint: string;
+};
+
+export function buildCatalogCoverEvidence(
+  input: CatalogCoverEvidenceInput,
+): CatalogCoverEvidenceResult {
+  const edition = input?.edition;
+  if (
+    !edition ||
+    edition.schemaVersion !== 1 ||
+    edition.activation !== 'inactive' ||
+    !isExactNonemptyString(edition.source) ||
+    !isExactNonemptyString(edition.sourceId) ||
+    !isExactNonemptyString(edition.editionId) ||
+    !isExactNonemptyString(edition.metadataRevisionId) ||
+    !edition.artifact
+  ) {
+    return { ok: false, reason: 'invalid-edition-evidence' };
+  }
+
+  if (!Array.isArray(input.formatCandidates) || input.formatCandidates.length === 0) {
+    return { ok: false, reason: 'artifact-evidence-mismatch' };
+  }
+  const artifactSelection = selectCanonicalCatalogFormat(input.formatCandidates);
+  if (
+    !artifactSelection.ok ||
+    artifactSelection.candidate.source !== edition.source ||
+    artifactSelection.candidate.sourceId !== edition.sourceId ||
+    artifactSelection.candidate.sourceUrl !== edition.artifact.sourceUrl ||
+    artifactSelection.candidate.artifactRevisionId !== edition.artifact.artifactRevisionId ||
+    artifactSelection.candidate.format !== edition.artifact.format
+  ) {
+    return { ok: false, reason: 'artifact-evidence-mismatch' };
+  }
+
+  if (!Array.isArray(input.coverCandidates) || input.coverCandidates.length === 0) {
+    return { ok: false, reason: 'missing-cover-evidence' };
+  }
+
+  const normalized: NormalizedCatalogCoverCandidate[] = [];
+  for (const candidate of input.coverCandidates) {
+    if (
+      !candidate ||
+      candidate.source !== edition.source ||
+      candidate.sourceId !== edition.sourceId ||
+      candidate.editionId !== edition.editionId ||
+      !isExactNonemptyString(candidate.coverRevisionId) ||
+      !Number.isSafeInteger(candidate.extentBytes) ||
+      candidate.extentBytes <= 0 ||
+      candidate.extentBytes > CATALOG_COVER_EVIDENCE_MAX_BYTES ||
+      !isExactNonemptyString(candidate.modifiedAt) ||
+      !isStrictCatalogCoverModifiedTimestamp(candidate.modifiedAt) ||
+      !Array.isArray(candidate.mediaTypes) ||
+      candidate.mediaTypes.length === 0
+    ) {
+      return { ok: false, reason: 'invalid-cover-evidence' };
+    }
+
+    const sourceUrl = canonicalHttpsUrl(candidate.sourceUrl);
+    if (!sourceUrl) return { ok: false, reason: 'invalid-cover-evidence' };
+    const url = new URL(sourceUrl);
+    const hostPolicy = CATALOG_SOURCE_ALLOWED_HOSTS[edition.source];
+    if (
+      url.port !== '' ||
+      /%(?:00|23|2f|3f|5c)/i.test(url.pathname) ||
+      !hostPolicy ||
+      !isCatalogSourceHostAllowed(url.hostname, hostPolicy) ||
+      !catalogCoverUrlMatchesEdition(edition.source, edition.sourceId, edition.editionId, url)
+    ) {
+      return { ok: false, reason: 'invalid-cover-evidence' };
+    }
+
+    const mediaTypes = new Set<string>();
+    for (const value of candidate.mediaTypes) {
+      if (!isExactNonemptyString(value)) {
+        return { ok: false, reason: 'invalid-cover-evidence' };
+      }
+      mediaTypes.add(value.split(';', 1)[0]!.trim().toLowerCase());
+    }
+    if (mediaTypes.size !== 1) return { ok: false, reason: 'invalid-cover-evidence' };
+    const mediaType = [...mediaTypes][0] as keyof typeof CATALOG_COVER_MEDIA_TYPES;
+    const mediaPolicy = CATALOG_COVER_MEDIA_TYPES[mediaType];
+    if (
+      !mediaPolicy ||
+      !mediaPolicy.extensions.some((extension) =>
+        url.pathname.toLowerCase().endsWith(`.${extension}`),
+      )
+    ) {
+      return { ok: false, reason: 'invalid-cover-evidence' };
+    }
+
+    const fingerprint = JSON.stringify([
+      edition.source,
+      edition.sourceId,
+      edition.editionId,
+      sourceUrl,
+      candidate.coverRevisionId,
+      candidate.extentBytes,
+      candidate.modifiedAt,
+      mediaType,
+    ]);
+    normalized.push({
+      candidate,
+      sourceUrl,
+      coverRevisionId: candidate.coverRevisionId,
+      extentBytes: candidate.extentBytes,
+      modifiedAt: candidate.modifiedAt,
+      mediaType,
+      mediaPriority: mediaPolicy.priority,
+      fingerprint,
+    });
+  }
+
+  const fingerprintsByUrl = new Map<string, string>();
+  const fingerprintsByRevision = new Map<string, string>();
+  const unique = new Map<string, NormalizedCatalogCoverCandidate>();
+  for (const candidate of normalized) {
+    const urlFingerprint = fingerprintsByUrl.get(candidate.sourceUrl);
+    const revisionFingerprint = fingerprintsByRevision.get(candidate.coverRevisionId);
+    if (
+      (urlFingerprint && urlFingerprint !== candidate.fingerprint) ||
+      (revisionFingerprint && revisionFingerprint !== candidate.fingerprint)
+    ) {
+      return { ok: false, reason: 'ambiguous-cover-evidence' };
+    }
+    fingerprintsByUrl.set(candidate.sourceUrl, candidate.fingerprint);
+    fingerprintsByRevision.set(candidate.coverRevisionId, candidate.fingerprint);
+    unique.set(candidate.fingerprint, candidate);
+  }
+
+  const selected = [...unique.values()].sort(
+    (left, right) =>
+      right.extentBytes - left.extentBytes ||
+      left.mediaPriority - right.mediaPriority ||
+      compareExactStrings(left.sourceUrl, right.sourceUrl) ||
+      compareExactStrings(left.coverRevisionId, right.coverRevisionId),
+  )[0];
+  if (!selected) return { ok: false, reason: 'missing-cover-evidence' };
+
+  return {
+    ok: true,
+    rejectedCandidateCount: input.coverCandidates.length - unique.size,
+    evidence: {
+      schemaVersion: 1,
+      activation: 'inactive',
+      source: edition.source,
+      sourceId: edition.sourceId,
+      editionId: edition.editionId,
+      metadataRevisionId: edition.metadataRevisionId,
+      artifact: { ...edition.artifact },
+      cover: {
+        sourceUrl: selected.sourceUrl,
+        coverRevisionId: selected.coverRevisionId,
+        extentBytes: selected.extentBytes,
+        modifiedAt: selected.modifiedAt,
+        mediaType: selected.mediaType,
+      },
+      storage: {
+        state: 'not-written',
+        keyIntent: {
+          kind: 'catalog_cover',
+          owner: { source: edition.source, sourceId: edition.sourceId },
+          outputExtension: 'jpg',
+        },
+      },
+    },
+  };
+}
+
+type CatalogCoverOwnershipPolicy = (sourceId: string, editionId: string, url: URL) => boolean;
+
+const CATALOG_COVER_OWNERSHIP_POLICIES: Readonly<Record<string, CatalogCoverOwnershipPolicy>> = {
+  gutenberg: (sourceId, editionId, url) => {
+    const sourceMatch = sourceId.match(/^gutenberg-([1-9][0-9]*)$/);
+    const editionMatch = editionId.match(/^ebooks\/([1-9][0-9]*)$/);
+    if (!sourceMatch || sourceMatch[1] !== editionMatch?.[1]) return false;
+    try {
+      const ebookId = sourceMatch[1];
+      const pathname = decodeURIComponent(url.pathname);
+      return new RegExp(
+        `^/cache/epub/${ebookId}/pg${ebookId}\\.cover\\.(?:small|medium)\\.(?:jpe?g|png|webp|avif|gif)$`,
+        'i',
+      ).test(pathname);
+    } catch {
+      return false;
+    }
+  },
+};
+
+function catalogCoverUrlMatchesEdition(
+  source: string,
+  sourceId: string,
+  editionId: string,
+  url: URL,
+): boolean {
+  return CATALOG_COVER_OWNERSHIP_POLICIES[source]?.(sourceId, editionId, url) ?? false;
+}
+
+function isStrictCatalogCoverModifiedTimestamp(value: string): boolean {
+  const match = value.match(
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|([+-])(\d{2}):(\d{2}))?$/,
+  );
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6]);
+  const offsetHour = match[8] === undefined ? 0 : Number(match[8]);
+  const offsetMinute = match[9] === undefined ? 0 : Number(match[9]);
+  if (
+    year < 1 ||
+    month < 1 ||
+    month > 12 ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59 ||
+    offsetHour > 23 ||
+    offsetMinute > 59
+  ) {
+    return false;
+  }
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= daysInMonth[month - 1]!;
 }
 
 function isExactNonemptyString(value: unknown): value is string {

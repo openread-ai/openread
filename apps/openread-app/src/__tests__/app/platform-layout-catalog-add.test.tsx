@@ -163,6 +163,8 @@ describe('Platform account-library lifecycle owner', () => {
         useLibraryStore.getState().setLibrary([
           {
             hash: CATALOG_BOOK_HASH,
+            catalogBookId: CATALOG_BOOK_ID,
+            storagePath: 'catalog/books/standard-ebooks/ready.pdf',
             title: 'Canonical Catalog Book',
             author: 'OpenRead',
             format: 'pdf',

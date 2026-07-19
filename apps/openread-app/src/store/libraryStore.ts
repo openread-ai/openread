@@ -3,6 +3,7 @@ import { Book, BookGroupType, BooksGroup } from '@/types/book';
 import { EnvConfigType, isTauriAppPlatform } from '@/services/environment';
 import { BOOK_UNGROUPED_NAME } from '@/services/constants';
 import { md5Fingerprint } from '@/utils/md5';
+import { getBookIdFromCatalogBookRef } from '@openread/types';
 
 const latestBookMutationTime = (book: Book): number =>
   Math.max(book.updatedAt || 0, book.deletedAt || 0);
@@ -16,11 +17,26 @@ export function mergeLibraryBook(existing: Book, incoming: Book): Book {
   const localDeleteWins = isDeletedBook(existing) && localTime >= remoteTime;
   const remoteDeleteWins = isDeletedBook(incoming) && remoteTime >= localTime;
 
+  const localActiveWins =
+    !localDeleteWins && !remoteDeleteWins && !isDeletedBook(existing) && remoteTime < localTime;
   const winner = localDeleteWins
     ? { ...existing }
     : remoteDeleteWins || remoteTime >= localTime
       ? { ...incoming, coverImageUrl: existing.coverImageUrl ?? incoming.coverImageUrl }
       : { ...existing };
+
+  const incomingCatalogBookId = incoming.catalogBookId?.trim();
+  const incomingStoragePath = incoming.storagePath?.trim();
+  if (
+    localActiveWins &&
+    !isDeletedBook(incoming) &&
+    incomingCatalogBookId &&
+    incomingStoragePath &&
+    getBookIdFromCatalogBookRef(incoming.hash) === incomingCatalogBookId
+  ) {
+    winner.catalogBookId = incomingCatalogBookId;
+    winner.storagePath = incomingStoragePath;
+  }
 
   const coverImageUrl =
     existing.metadata?.coverImageUrl ??

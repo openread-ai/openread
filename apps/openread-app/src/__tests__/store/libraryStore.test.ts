@@ -71,25 +71,88 @@ describe('libraryStore.updateBooks', () => {
     expect(saveLibraryBooks).toHaveBeenCalledWith(useLibraryStore.getState().library);
   });
 
-  it('keeps a local delete tombstone over an equal-time active remote book', async () => {
+  it('self-heals canonical server fields into a newer active local row', async () => {
+    const hash = testOpenReadBookRef('catalog:7231ff9a-24b9-4074-9369-bc7f88ffb179');
     useLibraryStore.getState().setLibrary([
       book({
-        hash: testOpenReadBookRef('catalog:7231ff9a-24b9-4074-9369-bc7f88ffb179'),
+        hash,
         updatedAt: 300,
-        deletedAt: 300,
+        progress: [75, 100],
+        metadata: metadata({ publisher: 'Local Publisher' }),
+        catalogBookId: null,
+        storagePath: null,
       }),
     ]);
 
     await useLibraryStore.getState().updateBooks(envConfig, [
       book({
-        hash: testOpenReadBookRef('catalog:7231ff9a-24b9-4074-9369-bc7f88ffb179'),
+        hash,
+        updatedAt: 200,
+        progress: [25, 100],
+        catalogBookId: '7231ff9a-24b9-4074-9369-bc7f88ffb179',
+        storagePath: 'catalog/books/standard-ebooks/pride.epub',
+      }),
+    ]);
+
+    const [updated] = useLibraryStore.getState().library;
+    expect(updated).toMatchObject({
+      updatedAt: 300,
+      progress: [75, 100],
+      catalogBookId: '7231ff9a-24b9-4074-9369-bc7f88ffb179',
+      storagePath: 'catalog/books/standard-ebooks/pride.epub',
+      metadata: { publisher: 'Local Publisher' },
+    });
+  });
+
+  it('keeps a local delete tombstone over an equal-time active remote book', async () => {
+    const hash = testOpenReadBookRef('catalog:7231ff9a-24b9-4074-9369-bc7f88ffb179');
+    useLibraryStore.getState().setLibrary([
+      book({
+        hash,
+        updatedAt: 300,
+        deletedAt: 300,
+        catalogBookId: null,
+        storagePath: null,
+      }),
+    ]);
+
+    await useLibraryStore.getState().updateBooks(envConfig, [
+      book({
+        hash,
         updatedAt: 300,
         deletedAt: null,
+        catalogBookId: '7231ff9a-24b9-4074-9369-bc7f88ffb179',
+        storagePath: 'catalog/books/standard-ebooks/pride.epub',
       }),
     ]);
 
     const [updated] = useLibraryStore.getState().library;
     expect(updated?.deletedAt).toBe(300);
+    expect(updated?.catalogBookId).toBeNull();
+    expect(updated?.storagePath).toBeNull();
     expect(useLibraryStore.getState().getVisibleLibrary()).toEqual([]);
+  });
+
+  it('does not graft catalog fields onto private imports', async () => {
+    const hash = testOpenReadBookRef('private-import');
+    useLibraryStore
+      .getState()
+      .setLibrary([
+        book({ hash, updatedAt: 300, progress: [75, 100], catalogBookId: null, storagePath: null }),
+      ]);
+
+    await useLibraryStore.getState().updateBooks(envConfig, [
+      book({
+        hash,
+        updatedAt: 200,
+        catalogBookId: '7231ff9a-24b9-4074-9369-bc7f88ffb179',
+        storagePath: 'catalog/books/standard-ebooks/pride.epub',
+      }),
+    ]);
+
+    const [updated] = useLibraryStore.getState().library;
+    expect(updated).toMatchObject({ updatedAt: 300, progress: [75, 100] });
+    expect(updated?.catalogBookId).toBeNull();
+    expect(updated?.storagePath).toBeNull();
   });
 });

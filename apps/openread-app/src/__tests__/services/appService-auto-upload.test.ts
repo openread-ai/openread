@@ -31,7 +31,9 @@ const {
     mockGetState: vi.fn(() => ({
       settings: { autoUpload: true },
     })),
-    mockGetDownloadUrl: vi.fn<() => Promise<CatalogDownloadUrlResponse>>(async () => ({
+    mockGetDownloadUrl: vi.fn<
+      (bookHash: string, init?: RequestInit) => Promise<CatalogDownloadUrlResponse>
+    >(async () => ({
       status: 'ready',
       downloadUrl: 'https://signed.example/book.epub',
       expiresAt: Date.now() + 30_000,
@@ -387,7 +389,37 @@ describe('appService book content loading', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(getLocalBookFilename).mockReset();
+    vi.mocked(getLocalBookFilename).mockReturnValue('mock-local-filename');
+    mockGetDownloadUrl.mockReset();
+    mockGetDownloadUrl.mockResolvedValue({
+      status: 'ready',
+      downloadUrl: 'https://signed.example/book.epub',
+      expiresAt: Date.now() + 30_000,
+      sizeBytes: null,
+      format: 'epub',
+    });
     appService = new TestAppService();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('opens existing local content without polling Catalog', async () => {
+    const fs = (appService as unknown as { fs: FileSystem }).fs;
+    vi.mocked(fs.exists).mockResolvedValue(true);
+    const book = createMockBook({
+      hash: testOpenReadBookRef('catalog:7231ff9a-24b9-4074-9369-bc7f88ffb179'),
+      catalogBookId: '7231ff9a-24b9-4074-9369-bc7f88ffb179',
+      storagePath: 'catalog/books/ready.epub',
+    });
+
+    const content = await appService.loadBookContent(book);
+
+    expect(content.file).toBeInstanceOf(File);
+    expect(mockGetDownloadUrl).not.toHaveBeenCalled();
+    expect(downloadFile).not.toHaveBeenCalled();
   });
 
   it('keeps storagePath-backed books on the catalog signing path', async () => {
@@ -405,7 +437,10 @@ describe('appService book content loading', () => {
 
     const content = await appService.loadBookContent(book, onProgress);
 
-    expect(mockGetDownloadUrl).toHaveBeenCalledWith(book.hash);
+    expect(mockGetDownloadUrl).toHaveBeenCalledWith(
+      book.hash,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
     expect(downloadFile).toHaveBeenCalledWith(
       expect.objectContaining({
         appService,
@@ -450,7 +485,10 @@ describe('appService book content loading', () => {
 
     const content = await appService.loadBookContent(book, onProgress);
 
-    expect(mockGetDownloadUrl).toHaveBeenCalledWith(book.hash);
+    expect(mockGetDownloadUrl).toHaveBeenCalledWith(
+      book.hash,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
     expect(downloadFile).toHaveBeenCalledWith(
       expect.objectContaining({
         appService,
@@ -471,27 +509,250 @@ describe('appService book content loading', () => {
     expect(book.downloadedAt).toEqual(expect.any(Number));
   });
 
-  it('surfaces preparing catalog-backed downloads without falling through to file metadata', async () => {
+  it('retries typed preparing until ready and opens the post-ready format path', async () => {
+    vi.useFakeTimers();
+    const fs = (appService as unknown as { fs: FileSystem }).fs;
+    vi.mocked(fs.exists).mockResolvedValue(false);
+    vi.mocked(downloadFile).mockResolvedValue({});
+    vi.mocked(getLocalBookFilename).mockImplementation(
+      (candidate) => `mock-local-filename.${candidate.format}`,
+    );
+    mockGetDownloadUrl
+      .mockResolvedValueOnce({
+        status: 'preparing',
+        catalogBookId: '7231ff9a-24b9-4074-9369-bc7f88ffb179',
+        retryAfterSeconds: 2,
+        message: 'Catalog book file is still preparing.',
+      })
+      .mockResolvedValueOnce({
+        status: 'ready',
+        downloadUrl: 'https://signed.example/ready.pdf',
+        expiresAt: Date.now() + 30_000,
+        sizeBytes: 456,
+        format: 'pdf',
+        storagePath: 'catalog/books/standard-ebooks/ready.pdf',
+      });
+    const book = createMockBook({
+      hash: testOpenReadBookRef('catalog:7231ff9a-24b9-4074-9369-bc7f88ffb179'),
+      catalogBookId: '7231ff9a-24b9-4074-9369-bc7f88ffb179',
+      storagePath: null,
+      format: 'epub',
+      uploadedAt: null,
+      downloadedAt: null,
+    });
+
+    const result = appService.loadBookContent(book, undefined, new AbortController().signal);
+    await vi.advanceTimersByTimeAsync(2_000);
+    await expect(result).resolves.toEqual({ book, file: expect.any(File) });
+
+    expect(mockGetDownloadUrl).toHaveBeenCalledTimes(2);
+    const signals = mockGetDownloadUrl.mock.calls.map(([, init]) => init?.signal);
+    expect(signals[0]).toBeInstanceOf(AbortSignal);
+    expect(signals[1]).toBeInstanceOf(AbortSignal);
+    expect(signals[0]).not.toBe(signals[1]);
+    expect(downloadFile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dst: '/mock-local-filename.pdf',
+        cfp: 'catalog/books/standard-ebooks/ready.pdf',
+        url: 'https://signed.example/ready.pdf',
+        expectedSizeBytes: 456,
+      }),
+    );
+    expect(fs.openFile).toHaveBeenCalledWith('mock-local-filename.pdf', 'Books');
+    expect(fs.openFile).not.toHaveBeenCalledWith('mock-local-filename.epub', 'Books');
+    expect(book).toMatchObject({
+      storagePath: 'catalog/books/standard-ebooks/ready.pdf',
+      format: 'pdf',
+    });
+  });
+
+  it('clamps preparing retry delays to one through thirty seconds', async () => {
+    vi.useFakeTimers();
+    const fs = (appService as unknown as { fs: FileSystem }).fs;
+    vi.mocked(fs.exists).mockResolvedValue(false);
+    vi.mocked(downloadFile).mockResolvedValue({});
+    mockGetDownloadUrl
+      .mockResolvedValueOnce({
+        status: 'preparing',
+        catalogBookId: '7231ff9a-24b9-4074-9369-bc7f88ffb179',
+        retryAfterSeconds: 0,
+        message: 'Preparing',
+      })
+      .mockResolvedValueOnce({
+        status: 'preparing',
+        catalogBookId: '7231ff9a-24b9-4074-9369-bc7f88ffb179',
+        retryAfterSeconds: 31,
+        message: 'Preparing',
+      })
+      .mockResolvedValueOnce({
+        status: 'ready',
+        downloadUrl: 'https://signed.example/ready.epub',
+        expiresAt: Date.now() + 30_000,
+        sizeBytes: null,
+        format: 'epub',
+        storagePath: 'catalog/books/ready.epub',
+      });
+    const book = createMockBook({
+      hash: testOpenReadBookRef('catalog:7231ff9a-24b9-4074-9369-bc7f88ffb179'),
+      catalogBookId: '7231ff9a-24b9-4074-9369-bc7f88ffb179',
+      storagePath: null,
+      downloadedAt: null,
+    });
+
+    const result = appService.loadBookContent(book, undefined, new AbortController().signal);
+    await vi.advanceTimersByTimeAsync(999);
+    expect(mockGetDownloadUrl).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(mockGetDownloadUrl).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(mockGetDownloadUrl).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(result).resolves.toEqual({ book, file: expect.any(File) });
+    expect(mockGetDownloadUrl).toHaveBeenCalledTimes(3);
+  });
+
+  it('fails after the bounded preparing deadline without downloading', async () => {
+    vi.useFakeTimers();
+    const fs = (appService as unknown as { fs: FileSystem }).fs;
+    vi.mocked(fs.exists).mockResolvedValue(false);
+    mockGetDownloadUrl.mockResolvedValue({
+      status: 'preparing',
+      catalogBookId: '7231ff9a-24b9-4074-9369-bc7f88ffb179',
+      retryAfterSeconds: 30,
+      message: 'Preparing',
+    });
+    const book = createMockBook({
+      hash: testOpenReadBookRef('catalog:7231ff9a-24b9-4074-9369-bc7f88ffb179'),
+      catalogBookId: '7231ff9a-24b9-4074-9369-bc7f88ffb179',
+      storagePath: null,
+      downloadedAt: null,
+    });
+
+    const result = appService.loadBookContent(book, undefined, new AbortController().signal).then(
+      () => null,
+      (error: unknown) => error,
+    );
+    await vi.advanceTimersByTimeAsync(90_000);
+
+    await expect(result).resolves.toEqual(
+      expect.objectContaining({ message: 'Catalog book did not become ready within 90 seconds.' }),
+    );
+    expect(mockGetDownloadUrl).toHaveBeenCalledTimes(3);
+    expect(downloadFile).not.toHaveBeenCalled();
+  });
+
+  it('propagates terminal signing errors without retry or download fallback', async () => {
+    vi.useFakeTimers();
+    const fs = (appService as unknown as { fs: FileSystem }).fs;
+    vi.mocked(fs.exists).mockResolvedValue(false);
+    mockGetDownloadUrl
+      .mockResolvedValueOnce({
+        status: 'preparing',
+        catalogBookId: '7231ff9a-24b9-4074-9369-bc7f88ffb179',
+        retryAfterSeconds: 1,
+        message: 'Preparing',
+      })
+      .mockRejectedValueOnce(new Error('Catalog signing denied'));
+    const book = createMockBook({
+      hash: testOpenReadBookRef('catalog:7231ff9a-24b9-4074-9369-bc7f88ffb179'),
+      catalogBookId: '7231ff9a-24b9-4074-9369-bc7f88ffb179',
+      storagePath: null,
+      downloadedAt: null,
+    });
+
+    const result = appService.loadBookContent(book, undefined, new AbortController().signal);
+    const rejection = expect(result).rejects.toThrow('Catalog signing denied');
+    await vi.advanceTimersByTimeAsync(1_000);
+    await rejection;
+    expect(mockGetDownloadUrl).toHaveBeenCalledTimes(2);
+    expect(downloadFile).not.toHaveBeenCalled();
+  });
+
+  it('aborts preparing before another signing request or byte write', async () => {
+    vi.useFakeTimers();
+    const fs = (appService as unknown as { fs: FileSystem }).fs;
+    vi.mocked(fs.exists).mockResolvedValue(false);
+    mockGetDownloadUrl.mockResolvedValue({
+      status: 'preparing',
+      catalogBookId: '7231ff9a-24b9-4074-9369-bc7f88ffb179',
+      retryAfterSeconds: 1,
+      message: 'Preparing',
+    });
+    const book = createMockBook({
+      hash: testOpenReadBookRef('catalog:7231ff9a-24b9-4074-9369-bc7f88ffb179'),
+      catalogBookId: '7231ff9a-24b9-4074-9369-bc7f88ffb179',
+      storagePath: null,
+      downloadedAt: null,
+    });
+    const lifecycle = new AbortController();
+
+    const result = appService.loadBookContent(book, undefined, lifecycle.signal);
+    const rejection = expect(result).rejects.toMatchObject({ name: 'AbortError' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mockGetDownloadUrl).toHaveBeenCalledTimes(1);
+    lifecycle.abort();
+    await rejection;
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(mockGetDownloadUrl).toHaveBeenCalledTimes(1);
+    expect(downloadFile).not.toHaveBeenCalled();
+    expect(book.downloadedAt).toBeNull();
+  });
+
+  it('aborts a hanging in-flight signing request when the lifecycle changes', async () => {
+    const fs = (appService as unknown as { fs: FileSystem }).fs;
+    vi.mocked(fs.exists).mockResolvedValue(false);
+    let requestSignal: AbortSignal | null | undefined;
+    mockGetDownloadUrl.mockImplementationOnce(
+      (_hash, init) =>
+        new Promise((_resolve, reject) => {
+          requestSignal = init?.signal;
+          init?.signal?.addEventListener(
+            'abort',
+            () => reject(new DOMException('aborted', 'AbortError')),
+            { once: true },
+          );
+        }),
+    );
+    const book = createMockBook({
+      hash: testOpenReadBookRef('catalog:7231ff9a-24b9-4074-9369-bc7f88ffb179'),
+      catalogBookId: '7231ff9a-24b9-4074-9369-bc7f88ffb179',
+      storagePath: null,
+      downloadedAt: null,
+    });
+    const lifecycle = new AbortController();
+
+    const result = appService.loadBookContent(book, undefined, lifecycle.signal);
+    const rejection = expect(result).rejects.toMatchObject({ name: 'AbortError' });
+    await vi.waitFor(() => expect(requestSignal).toBeInstanceOf(AbortSignal));
+    lifecycle.abort();
+    await rejection;
+
+    expect(requestSignal?.aborted).toBe(true);
+    expect(mockGetDownloadUrl).toHaveBeenCalledTimes(1);
+    expect(downloadFile).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when preparing has no active Reader lifecycle', async () => {
     const fs = (appService as unknown as { fs: FileSystem }).fs;
     vi.mocked(fs.exists).mockResolvedValue(false);
     mockGetDownloadUrl.mockResolvedValueOnce({
       status: 'preparing',
       catalogBookId: '7231ff9a-24b9-4074-9369-bc7f88ffb179',
-      retryAfterSeconds: 30,
-      message: 'Catalog book file is still preparing. Try again shortly.',
+      retryAfterSeconds: 1,
+      message: 'Preparing',
     });
-
     const book = createMockBook({
       hash: testOpenReadBookRef('catalog:7231ff9a-24b9-4074-9369-bc7f88ffb179'),
       catalogBookId: '7231ff9a-24b9-4074-9369-bc7f88ffb179',
       storagePath: null,
-      uploadedAt: null,
       downloadedAt: null,
     });
 
     await expect(appService.loadBookContent(book)).rejects.toThrow(
-      'Catalog book file is still preparing',
+      'Catalog preparing retry requires an active Reader lifecycle.',
     );
+    expect(mockGetDownloadUrl).toHaveBeenCalledTimes(1);
     expect(downloadFile).not.toHaveBeenCalled();
   });
 
@@ -521,6 +782,7 @@ describe('appService book content loading', () => {
         onProgress,
       }),
     );
+    expect(mockGetDownloadUrl).not.toHaveBeenCalled();
     expect(content.file).toBeInstanceOf(File);
     expect(book.downloadedAt).toEqual(expect.any(Number));
   });
@@ -540,7 +802,10 @@ describe('appService book content loading', () => {
 
     const content = await appService.redownloadBookContent(book, onProgress);
 
-    expect(mockGetDownloadUrl).toHaveBeenCalledWith(book.hash);
+    expect(mockGetDownloadUrl).toHaveBeenCalledWith(
+      book.hash,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
     expect(downloadFile).toHaveBeenCalledWith(
       expect.objectContaining({
         appService,

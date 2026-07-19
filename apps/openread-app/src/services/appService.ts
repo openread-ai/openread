@@ -35,7 +35,11 @@ import {
 } from '@/utils/book';
 import { md5, partialMD5 } from '@/utils/md5';
 import { computeFileHash } from '@/services/platform/storage';
-import { parseLocalBookHash, parsePlatformBookHash } from '@openread/types';
+import {
+  parseLocalBookHash,
+  parsePlatformBookHash,
+  type CatalogDownloadUrlResponse,
+} from '@openread/types';
 import { getBaseFilename, getFilename } from '@/utils/path';
 import { BookDoc, DocumentLoader, EXTS } from '@/libs/document';
 import {
@@ -101,6 +105,100 @@ import {
 import type { ImportFailureReason } from '@/services/importFailure';
 
 const logger = createLogger('appService');
+const CATALOG_DOWNLOAD_READY_DEADLINE_MS = 90_000;
+const CATALOG_DOWNLOAD_MIN_RETRY_SECONDS = 1;
+const CATALOG_DOWNLOAD_MAX_RETRY_SECONDS = 30;
+
+type CatalogDownloadReadyResponse = Exclude<CatalogDownloadUrlResponse, { status: 'preparing' }>;
+
+function catalogDownloadDeadlineError(): Error {
+  return new Error('Catalog book did not become ready within 90 seconds.');
+}
+
+function catalogDownloadCancelledError(): DOMException {
+  return new DOMException(
+    'Catalog open cancelled because the library context changed.',
+    'AbortError',
+  );
+}
+
+function assertCatalogDownloadActive(lifecycleSignal?: AbortSignal): void {
+  if (lifecycleSignal?.aborted) throw catalogDownloadCancelledError();
+}
+
+function waitForCatalogDownloadRetry(delayMs: number, lifecycleSignal: AbortSignal): Promise<void> {
+  assertCatalogDownloadActive(lifecycleSignal);
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(done, Math.max(0, delayMs));
+    function done() {
+      lifecycleSignal.removeEventListener('abort', abort);
+      resolve();
+    }
+    function abort() {
+      clearTimeout(timeout);
+      lifecycleSignal.removeEventListener('abort', abort);
+      reject(catalogDownloadCancelledError());
+    }
+    lifecycleSignal.addEventListener('abort', abort, { once: true });
+  });
+}
+
+async function getReadyCatalogDownload(
+  bookHash: string,
+  lifecycleSignal?: AbortSignal,
+): Promise<CatalogDownloadReadyResponse> {
+  const deadline = Date.now() + CATALOG_DOWNLOAD_READY_DEADLINE_MS;
+
+  while (true) {
+    assertCatalogDownloadActive(lifecycleSignal);
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) throw catalogDownloadDeadlineError();
+
+    const controller = new AbortController();
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let removeLifecycleAbort: () => void = () => undefined;
+    const lifecycleCancellation = lifecycleSignal
+      ? new Promise<never>((_, reject) => {
+          const abort = () => {
+            controller.abort();
+            reject(catalogDownloadCancelledError());
+          };
+          lifecycleSignal.addEventListener('abort', abort, { once: true });
+          removeLifecycleAbort = () => lifecycleSignal.removeEventListener('abort', abort);
+        })
+      : new Promise<never>(() => undefined);
+    const response = await Promise.race([
+      platform.catalog.getDownloadUrl(bookHash, { signal: controller.signal }),
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => {
+          controller.abort();
+          reject(catalogDownloadDeadlineError());
+        }, remainingMs);
+      }),
+      lifecycleCancellation,
+    ]).finally(() => {
+      if (timeout) clearTimeout(timeout);
+      removeLifecycleAbort();
+    });
+
+    if (response.status !== 'preparing') return response;
+    if (!lifecycleSignal) {
+      throw new Error('Catalog preparing retry requires an active Reader lifecycle.');
+    }
+
+    const requestedRetrySeconds = Number.isFinite(response.retryAfterSeconds)
+      ? response.retryAfterSeconds
+      : CATALOG_DOWNLOAD_MIN_RETRY_SECONDS;
+    const retrySeconds = Math.min(
+      CATALOG_DOWNLOAD_MAX_RETRY_SECONDS,
+      Math.max(CATALOG_DOWNLOAD_MIN_RETRY_SECONDS, requestedRetrySeconds),
+    );
+    await waitForCatalogDownloadRetry(
+      Math.min(retrySeconds * 1_000, deadline - Date.now()),
+      lifecycleSignal,
+    );
+  }
+}
 
 type LocalImportArtifact =
   | {
@@ -758,29 +856,24 @@ export abstract class BaseAppService implements AppService {
     return this.cloudSync.downloadBook(book, this, onlyCover, redownload, onProgress);
   }
 
-  private async downloadCatalogBackedBook(book: Book, onProgress?: ProgressHandler): Promise<void> {
-    const data = await platform.catalog.getDownloadUrl(book.hash);
-    const status = (data as { status?: string }).status;
-    if (status === 'preparing') {
-      throw new Error(
-        (data as { message?: string }).message ||
-          'Catalog book is still preparing. Try again shortly.',
-      );
-    }
-    const readyData = data as {
-      downloadUrl?: string;
-      sizeBytes?: number | string | null;
-      storagePath?: string | null;
-    };
+  private async downloadCatalogBackedBook(
+    book: Book,
+    onProgress?: ProgressHandler,
+    lifecycleSignal?: AbortSignal,
+  ): Promise<void> {
+    const readyData = await getReadyCatalogDownload(book.hash, lifecycleSignal);
+    assertCatalogDownloadActive(lifecycleSignal);
     if (!readyData.downloadUrl) throw new Error('No download URL available');
 
     const storagePath = readyData.storagePath || book.storagePath;
-    if (!storagePath) throw new Error('Catalog book is still preparing. Try again shortly.');
+    if (!storagePath) throw new Error('Catalog download is missing its storage path.');
+    if (readyData.format) book.format = readyData.format as BookFormat;
 
     const localPath = getLocalBookFilename(book);
     if (!(await this.fs.exists(getDir(book), 'Books'))) {
       await this.fs.createDir(getDir(book), 'Books');
     }
+    assertCatalogDownloadActive(lifecycleSignal);
 
     await downloadFile({
       appService: this,
@@ -791,6 +884,7 @@ export abstract class BaseAppService implements AppService {
       expectedSha256: book.platformHash,
       onProgress,
     });
+    assertCatalogDownloadActive(lifecycleSignal);
     book.storagePath = storagePath;
     book.downloadedAt = Date.now();
   }
@@ -866,14 +960,19 @@ export abstract class BaseAppService implements AppService {
     return null;
   }
 
-  async loadBookContent(book: Book, onProgress?: ProgressHandler): Promise<BookContent> {
+  async loadBookContent(
+    book: Book,
+    onProgress?: ProgressHandler,
+    lifecycleSignal?: AbortSignal,
+  ): Promise<BookContent> {
     let file: File;
     const fp = getLocalBookFilename(book);
     if (await this.fs.exists(fp, 'Books')) {
       file = await this.fs.openFile(fp, 'Books');
     } else if (isCatalogBackedBook(book)) {
-      await this.downloadCatalogBackedBook(book, onProgress);
-      file = await this.fs.openFile(fp, 'Books');
+      await this.downloadCatalogBackedBook(book, onProgress, lifecycleSignal);
+      assertCatalogDownloadActive(lifecycleSignal);
+      file = await this.fs.openFile(getLocalBookFilename(book), 'Books');
     } else {
       try {
         await this.downloadFileMetadataBackedBook(book, onProgress);
@@ -913,10 +1012,14 @@ export abstract class BaseAppService implements AppService {
     return { book, file };
   }
 
-  async redownloadBookContent(book: Book, onProgress?: ProgressHandler): Promise<BookContent> {
+  async redownloadBookContent(
+    book: Book,
+    onProgress?: ProgressHandler,
+    lifecycleSignal?: AbortSignal,
+  ): Promise<BookContent> {
     if (isCatalogBackedBook(book)) {
-      await this.downloadCatalogBackedBook(book, onProgress);
-      return this.loadBookContent(book, onProgress);
+      await this.downloadCatalogBackedBook(book, onProgress, lifecycleSignal);
+      return this.loadBookContent(book, onProgress, lifecycleSignal);
     }
 
     if (book.url && !book.uploadedAt) {

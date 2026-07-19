@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { loadReaderOpenDocument } from '@/services/readerOpenRecovery';
+import {
+  createReaderOpenLifecycleGuard,
+  loadReaderOpenDocument,
+} from '@/services/readerOpenRecovery';
+import { useLibraryStore } from '@/store/libraryStore';
 import type { Book } from '@/types/book';
 import type { AppService } from '@/types/system';
 import type { ProgressHandler } from '@/utils/transfer';
@@ -59,6 +63,44 @@ const doc = { book: { metadata: { title: 'Recovered' } }, format: 'epub' };
 describe('loadReaderOpenDocument', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useLibraryStore.setState({ library: [], libraryOwnerUserId: null });
+  });
+
+  it('keeps same-account token refresh active and disposes its subscription', () => {
+    const book = createBook({
+      hash: 'catalog:7231ff9a-24b9-4074-9369-bc7f88ffb179' as Book['hash'],
+      catalogBookId: '7231ff9a-24b9-4074-9369-bc7f88ffb179',
+      storagePath: 'catalog/books/account-a.epub',
+    });
+    useLibraryStore.setState({ library: [book], libraryOwnerUserId: 'account-a' });
+    const lifecycle = createReaderOpenLifecycleGuard(book);
+
+    useLibraryStore.setState({ isSyncing: true });
+    expect(lifecycle.signal.aborted).toBe(false);
+    expect(() => lifecycle.assertCurrent()).not.toThrow();
+
+    lifecycle.dispose();
+    useLibraryStore.setState({ library: [{ ...book }], libraryOwnerUserId: 'account-b' });
+    expect(lifecycle.signal.aborted).toBe(false);
+  });
+
+  it('aborts when another account replaces the same catalog hash', () => {
+    const bookA = createBook({
+      hash: 'catalog:7231ff9a-24b9-4074-9369-bc7f88ffb179' as Book['hash'],
+      catalogBookId: '7231ff9a-24b9-4074-9369-bc7f88ffb179',
+      storagePath: 'catalog/books/account-a.epub',
+    });
+    const bookB = { ...bookA, storagePath: 'catalog/books/account-b.epub' };
+    useLibraryStore.setState({ library: [bookA], libraryOwnerUserId: 'account-a' });
+    const lifecycle = createReaderOpenLifecycleGuard(bookA);
+
+    useLibraryStore.setState({ library: [bookB], libraryOwnerUserId: 'account-b' });
+
+    expect(lifecycle.signal.aborted).toBe(true);
+    expect(() => lifecycle.assertCurrent()).toThrow(
+      'Reader open cancelled because the library context changed.',
+    );
+    lifecycle.dispose();
   });
 
   it('recovers a corrupt cloud-backed local book once and forwards progress', async () => {

@@ -10,7 +10,14 @@ const { mockAuth, mockDispatch, mockImportBook, mockGetAddRequest, mockLibrary, 
       token: 'token' as string | null,
       user: { id: 'user-1' } as { id: string } | null,
     };
-    const mockLibrary = { library: [] as Array<{ hash: string; deletedAt?: number }> };
+    const mockLibrary = {
+      library: [] as Array<{
+        hash: string;
+        catalogBookId?: string;
+        storagePath?: string;
+        deletedAt?: number;
+      }>,
+    };
     return {
       mockAuth,
       mockDispatch: vi.fn(),
@@ -18,7 +25,13 @@ const { mockAuth, mockDispatch, mockImportBook, mockGetAddRequest, mockLibrary, 
       mockGetAddRequest: vi.fn(),
       mockLibrary,
       mockPullNow: vi.fn(async () => {
-        mockLibrary.library = [{ hash: 'catalog:11111111-1111-4111-8111-111111111111' }];
+        mockLibrary.library = [
+          {
+            hash: 'catalog:11111111-1111-4111-8111-111111111111',
+            catalogBookId: '11111111-1111-4111-8111-111111111111',
+            storagePath: 'catalog/books/standard-ebooks/ready.epub',
+          },
+        ];
       }),
     };
   });

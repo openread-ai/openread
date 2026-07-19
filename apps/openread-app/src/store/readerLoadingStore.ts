@@ -9,7 +9,11 @@
 import { create } from 'zustand';
 import { createLogger } from '@/utils/logger';
 import { FIXED_LAYOUT_FORMATS } from '@/types/book';
-import { loadReaderOpenDocument } from '@/services/readerOpenRecovery';
+import {
+  createReaderOpenLifecycleGuard,
+  loadReaderOpenDocument,
+  type ReaderOpenLifecycleGuard,
+} from '@/services/readerOpenRecovery';
 import { updateToc } from '@/utils/toc';
 import { formatTitle, getMetadataHash, getPrimaryLanguage } from '@/utils/book';
 import { getBaseFilename } from '@/utils/path';
@@ -67,24 +71,33 @@ export const useReaderLoadingStore = create<LoadingState & LoadingActions>((set,
       })(),
     }));
 
+    let lifecycle: ReaderOpenLifecycleGuard | undefined;
     try {
       const appService = await envConfig.getAppService();
       const { settings } = useSettingsStore.getState();
       const { library } = useLibraryStore.getState();
       const book = library.find((b) => b.hash === bookId);
       if (!book) throw new Error('Book not found');
+      lifecycle = createReaderOpenLifecycleGuard(book);
 
       logger.info('Loading book', bookId);
-      const { content, doc } = await loadReaderOpenDocument(appService, book);
+      const { content, doc } = await loadReaderOpenDocument(
+        appService,
+        book,
+        undefined,
+        lifecycle.signal,
+      );
       const file = content.file;
       const bookDoc = doc.book;
       const config = await appService.loadBookConfig(book, settings);
+      lifecycle.assertCurrent();
 
       await updateToc(
         bookDoc,
         config.viewSettings?.sortedTOC ?? false,
         config.viewSettings?.convertChineseVariant ?? 'none',
       );
+      lifecycle.assertCurrent();
 
       if (!bookDoc.metadata.title) {
         bookDoc.metadata.title = getBaseFilename(file.name);
@@ -127,6 +140,8 @@ export const useReaderLoadingStore = create<LoadingState & LoadingActions>((set,
         return { loadingBooks: loading, loadErrors: errors };
       });
       return false;
+    } finally {
+      lifecycle?.dispose();
     }
   },
 }));

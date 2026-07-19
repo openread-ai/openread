@@ -108,10 +108,17 @@ export function catalogAddFailureMessage(failureCode: unknown): string {
   return isCatalogAddFailureCode(failureCode) ? failureCode : 'Catalog Add failed';
 }
 
-function visibleCanonicalBook(bookHash: string): boolean {
+export function visibleCanonicalBook(catalogBookId: string, bookHash: string): boolean {
   return useLibraryStore
     .getState()
-    .library.some((book) => book.hash === bookHash && !book.deletedAt);
+    .library.some(
+      (book) =>
+        book.hash === bookHash &&
+        book.catalogBookId === catalogBookId &&
+        typeof book.storagePath === 'string' &&
+        book.storagePath.trim().length > 0 &&
+        !book.deletedAt,
+    );
 }
 
 async function syncCanonicalBook(
@@ -125,7 +132,7 @@ async function syncCanonicalBook(
     if (signal.aborted) return;
     try {
       await syncWorker.pullNow('books');
-      if (visibleCanonicalBook(bookHash)) return;
+      if (visibleCanonicalBook(catalogBookId, bookHash)) return;
     } catch (error) {
       lastError = error;
       logger.warn('Catalog Add library sync failed', { catalogBookId, error });

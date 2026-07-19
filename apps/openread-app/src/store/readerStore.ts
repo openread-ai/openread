@@ -15,7 +15,11 @@ import { Insets } from '@/types/misc';
 import { EnvConfigType } from '@/services/environment';
 import { FoliateView } from '@/types/view';
 import { TOCItem } from '@/libs/document';
-import { loadReaderOpenDocument } from '@/services/readerOpenRecovery';
+import {
+  createReaderOpenLifecycleGuard,
+  loadReaderOpenDocument,
+  type ReaderOpenLifecycleGuard,
+} from '@/services/readerOpenRecovery';
 import { updateToc } from '@/utils/toc';
 import { formatTitle, getMetadataHash, getPrimaryLanguage } from '@/utils/book';
 import { getBaseFilename } from '@/utils/path';
@@ -160,6 +164,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
         },
       },
     }));
+    let lifecycle: ReaderOpenLifecycleGuard | undefined;
     try {
       const appService = await envConfig.getAppService();
       const { settings } = useSettingsStore.getState();
@@ -168,19 +173,31 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
       if (!book) {
         throw new Error('Book not found');
       }
+      lifecycle = createReaderOpenLifecycleGuard(book);
       let bookDoc = bookData?.bookDoc;
       let file = bookData?.file;
       if (!bookDoc || !file || reload) {
         logger.info('Loading book', key);
-        const { content, doc } = await loadReaderOpenDocument(appService, book, onLoadProgress);
+        const { content, doc } = await loadReaderOpenDocument(
+          appService,
+          book,
+          onLoadProgress,
+          lifecycle.signal,
+        );
         file = content.file;
         bookDoc = doc.book;
       }
       const config = await appService.loadBookConfig(book, settings);
+      lifecycle.assertCurrent();
 
-      // Merge pre-synced remote config (from pullRemoteConfigs) if it has a newer
-      // reading position. This avoids the flash from page 1 when opening a book
-      // synced from another device — the viewer gets the correct location immediately.
+      await updateToc(
+        bookDoc,
+        config.viewSettings?.sortedTOC ?? false,
+        config.viewSettings?.convertChineseVariant ?? 'none',
+      );
+      lifecycle.assertCurrent();
+
+      // Merge pre-synced remote config only after the captured account/book is still current.
       const preSynced = useBookDataStore.getState().consumePreSyncedConfig(id);
       if (
         preSynced?.location &&
@@ -192,11 +209,6 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
         if (preSynced.progress) config.progress = preSynced.progress;
       }
 
-      await updateToc(
-        bookDoc,
-        config.viewSettings?.sortedTOC ?? false,
-        config.viewSettings?.convertChineseVariant ?? 'none',
-      );
       if (!bookDoc.metadata.title) {
         bookDoc.metadata.title = getBaseFilename(file.name);
       }
@@ -281,6 +293,8 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
         },
       }));
       throw error;
+    } finally {
+      lifecycle?.dispose();
     }
   },
   getViewSettings: (key: string) => get().viewStates[key]?.viewSettings || null,

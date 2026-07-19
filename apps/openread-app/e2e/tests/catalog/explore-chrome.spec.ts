@@ -214,23 +214,37 @@ async function installE2ERateLimitIsolation(page: Page, testInfo: TestInfo) {
   });
 }
 
-function containsDeletion(value: unknown): boolean {
-  if (Array.isArray(value)) return value.some(containsDeletion);
-  if (!value || typeof value !== 'object') return false;
-  const record = value as Record<string, unknown>;
-  if (record.op === 'delete' || record.tombstone) return true;
-  return Object.values(record).some(containsDeletion);
+interface SyncDeletionTarget {
+  entity: string;
+  entityId: string;
 }
 
-function isPreAddDeletionRequest(request: Request): boolean {
-  if (request.method() === 'DELETE') return true;
+function containsDeletion(value: unknown, target?: SyncDeletionTarget): boolean {
+  if (Array.isArray(value)) return value.some((item) => containsDeletion(item, target));
+  if (!value || typeof value !== 'object') return false;
+  const record = value as Record<string, unknown>;
+  const isDeletion = record.op === 'delete' || Boolean(record.tombstone);
+  if (
+    isDeletion &&
+    (!target || (record.entity === target.entity && record.entityId === target.entityId))
+  ) {
+    return true;
+  }
+  return Object.values(record).some((item) => containsDeletion(item, target));
+}
+
+function isSyncDeletionRequest(request: Request, target?: SyncDeletionTarget): boolean {
   const path = new URL(request.url()).pathname;
   if (request.method() !== 'POST' || !path.endsWith('/api/sync/push')) return false;
   try {
-    return containsDeletion(request.postDataJSON());
+    return containsDeletion(request.postDataJSON(), target);
   } catch {
     return false;
   }
+}
+
+function isPreAddDeletionRequest(request: Request): boolean {
+  return request.method() === 'DELETE' || isSyncDeletionRequest(request);
 }
 
 function catalogAddBookHashFromRequest(request: Request, catalogBookId: string): string | null {
@@ -328,8 +342,7 @@ async function removeLibraryBookByHashIfPresent(
   const syncPushPromise = page
     .waitForResponse(
       (response) =>
-        response.request().method() === 'POST' &&
-        new URL(response.url()).pathname.endsWith('/api/sync/push'),
+        isSyncDeletionRequest(response.request(), { entity: 'book', entityId: bookHash }),
       { timeout: 30_000 },
     )
     .catch(() => null);
@@ -600,6 +613,37 @@ test.describe('Chromium Explore catalog', () => {
     ).rejects.toThrow('CATALOG_ADD_TARGET_COLLISION');
     await expect(page.getByTestId('unrelated-library-reference')).toBeVisible();
     expect(preAddDeletions).toEqual([]);
+  });
+
+  test('sync deletion correlation ignores unrelated pushes and matches the target book', () => {
+    const bookHash = 'catalog:11111111-1111-4111-8111-111111111111';
+    const unrelatedBookHash = 'catalog:22222222-2222-4222-8222-222222222222';
+    const target = { entity: 'book', entityId: bookHash };
+    const cases: Array<[Record<string, unknown>, boolean]> = [
+      [{ entity: 'settings', entityId: 'settings', op: 'upsert' }, false],
+      [{ entity: 'bookConfig', entityId: bookHash, op: 'delete' }, false],
+      [{ entity: 'book', entityId: unrelatedBookHash, op: 'delete' }, false],
+      [{ entity: 'book', entityId: bookHash, op: 'delete' }, true],
+      [{ entity: 'book', entityId: bookHash, tombstone: { deletedAt: 1 } }, true],
+    ];
+
+    for (const [mutation, expected] of cases) {
+      const request = {
+        method: () => 'POST',
+        url: () => 'https://app.openread.ai/api/sync/push',
+        postDataJSON: () => ({ mutations: [mutation] }),
+      } as unknown as Request;
+      expect(isSyncDeletionRequest(request, target)).toBe(expected);
+    }
+
+    const malformedRequest = {
+      method: () => 'POST',
+      url: () => 'https://app.openread.ai/api/sync/push',
+      postDataJSON: () => {
+        throw new Error('malformed');
+      },
+    } as unknown as Request;
+    expect(isSyncDeletionRequest(malformedRequest, target)).toBe(false);
   });
 
   test('pre-acceptance destructive traffic fails proof with exact-hash cleanup armed', async ({

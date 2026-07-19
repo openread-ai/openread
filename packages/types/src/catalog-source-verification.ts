@@ -241,6 +241,84 @@ export type CatalogFormatSelectionResult<T extends CatalogFormatSelectionCandida
     }
   | { ok: false; reason: CatalogFormatSelectionFailureReason };
 
+export const CANONICAL_CATALOG_CATEGORIES = [
+  'Science',
+  'Engineering',
+  'Technology',
+  'Computer Science',
+  'Mathematics',
+  'Medicine',
+  'Business & Economics',
+  'History',
+  'Philosophy',
+  'Psychology',
+  'Biography',
+  'Religion',
+  'Social Sciences',
+  'Education',
+] as const;
+export type CanonicalCatalogCategory = (typeof CANONICAL_CATALOG_CATEGORIES)[number];
+
+export type CatalogRightsEvidenceObservation = {
+  text: string;
+  reference: string;
+};
+
+export type CatalogMetadataRightsArtifactBinding = {
+  sourceUrl: string;
+  artifactRevisionId: string;
+  format: CatalogDownloadFormat;
+};
+
+export type CatalogMetadataRightsEvidenceInput = {
+  source: string;
+  sourceId: string;
+  editionId: string;
+  metadataSourceUrl: string;
+  metadataRevisionId: string;
+  languages: readonly string[];
+  sourceSubjects: readonly string[];
+  canonicalCategories: readonly string[];
+  rights: readonly CatalogRightsEvidenceObservation[];
+  formatCandidates: readonly CatalogFormatSelectionCandidate[];
+  artifactBinding: CatalogMetadataRightsArtifactBinding;
+};
+
+export type CatalogMetadataRightsEvidence = {
+  schemaVersion: 1;
+  activation: 'inactive';
+  source: string;
+  sourceId: string;
+  editionId: string;
+  metadataSourceUrl: string;
+  metadataRevisionId: string;
+  sourceLanguages: readonly string[];
+  canonicalLanguageTags: readonly string[];
+  primaryLanguage: 'en';
+  sourceSubjects: readonly string[];
+  canonicalCategories: readonly CanonicalCatalogCategory[];
+  rights: CatalogRightsEvidenceObservation;
+  artifact: CatalogMetadataRightsArtifactBinding;
+};
+
+export type CatalogMetadataRightsEvidenceFailureReason =
+  | 'invalid-identity'
+  | 'invalid-metadata-evidence'
+  | 'missing-language-evidence'
+  | 'invalid-language-evidence'
+  | 'conflicting-language-evidence'
+  | 'non-english-primary'
+  | 'missing-rights-evidence'
+  | 'invalid-rights-evidence'
+  | 'conflicting-rights-evidence'
+  | 'invalid-category-evidence'
+  | 'invalid-artifact-evidence'
+  | 'artifact-evidence-mismatch';
+
+export type CatalogMetadataRightsEvidenceResult =
+  | { ok: true; evidence: CatalogMetadataRightsEvidence }
+  | { ok: false; reason: CatalogMetadataRightsEvidenceFailureReason };
+
 type CatalogSourceHostPolicy = { exact: ReadonlySet<string>; suffix?: ReadonlySet<string> };
 
 export type CatalogSourcePolicy = {
@@ -1033,6 +1111,170 @@ export function selectCanonicalCatalogFormat<T extends CatalogFormatSelectionCan
     format: selected.format,
     rejectedCandidateCount: candidates.length - unique.size,
   };
+}
+
+export function buildCatalogMetadataRightsEvidence(
+  input: CatalogMetadataRightsEvidenceInput,
+): CatalogMetadataRightsEvidenceResult {
+  if (
+    !input ||
+    !isExactNonemptyString(input.source) ||
+    !isExactNonemptyString(input.sourceId) ||
+    !isExactNonemptyString(input.editionId)
+  ) {
+    return { ok: false, reason: 'invalid-identity' };
+  }
+  const metadataSourceUrl = canonicalHttpsUrl(input.metadataSourceUrl);
+  if (!isExactNonemptyString(input.metadataRevisionId) || !metadataSourceUrl) {
+    return { ok: false, reason: 'invalid-metadata-evidence' };
+  }
+
+  if (!Array.isArray(input.languages) || input.languages.length === 0) {
+    return { ok: false, reason: 'missing-language-evidence' };
+  }
+  const languageEvidence: Array<{ source: string; canonical: string; primary: string }> = [];
+  for (const value of input.languages) {
+    if (!isExactNonemptyString(value)) {
+      return { ok: false, reason: 'invalid-language-evidence' };
+    }
+    try {
+      const canonical = Intl.getCanonicalLocales(value)[0];
+      if (!canonical) return { ok: false, reason: 'invalid-language-evidence' };
+      languageEvidence.push({
+        source: value,
+        canonical,
+        primary: new Intl.Locale(canonical).language,
+      });
+    } catch {
+      return { ok: false, reason: 'invalid-language-evidence' };
+    }
+  }
+  const primaryLanguages = new Set(languageEvidence.map(({ primary }) => primary));
+  if (primaryLanguages.size !== 1) {
+    return { ok: false, reason: 'conflicting-language-evidence' };
+  }
+  if (primaryLanguages.values().next().value !== 'en') {
+    return { ok: false, reason: 'non-english-primary' };
+  }
+
+  if (!Array.isArray(input.rights) || input.rights.length === 0) {
+    return { ok: false, reason: 'missing-rights-evidence' };
+  }
+  const rightsByFingerprint = new Map<string, CatalogRightsEvidenceObservation>();
+  for (const observation of input.rights) {
+    if (
+      !observation ||
+      !isExactNonemptyString(observation.text) ||
+      !isExactNonemptyString(observation.reference)
+    ) {
+      return { ok: false, reason: 'invalid-rights-evidence' };
+    }
+    rightsByFingerprint.set(JSON.stringify([observation.text, observation.reference]), observation);
+  }
+  if (rightsByFingerprint.size !== 1) {
+    return { ok: false, reason: 'conflicting-rights-evidence' };
+  }
+  const rights = rightsByFingerprint.values().next().value;
+  if (!rights) return { ok: false, reason: 'missing-rights-evidence' };
+
+  if (!Array.isArray(input.sourceSubjects)) {
+    return { ok: false, reason: 'invalid-metadata-evidence' };
+  }
+  const sourceSubjects = new Set<string>();
+  for (const subject of input.sourceSubjects) {
+    if (!isExactNonemptyString(subject)) {
+      return { ok: false, reason: 'invalid-metadata-evidence' };
+    }
+    sourceSubjects.add(subject);
+  }
+  if (!Array.isArray(input.canonicalCategories)) {
+    return { ok: false, reason: 'invalid-category-evidence' };
+  }
+  const requestedCategories = new Set(input.canonicalCategories);
+  if (
+    requestedCategories.size !== input.canonicalCategories.length ||
+    [...requestedCategories].some(
+      (category) =>
+        typeof category !== 'string' ||
+        !(CANONICAL_CATALOG_CATEGORIES as readonly string[]).includes(category),
+    )
+  ) {
+    return { ok: false, reason: 'invalid-category-evidence' };
+  }
+
+  if (!Array.isArray(input.formatCandidates) || input.formatCandidates.length === 0) {
+    return { ok: false, reason: 'invalid-artifact-evidence' };
+  }
+  const formatSelection = selectCanonicalCatalogFormat(input.formatCandidates);
+  if (!formatSelection.ok) {
+    return { ok: false, reason: 'invalid-artifact-evidence' };
+  }
+  const selected = formatSelection.candidate;
+  if (
+    selected.source !== input.source ||
+    selected.sourceId !== input.sourceId ||
+    !input.artifactBinding ||
+    input.artifactBinding.sourceUrl !== selected.sourceUrl ||
+    input.artifactBinding.artifactRevisionId !== selected.artifactRevisionId ||
+    input.artifactBinding.format !== selected.format
+  ) {
+    return { ok: false, reason: 'artifact-evidence-mismatch' };
+  }
+
+  const canonicalLanguageTags = [
+    ...new Set(languageEvidence.map(({ canonical }) => canonical)),
+  ].sort(compareExactStrings);
+  const sourceLanguages = [...new Set(languageEvidence.map(({ source }) => source))].sort(
+    compareExactStrings,
+  );
+  const canonicalCategories = CANONICAL_CATALOG_CATEGORIES.filter((category) =>
+    requestedCategories.has(category),
+  );
+
+  return {
+    ok: true,
+    evidence: {
+      schemaVersion: 1,
+      activation: 'inactive',
+      source: input.source,
+      sourceId: input.sourceId,
+      editionId: input.editionId,
+      metadataSourceUrl,
+      metadataRevisionId: input.metadataRevisionId,
+      sourceLanguages,
+      canonicalLanguageTags,
+      primaryLanguage: 'en',
+      sourceSubjects: [...sourceSubjects].sort(compareExactStrings),
+      canonicalCategories,
+      rights: { text: rights.text, reference: rights.reference },
+      artifact: {
+        sourceUrl: selected.sourceUrl,
+        artifactRevisionId: selected.artifactRevisionId,
+        format: selected.format,
+      },
+    },
+  };
+}
+
+function isExactNonemptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && value.trim() === value;
+}
+
+function canonicalHttpsUrl(value: unknown): string | null {
+  if (!isExactNonemptyString(value)) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || url.username || url.password || url.hash || url.search) {
+      return null;
+    }
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function compareExactStrings(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 export function catalogSourceAcceptHeader(format: CatalogMaterializationInputFormat): string {

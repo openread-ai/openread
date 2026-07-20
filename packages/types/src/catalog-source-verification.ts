@@ -374,6 +374,81 @@ export type CatalogCoverEvidenceResult =
   | { ok: true; evidence: CatalogCoverEvidence; rejectedCandidateCount: number }
   | { ok: false; reason: CatalogCoverEvidenceFailureReason };
 
+export const CATALOG_ADMISSION_IDENTITY_DISPOSITIONS = [
+  'clear',
+  'excluded',
+  'legacy-owned',
+  'legacy-cached',
+  'active-source-duplicate',
+  'duplicate-work',
+  'ambiguous',
+] as const;
+export type CatalogAdmissionIdentityDisposition =
+  (typeof CATALOG_ADMISSION_IDENTITY_DISPOSITIONS)[number];
+
+/** Precomputed by the canonical ownership/dedup layer; this evaluator performs no DB lookup. */
+export type CatalogAdmissionIdentityState = {
+  schemaVersion: 1;
+  authority: 'catalog-identity-dedup';
+  source: string;
+  sourceId: string;
+  disposition: CatalogAdmissionIdentityDisposition;
+};
+
+export const CATALOG_ADMISSION_DECISION_REASONS = [
+  'ready',
+  'invalid-identity',
+  'missing-format-candidates',
+  'invalid-format-candidates',
+  'missing-metadata-rights-evidence',
+  'metadata-evidence-mismatch',
+  'metadata-fingerprint-mismatch',
+  'missing-cover-evidence',
+  'cover-evidence-mismatch',
+  'cover-fingerprint-mismatch',
+  'missing-identity-state',
+  'identity-state-mismatch',
+  'excluded-source-identity',
+  'legacy-owned-identity',
+  'legacy-cached-identity',
+  'active-source-identity',
+  'duplicate-work-identity',
+  'ambiguous-identity-state',
+] as const;
+export type CatalogAdmissionDecisionReason =
+  (typeof CATALOG_ADMISSION_DECISION_REASONS)[number];
+
+export type CatalogAdmissionDecisionInput = {
+  source: string;
+  sourceId: string;
+  editionId: string;
+  formatCandidates: readonly CatalogFormatSelectionCandidate[];
+  metadataRightsEvidence?: CatalogMetadataRightsEvidence;
+  metadataRightsFingerprint?: string;
+  coverCandidates: readonly CatalogCoverEvidenceCandidate[];
+  coverEvidence?: CatalogCoverEvidence;
+  coverFingerprint?: string;
+  identityState?: CatalogAdmissionIdentityState;
+};
+
+export type CatalogAdmissionDecisionEvidence = {
+  schemaVersion: 1;
+  decision: 'ready' | 'rejected';
+  reason: CatalogAdmissionDecisionReason;
+  activation: 'inactive';
+  storage: 'not-written';
+  source: string;
+  sourceId: string;
+  editionId: string;
+  identityDisposition: CatalogAdmissionIdentityDisposition | null;
+  artifact: CatalogMetadataRightsArtifactBinding | null;
+  metadataRevisionId: string | null;
+  metadataRightsFingerprint: string | null;
+  coverRevisionId: string | null;
+  coverFingerprint: string | null;
+  fingerprint: string;
+};
+
 type CatalogSourceHostPolicy = { exact: ReadonlySet<string>; suffix?: ReadonlySet<string> };
 
 export type CatalogSourcePolicy = {
@@ -1311,6 +1386,30 @@ export function buildCatalogMetadataRightsEvidence(
   };
 }
 
+export function catalogMetadataRightsEvidenceIsValid(
+  evidence: CatalogMetadataRightsEvidence,
+  formatCandidates: readonly CatalogFormatSelectionCandidate[],
+): boolean {
+  try {
+    const rebuilt = buildCatalogMetadataRightsEvidence({
+      source: evidence.source,
+      sourceId: evidence.sourceId,
+      editionId: evidence.editionId,
+      metadataSourceUrl: evidence.metadataSourceUrl,
+      metadataRevisionId: evidence.metadataRevisionId,
+      languages: evidence.sourceLanguages,
+      sourceSubjects: evidence.sourceSubjects,
+      canonicalCategories: evidence.canonicalCategories,
+      rights: [evidence.rights],
+      formatCandidates,
+      artifactBinding: evidence.artifact,
+    });
+    return rebuilt.ok && catalogEvidenceEquals(rebuilt.evidence, evidence);
+  } catch {
+    return false;
+  }
+}
+
 const CATALOG_COVER_MEDIA_TYPES = {
   'image/jpeg': { extensions: ['jpg', 'jpeg'], priority: 0 },
   'image/png': { extensions: ['png'], priority: 1 },
@@ -1494,6 +1593,48 @@ export function buildCatalogCoverEvidence(
       },
     },
   };
+}
+
+export function catalogCoverEvidenceIsValid(
+  evidence: CatalogCoverEvidence,
+  edition: CatalogMetadataRightsEvidence,
+  formatCandidates: readonly CatalogFormatSelectionCandidate[],
+  coverCandidates: readonly CatalogCoverEvidenceCandidate[],
+): boolean {
+  try {
+    const rebuilt = buildCatalogCoverEvidence({
+      edition,
+      formatCandidates,
+      coverCandidates,
+    });
+    return rebuilt.ok && catalogEvidenceEquals(rebuilt.evidence, evidence);
+  } catch {
+    return false;
+  }
+}
+
+function catalogEvidenceEquals(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return (
+      Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((value, index) => catalogEvidenceEquals(value, right[index]))
+    );
+  }
+  if (!left || !right || typeof left !== 'object' || typeof right !== 'object') return false;
+  const leftRecord = left as Record<string, unknown>;
+  const rightRecord = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftRecord).sort(compareExactStrings);
+  const rightKeys = Object.keys(rightRecord).sort(compareExactStrings);
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every(
+      (key, index) =>
+        key === rightKeys[index] && catalogEvidenceEquals(leftRecord[key], rightRecord[key]),
+    )
+  );
 }
 
 type CatalogCoverOwnershipPolicy = (sourceId: string, editionId: string, url: URL) => boolean;

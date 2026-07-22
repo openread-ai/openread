@@ -7,7 +7,7 @@
     "db:migrations:validate": "node scripts/db/validate-supabase-migrations.mjs",
     "ops:runtime:check": "bash scripts/ops/check-runtime-config.sh",
     "ci:runner-health:check": "node scripts/ci/test-select-linux-runner.mjs",
-    "api:deploy-contract:check": "node scripts/ops/check-api-deploy-contract.mjs --self-test",
+    "service:deploy-contract:check": "python3 scripts/ops/semantic-fly-config.py self-test && node scripts/ops/summarize-service-proxy-log.mjs --self-test && node scripts/ops/check-service-deploy-contract.mjs --self-test",
     "catalog:health:doab-dry-run:check": "node scripts/ops/check-catalog-health-doab-dry-run-workflow.mjs && node scripts/ops/check-catalog-health-reverify-dry-run-report.mjs --self-test",
     "api:ownership:check": "node scripts/ops/check-api-route-ownership.mjs",
     "api:ownership:self-test": "node scripts/ops/check-api-route-ownership.mjs --self-test",

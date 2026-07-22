@@ -90,6 +90,8 @@ function makeMockBook(index: number, overrides?: Partial<CatalogBook>): CatalogB
     import_count: 0,
     page_count: 200,
     file_size_bytes: 3000000,
+    source: 'oapen',
+    source_id: `20.500.12657/book-${index}`,
     ...overrides,
   };
 }

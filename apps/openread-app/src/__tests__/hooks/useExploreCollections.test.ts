@@ -1,10 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor, cleanup } from '@testing-library/react';
-import {
-  useExploreCollections,
-  preloadExploreCollections,
-  _resetCollectionsCache,
-} from '@/hooks/useExploreCollections';
+import { useExploreCollections } from '@/hooks/useExploreCollections';
 import type { CatalogCollection } from '@/hooks/useExploreCollections';
 import type { CatalogBook } from '@/hooks/useExploreBooks';
 
@@ -38,6 +34,8 @@ function makeMockBook(index: number, overrides?: Partial<CatalogBook>): CatalogB
     import_count: 10,
     page_count: 200,
     file_size_bytes: 3000000,
+    source: 'oapen',
+    source_id: `20.500.12657/book-${index}`,
     ...overrides,
   };
 }
@@ -57,7 +55,7 @@ vi.stubGlobal('fetch', fetchMock);
 
 beforeEach(() => {
   vi.clearAllMocks();
-  _resetCollectionsCache();
+  localStorage.clear();
 });
 
 afterEach(() => {
@@ -300,49 +298,52 @@ describe('useExploreCollections', () => {
     });
   });
 
-  describe('Caching', () => {
-    it('should paint cached collections immediately and revalidate on remount', async () => {
-      mockFetchResponses();
-      const { result, unmount } = renderHook(() => useExploreCollections());
-
-      await waitFor(() => {
-        expect(result.current.isLoading).toBe(false);
+  describe('Canonical lifecycle reads', () => {
+    it('observes identical-mount 0→25→0 changes and ignores stored metadata', async () => {
+      const collection = makeMockCollection(0, { slug: 'canonical', book_count: 25 });
+      const lifecycleBooks = [
+        [],
+        Array.from({ length: 25 }, (_, index) =>
+          makeMockBook(index, { source: 'gutenberg', source_id: `gutenberg-${index + 1}` }),
+        ),
+        [],
+      ];
+      let bookRead = 0;
+      localStorage.setItem(
+        'openread_explore_collections_cache_v1',
+        JSON.stringify({ collections: [{ ...collection, books: [makeMockBook(99)] }] }),
+      );
+      fetchMock.mockImplementation(async (url: string) => {
+        if (!url.includes('/books')) {
+          return { ok: true, json: async () => ({ collections: [collection] }) };
+        }
+        const books = lifecycleBooks[bookRead++] ?? [];
+        return { ok: true, json: async () => ({ books, total: books.length }) };
       });
 
-      expect(result.current.collections).toHaveLength(3);
-      const firstCallCount = fetchMock.mock.calls.length;
+      const first = renderHook(() => useExploreCollections(25));
+      expect(first.result.current.collections).toEqual([]);
+      await waitFor(() => expect(first.result.current.isLoading).toBe(false));
+      expect(first.result.current.collections).toEqual([]);
+      first.unmount();
 
-      unmount();
-
-      // Re-render — cache hit should be available immediately while SWR refresh runs.
-      const { result: result2 } = renderHook(() => useExploreCollections());
-
-      expect(result2.current.collections).toHaveLength(3);
-      expect(result2.current.isLoading).toBe(false);
-
-      await waitFor(() => {
-        expect(fetchMock.mock.calls.length).toBeGreaterThan(firstCallCount);
+      const activated = renderHook(() => useExploreCollections(25));
+      await waitFor(() => expect(activated.result.current.collections[0]?.books).toHaveLength(25));
+      expect(activated.result.current.collections[0]?.books[0]).toMatchObject({
+        source: 'gutenberg',
+        source_id: 'gutenberg-1',
       });
-    });
+      activated.unmount();
 
-    it('should let prefetch seed cache before Explore mounts', async () => {
-      mockFetchResponses();
-
-      await preloadExploreCollections(10);
+      const retired = renderHook(() => useExploreCollections(25));
+      await waitFor(() => expect(retired.result.current.isLoading).toBe(false));
+      expect(retired.result.current.collections).toEqual([]);
+      expect(bookRead).toBe(3);
+      expect(fetchMock).toHaveBeenCalledTimes(6);
       expect(localStorage.getItem('openread_explore_collections_cache_v1')).toBeTruthy();
-
-      const prefetchCallCount = fetchMock.mock.calls.length;
-      const { result } = renderHook(() => useExploreCollections(10));
-
-      expect(result.current.collections).toHaveLength(3);
-      expect(result.current.isLoading).toBe(false);
-
-      await waitFor(() => {
-        expect(fetchMock.mock.calls.length).toBeGreaterThan(prefetchCallCount);
-      });
     });
 
-    it('should clear cache on refresh', async () => {
+    it('refreshes from the platform', async () => {
       mockFetchResponses();
       const { result } = renderHook(() => useExploreCollections());
 
@@ -351,12 +352,9 @@ describe('useExploreCollections', () => {
       });
 
       const callsBeforeRefresh = fetchMock.mock.calls.length;
-
-      // Call refresh
       result.current.refresh();
 
       await waitFor(() => {
-        // New fetch calls should have been made
         expect(fetchMock.mock.calls.length).toBeGreaterThan(callsBeforeRefresh);
       });
     });

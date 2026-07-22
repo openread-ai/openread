@@ -1,9 +1,9 @@
 /**
  * Canonical catalog API contracts.
  *
- * apps/api owns catalog data, import/cache lifecycle, covers, and catalog-backed
- * library metadata. UI and SDK clients consume these response shapes instead of
- * rebuilding catalog ownership rules locally.
+ * The private Catalog Service owns canonical catalog reads and Add materialization;
+ * apps/api exposes the public contract and cover delivery. UI and SDK clients consume
+ * these response shapes instead of rebuilding catalog ownership rules locally.
  */
 
 import type { SyncableBookRef } from './book-identity.js';
@@ -23,8 +23,8 @@ export interface CatalogBook {
   import_count: number;
   page_count: number | null;
   file_size_bytes: number | null;
-  source?: string;
-  source_id?: string;
+  source: string;
+  source_id: string;
   ia_identifier?: string;
 }
 

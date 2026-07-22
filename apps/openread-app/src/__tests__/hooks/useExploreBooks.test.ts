@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { deduplicateIA, _clearQueryCache } from '@/hooks/useExploreBooks';
+import { deduplicateIA } from '@/hooks/useExploreBooks';
 import type { CatalogBook } from '@/hooks/useExploreBooks';
 
 // ── Mock fetch globally ───────────────────────────────
@@ -26,6 +26,8 @@ function makeLocalBook(overrides: Partial<CatalogBook> = {}): CatalogBook {
     import_count: 10,
     page_count: 200,
     file_size_bytes: 3000000,
+    source: 'oapen',
+    source_id: '20.500.12657/local-1',
     ...overrides,
   };
 }
@@ -78,7 +80,6 @@ function setupFetchRouter(opts: {
 beforeEach(() => {
   vi.clearAllMocks();
   mockFetch.mockReset();
-  _clearQueryCache();
 });
 
 // ── Pure unit tests for deduplicateIA ─────────────────
@@ -309,6 +310,47 @@ describe('useExploreBooks', () => {
       expect(result.current.iaBooks).toEqual([]);
       expect(result.current.iaHasMore).toBe(false);
       expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('observes identical-query lifecycle changes without serving module-cached metadata', async () => {
+      const gutenbergBooks = Array.from({ length: 20 }, (_, index) =>
+        makeLocalBook({
+          id: `gutenberg-${index + 1}`,
+          source: 'gutenberg',
+          source_id: `gutenberg-${index + 1}`,
+        }),
+      );
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ books: [], total: 0 }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ books: gutenbergBooks, total: 25 }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ books: [], total: 0 }),
+        });
+
+      const first = renderHook(() => useExploreBooks({ q: 'canonical-lifecycle' }));
+      await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
+      expect(first.result.current.total).toBe(0);
+      first.unmount();
+
+      const activated = renderHook(() => useExploreBooks({ q: 'canonical-lifecycle' }));
+      await waitFor(() => expect(activated.result.current.total).toBe(25));
+      expect(activated.result.current.books[0]).toMatchObject({
+        source: 'gutenberg',
+        source_id: 'gutenberg-1',
+      });
+      activated.unmount();
+
+      const retired = renderHook(() => useExploreBooks({ q: 'canonical-lifecycle' }));
+      await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(3));
+      expect(retired.result.current.total).toBe(0);
+      expect(retired.result.current.books).toEqual([]);
     });
 
     it('should leave IA state empty when query is removed', async () => {

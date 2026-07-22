@@ -36,6 +36,8 @@ const mockBook: CatalogBook = {
   import_count: 42,
   page_count: 292,
   file_size_bytes: 5200000,
+  source: 'greenteapress',
+  source_id: 'think-python-2e',
 };
 
 describe('ExploreBookCard', () => {

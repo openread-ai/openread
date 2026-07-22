@@ -30,7 +30,6 @@ export const LOCAL_PERSISTENCE_KEYS = {
   platformBooksSeeded: 'openread_platform_books_seeded',
   libraryOwnerUserId: 'openread_library_owner_user_id',
   libraryPaintCache: 'openread_library_paint_cache_v1',
-  exploreCollectionsCache: 'openread_explore_collections_cache_v1',
   lastLibraryParams: 'lastLibraryParams',
   telemetryConsent: 'openread-telemetry-consent',
   telemetryOptOut: 'openread-telemetry-opt-out',
@@ -241,14 +240,6 @@ export const LOCAL_PERSISTENCE_REGISTRY = [
     scope: 'cache-only',
     description: 'Derived library paint cache for fast initial render; not source-of-truth.',
     deletionCriteria: 'Clear on account change, cache version change, or paint cache expiry.',
-  },
-  {
-    key: LOCAL_PERSISTENCE_KEYS.exploreCollectionsCache,
-    storage: 'localStorage',
-    owner: 'hooks/useExploreCollections',
-    scope: 'cache-only',
-    description: 'Explore collections response cache with TTL.',
-    deletionCriteria: 'Clear when cache TTL expires or fetch succeeds with fresh data.',
   },
   {
     key: `${LOCAL_PERSISTENCE_PREFIXES.readerSearchHistory}*`,

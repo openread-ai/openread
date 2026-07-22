@@ -107,6 +107,8 @@ const mockBooks: CatalogBook[] = [
     import_count: 10,
     page_count: 200,
     file_size_bytes: 3000000,
+    source: 'oapen',
+    source_id: '20.500.12657/search-1',
   },
   {
     id: 'search-2',
@@ -120,6 +122,8 @@ const mockBooks: CatalogBook[] = [
     import_count: 5,
     page_count: 150,
     file_size_bytes: 2000000,
+    source: 'openstax',
+    source_id: 'search-2',
   },
 ];
 
@@ -165,6 +169,8 @@ const mockRailBooks: CatalogBook[] = [
     import_count: 50,
     page_count: 300,
     file_size_bytes: 4000000,
+    source: 'oapen',
+    source_id: '20.500.12657/rail-book-1',
   },
 ];
 

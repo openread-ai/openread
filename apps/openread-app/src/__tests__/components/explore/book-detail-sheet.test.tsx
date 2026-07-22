@@ -42,6 +42,7 @@ const mockBook: CatalogBookDetail = {
   publication_year: 2015,
   subjects: ['Computer Science', 'Python'],
   source: 'greenteapress',
+  source_id: 'think-python-2e',
 };
 
 const mockIABook: CatalogBookDetail = {
@@ -518,11 +519,6 @@ describe('BookDetailSheet', () => {
     it('should display Project Gutenberg for gutenberg source', () => {
       renderSheet({ book: { ...mockBook, source: 'gutenberg' } });
       expect(screen.getByTestId('metadata-source').textContent).toContain('Project Gutenberg');
-    });
-
-    it('should display Unknown when source is not provided', () => {
-      renderSheet({ book: { ...mockBook, source: undefined } });
-      expect(screen.getByTestId('metadata-source').textContent).toContain('Unknown');
     });
   });
 

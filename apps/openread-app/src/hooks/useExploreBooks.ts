@@ -42,40 +42,6 @@ interface UseExploreBooksReturn {
   iaHasMore: boolean;
 }
 
-interface CacheEntry {
-  books: CatalogBook[];
-  total: number;
-  timestamp: number;
-}
-
-// Client-side query cache — survives re-renders, shared across hook instances
-const queryCache = new Map<string, CacheEntry>();
-const CACHE_TTL = 60_000; // 1 minute
-
-/** Clear the module-level query cache. Exported for use in tests only. */
-export function _clearQueryCache() {
-  queryCache.clear();
-}
-
-function getCached(key: string): CacheEntry | null {
-  const entry = queryCache.get(key);
-  if (!entry) return null;
-  if (Date.now() - entry.timestamp > CACHE_TTL) {
-    queryCache.delete(key);
-    return null;
-  }
-  return entry;
-}
-
-function setCache(key: string, books: CatalogBook[], total: number) {
-  queryCache.set(key, { books, total, timestamp: Date.now() });
-  // Evict old entries if cache grows too large
-  if (queryCache.size > 50) {
-    const oldest = [...queryCache.entries()].sort((a, b) => a[1].timestamp - b[1].timestamp);
-    for (let i = 0; i < 10; i++) queryCache.delete(oldest[i]![0]);
-  }
-}
-
 /**
  * Dedup IA books against local books by normalized title+author.
  * Returns only IA books that do NOT have a local match.
@@ -222,24 +188,8 @@ export function useExploreBooks(params: UseExploreBooksParams = {}): UseExploreB
       const controller = new AbortController();
       abortRef.current = controller;
 
-      const cacheKey = `${paramsKey}:${fetchPage}`;
-
-      // Check cache first — if hit, show cached data immediately
       if (!append) {
-        const cached = getCached(cacheKey);
-        if (cached) {
-          setBooks(cached.books);
-          setTotal(cached.total);
-          setIsStale(false);
-          setIsLoading(false);
-          setError(null);
-          // Trigger IA search for cached local results too
-          if (shouldSearchIA && params.q) {
-            fetchIA(params.q, 1, false, cached.books);
-          }
-          return;
-        }
-        // Mark as stale (keep showing old data while loading)
+        // Keep showing the previous result while the canonical query is in flight.
         setIsStale(true);
       }
 
@@ -256,11 +206,6 @@ export function useExploreBooks(params: UseExploreBooksParams = {}): UseExploreB
           setBooks((prev) => (append ? [...prev, ...nextBooks] : nextBooks));
           setTotal(data.total);
           setIsStale(false);
-
-          // Cache the result
-          if (!append) {
-            setCache(cacheKey, nextBooks, data.total);
-          }
 
           // After local results arrive, also fetch IA results
           if (shouldSearchIA && params.q && !append) {
@@ -336,11 +281,9 @@ export function useExploreBooks(params: UseExploreBooksParams = {}): UseExploreB
 
   const refresh = useCallback(() => {
     if (!enabled) return;
-    // Clear cache for current params to force fresh fetch
-    queryCache.delete(`${paramsKey}:1`);
     setPage(1);
     fetchBooks(1, false);
-  }, [enabled, fetchBooks, paramsKey]);
+  }, [enabled, fetchBooks]);
 
   const hasMore = enabled && page * limit < total;
   const iaHasMore = enabled && iaPage * limit < iaTotal;

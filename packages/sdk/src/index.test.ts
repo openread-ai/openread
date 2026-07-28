@@ -981,6 +981,20 @@ describe('CatalogClient', () => {
     vi.restoreAllMocks();
   });
 
+  it('lists catalog subjects from the canonical endpoint', async () => {
+    const response = {
+      subjects: [{ subject_name: 'Fiction', book_count: 42 }],
+    };
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => response,
+    });
+
+    await expect(sdk.catalog.listSubjects()).resolves.toEqual(response);
+    expect(mockFetch.mock.calls[0]?.[0]).toBe('https://api.example.com/catalog/subjects');
+  });
+
   it('adds a durable idempotency key to canonical Catalog imports', async () => {
     await sdk.catalog.importBook('book-1');
     await sdk.catalog.importInternetArchiveBook('ia-book');

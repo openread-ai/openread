@@ -64,6 +64,15 @@ export interface CatalogStatsResponse {
   total_sources: number;
 }
 
+export interface CatalogSubject {
+  subject_name: string;
+  book_count: number;
+}
+
+export interface CatalogSubjectsResponse {
+  subjects: CatalogSubject[];
+}
+
 export interface CatalogCollection {
   id: string;
   slug: string;

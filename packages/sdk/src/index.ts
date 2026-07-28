@@ -39,6 +39,7 @@ import type {
   CatalogAddRequestResponse,
   CatalogDownloadUrlResponse,
   CatalogStatsResponse,
+  CatalogSubjectsResponse,
   CatalogStatusResponse,
   CatalogWishlistResponse,
   ListBooksResponse,
@@ -200,6 +201,10 @@ class CatalogClient {
 
   async listBooks(query: CatalogBrowseQuery = {}, init?: RequestInit): Promise<CatalogBrowseResponse> {
     return this._sdk.fetch<CatalogBrowseResponse>(`/catalog/books?${catalogQueryString(query)}`, init);
+  }
+
+  async listSubjects(init?: RequestInit): Promise<CatalogSubjectsResponse> {
+    return this._sdk.fetch<CatalogSubjectsResponse>('/catalog/subjects', init);
   }
 
   async getStats(init?: RequestInit): Promise<CatalogStatsResponse> {

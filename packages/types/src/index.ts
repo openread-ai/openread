@@ -118,6 +118,8 @@ export type {
   CatalogImportStatus,
   CatalogSort,
   CatalogStatsResponse,
+  CatalogSubject,
+  CatalogSubjectsResponse,
   CatalogStatusResponse,
   CatalogWishlistBook,
   CatalogWishlistResponse,

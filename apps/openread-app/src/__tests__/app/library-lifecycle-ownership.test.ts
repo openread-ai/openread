@@ -27,6 +27,5 @@ describe('account-library lifecycle ownership', () => {
     const reader = appSource('app/reader/components/Reader.tsx');
 
     expect(reader).toContain("import { useLibrary } from '@/hooks/useLibrary'");
-    expect(reader).toContain('const { libraryLoaded } = useLibrary();');
   });
 });

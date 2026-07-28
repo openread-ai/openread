@@ -1,11 +1,19 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, cleanup, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 import {
   BookDetailSheet,
   type BookDetailSheetProps,
   type CatalogBookDetail,
 } from '@/components/explore/BookDetailSheet';
+
+const { mockGetCatalogBook } = vi.hoisted(() => ({
+  mockGetCatalogBook: vi.fn(),
+}));
+
+vi.mock('@/services/platform/client', () => ({
+  platform: { catalog: { getBook: mockGetCatalogBook } },
+}));
 
 // Mock the Progress component from primitives/progress
 vi.mock('@/components/primitives/progress', () => ({
@@ -15,6 +23,11 @@ vi.mock('@/components/primitives/progress', () => ({
     </div>
   ),
 }));
+
+beforeEach(() => {
+  mockGetCatalogBook.mockReset();
+  mockGetCatalogBook.mockRejectedValue(new Error('detail unavailable'));
+});
 
 afterEach(() => {
   cleanup();
@@ -99,6 +112,52 @@ describe('BookDetailSheet', () => {
       renderSheet();
       const dialog = screen.getByRole('dialog');
       expect(dialog.getAttribute('aria-label')).toBe('Book details: Think Python');
+    });
+  });
+
+  describe('Detail enrichment', () => {
+    it('enriches list data with the fetched license and description', async () => {
+      const listBook: CatalogBookDetail = {
+        ...mockBook,
+        id: 'detail-success-uuid',
+        description: undefined,
+        license_type: undefined,
+      };
+      mockGetCatalogBook.mockResolvedValue({
+        ...listBook,
+        description: 'Detail endpoint description.',
+        license_type: 'public_domain',
+      });
+
+      renderSheet({ book: listBook });
+
+      expect(screen.getByTestId('sheet-title').textContent).toBe('Think Python');
+      expect(screen.getByTestId('metadata-license').textContent).toContain('Unknown');
+      expect(screen.queryByTestId('description-text')).toBeNull();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('metadata-license').textContent).toContain('Public Domain');
+        expect(screen.getByTestId('description-text').textContent).toContain(
+          'Detail endpoint description.',
+        );
+      });
+      expect(mockGetCatalogBook).toHaveBeenCalledWith('detail-success-uuid');
+    });
+
+    it('keeps rendering list data when the detail request fails', async () => {
+      const listBook: CatalogBookDetail = {
+        ...mockBook,
+        id: 'detail-failure-uuid',
+        description: undefined,
+        license_type: undefined,
+      };
+
+      renderSheet({ book: listBook });
+
+      await waitFor(() => expect(mockGetCatalogBook).toHaveBeenCalledWith('detail-failure-uuid'));
+      expect(screen.getByTestId('sheet-title').textContent).toBe('Think Python');
+      expect(screen.getByTestId('metadata-license').textContent).toContain('Unknown');
+      expect(screen.queryByTestId('description-text')).toBeNull();
     });
   });
 

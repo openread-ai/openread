@@ -5,17 +5,31 @@ import { Heart, BookOpen, Globe, X, ChevronDown, Loader2 } from 'lucide-react';
 import { cn } from '@/utils/tailwind';
 import { Progress } from '@/components/primitives/progress';
 import { catalogAddModeLabel, type CatalogAddMode } from '@/services/catalogAddMode';
+import { platform } from '@/services/platform/client';
 import { getCoverPalette, getLanguageName } from './ExploreBookCard';
-import type { CatalogBook, ImportPhase } from '@/types/catalog';
+import type { CatalogBookDetail, ImportPhase } from '@/types/catalog';
 
-// ── Extended type for detail view ──────────────────────────
+export type { CatalogBookDetail } from '@/types/catalog';
 
-/** CatalogBook with additional fields returned by the detail endpoint. */
-export interface CatalogBookDetail extends CatalogBook {
-  description?: string;
-  license_type?: string;
-  publication_year?: number | null;
-  subjects?: string[];
+const detailCache = new Map<string, CatalogBookDetail>();
+const detailRequests = new Map<string, Promise<CatalogBookDetail>>();
+
+function getCatalogBookDetail(bookId: string): Promise<CatalogBookDetail> {
+  const cached = detailCache.get(bookId);
+  if (cached) return Promise.resolve(cached);
+
+  const pending = detailRequests.get(bookId);
+  if (pending) return pending;
+
+  const request = platform.catalog
+    .getBook(bookId)
+    .then((detail) => {
+      detailCache.set(bookId, detail);
+      return detail;
+    })
+    .finally(() => detailRequests.delete(bookId));
+  detailRequests.set(bookId, request);
+  return request;
 }
 
 // ── Props ──────────────────────────────────────────────────
@@ -67,7 +81,7 @@ const IMPORT_PHASE_LABELS: Record<ImportPhase, string> = {
 
 // ── License display ────────────────────────────────────────
 
-function formatLicense(license?: string): string {
+function formatLicense(license?: string | null): string {
   if (!license) return 'Unknown';
   if (license === 'public_domain') return 'Public Domain';
   // Format cc-by-4.0 -> CC BY 4.0
@@ -191,7 +205,7 @@ function ExpandableDescription({ text }: { text: string }) {
 // ── Main component ─────────────────────────────────────────
 
 export function BookDetailSheet({
-  book,
+  book: listBook,
   isOpen,
   onClose,
   isWishlisted = false,
@@ -207,6 +221,26 @@ export function BookDetailSheet({
 }: BookDetailSheetProps) {
   const sheetRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  const [loadedDetails, setLoadedDetails] = useState<Record<string, CatalogBookDetail>>({});
+  const bookId = listBook?.id;
+
+  useEffect(() => {
+    if (!isOpen || !bookId) return;
+
+    let active = true;
+    void getCatalogBookDetail(bookId)
+      .then((detail) => {
+        if (active) setLoadedDetails((current) => ({ ...current, [bookId]: detail }));
+      })
+      .catch(() => undefined);
+
+    return () => {
+      active = false;
+    };
+  }, [bookId, isOpen]);
+
+  const loadedDetail = bookId ? (loadedDetails[bookId] ?? detailCache.get(bookId)) : undefined;
+  const book = listBook && loadedDetail ? { ...listBook, ...loadedDetail } : listBook;
 
   // ── Focus trap & escape key ────────────────────────────
 

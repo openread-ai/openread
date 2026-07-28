@@ -36,8 +36,7 @@ export function createReaderOpenLifecycleGuard(book: Book): ReaderOpenLifecycleG
     return Boolean(
       ownerUserId &&
       current.libraryOwnerUserId === ownerUserId &&
-      current.library.find((candidate) => candidate.hash === book.hash) === book &&
-      !book.deletedAt,
+      current.library.some((candidate) => candidate.hash === book.hash && !candidate.deletedAt),
     );
   };
   const assertCurrent = () => {

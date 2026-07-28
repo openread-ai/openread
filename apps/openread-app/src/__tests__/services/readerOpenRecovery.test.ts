@@ -84,6 +84,25 @@ describe('loadReaderOpenDocument', () => {
     expect(lifecycle.signal.aborted).toBe(false);
   });
 
+  it('keeps the open current when the same account re-merges the same catalog book', () => {
+    const book = createBook({
+      hash: 'catalog:7231ff9a-24b9-4074-9369-bc7f88ffb179' as Book['hash'],
+      catalogBookId: '7231ff9a-24b9-4074-9369-bc7f88ffb179',
+      storagePath: 'catalog/books/account-a.epub',
+    });
+    useLibraryStore.setState({ library: [book], libraryOwnerUserId: 'account-a' });
+    const lifecycle = createReaderOpenLifecycleGuard(book);
+
+    useLibraryStore.setState({
+      library: [{ ...book, title: 'Re-merged Test Book' }],
+      libraryOwnerUserId: 'account-a',
+    });
+
+    expect(lifecycle.signal.aborted).toBe(false);
+    expect(() => lifecycle.assertCurrent()).not.toThrow();
+    lifecycle.dispose();
+  });
+
   it('aborts when another account replaces the same catalog hash', () => {
     const bookA = createBook({
       hash: 'catalog:7231ff9a-24b9-4074-9369-bc7f88ffb179' as Book['hash'],
@@ -95,6 +114,45 @@ describe('loadReaderOpenDocument', () => {
     const lifecycle = createReaderOpenLifecycleGuard(bookA);
 
     useLibraryStore.setState({ library: [bookB], libraryOwnerUserId: 'account-b' });
+
+    expect(lifecycle.signal.aborted).toBe(true);
+    expect(() => lifecycle.assertCurrent()).toThrow(
+      'Reader open cancelled because the library context changed.',
+    );
+    lifecycle.dispose();
+  });
+
+  it('aborts when the current catalog book is deleted', () => {
+    const book = createBook({
+      hash: 'catalog:7231ff9a-24b9-4074-9369-bc7f88ffb179' as Book['hash'],
+      catalogBookId: '7231ff9a-24b9-4074-9369-bc7f88ffb179',
+      storagePath: 'catalog/books/account-a.epub',
+    });
+    useLibraryStore.setState({ library: [book], libraryOwnerUserId: 'account-a' });
+    const lifecycle = createReaderOpenLifecycleGuard(book);
+
+    useLibraryStore.setState({
+      library: [{ ...book, deletedAt: 2 }],
+      libraryOwnerUserId: 'account-a',
+    });
+
+    expect(lifecycle.signal.aborted).toBe(true);
+    expect(() => lifecycle.assertCurrent()).toThrow(
+      'Reader open cancelled because the library context changed.',
+    );
+    lifecycle.dispose();
+  });
+
+  it('aborts when the catalog book is removed from the library', () => {
+    const book = createBook({
+      hash: 'catalog:7231ff9a-24b9-4074-9369-bc7f88ffb179' as Book['hash'],
+      catalogBookId: '7231ff9a-24b9-4074-9369-bc7f88ffb179',
+      storagePath: 'catalog/books/account-a.epub',
+    });
+    useLibraryStore.setState({ library: [book], libraryOwnerUserId: 'account-a' });
+    const lifecycle = createReaderOpenLifecycleGuard(book);
+
+    useLibraryStore.setState({ library: [], libraryOwnerUserId: 'account-a' });
 
     expect(lifecycle.signal.aborted).toBe(true);
     expect(() => lifecycle.assertCurrent()).toThrow(

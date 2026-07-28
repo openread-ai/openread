@@ -1,8 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { CatalogSubject } from '@openread/types';
 import {
-  EXPLORE_RAILS,
+  createExploreRail,
   getExploreRailHref,
   type ExploreRailDefinition,
 } from '@/components/explore/exploreRails';
@@ -11,6 +12,7 @@ import { createLogger } from '@/utils/logger';
 import type { CatalogBook } from '@/types/catalog';
 
 const logger = createLogger('explore-rails');
+const MAX_RAILS = 6;
 
 export interface ExploreRailResult extends ExploreRailDefinition {
   href: string;
@@ -20,42 +22,23 @@ export interface ExploreRailResult extends ExploreRailDefinition {
 
 interface UseExploreRailsReturn {
   rails: ExploreRailResult[];
+  categories: CatalogSubject[];
   totalActive: number | null;
   isLoading: boolean;
   error: string | null;
   refresh: () => void;
 }
 
-function buildRailQuery(
-  rail: ExploreRailDefinition,
-  limit: number,
-  languages: string[] | undefined,
-) {
-  return {
-    languages,
-    subject: rail.params.subject,
-    sources: rail.params.sources,
-    minPages: rail.params.minPages,
-    maxPages: rail.params.maxPages,
-    sort: rail.params.sort,
-    page: 1,
-    limit,
-  };
-}
-
 export function useExploreRails(limit = 10, languages: string[] = []): UseExploreRailsReturn {
   const [rails, setRails] = useState<ExploreRailResult[]>([]);
+  const [categories, setCategories] = useState<CatalogSubject[]>([]);
   const [totalActive, setTotalActive] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshNonce, setRefreshNonce] = useState(0);
   const abortRef = useRef<AbortController>(null);
 
-  const refresh = useCallback(() => {
-    setRefreshNonce((value) => value + 1);
-  }, []);
-
-  const railDefinitions = useMemo(() => EXPLORE_RAILS, []);
+  const refresh = useCallback(() => setRefreshNonce((value) => value + 1), []);
   const languageKey = languages.join(',');
   const requestedLanguages = useMemo(
     () => (languageKey ? languageKey.split(',') : undefined),
@@ -72,37 +55,37 @@ export function useExploreRails(limit = 10, languages: string[] = []): UseExplor
       setError(null);
 
       try {
-        const statsPromise = platform.catalog
-          .getStats({ signal: controller.signal })
-          .catch((statsError) => {
-            if (statsError instanceof Error && statsError.name === 'AbortError') {
-              throw statsError;
-            }
-            logger.warn('Explore catalog stats failed', statsError);
-            return null;
-          });
-
-        const [stats, results] = await Promise.all([
-          statsPromise,
-          Promise.all(
-            railDefinitions.map(async (rail) => {
-              const data = await platform.catalog.listBooks(
-                buildRailQuery(rail, limit, requestedLanguages),
-                { signal: controller.signal },
-              );
-              return {
-                ...rail,
-                href: getExploreRailHref(rail.id),
-                books: (data.books || []) as CatalogBook[],
-                total: Number(data.total || 0),
-              };
-            }),
-          ),
+        const [stats, subjectResponse] = await Promise.all([
+          platform.catalog.getStats({ signal: controller.signal }),
+          platform.catalog.listSubjects({ signal: controller.signal }),
         ]);
+        const liveCategories = subjectResponse.subjects.filter((subject) => subject.book_count > 0);
+        const railDefinitions = liveCategories.slice(0, MAX_RAILS).map(createExploreRail);
+        const results = await Promise.all(
+          railDefinitions.map(async (rail) => {
+            const data = await platform.catalog.listBooks(
+              {
+                languages: requestedLanguages,
+                subject: rail.params.subject,
+                sort: rail.params.sort,
+                page: 1,
+                limit,
+              },
+              { signal: controller.signal },
+            );
+            return {
+              ...rail,
+              href: getExploreRailHref(rail.id),
+              books: (data.books || []) as CatalogBook[],
+              total: Number(data.total || 0),
+            };
+          }),
+        );
 
         if (!controller.signal.aborted) {
-          setTotalActive(stats ? Number(stats.total_active || 0) : null);
-          setRails(results.filter((rail) => rail.books.length > 0));
+          setTotalActive(Number(stats.total_active || 0));
+          setCategories(liveCategories);
+          setRails(results.filter((rail) => rail.total > 0 && rail.books.length > 0));
         }
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') return;
@@ -111,18 +94,13 @@ export function useExploreRails(limit = 10, languages: string[] = []): UseExplor
           setError(err instanceof Error ? err.message : 'Failed to load Explore rails');
         }
       } finally {
-        if (!controller.signal.aborted) {
-          setIsLoading(false);
-        }
+        if (!controller.signal.aborted) setIsLoading(false);
       }
     }
 
     void fetchRails();
+    return () => controller.abort();
+  }, [limit, refreshNonce, requestedLanguages]);
 
-    return () => {
-      controller.abort();
-    };
-  }, [limit, railDefinitions, refreshNonce, requestedLanguages]);
-
-  return { rails, totalActive, isLoading, error, refresh };
+  return { rails, categories, totalActive, isLoading, error, refresh };
 }

@@ -3,25 +3,31 @@ import { useState } from 'react';
 import { V2Wrapper } from '../V2Decorator';
 import { CategoryPills } from '@/components/explore/CategoryPills';
 
-// --- Interactive wrapper to show callbacks in action ---
+const categories = [
+  { subject_name: 'Literature & Fiction', book_count: 475 },
+  { subject_name: 'History', book_count: 63 },
+  { subject_name: 'Biography & Memoir', book_count: 41 },
+  { subject_name: 'Philosophy & Religion', book_count: 22 },
+  { subject_name: 'Travel & Leisure', book_count: 22 },
+  { subject_name: 'Society & Politics', book_count: 15 },
+  { subject_name: 'Science & Nature', book_count: 6 },
+  { subject_name: 'Education & Reference', book_count: 5 },
+  { subject_name: 'Technology & Engineering', book_count: 4 },
+  { subject_name: 'Business & Economics', book_count: 2 },
+  { subject_name: 'Arts & Culture', book_count: 1 },
+];
 
 function InteractivePills({ sticky }: { sticky?: boolean }) {
-  const [lastSubjects, setLastSubjects] = useState<string[] | undefined>(undefined);
-
+  const [lastSubjects, setLastSubjects] = useState<string[] | undefined>();
   return (
     <div className='space-y-4'>
-      <CategoryPills onCategoryChange={(subjects) => setLastSubjects(subjects)} sticky={sticky} />
-      <div className='rounded-md border border-[#D6D3CB] bg-white p-3 text-xs text-[#6B6963]'>
-        <p className='font-medium text-[#1C1C1A]'>onCategoryChange output:</p>
-        <pre className='mt-1 overflow-x-auto'>
-          {lastSubjects ? JSON.stringify(lastSubjects, null, 2) : 'undefined (All selected)'}
-        </pre>
-      </div>
+      <CategoryPills categories={categories} onCategoryChange={setLastSubjects} sticky={sticky} />
+      <pre className='rounded-md border border-[#D6D3CB] bg-white p-3 text-xs text-[#6B6963]'>
+        {lastSubjects ? JSON.stringify(lastSubjects, null, 2) : 'undefined (All selected)'}
+      </pre>
     </div>
   );
 }
-
-// --- Meta ---
 
 const meta: Meta<typeof CategoryPills> = {
   title: 'V2/Explore/CategoryPills',
@@ -33,83 +39,16 @@ const meta: Meta<typeof CategoryPills> = {
       </V2Wrapper>
     ),
   ],
-  parameters: {
-    layout: 'padded',
-  },
+  parameters: { layout: 'padded' },
   tags: ['autodocs'],
 };
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-// --- Stories ---
-
-/** Default state: "All" pill is active, no subcategory row visible */
-export const Default: Story = {
-  render: () => <InteractivePills />,
-};
-
-/** A top-level category (Science) is selected, showing its subcategory row */
-export const CategorySelected: Story = {
-  render: () => {
-    // We use an interactive wrapper that pre-clicks Science
-    const PreSelected = () => {
-      const [subjects, setSubjects] = useState<string[] | undefined>(undefined);
-      return (
-        <div className='space-y-4'>
-          <p className='text-xs text-[#6B6963]'>
-            Click &quot;Science&quot; to see subcategories. The component is fully interactive.
-          </p>
-          <CategoryPills onCategoryChange={setSubjects} />
-          <div className='rounded-md border border-[#D6D3CB] bg-white p-3 text-xs text-[#6B6963]'>
-            <p className='font-medium text-[#1C1C1A]'>Selected subjects:</p>
-            <pre className='mt-1'>{subjects ? JSON.stringify(subjects, null, 2) : 'All'}</pre>
-          </div>
-        </div>
-      );
-    };
-    return <PreSelected />;
-  },
-};
-
-/** Subcategory selected: Shows both parent category and subcategory highlighted */
-export const SubcategorySelected: Story = {
-  render: () => {
-    const SubSelected = () => {
-      const [subjects, setSubjects] = useState<string[] | undefined>(undefined);
-      return (
-        <div className='space-y-4'>
-          <p className='text-xs text-[#6B6963]'>
-            Click &quot;Computer Science&quot; then &quot;Python&quot; to see subcategory selection.
-          </p>
-          <CategoryPills onCategoryChange={setSubjects} />
-          <div className='rounded-md border border-[#D6D3CB] bg-white p-3 text-xs text-[#6B6963]'>
-            <p className='font-medium text-[#1C1C1A]'>Selected subjects:</p>
-            <pre className='mt-1'>{subjects ? JSON.stringify(subjects, null, 2) : 'All'}</pre>
-          </div>
-        </div>
-      );
-    };
-    return <SubSelected />;
-  },
-};
-
-/** Expanded: All categories visible (simulates clicking "+N more") */
-export const Expanded: Story = {
-  render: () => {
-    return (
-      <div className='space-y-2'>
-        <p className='text-xs text-[#6B6963]'>
-          Click the &quot;+N more&quot; pill to expand all categories. The button disappears after
-          expansion.
-        </p>
-        <CategoryPills />
-      </div>
-    );
-  },
-};
-
-/** Dark mode: Same component rendered in dark theme wrapper */
+export const Default: Story = { render: () => <InteractivePills /> };
+export const Expanded: Story = { render: () => <InteractivePills /> };
+export const Loading: Story = { args: { categories: [], isLoading: true } };
 export const DarkMode: Story = {
   decorators: [
     (Story) => (
@@ -118,10 +57,5 @@ export const DarkMode: Story = {
       </V2Wrapper>
     ),
   ],
-  render: () => (
-    <div className='space-y-2'>
-      <p className='text-xs text-[#9B9890]'>Dark mode rendering of CategoryPills.</p>
-      <CategoryPills />
-    </div>
-  ),
+  render: () => <InteractivePills />,
 };

@@ -179,23 +179,29 @@ const mockUseExploreRails = vi.fn();
 let mockRailsReturn = {
   rails: [
     {
-      id: 'trending',
-      title: 'Trending',
-      description: 'Popular books from the full catalog.',
-      params: { sort: 'popularity' as const },
-      href: '/explore?rail=trending',
+      id: 'Literature & Fiction',
+      title: 'Literature & Fiction',
+      description: '80 books in Literature & Fiction.',
+      bookCount: 80,
+      params: { subject: 'Literature & Fiction', sort: 'popularity' as const },
+      href: '/explore?subject=Literature%20%26%20Fiction',
       books: mockRailBooks,
-      total: 25,
+      total: 80,
     },
     {
-      id: 'recently-added',
-      title: 'Recently Added',
-      description: 'Newest books available in OpenRead.',
-      params: { sort: 'added_desc' as const },
-      href: '/explore?rail=recently-added',
+      id: 'History',
+      title: 'History',
+      description: '20 books in History.',
+      bookCount: 20,
+      params: { subject: 'History', sort: 'popularity' as const },
+      href: '/explore?subject=History',
       books: mockRailBooks,
-      total: 40,
+      total: 20,
     },
+  ],
+  categories: [
+    { subject_name: 'Literature & Fiction', book_count: 80 },
+    { subject_name: 'History', book_count: 20 },
   ],
   totalActive: 100,
   isLoading: false,
@@ -547,23 +553,29 @@ beforeEach(() => {
   mockRailsReturn = {
     rails: [
       {
-        id: 'trending',
-        title: 'Trending',
-        description: 'Popular books from the full catalog.',
-        params: { sort: 'popularity' as const },
-        href: '/explore?rail=trending',
+        id: 'Literature & Fiction',
+        title: 'Literature & Fiction',
+        description: '80 books in Literature & Fiction.',
+        bookCount: 80,
+        params: { subject: 'Literature & Fiction', sort: 'popularity' as const },
+        href: '/explore?subject=Literature%20%26%20Fiction',
         books: mockRailBooks,
-        total: 25,
+        total: 80,
       },
       {
-        id: 'recently-added',
-        title: 'Recently Added',
-        description: 'Newest books available in OpenRead.',
-        params: { sort: 'added_desc' as const },
-        href: '/explore?rail=recently-added',
+        id: 'History',
+        title: 'History',
+        description: '20 books in History.',
+        bookCount: 20,
+        params: { subject: 'History', sort: 'popularity' as const },
+        href: '/explore?subject=History',
         books: mockRailBooks,
-        total: 40,
+        total: 20,
       },
+    ],
+    categories: [
+      { subject_name: 'Literature & Fiction', book_count: 80 },
+      { subject_name: 'History', book_count: 20 },
     ],
     totalActive: 100,
     isLoading: false,
@@ -605,15 +617,15 @@ describe('ExploreClient', () => {
 
     it('should render all rails from useExploreRails', () => {
       render(<ExploreClient />);
-      expect(screen.getByTestId('collection-row-trending')).toBeTruthy();
-      expect(screen.getByTestId('collection-row-recently-added')).toBeTruthy();
+      expect(screen.getByTestId('collection-row-literature-&-fiction')).toBeTruthy();
+      expect(screen.getByTestId('collection-row-history')).toBeTruthy();
     });
 
     it('should render collection titles', () => {
       render(<ExploreClient />);
       const titles = screen.getAllByTestId('collection-title');
-      expect(titles.some((t) => t.textContent === 'Trending')).toBe(true);
-      expect(titles.some((t) => t.textContent === 'Recently Added')).toBe(true);
+      expect(titles.some((t) => t.textContent === 'Literature & Fiction')).toBe(true);
+      expect(titles.some((t) => t.textContent === 'History')).toBe(true);
     });
 
     it('should render See All links for rails', () => {
@@ -621,8 +633,8 @@ describe('ExploreClient', () => {
       const links = screen.getAllByText('See All');
       expect(links.length).toBe(2);
       const hrefs = links.map((l) => l.getAttribute('href'));
-      expect(hrefs).toContain('/explore?rail=trending');
-      expect(hrefs).toContain('/explore?rail=recently-added');
+      expect(hrefs).toContain('/explore?subject=Literature%20%26%20Fiction');
+      expect(hrefs).toContain('/explore?subject=History');
     });
 
     it('should not render search results grid in browse mode', () => {
@@ -646,7 +658,7 @@ describe('ExploreClient', () => {
 
   describe('Rail Mode', () => {
     it('should open a dynamic rail as a full paginated grid', () => {
-      mockSearchParams = new URLSearchParams('rail=open-textbooks');
+      mockSearchParams = new URLSearchParams('subject=History');
       mockExploreBooksReturn = {
         ...mockExploreBooksReturn,
         books: mockBooks,
@@ -657,20 +669,15 @@ describe('ExploreClient', () => {
 
       expect(screen.getByTestId('search-results-grid')).toBeTruthy();
       expect(screen.queryByTestId('explore-rails')).toBeNull();
-      expect(screen.getByText('Open Textbooks')).toBeTruthy();
-      expect(
-        screen.getByText('Textbooks and academic books from open catalog sources.'),
-      ).toBeTruthy();
+      expect(screen.getByText('History')).toBeTruthy();
+      expect(screen.getByText('Books in History.')).toBeTruthy();
       expect(mockUseExploreBooks).toHaveBeenCalledWith(
-        expect.objectContaining({
-          sources: ['openstax', 'oapen', 'doab'],
-          sort: 'popularity',
-        }),
+        expect.objectContaining({ subject: 'History', sort: 'popularity' }),
       );
     });
 
     it('should return from a rail to the Explore rail surface', () => {
-      mockSearchParams = new URLSearchParams('rail=trending');
+      mockSearchParams = new URLSearchParams('subject=History');
       render(<ExploreClient />);
 
       fireEvent.click(screen.getByText('Back to Explore'));
@@ -683,16 +690,14 @@ describe('ExploreClient', () => {
     it('should render skeleton rail rows when loading', () => {
       mockRailsReturn = {
         rails: [],
+        categories: [],
         totalActive: 100,
         isLoading: true,
         error: null,
         refresh: vi.fn(),
       };
       render(<ExploreClient />);
-      // Should render 3 skeleton rows (Trending, Recently Added, Classic Literature)
-      expect(screen.getByText('Trending')).toBeTruthy();
-      expect(screen.getByText('Recently Added')).toBeTruthy();
-      expect(screen.getByText('Classic Literature')).toBeTruthy();
+      expect(screen.getAllByTestId('collection-loading')).toHaveLength(3);
     });
   });
 
@@ -700,6 +705,7 @@ describe('ExploreClient', () => {
     it('should display error message when rail fetch fails', () => {
       mockRailsReturn = {
         rails: [],
+        categories: [],
         totalActive: 100,
         isLoading: false,
         error: 'Failed to load rails',
@@ -714,6 +720,7 @@ describe('ExploreClient', () => {
     it('shows rebuilding only when the unfiltered canonical active total is zero', () => {
       mockRailsReturn = {
         rails: [],
+        categories: [],
         totalActive: 0,
         isLoading: false,
         error: null,
@@ -730,6 +737,7 @@ describe('ExploreClient', () => {
     it('should show ordinary filtered empty state when no rails and not loading', () => {
       mockRailsReturn = {
         rails: [],
+        categories: [],
         totalActive: 100,
         isLoading: false,
         error: null,
@@ -1099,13 +1107,13 @@ describe('ExploreClient', () => {
 
     it('should pass onWishlistToggle to CollectionRow in browse mode', () => {
       render(<ExploreClient />);
-      const btn = screen.getByTestId('collection-wishlist-toggle-trending');
+      const btn = screen.getByTestId('collection-wishlist-toggle-literature-&-fiction');
       expect(btn).toBeTruthy();
     });
 
     it('should call toggleWishlist when CollectionRow wishlist toggle is clicked', () => {
       render(<ExploreClient />);
-      fireEvent.click(screen.getByTestId('collection-wishlist-toggle-trending'));
+      fireEvent.click(screen.getByTestId('collection-wishlist-toggle-literature-&-fiction'));
       expect(mockToggleWishlist).toHaveBeenCalledWith('rail-book-1');
     });
 
@@ -1247,7 +1255,7 @@ describe('ExploreClient', () => {
 
     it('should call router.push with ?book= param when card is tapped in collection row', () => {
       render(<ExploreClient />);
-      fireEvent.click(screen.getByTestId('collection-card-tap-trending'));
+      fireEvent.click(screen.getByTestId('collection-card-tap-literature-&-fiction'));
       expect(mockRouterPush).toHaveBeenCalledWith(expect.stringContaining('book=rail-book-1'), {
         scroll: false,
       });

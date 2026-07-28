@@ -2,8 +2,10 @@ import { testOpenReadBookRef } from '../utils/bookIdentityFixtures';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { classifyTransferError, transferManager } from '@/services/transferManager';
+import { TRANSFER_LIBRARY_BOOK_MISSING_CODE } from '@/services/transferErrors';
 import { useTransferStore, type TransferItem } from '@/store/transferStore';
 import { eventDispatcher } from '@/utils/event';
+import { LOCAL_PERSISTENCE_KEYS } from '@/services/persistence/localPersistenceRegistry';
 import type { Book } from '@/types/book';
 
 const baseBook = (overrides: Partial<Book> = {}): Book => ({
@@ -138,6 +140,11 @@ describe('TransferManager upload eligibility', () => {
       retryable: false,
       incident: false,
     });
+    expect(classifyTransferError(TRANSFER_LIBRARY_BOOK_MISSING_CODE)).toEqual({
+      reason: 'library-book-missing',
+      retryable: false,
+      incident: false,
+    });
     expect(classifyTransferError('Book file not uploaded')).toEqual({
       reason: 'local-file-missing',
       retryable: false,
@@ -208,6 +215,33 @@ describe('TransferManager upload eligibility', () => {
     toastDetail.action!.run();
 
     expect(retrySpy).toHaveBeenCalledWith(id);
+  });
+
+  it('marks a missing-library background transfer terminal without retry or reschedule', async () => {
+    const uploadBook = vi.fn(async () => {});
+    resetTransferManagerForTest({ uploadBook, library: [] });
+    const dispatchSpy = vi.spyOn(eventDispatcher, 'dispatch');
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const missingBook = baseBook();
+
+    const id = useTransferStore
+      .getState()
+      .addTransfer(missingBook.hash, missingBook.title, 'upload', 1, true);
+    await executeTransferForTest(useTransferStore.getState().transfers[id]!);
+    await vi.runOnlyPendingTimersAsync();
+
+    const transfer = useTransferStore.getState().transfers[id]!;
+    expect(transfer.status).toBe('failed');
+    expect(transfer.retryCount).toBe(0);
+    expect(transfer.error).toBe(TRANSFER_LIBRARY_BOOK_MISSING_CODE);
+    expect(transfer.availableAt).toBeUndefined();
+    expect(useTransferStore.getState().getPendingTransfers()).toHaveLength(0);
+    expect(uploadBook).not.toHaveBeenCalled();
+    expect(dispatchSpy).not.toHaveBeenCalledWith('toast', expect.anything());
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[transfer] Background cloud backup terminal failure; not retrying',
+      expect.objectContaining({ reason: 'library-book-missing', retryCount: 1 }),
+    );
   });
 
   it('keeps background network upload failures pending for silent retry without toast', async () => {
@@ -339,6 +373,51 @@ describe('TransferManager upload eligibility', () => {
       transferredBytes: 0,
       transferSpeed: 0,
     });
+  });
+
+  it('drops persisted pending orphans on initialization while preserving valid transfers', async () => {
+    const validBook = baseBook();
+    const orphanedBook = baseBook({
+      hash: testOpenReadBookRef('fedcba9876543210fedcba9876543210'),
+      title: 'Deleted Book',
+    });
+    const store = useTransferStore.getState();
+    const validId = store.addTransfer(validBook.hash, validBook.title, 'upload', 1, true);
+    const orphanedId = store.addTransfer(orphanedBook.hash, orphanedBook.title, 'upload', 1, true);
+    const persistedTransfers = { ...useTransferStore.getState().transfers };
+    localStorage.setItem(
+      LOCAL_PERSISTENCE_KEYS.transferQueue,
+      JSON.stringify({ transfers: persistedTransfers, isQueuePaused: true }),
+    );
+    store.clearAll();
+
+    const appService = {
+      uploadBook: vi.fn(async () => {}),
+      downloadBook: vi.fn(async () => {}),
+      deleteBook: vi.fn(async () => {}),
+    } as unknown as Parameters<typeof transferManager.initialize>[0];
+    const manager = transferManager as unknown as { isInitialized: boolean };
+    manager.isInitialized = false;
+
+    await transferManager.initialize(
+      appService,
+      () => [validBook],
+      vi.fn(async () => {}),
+      (key) => key,
+    );
+
+    const transfers = useTransferStore.getState().transfers;
+    expect(transfers[orphanedId]).toBeUndefined();
+    expect(transfers[validId]).toEqual(persistedTransfers[validId]);
+    expect(appService.uploadBook).not.toHaveBeenCalled();
+    expect(appService.downloadBook).not.toHaveBeenCalled();
+    expect(appService.deleteBook).not.toHaveBeenCalled();
+
+    const persistedQueue = JSON.parse(
+      localStorage.getItem(LOCAL_PERSISTENCE_KEYS.transferQueue)!,
+    ) as { transfers: Record<string, TransferItem> };
+    expect(persistedQueue.transfers[orphanedId]).toBeUndefined();
+    expect(persistedQueue.transfers[validId]).toEqual(persistedTransfers[validId]);
   });
 
   it('restores transfers with the persisted queue pause state', () => {

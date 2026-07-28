@@ -1,8 +1,11 @@
+export const TRANSFER_LIBRARY_BOOK_MISSING_CODE = 'TRANSFER_LIBRARY_BOOK_MISSING';
+
 export type TransferErrorReason =
   | 'not-authenticated'
   | 'storage-limit-reached'
   | 'storage-not-available'
   | 'library-limit-reached'
+  | 'library-book-missing'
   | 'local-file-missing'
   | 'network-error'
   | 'platform-incident'
@@ -34,6 +37,9 @@ export function classifyTransferError(errorMessage: string): TransferErrorClassi
   }
   if (errorMessage.includes('LIBRARY_LIMIT_REACHED') || errorMessage.includes('Library limit')) {
     return { reason: 'library-limit-reached', retryable: false, incident: false };
+  }
+  if (errorMessage === TRANSFER_LIBRARY_BOOK_MISSING_CODE) {
+    return { reason: 'library-book-missing', retryable: false, incident: false };
   }
   if (errorMessage.includes('Book file not uploaded')) {
     return { reason: 'local-file-missing', retryable: false, incident: true };

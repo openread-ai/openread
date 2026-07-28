@@ -9,6 +9,7 @@ import { isUserCloudUploadEligible } from '@/utils/book';
 import { LOCAL_PERSISTENCE_KEYS } from '@/services/persistence/localPersistenceRegistry';
 import {
   classifyTransferError,
+  TRANSFER_LIBRARY_BOOK_MISSING_CODE,
   type TransferErrorReason,
   type TransferErrorClassification,
 } from '@/services/transferErrors';
@@ -61,6 +62,7 @@ class TransferManager {
     this.updateBook = updateBook;
     this._ = translationFn;
     await this.loadPersistedQueue();
+    this.reconcilePendingTransfers(getLibrary());
     this.isInitialized = true;
 
     // Start processing queue
@@ -320,7 +322,7 @@ class TransferManager {
       const book = library.find((b) => b.hash === transfer.bookHash);
 
       if (!book) {
-        throw new Error(_('Book not found in library'));
+        throw new Error(TRANSFER_LIBRARY_BOOK_MISSING_CODE);
       }
 
       if (transfer.type === 'upload') {
@@ -454,6 +456,7 @@ class TransferManager {
             'storage-limit-reached': _('Storage limit reached. Upgrade your plan or remove files.'),
             'storage-not-available': _('Cloud storage is not available on your current plan.'),
             'library-limit-reached': _('Library limit reached. Upgrade for unlimited library.'),
+            'library-book-missing': _('Book not found in library'),
             'local-file-missing': _(
               'Book file is not available on this device. Re-download or re-import it before cloud upload.',
             ),
@@ -491,6 +494,21 @@ class TransferManager {
       // Continue processing unless this transfer deliberately delayed its own retry.
       if (!retryScheduled) this.scheduleProcessQueue(100);
     }
+  }
+
+  private reconcilePendingTransfers(library: Book[]): void {
+    const libraryBookHashes = new Set<string>(library.map((book) => book.hash));
+    const store = useTransferStore.getState();
+    const orphanedTransferIds = Object.values(store.transfers)
+      .filter(
+        (transfer) => transfer.status === 'pending' && !libraryBookHashes.has(transfer.bookHash),
+      )
+      .map((transfer) => transfer.id);
+
+    if (orphanedTransferIds.length === 0) return;
+
+    orphanedTransferIds.forEach((transferId) => store.removeTransfer(transferId));
+    this.persistQueue();
   }
 
   private async loadPersistedQueue(): Promise<void> {

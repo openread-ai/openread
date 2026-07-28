@@ -68,7 +68,7 @@ const ReaderContent: React.FC<{
   const [errorLoading, setErrorLoading] = useState(false);
   const [readerEntryError, setReaderEntryError] = useState<string | null>(null);
   const [readerOpenDownloadPercent, setReaderOpenDownloadPercent] = useState<number | null>(null);
-  const bookIds = ids || searchParams?.get('ids') || pathname.split('/reader/')[1] || '';
+  const bookIds = ids || searchParams?.get('ids') || pathname?.split('/reader/')[1] || '';
   const initialIds = bookIds.split(BOOK_IDS_SEPARATOR).filter(Boolean);
   const initialBookRefs = initialIds.map((id) => parseBookRefFromReaderBookKey(id));
   const validBookRefs = initialBookRefs.filter((bookRef): bookRef is NonNullable<typeof bookRef> =>

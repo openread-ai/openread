@@ -49,6 +49,9 @@ export const useLibrary = () => {
   const [completedLibraryUserId, setCompletedLibraryUserId] = useState<string | null | undefined>(
     () => (userId && storeLibraryLoaded && libraryOwnerUserId === userId ? userId : undefined),
   );
+  const [reconciledLibraryUserId, setReconciledLibraryUserId] = useState<string | null | undefined>(
+    undefined,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -119,6 +122,7 @@ export const useLibrary = () => {
       } finally {
         if (!cancelled) {
           setIsReconciling(false);
+          setReconciledLibraryUserId(userId);
         }
       }
     };
@@ -150,5 +154,6 @@ export const useLibrary = () => {
     libraryLoaded:
       hasAccountScopedProjection ||
       (!authenticatedEmptyPending && !authenticatedEmptyFailed && hasCompletedCurrentLibrary),
+    libraryReconciliationSettled: reconciledLibraryUserId === userId,
   };
 };

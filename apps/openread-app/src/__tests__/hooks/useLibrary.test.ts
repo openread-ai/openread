@@ -32,6 +32,13 @@ const mocks = vi.hoisted(() => {
   const saveSettings = vi.fn().mockResolvedValue(undefined);
   const loadLibraryBooks = vi.fn().mockResolvedValue([]);
   const loadSettings = vi.fn().mockResolvedValue({});
+  const appService = {
+    loadSettings,
+    loadLibraryBooks,
+    saveLibraryBooks,
+    saveSettings,
+  };
+  const envConfig = { getAppService: vi.fn().mockResolvedValue(appService) };
   const resetAccountScopedCollections = vi.fn();
   const setCollectionsOwnerUserId = vi.fn();
   const libraryViewState = { selectedBooks: [] as string[], isSelectMode: false };
@@ -48,26 +55,21 @@ const mocks = vi.hoisted(() => {
   const resetCanonicalSyncCursors = vi.fn();
   let user: { id: string } | null = null;
 
+  const getLibraryStoreState = () => ({
+    ...state,
+    setLibrary,
+    setLibraryOwnerUserId,
+    setIsReconciling,
+    setSyncError,
+    getVisibleLibrary: () => state.library.filter((book) => !book.deletedAt),
+  });
   const useLibraryStore = Object.assign(
-    vi.fn(() => ({
-      setLibrary,
-      setLibraryOwnerUserId,
-      setIsReconciling,
-      setSyncError,
-      libraryLoaded: state.libraryLoaded,
-      libraryOwnerUserId: state.libraryOwnerUserId,
-      isReconciling: state.isReconciling,
-      syncError: state.syncError,
-    })),
+    vi.fn((selector?: (storeState: ReturnType<typeof getLibraryStoreState>) => unknown) => {
+      const storeState = getLibraryStoreState();
+      return selector ? selector(storeState) : storeState;
+    }),
     {
-      getState: vi.fn(() => ({
-        ...state,
-        setLibrary,
-        setLibraryOwnerUserId,
-        setIsReconciling,
-        setSyncError,
-        getVisibleLibrary: () => state.library.filter((book) => !book.deletedAt),
-      })),
+      getState: vi.fn(getLibraryStoreState),
     },
   );
 
@@ -82,6 +84,8 @@ const mocks = vi.hoisted(() => {
     saveSettings,
     loadLibraryBooks,
     loadSettings,
+    appService,
+    envConfig,
     resetAccountScopedCollections,
     setCollectionsOwnerUserId,
     libraryViewState,
@@ -106,16 +110,7 @@ vi.mock('@/context/AuthContext', () => ({
 }));
 
 vi.mock('@/context/EnvContext', () => ({
-  useEnv: () => ({
-    envConfig: {
-      getAppService: vi.fn().mockResolvedValue({
-        loadSettings: mocks.loadSettings,
-        loadLibraryBooks: mocks.loadLibraryBooks,
-        saveLibraryBooks: mocks.saveLibraryBooks,
-        saveSettings: mocks.saveSettings,
-      }),
-    },
-  }),
+  useEnv: () => ({ envConfig: mocks.envConfig }),
 }));
 
 vi.mock('@/services/sync/syncWorker', () => ({
@@ -326,6 +321,7 @@ describe('useLibrary account isolation', () => {
 
     await waitFor(() => expect(mocks.pullNow).toHaveBeenCalledTimes(1));
     expect(result.current.libraryLoaded).toBe(false);
+    expect(result.current.libraryReconciliationSettled).toBe(false);
 
     mocks.setUser({ id: 'account-b' });
     rerender();
@@ -338,12 +334,14 @@ describe('useLibrary account isolation', () => {
       await accountBPull;
     });
     await waitFor(() => expect(result.current.libraryLoaded).toBe(true));
+    expect(result.current.libraryReconciliationSettled).toBe(true);
 
     await act(async () => {
       resolveAccountA();
       await accountAPull;
     });
     expect(result.current.libraryLoaded).toBe(true);
+    expect(result.current.libraryReconciliationSettled).toBe(true);
   });
 
   it('does not let stale disk load overwrite an in-memory account library', async () => {
@@ -466,11 +464,14 @@ describe('useLibrary account isolation', () => {
     const { result } = renderHook(() => useLibrary());
 
     expect(result.current.libraryLoaded).toBe(true);
+    expect(result.current.libraryReconciliationSettled).toBe(false);
     await waitFor(() => expect(mocks.pullNow).toHaveBeenCalledWith('books'));
     expect(result.current.libraryLoaded).toBe(true);
+    expect(result.current.libraryReconciliationSettled).toBe(false);
 
     resolvePull();
-    await waitFor(() => expect(mocks.setIsReconciling).toHaveBeenLastCalledWith(false));
+    await waitFor(() => expect(result.current.libraryReconciliationSettled).toBe(true));
+    expect(mocks.setIsReconciling).toHaveBeenLastCalledWith(false);
   });
 
   it('keeps libraryLoaded false until the initial authenticated book reconcile settles without account cache', async () => {
@@ -486,11 +487,13 @@ describe('useLibrary account isolation', () => {
 
     await waitFor(() => expect(mocks.pullNow).toHaveBeenCalledWith('books'));
     expect(result.current.libraryLoaded).toBe(false);
+    expect(result.current.libraryReconciliationSettled).toBe(false);
     expect(mocks.setIsReconciling).toHaveBeenCalledWith(true);
 
     resolvePull();
 
     await waitFor(() => expect(result.current.libraryLoaded).toBe(true));
+    expect(result.current.libraryReconciliationSettled).toBe(true);
     expect(mocks.setIsReconciling).toHaveBeenLastCalledWith(false);
   });
 });

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ReaderContent from '@/app/reader/components/ReaderContent';
 import { eventDispatcher } from '@/utils/event';
 import { navigateToLibrary } from '@/utils/nav';
+import type { Book } from '@/types/book';
 import type { ProgressHandler } from '@/utils/transfer';
 
 const {
@@ -12,18 +13,21 @@ const {
   setBookKeysMock,
   setSideBarBookKeyMock,
   getBookDataByReaderKeyMock,
+  libraryState,
   useSettingsStoreMock,
 } = vi.hoisted(() => {
   const settingsState = {
     settings: { lastOpenBooks: [] },
     setSettings: vi.fn(),
   };
+  const libraryState = { library: [] as Book[] };
   return {
     initViewStateMock: vi.fn(),
     getViewStateMock: vi.fn(),
     setBookKeysMock: vi.fn(),
     setSideBarBookKeyMock: vi.fn(),
     getBookDataByReaderKeyMock: vi.fn(),
+    libraryState,
     useSettingsStoreMock: Object.assign(
       () => ({
         saveSettings: vi.fn(),
@@ -39,6 +43,7 @@ const {
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  usePathname: () => '/reader',
   useSearchParams: () => new URLSearchParams(),
 }));
 
@@ -69,6 +74,10 @@ vi.mock('@/app/reader/hooks/useBooksManager', () => ({
     dismissBook: vi.fn(),
     getNextBookKey: vi.fn(() => null),
   }),
+}));
+
+vi.mock('@/store/libraryStore', () => ({
+  useLibraryStore: (selector: (state: typeof libraryState) => unknown) => selector(libraryState),
 }));
 
 vi.mock('@/store/readerStore', () => ({
@@ -129,17 +138,20 @@ vi.mock('@/app/reader/components/InlineQuestionBar', () => ({ default: () => nul
 vi.mock('@/components/settings/SettingsDialog', () => ({ default: () => null }));
 vi.mock('@/components/metadata', () => ({ BookDetailModal: () => null }));
 
-const renderReader = () =>
-  render(
-    <ReaderContent
-      ids='book-1'
-      settings={
-        {
-          lastOpenBooks: [],
-        } as never
-      }
-    />,
-  );
+const readerContent = (libraryReconciliationSettled = true) => (
+  <ReaderContent
+    ids='book-1'
+    settings={
+      {
+        lastOpenBooks: [],
+      } as never
+    }
+    libraryReconciliationSettled={libraryReconciliationSettled}
+  />
+);
+
+const renderReader = (libraryReconciliationSettled = true) =>
+  render(readerContent(libraryReconciliationSettled));
 
 describe('ReaderContent cloud-open download progress', () => {
   beforeEach(() => {
@@ -147,11 +159,74 @@ describe('ReaderContent cloud-open download progress', () => {
     vi.clearAllMocks();
     getViewStateMock.mockReturnValue(null);
     getBookDataByReaderKeyMock.mockReturnValue(undefined);
+    libraryState.library = [];
   });
 
   afterEach(() => {
     cleanup();
     vi.useRealTimers();
+  });
+
+  it('waits for a requested book in a stale projection and opens when reconciliation adds it', async () => {
+    const dispatchSpy = vi.spyOn(eventDispatcher, 'dispatch');
+    initViewStateMock.mockResolvedValue(undefined);
+    const view = renderReader(false);
+
+    expect(initViewStateMock).not.toHaveBeenCalled();
+
+    libraryState.library = [
+      { hash: 'book-1', title: 'Requested Book', format: 'epub', deletedAt: null } as Book,
+    ];
+    view.rerender(readerContent(false));
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(initViewStateMock).toHaveBeenCalledTimes(1);
+    expect(dispatchSpy).not.toHaveBeenCalledWith('toast', expect.anything());
+    expect(navigateToLibrary).not.toHaveBeenCalled();
+  });
+
+  it('uses the existing failure path when reconciliation settles with only a deleted book', async () => {
+    const dispatchSpy = vi.spyOn(eventDispatcher, 'dispatch');
+    libraryState.library = [
+      { hash: 'book-1', title: 'Deleted Book', format: 'epub', deletedAt: 1 } as Book,
+    ];
+    initViewStateMock.mockRejectedValue(new Error('Book not found'));
+    const view = renderReader(false);
+
+    expect(initViewStateMock).not.toHaveBeenCalled();
+
+    view.rerender(readerContent(true));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(initViewStateMock).toHaveBeenCalledTimes(1);
+    expect(dispatchSpy).toHaveBeenCalledWith('toast', {
+      message: 'Unable to open book',
+      callback: expect.any(Function),
+      timeout: 2000,
+      type: 'error',
+    });
+  });
+
+  it('opens an already-present requested book before reconciliation settles', async () => {
+    const dispatchSpy = vi.spyOn(eventDispatcher, 'dispatch');
+    libraryState.library = [
+      { hash: 'book-1', title: 'Requested Book', format: 'epub', deletedAt: null } as Book,
+    ];
+    initViewStateMock.mockResolvedValue(undefined);
+
+    renderReader(false);
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(initViewStateMock).toHaveBeenCalledTimes(1);
+    expect(dispatchSpy).not.toHaveBeenCalledWith('toast', expect.anything());
   });
 
   it('shows download percent after reader-open cloud progress is received', async () => {

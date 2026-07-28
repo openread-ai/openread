@@ -28,6 +28,29 @@ describe('readerStore catalog open lifecycle', () => {
     useReaderStore.setState({ viewStates: {}, bookKeys: [], hoveredBookKey: null });
   });
 
+  it('treats a deleted catalog book as missing before reader initialization', async () => {
+    const deletedBook = { ...catalogBook('catalog/books/deleted.epub'), deletedAt: 2 };
+    const appService = {
+      isMobile: false,
+      loadBookContent: vi.fn(),
+      loadBookConfig: vi.fn(),
+    } as unknown as AppService;
+    const envConfig = {
+      getAppService: vi.fn().mockResolvedValue(appService),
+    } as unknown as EnvConfigType;
+    useLibraryStore.setState({ library: [deletedBook], libraryOwnerUserId: 'account-a' });
+
+    await expect(
+      useReaderStore.getState().initViewState(envConfig, catalogBookHash, 'deleted-catalog-open'),
+    ).rejects.toThrow('Book not found');
+
+    expect(appService.loadBookContent).not.toHaveBeenCalled();
+    expect(appService.loadBookConfig).not.toHaveBeenCalled();
+    expect(useReaderStore.getState().viewStates['deleted-catalog-open']?.error).toBe(
+      'Failed to load book.',
+    );
+  });
+
   it('does not commit an account A book after account B replaces the same catalog hash', async () => {
     const bookA = catalogBook('catalog/books/account-a.epub');
     const bookB = catalogBook('catalog/books/account-b.epub');

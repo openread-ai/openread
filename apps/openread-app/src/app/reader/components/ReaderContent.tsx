@@ -1,13 +1,14 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 
 import { Book } from '@/types/book';
 import { useEnv } from '@/context/EnvContext';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useReaderStore } from '@/store/readerStore';
+import { useLibraryStore } from '@/store/libraryStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useGamepad } from '@/hooks/useGamepad';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -44,9 +45,14 @@ const getReaderOpenDownloadPercent = (progress: ProgressPayload): number | null 
   return Math.max(0, Math.min(100, Math.round((progress.progress / progress.total) * 100)));
 };
 
-const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ ids, settings }) => {
+const ReaderContent: React.FC<{
+  ids?: string;
+  settings: SystemSettings;
+  libraryReconciliationSettled: boolean;
+}> = ({ ids, settings, libraryReconciliationSettled }) => {
   const _ = useTranslation();
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const { envConfig, appService } = useEnv();
   const { bookKeys, dismissBook, getNextBookKey } = useBooksManager();
@@ -62,22 +68,32 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
   const [errorLoading, setErrorLoading] = useState(false);
   const [readerEntryError, setReaderEntryError] = useState<string | null>(null);
   const [readerOpenDownloadPercent, setReaderOpenDownloadPercent] = useState<number | null>(null);
+  const bookIds = ids || searchParams?.get('ids') || pathname.split('/reader/')[1] || '';
+  const initialIds = bookIds.split(BOOK_IDS_SEPARATOR).filter(Boolean);
+  const initialBookRefs = initialIds.map((id) => parseBookRefFromReaderBookKey(id));
+  const validBookRefs = initialBookRefs.filter((bookRef): bookRef is NonNullable<typeof bookRef> =>
+    Boolean(bookRef),
+  );
+  const hasValidBookRefs =
+    validBookRefs.length > 0 && validBookRefs.length === initialBookRefs.length;
+  const requestedBooksPresent = useLibraryStore((state) =>
+    hasValidBookRefs
+      ? validBookRefs.every((bookRef) =>
+          state.library.some((book) => book.hash === bookRef && !book.deletedAt),
+        )
+      : false,
+  );
+  const readerTargetReady =
+    !hasValidBookRefs || requestedBooksPresent || libraryReconciliationSettled;
 
   useBookShortcuts({ sideBarBookKey, bookKeys });
   useGamepad();
 
   useEffect(() => {
-    if (isInitiating.current) return;
+    if (!readerTargetReady || isInitiating.current) return;
     isInitiating.current = true;
     setReaderOpenDownloadPercent(null);
 
-    const pathname = window.location.pathname;
-    const bookIds = ids || searchParams?.get('ids') || pathname.split('/reader/')[1] || '';
-    const initialIds = bookIds.split(BOOK_IDS_SEPARATOR).filter(Boolean);
-    const initialBookRefs = initialIds.map((id) => parseBookRefFromReaderBookKey(id));
-    const validBookRefs = initialBookRefs.filter(
-      (bookRef): bookRef is NonNullable<typeof bookRef> => Boolean(bookRef),
-    );
     if (validBookRefs.length === 0 || validBookRefs.length !== initialBookRefs.length) {
       setErrorLoading(true);
       setReaderOpenDownloadPercent(null);
@@ -128,7 +144,7 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [readerTargetReady]);
 
   useEffect(() => {
     const handleShowBookDetails = (event: CustomEvent) => {

@@ -169,7 +169,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
       const appService = await envConfig.getAppService();
       const { settings } = useSettingsStore.getState();
       const { library } = useLibraryStore.getState();
-      const book = library.find((b) => b.hash === id);
+      const book = library.find((b) => b.hash === id && !b.deletedAt);
       if (!book) {
         throw new Error('Book not found');
       }

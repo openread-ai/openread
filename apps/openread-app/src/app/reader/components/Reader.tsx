@@ -59,7 +59,7 @@ const Reader: React.FC<{ ids?: string }> = ({ ids }) => {
   const router = useRouter();
   const { appService } = useEnv();
   const { settings } = useSettingsStore();
-  const { libraryLoaded } = useLibrary();
+  const { libraryLoaded, libraryReconciliationSettled } = useLibrary();
   // Selectors: only re-render when these specific values change
   const hoveredBookKey = useReaderStore((s) => s.hoveredBookKey);
   const sideBarBookKey = useSidebarStore((s) => s.sideBarBookKey);
@@ -197,7 +197,11 @@ const Reader: React.FC<{ ids?: string }> = ({ ids }) => {
     >
       <ReaderErrorBoundary onBackToLibrary={handleReaderBoundaryBackToLibrary}>
         <Suspense fallback={<div className='full-height'></div>}>
-          <ReaderContent ids={ids} settings={settings} />
+          <ReaderContent
+            ids={ids}
+            settings={settings}
+            libraryReconciliationSettled={libraryReconciliationSettled}
+          />
           <AboutWindow />
           <UpdaterWindow />
           <KOSyncSettingsWindow />

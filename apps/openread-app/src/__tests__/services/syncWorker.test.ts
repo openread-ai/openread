@@ -188,6 +188,9 @@ vi.mock('@/utils/fetch', () => ({
   getPlatformFetch: vi.fn(() => fetch),
 }));
 
+// Load the mocked worker graph during file collection, outside individual test budgets.
+await import('@/services/sync/syncWorker');
+
 const flushMicrotasks = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 const deletionRecord = (): StoredSyncMutation => ({

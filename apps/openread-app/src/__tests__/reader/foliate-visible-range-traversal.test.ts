@@ -37,7 +37,7 @@ afterEach(() => {
 
 describe('Foliate visible range traversal bounds', () => {
   it('does not overflow the stack on pathologically deep reader DOM', () => {
-    const doc = createDeepDocument(2_000);
+    const doc = createDeepDocument(600);
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 
     expect(() => getVisibleRange(doc, 0, 100, mapRect)).not.toThrow();

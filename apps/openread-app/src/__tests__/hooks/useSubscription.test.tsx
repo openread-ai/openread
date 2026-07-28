@@ -53,6 +53,9 @@ vi.mock('@/hooks/useStorageQuota', () => ({
   },
 }));
 
+// Load the mocked hook graph during file collection, outside individual test budgets.
+await import('@/hooks/useSubscription');
+
 const stripePlans: AvailablePlan[] = [
   {
     plan: 'reader',

@@ -114,8 +114,9 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
           })
           .catch((error) => {
             logger.info('Error initializing book', { key, error });
-            setErrorLoading(true);
             if (isReaderLoadingBook) setReaderOpenDownloadPercent(null);
+            if (error instanceof DOMException && error.name === 'AbortError') return;
+            setErrorLoading(true);
             eventDispatcher.dispatch('toast', {
               message: _('Unable to open book'),
               callback: () => navigateBackToLibrary(),

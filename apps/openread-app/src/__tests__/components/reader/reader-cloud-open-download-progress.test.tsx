@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import ReaderContent from '@/app/reader/components/ReaderContent';
 import { eventDispatcher } from '@/utils/event';
+import { navigateToLibrary } from '@/utils/nav';
 import type { ProgressHandler } from '@/utils/transfer';
 
 const {
@@ -185,6 +186,28 @@ describe('ReaderContent cloud-open download progress', () => {
     expect(screen.queryByText(/Downloading/)).toBeNull();
   });
 
+  it('treats an aborted reader open as a silent cancellation', async () => {
+    const dispatchSpy = vi.spyOn(eventDispatcher, 'dispatch');
+    initViewStateMock.mockImplementation(
+      (_env, _id, _key, _isPrimary, _reload, onProgress?: ProgressHandler) => {
+        onProgress?.({ progress: 50, total: 100, transferSpeed: 10 });
+        return Promise.reject(new DOMException('reader open cancelled', 'AbortError'));
+      },
+    );
+
+    renderReader();
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(dispatchSpy).not.toHaveBeenCalledWith('toast', expect.anything());
+    expect(navigateToLibrary).not.toHaveBeenCalled();
+    expect(screen.queryByText(/Downloading/)).toBeNull();
+    expect(screen.queryByTestId('reader-entry-error')).toBeNull();
+  });
+
   it('clears download progress and keeps the existing unable-to-open toast on failure', async () => {
     const dispatchSpy = vi.spyOn(eventDispatcher, 'dispatch');
     initViewStateMock.mockImplementation(
@@ -201,10 +224,16 @@ describe('ReaderContent cloud-open download progress', () => {
       await Promise.resolve();
     });
 
-    expect(dispatchSpy).toHaveBeenCalledWith(
-      'toast',
-      expect.objectContaining({ message: 'Unable to open book', type: 'error' }),
-    );
+    expect(dispatchSpy).toHaveBeenCalledTimes(1);
+    expect(dispatchSpy).toHaveBeenCalledWith('toast', {
+      message: 'Unable to open book',
+      callback: expect.any(Function),
+      timeout: 2000,
+      type: 'error',
+    });
+    const toast = dispatchSpy.mock.calls[0]?.[1] as { callback: () => void };
+    act(() => toast.callback());
+    expect(navigateToLibrary).toHaveBeenCalledTimes(1);
     expect(screen.queryByText(/Downloading/)).toBeNull();
   });
 });

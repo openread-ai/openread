@@ -1,6 +1,10 @@
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { resolveCatalogImportReadiness, useCatalogImport } from '@/hooks/useCatalogImport';
+import {
+  canOpenImportedBook,
+  resolveCatalogImportReadiness,
+  useCatalogImport,
+} from '@/hooks/useCatalogImport';
 import { activateCatalogAddUser } from '@/services/catalogAddCoordinator';
 import { useCatalogAddStore } from '@/store/catalogAddStore';
 
@@ -65,6 +69,30 @@ const ready = {
   finalBookId: '33333333-3333-4333-8333-333333333333',
   bookHash: 'catalog:11111111-1111-4111-8111-111111111111',
 } as const;
+
+describe('canOpenImportedBook', () => {
+  it('allows a ready import with a book hash', () => {
+    expect(
+      canOpenImportedBook({
+        status: 'ready',
+        bookHash: 'catalog:11111111-1111-4111-8111-111111111111',
+      }),
+    ).toBe(true);
+  });
+
+  it('rejects an importing state even when the book hash is already available', () => {
+    expect(
+      canOpenImportedBook({
+        status: 'importing',
+        bookHash: 'catalog:11111111-1111-4111-8111-111111111111',
+      }),
+    ).toBe(false);
+  });
+
+  it('rejects a ready import without a book hash', () => {
+    expect(canOpenImportedBook({ status: 'ready' })).toBe(false);
+  });
+});
 
 describe('useCatalogImport durable Add', () => {
   beforeEach(() => {

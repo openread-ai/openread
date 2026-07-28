@@ -43,13 +43,17 @@ let mockGetImportReadiness = vi.fn(
   }),
 );
 
-vi.mock('@/hooks/useCatalogImport', () => ({
-  useCatalogImport: () => ({
-    importBook: mockImportBook,
-    getImportState: (...args: unknown[]) => mockGetImportState(...(args as [string])),
-    getImportReadiness: (...args: unknown[]) => mockGetImportReadiness(...(args as [string])),
-  }),
-}));
+vi.mock('@/hooks/useCatalogImport', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/hooks/useCatalogImport')>();
+  return {
+    ...actual,
+    useCatalogImport: () => ({
+      importBook: mockImportBook,
+      getImportState: (...args: unknown[]) => mockGetImportState(...(args as [string])),
+      getImportReadiness: (...args: unknown[]) => mockGetImportReadiness(...(args as [string])),
+    }),
+  };
+});
 
 // ── Mock navigateToReader ─────────────────────────────
 const mockNavigateToReader = vi.fn();
@@ -1179,6 +1183,33 @@ describe('ExploreClient', () => {
         expect.anything(), // router
         ['catalog:search-1'],
       );
+    });
+
+    it('should not navigate while import is in progress even when bookHash is available', () => {
+      mockGetImportState = vi.fn((bookId: string) => {
+        if (bookId === 'search-1') {
+          return {
+            status: 'importing',
+            progress: 90,
+            bookHash: 'catalog:search-1',
+            bookId: 'db-uuid-1',
+          };
+        }
+        return { status: 'idle', progress: 0 };
+      });
+
+      mockSearchQuery = 'python';
+      mockSearchParams = new URLSearchParams('book=search-1');
+      mockExploreBooksReturn = {
+        ...mockExploreBooksReturn,
+        books: mockBooks,
+        total: 2,
+      };
+      render(<ExploreClient />);
+
+      fireEvent.click(screen.getByTestId('sheet-read-btn'));
+
+      expect(mockNavigateToReader).not.toHaveBeenCalled();
     });
 
     it('should not navigate when bookHash is not available', () => {

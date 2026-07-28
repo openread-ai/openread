@@ -15,6 +15,12 @@ import type { ImportState } from '@/types/catalog';
 
 export type { ImportStatus, ImportState } from '@/types/catalog';
 
+export function canOpenImportedBook(
+  state: ImportState,
+): state is ImportState & { bookHash: string } {
+  return state.status === 'ready' && Boolean(state.bookHash);
+}
+
 export type CatalogImportBlockedReason =
   | 'auth_required'
   | 'library_limit_loading'

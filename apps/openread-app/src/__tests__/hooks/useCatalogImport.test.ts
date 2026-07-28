@@ -8,39 +8,54 @@ import {
 import { activateCatalogAddUser } from '@/services/catalogAddCoordinator';
 import { useCatalogAddStore } from '@/store/catalogAddStore';
 
-const { mockAuth, mockDispatch, mockImportBook, mockGetAddRequest, mockLibrary, mockPullNow } =
-  vi.hoisted(() => {
-    const mockAuth = {
-      token: 'token' as string | null,
-      user: { id: 'user-1' } as { id: string } | null,
-    };
-    const mockLibrary = {
-      library: [] as Array<{
-        hash: string;
-        catalogBookId?: string;
-        storagePath?: string;
-        deletedAt?: number;
-      }>,
-    };
-    return {
-      mockAuth,
-      mockDispatch: vi.fn(),
-      mockImportBook: vi.fn(),
-      mockGetAddRequest: vi.fn(),
-      mockLibrary,
-      mockPullNow: vi.fn(async () => {
-        mockLibrary.library = [
-          {
-            hash: 'catalog:11111111-1111-4111-8111-111111111111',
-            catalogBookId: '11111111-1111-4111-8111-111111111111',
-            storagePath: 'catalog/books/standard-ebooks/ready.epub',
-          },
-        ];
-      }),
-    };
-  });
+const {
+  mockAuth,
+  mockDispatch,
+  mockImportBook,
+  mockGetAddRequest,
+  mockLibrary,
+  mockLibraryLifecycle,
+  mockPullNow,
+} = vi.hoisted(() => {
+  const mockAuth = {
+    token: 'token' as string | null,
+    user: { id: 'user-1' } as { id: string } | null,
+  };
+  const mockLibrary = {
+    library: [] as Array<{
+      hash: string;
+      catalogBookId?: string;
+      storagePath?: string;
+      deletedAt?: number;
+    }>,
+  };
+  const mockLibraryLifecycle = {
+    libraryLoaded: true,
+    libraryReconciliationSettled: true,
+  };
+  return {
+    mockAuth,
+    mockDispatch: vi.fn(),
+    mockImportBook: vi.fn(),
+    mockGetAddRequest: vi.fn(),
+    mockLibrary,
+    mockLibraryLifecycle,
+    mockPullNow: vi.fn(async () => {
+      mockLibrary.library = [
+        {
+          hash: 'catalog:11111111-1111-4111-8111-111111111111',
+          catalogBookId: '11111111-1111-4111-8111-111111111111',
+          storagePath: 'catalog/books/standard-ebooks/ready.epub',
+        },
+      ];
+    }),
+  };
+});
 
 vi.mock('@/context/AuthContext', () => ({ useAuth: () => mockAuth }));
+vi.mock('@/context/LibraryLifecycleContext', () => ({
+  useLibraryLifecycle: () => mockLibraryLifecycle,
+}));
 vi.mock('@/hooks/useLibraryLimit', () => ({
   useLibraryLimit: () => ({
     canAddBook: true,
@@ -58,7 +73,13 @@ vi.mock('@/services/platform/client', () => ({
   },
 }));
 vi.mock('@/services/sync/syncWorker', () => ({ syncWorker: { pullNow: mockPullNow } }));
-vi.mock('@/store/libraryStore', () => ({ useLibraryStore: { getState: () => mockLibrary } }));
+vi.mock('@/store/libraryStore', () => {
+  const useLibraryStore = Object.assign(
+    (selector: (state: typeof mockLibrary) => unknown) => selector(mockLibrary),
+    { getState: () => mockLibrary },
+  );
+  return { useLibraryStore };
+});
 vi.mock('@/utils/event', () => ({ eventDispatcher: { dispatch: mockDispatch } }));
 
 const ready = {
@@ -103,6 +124,8 @@ describe('useCatalogImport durable Add', () => {
     mockAuth.token = 'token';
     mockAuth.user = { id: 'user-1' };
     mockLibrary.library = [];
+    mockLibraryLifecycle.libraryLoaded = true;
+    mockLibraryLifecycle.libraryReconciliationSettled = true;
     mockImportBook.mockReset();
     mockGetAddRequest.mockReset();
     mockDispatch.mockReset();
@@ -110,6 +133,94 @@ describe('useCatalogImport durable Add', () => {
   });
 
   afterEach(cleanup);
+
+  it('keeps a ready import readable only when the visible Library matches hash and catalog id', () => {
+    const catalogBookId = '11111111-1111-4111-8111-111111111111';
+    const bookHash = `catalog:${catalogBookId}`;
+    useCatalogAddStore.setState({
+      userId: 'user-1',
+      importStates: { [catalogBookId]: { status: 'ready', bookHash } },
+    });
+    mockLibrary.library = [{ hash: bookHash, catalogBookId }];
+
+    const { result } = renderHook(() => useCatalogImport());
+    const state = result.current.getImportState(catalogBookId);
+
+    expect(state).toEqual({ status: 'ready', bookHash });
+    expect(canOpenImportedBook(state)).toBe(true);
+  });
+
+  it('projects settled deleted or mismatched ready imports as addable without changing raw state', () => {
+    const catalogBookId = '11111111-1111-4111-8111-111111111111';
+    const bookHash = `catalog:${catalogBookId}`;
+    useCatalogAddStore.setState({
+      userId: 'user-1',
+      importStates: { [catalogBookId]: { status: 'ready', bookHash } },
+    });
+    mockLibrary.library = [{ hash: bookHash, catalogBookId, deletedAt: Date.now() }];
+
+    const { result, rerender } = renderHook(() => useCatalogImport());
+
+    expect(result.current.getImportState(catalogBookId)).toEqual({ status: 'idle' });
+    expect(canOpenImportedBook(result.current.getImportState(catalogBookId))).toBe(false);
+    expect(result.current.getImportReadiness(catalogBookId)).toMatchObject({
+      ready: true,
+      blockedReason: null,
+      currentStatus: 'idle',
+    });
+    expect(result.current.importStates[catalogBookId]).toEqual({ status: 'ready', bookHash });
+
+    mockLibrary.library = [{ hash: bookHash, catalogBookId: 'different-catalog-id' }];
+    rerender();
+    expect(result.current.getImportState(catalogBookId)).toEqual({ status: 'idle' });
+
+    mockLibrary.library = [{ hash: 'catalog:different-hash', catalogBookId }];
+    rerender();
+    expect(result.current.getImportState(catalogBookId)).toEqual({ status: 'idle' });
+
+    mockLibrary.library = [];
+    rerender();
+    expect(result.current.getImportState(catalogBookId)).toEqual({ status: 'idle' });
+  });
+
+  it('preserves importing state independently of settled Library contents', () => {
+    const catalogBookId = '11111111-1111-4111-8111-111111111111';
+    useCatalogAddStore.setState({
+      userId: 'user-1',
+      importStates: { [catalogBookId]: { status: 'importing', progress: 42 } },
+    });
+
+    const { result } = renderHook(() => useCatalogImport());
+
+    expect(result.current.getImportState(catalogBookId)).toEqual({
+      status: 'importing',
+      progress: 42,
+    });
+  });
+
+  it('does not demote ready state until the active Library is loaded and reconciled', () => {
+    const catalogBookId = '11111111-1111-4111-8111-111111111111';
+    const bookHash = `catalog:${catalogBookId}`;
+    useCatalogAddStore.setState({
+      userId: 'user-1',
+      importStates: { [catalogBookId]: { status: 'ready', bookHash } },
+    });
+    mockLibraryLifecycle.libraryLoaded = false;
+    mockLibraryLifecycle.libraryReconciliationSettled = false;
+
+    const { result, rerender } = renderHook(() => useCatalogImport());
+
+    expect(result.current.getImportState(catalogBookId)).toEqual({ status: 'ready', bookHash });
+    expect(result.current.getImportReadiness(catalogBookId).currentStatus).toBe('ready');
+
+    mockLibraryLifecycle.libraryLoaded = true;
+    rerender();
+    expect(result.current.getImportState(catalogBookId)).toEqual({ status: 'ready', bookHash });
+
+    mockLibraryLifecycle.libraryReconciliationSettled = true;
+    rerender();
+    expect(result.current.getImportState(catalogBookId)).toEqual({ status: 'idle' });
+  });
 
   it('posts with a persisted user-scoped idempotency key and never fetches OAPEN in browser', async () => {
     mockImportBook.mockResolvedValue(ready);

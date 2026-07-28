@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useLibrary } from '@/hooks/useLibrary';
 import type { Book } from '@/types/book';
@@ -286,6 +286,64 @@ describe('useLibrary account isolation', () => {
     expect(mocks.start).not.toHaveBeenCalled();
     expect(mocks.pullNow).not.toHaveBeenCalled();
     expect(mocks.setIsReconciling).not.toHaveBeenCalledWith(true);
+  });
+
+  it('does not reuse anonymous readiness when the authenticated account resolves', async () => {
+    let resolvePull: () => void = () => {};
+    const { result, rerender } = renderHook(() => useLibrary());
+
+    await waitFor(() => expect(result.current.libraryLoaded).toBe(true));
+
+    mocks.pullNow.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        resolvePull = resolve;
+      }),
+    );
+    mocks.setUser({ id: 'account-after-anonymous' });
+    rerender();
+
+    expect(result.current.libraryLoaded).toBe(false);
+    await waitFor(() => expect(mocks.pullNow).toHaveBeenCalledWith('books'));
+    expect(result.current.libraryLoaded).toBe(false);
+
+    resolvePull();
+    await waitFor(() => expect(result.current.libraryLoaded).toBe(true));
+  });
+
+  it('ignores a cancelled account completion that settles after the current account', async () => {
+    let resolveAccountA: () => void = () => {};
+    let resolveAccountB: () => void = () => {};
+    const accountAPull = new Promise<void>((resolve) => {
+      resolveAccountA = resolve;
+    });
+    const accountBPull = new Promise<void>((resolve) => {
+      resolveAccountB = resolve;
+    });
+    mocks.pullNow.mockReturnValueOnce(accountAPull).mockReturnValueOnce(accountBPull);
+    mocks.setUser({ id: 'account-a' });
+
+    const { result, rerender } = renderHook(() => useLibrary());
+
+    await waitFor(() => expect(mocks.pullNow).toHaveBeenCalledTimes(1));
+    expect(result.current.libraryLoaded).toBe(false);
+
+    mocks.setUser({ id: 'account-b' });
+    rerender();
+
+    await waitFor(() => expect(mocks.pullNow).toHaveBeenCalledTimes(2));
+    expect(result.current.libraryLoaded).toBe(false);
+
+    await act(async () => {
+      resolveAccountB();
+      await accountBPull;
+    });
+    await waitFor(() => expect(result.current.libraryLoaded).toBe(true));
+
+    await act(async () => {
+      resolveAccountA();
+      await accountAPull;
+    });
+    expect(result.current.libraryLoaded).toBe(true);
   });
 
   it('does not let stale disk load overwrite an in-memory account library', async () => {

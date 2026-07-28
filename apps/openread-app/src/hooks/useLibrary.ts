@@ -45,17 +45,19 @@ export const useLibrary = () => {
     syncError,
   } = useLibraryStore();
   const { setSettings } = useSettingsStore();
-  const [libraryLoaded, setLibraryLoaded] = useState(false);
+  const userId = user?.id ?? null;
+  const [completedLibraryUserId, setCompletedLibraryUserId] = useState<string | null | undefined>(
+    () => (userId && storeLibraryLoaded && libraryOwnerUserId === userId ? userId : undefined),
+  );
 
   useEffect(() => {
-    const userId = user?.id ?? null;
     let cancelled = false;
 
     const initLibrary = async () => {
       try {
         if (!userId) {
           await transitionAccountLibraryOwner(null, envConfig);
-          if (!cancelled) setLibraryLoaded(true);
+          if (!cancelled) setCompletedLibraryUserId(null);
           return;
         }
 
@@ -89,27 +91,31 @@ export const useLibrary = () => {
         // the standalone Reader owns it outside that layout. Starting is idempotent per account.
         syncWorker.start(userId);
         await syncWorker.pullNow('books');
+        if (cancelled) return;
 
         const currentState = useLibraryStore.getState();
         const visibleCount = currentState.getVisibleLibrary().length;
         if (syncWorker.status.error && visibleCount === 0) {
           setSyncError(syncWorker.status.error);
-          setLibraryLoaded(false);
+          setCompletedLibraryUserId(undefined);
           return;
         }
 
         setSyncError(null);
         persistLibraryPaintProjection(userId, currentState.library);
-        setLibraryLoaded(true);
+        setCompletedLibraryUserId(userId);
 
         if (currentBeforeDisk.length > 0 && currentState.library.length === 0) {
           logger.warn('Account library became empty after initialization', { userId });
         }
       } catch (error) {
+        if (cancelled) return;
         logger.error('Failed to initialize library', error);
         const message = error instanceof Error ? error.message : 'Failed to initialize library';
         setSyncError(message);
-        setLibraryLoaded(useLibraryStore.getState().getVisibleLibrary().length > 0);
+        setCompletedLibraryUserId(
+          useLibraryStore.getState().getVisibleLibrary().length > 0 ? userId : undefined,
+        );
       } finally {
         if (!cancelled) {
           setIsReconciling(false);
@@ -128,7 +134,7 @@ export const useLibrary = () => {
     setLibraryOwnerUserId,
     setSettings,
     setSyncError,
-    user?.id,
+    userId,
   ]);
 
   const visibleBookCount = useLibraryStore((state) => state.getVisibleLibrary().length);
@@ -138,11 +144,11 @@ export const useLibrary = () => {
   const authenticatedEmptyPending = Boolean(user?.id && visibleBookCount === 0 && isReconciling);
   const authenticatedEmptyFailed = Boolean(user?.id && visibleBookCount === 0 && syncError);
 
+  const hasCompletedCurrentLibrary = completedLibraryUserId === userId;
+
   return {
     libraryLoaded:
       hasAccountScopedProjection ||
-      (!authenticatedEmptyPending &&
-        !authenticatedEmptyFailed &&
-        (libraryLoaded || storeLibraryLoaded)),
+      (!authenticatedEmptyPending && !authenticatedEmptyFailed && hasCompletedCurrentLibrary),
   };
 };

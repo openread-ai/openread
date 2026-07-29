@@ -10,10 +10,10 @@ import {
   resumeCatalogAdds,
   startCatalogAdd,
 } from '@/services/catalogAddCoordinator';
+import { resolveBookAvailability } from '@/services/libraryBookAvailability';
 import { useCatalogAddStore } from '@/store/catalogAddStore';
 import { useLibraryStore } from '@/store/libraryStore';
 import { eventDispatcher } from '@/utils/event';
-import type { Book } from '@/types/book';
 import type { ImportState } from '@/types/catalog';
 
 export type { ImportStatus, ImportState } from '@/types/catalog';
@@ -22,31 +22,6 @@ export function canOpenImportedBook(
   state: ImportState,
 ): state is ImportState & { bookHash: string } {
   return state.status === 'ready' && Boolean(state.bookHash);
-}
-
-export function resolveEffectiveCatalogImportState(input: {
-  catalogBookId: string;
-  current: ImportState;
-  library: Pick<Book, 'hash' | 'catalogBookId' | 'deletedAt'>[];
-  libraryLoaded: boolean;
-  libraryReconciliationSettled: boolean;
-}): ImportState {
-  if (
-    input.current.status !== 'ready' ||
-    !input.libraryLoaded ||
-    !input.libraryReconciliationSettled
-  ) {
-    return input.current;
-  }
-
-  const isVisibleInLibrary = input.library.some(
-    (book) =>
-      !book.deletedAt &&
-      book.hash === input.current.bookHash &&
-      book.catalogBookId === input.catalogBookId,
-  );
-
-  return isVisibleInLibrary ? input.current : { status: 'idle' };
 }
 
 export type CatalogImportBlockedReason =
@@ -157,14 +132,19 @@ export function useCatalogImport(): UseCatalogImportReturn {
   );
 
   const getImportState = useCallback(
-    (catalogBookId: string): ImportState =>
-      resolveEffectiveCatalogImportState({
+    (catalogBookId: string): ImportState => {
+      const current = importStates[catalogBookId] ?? { status: 'idle' };
+      if (current.status !== 'ready') return current;
+
+      const availability = resolveBookAvailability({
+        bookHash: current.bookHash,
         catalogBookId,
-        current: importStates[catalogBookId] ?? { status: 'idle' },
         library,
         libraryLoaded,
         libraryReconciliationSettled,
-      }),
+      });
+      return availability.state === 'absent' ? { status: 'idle' } : current;
+    },
     [importStates, library, libraryLoaded, libraryReconciliationSettled],
   );
   const getImportReadiness = useCallback(

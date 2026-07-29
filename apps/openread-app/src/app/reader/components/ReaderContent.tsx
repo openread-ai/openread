@@ -24,6 +24,7 @@ import { eventDispatcher } from '@/utils/event';
 import { navigateToLibrary } from '@/utils/nav';
 import { clearDiscordPresence } from '@/utils/discord';
 import { BOOK_IDS_SEPARATOR } from '@/services/constants';
+import { resolveBookAvailability } from '@/services/libraryBookAvailability';
 import { settingsService } from '@/services/settings/settingsService';
 import { BookDetailModal } from '@/components/metadata';
 
@@ -76,15 +77,19 @@ const ReaderContent: React.FC<{
   );
   const hasValidBookRefs =
     validBookRefs.length > 0 && validBookRefs.length === initialBookRefs.length;
-  const requestedBooksPresent = useLibraryStore((state) =>
-    hasValidBookRefs
-      ? validBookRefs.every((bookRef) =>
-          state.library.some((book) => book.hash === bookRef && !book.deletedAt),
-        )
-      : false,
+  const readerTargetReady = useLibraryStore(
+    (state) =>
+      !hasValidBookRefs ||
+      validBookRefs.every(
+        (bookHash) =>
+          resolveBookAvailability({
+            bookHash,
+            library: state.library,
+            libraryLoaded: true,
+            libraryReconciliationSettled,
+          }).state !== 'unknown',
+      ),
   );
-  const readerTargetReady =
-    !hasValidBookRefs || requestedBooksPresent || libraryReconciliationSettled;
 
   useBookShortcuts({ sideBarBookKey, bookKeys });
   useGamepad();

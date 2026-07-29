@@ -122,20 +122,6 @@ class TransferManager {
     return transferId;
   }
 
-  queueDelete(book: Book, priority: number = 10, isBackground: boolean = false): string | null {
-    const store = useTransferStore.getState();
-
-    const existing = store.getTransferByBookHash(book.hash, 'delete');
-    if (existing) {
-      return existing.id;
-    }
-
-    const transferId = store.addTransfer(book.hash, book.title, 'delete', priority, isBackground);
-    this.persistQueue();
-    this.processQueue();
-    return transferId;
-  }
-
   queueBatchUploads(books: Book[], priority: number = 10, isBackground: boolean = false): string[] {
     return books
       .filter(isUserCloudUploadEligible)
@@ -343,9 +329,6 @@ class TransferManager {
         book.coverImageUrl =
           (await this.appService.generateCoverImageUrl(book)) ?? book.coverImageUrl;
         await this.updateBook(book);
-      } else if (transfer.type === 'delete') {
-        await this.appService.deleteBook(book, 'cloud');
-        await this.updateBook(book);
       }
 
       useTransferStore.getState().setTransferStatus(transfer.id, 'completed');
@@ -355,7 +338,6 @@ class TransferManager {
       const successMessages = {
         upload: _('Book uploaded: {{title}}', { title: transfer.bookTitle }),
         download: _('Book downloaded: {{title}}', { title: transfer.bookTitle }),
-        delete: _('Deleted cloud backup of the book: {{title}}', { title: transfer.bookTitle }),
       };
 
       if (!latestTransfer.isBackground) {

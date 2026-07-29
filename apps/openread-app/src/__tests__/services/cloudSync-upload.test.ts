@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CloudSyncService, COVER_DOWNLOAD_CONCURRENCY } from '@/services/cloudSync';
 import type { Book } from '@/types/book';
 import type { FileSystem } from '@/types/system';
-import { batchGetDownloadUrls, deleteFile, downloadFile, uploadFile } from '@/libs/storage';
+import { batchGetDownloadUrls, downloadFile, uploadFile } from '@/libs/storage';
 import { CLOUD_BOOKS_SUBDIR } from '@/services/constants';
 import { getCoverFilename, getRemoteBookFilename } from '@/utils/book';
 
@@ -12,7 +12,6 @@ vi.mock('@/libs/storage', () => ({
   createProgressHandler: () => () => {},
   uploadFile: vi.fn(async () => undefined),
   downloadFile: vi.fn(),
-  deleteFile: vi.fn(),
   batchGetDownloadUrls: vi.fn(),
 }));
 
@@ -174,66 +173,5 @@ describe('CloudSyncService storage lifecycle', () => {
 
     expect(downloadFile).not.toHaveBeenCalled();
     expect(catalogBook.coverDownloadedAt).toBeUndefined();
-  });
-
-  it('does not gate cloud file deletion on uploadedAt alone', async () => {
-    const book = baseBook({ uploadedAt: null });
-    const service = new CloudSyncService(
-      createFs(new Set()),
-      '/books',
-      async (path) => `/books/${path}`,
-    );
-
-    await service.deleteBookFromCloud(book);
-
-    expect(deleteFile).toHaveBeenCalledWith(`${CLOUD_BOOKS_SUBDIR}/${getRemoteBookFilename(book)}`);
-    expect(deleteFile).toHaveBeenCalledWith(`${CLOUD_BOOKS_SUBDIR}/${getCoverFilename(book)}`);
-    expect(deleteFile).toHaveBeenCalledTimes(2);
-    expect(book.uploadedAt).toBeNull();
-  });
-
-  it('deletes both remote book and cover files and clears uploadedAt', async () => {
-    const book = baseBook({ uploadedAt: 123 });
-    const service = new CloudSyncService(
-      createFs(new Set()),
-      '/books',
-      async (path) => `/books/${path}`,
-    );
-
-    await service.deleteBookFromCloud(book);
-
-    expect(deleteFile).toHaveBeenCalledWith(`${CLOUD_BOOKS_SUBDIR}/${getRemoteBookFilename(book)}`);
-    expect(deleteFile).toHaveBeenCalledWith(`${CLOUD_BOOKS_SUBDIR}/${getCoverFilename(book)}`);
-    expect(deleteFile).toHaveBeenCalledTimes(2);
-    expect(book.uploadedAt).toBeNull();
-  });
-
-  it('keeps uploadedAt retryable when one remote delete fails transiently', async () => {
-    vi.mocked(deleteFile).mockRejectedValueOnce(new Error('remote delete failed'));
-    const book = baseBook({ uploadedAt: 123 });
-    const service = new CloudSyncService(
-      createFs(new Set()),
-      '/books',
-      async (path) => `/books/${path}`,
-    );
-
-    await expect(service.deleteBookFromCloud(book)).resolves.toBeUndefined();
-
-    expect(deleteFile).toHaveBeenCalledTimes(2);
-    expect(book.uploadedAt).toBe(123);
-  });
-
-  it('clears uploadedAt when remote files are already missing', async () => {
-    const book = baseBook({ uploadedAt: 123 });
-    const service = new CloudSyncService(
-      createFs(new Set()),
-      '/books',
-      async (path) => `/books/${path}`,
-    );
-
-    await service.deleteBookFromCloud(book);
-
-    expect(deleteFile).toHaveBeenCalledTimes(2);
-    expect(book.uploadedAt).toBeNull();
   });
 });

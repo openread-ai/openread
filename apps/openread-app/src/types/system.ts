@@ -9,7 +9,6 @@ export type AppPlatform = 'web' | 'tauri';
 export type OsPlatform = 'android' | 'ios' | 'macos' | 'windows' | 'linux' | 'unknown';
 // prettier-ignore
 export type BaseDir = | 'Books' | 'Settings' | 'Data' | 'Fonts' | 'Images' | 'Log' | 'Cache' | 'Temp' | 'None';
-export type DeleteAction = 'cloud' | 'local' | 'both';
 export type SelectDirectoryMode = 'read' | 'write';
 export type DistChannel = 'openread' | 'playstore' | 'appstore' | 'unknown';
 
@@ -136,7 +135,6 @@ export interface AppService {
     overwrite?: boolean,
     importContext?: ImportBookContext,
   ): Promise<Book | null>;
-  deleteBook(book: Book, deleteAction: DeleteAction): Promise<void>;
   uploadBook(book: Book, onProgress?: ProgressHandler): Promise<void>;
   downloadBook(
     book: Book,

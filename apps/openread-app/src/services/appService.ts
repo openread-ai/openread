@@ -10,7 +10,7 @@ import {
   ResolvedPath,
   SelectDirectoryMode,
 } from '@/types/system';
-import { FileSystem, BaseDir, DeleteAction } from '@/types/system';
+import { FileSystem, BaseDir } from '@/types/system';
 import {
   Book,
   BookConfig,
@@ -795,31 +795,6 @@ export abstract class BaseAppService implements AppService {
       }
       logger.error('Error importing book:', importError);
       throw importError;
-    }
-  }
-
-  async deleteBook(book: Book, deleteAction: DeleteAction): Promise<void> {
-    logger.info('Deleting book with action:', { deleteAction, title: book.title });
-    if (deleteAction === 'local' || deleteAction === 'both') {
-      const localDeleteFps =
-        deleteAction === 'local'
-          ? [getLocalBookFilename(book)]
-          : [getLocalBookFilename(book), getCoverFilename(book)];
-      for (const fp of localDeleteFps) {
-        if (await this.fs.exists(fp, 'Books')) {
-          await this.fs.removeFile(fp, 'Books');
-        }
-      }
-      if (deleteAction === 'local') {
-        book.downloadedAt = null;
-      } else {
-        book.deletedAt = Date.now();
-        book.downloadedAt = null;
-        book.coverDownloadedAt = null;
-      }
-    }
-    if (deleteAction === 'cloud' || deleteAction === 'both') {
-      await this.cloudSync.deleteBookFromCloud(book);
     }
   }
 

@@ -36,7 +36,6 @@ const {
   };
   const mockDispatch = vi.fn();
   const mockAppService = {
-    deleteBook: vi.fn().mockResolvedValue(undefined),
     deleteDir: vi.fn().mockResolvedValue(undefined),
     saveLibraryBooks: vi.fn().mockResolvedValue(undefined),
   };
@@ -146,7 +145,6 @@ describe('useBookActions', () => {
     mockPlatformSidebarStoreState.removeBookFromCollection = vi.fn();
     mockLibraryViewStoreState.clearSelection = vi.fn();
     mockLibraryViewStoreState.setSelectMode = vi.fn();
-    mockAppService.deleteBook = vi.fn().mockResolvedValue(undefined);
     mockAppService.deleteDir = vi.fn().mockResolvedValue(undefined);
     mockAppService.saveLibraryBooks = vi.fn().mockResolvedValue(undefined);
     vi.mocked(enqueueBookForSync).mockResolvedValue(undefined);
@@ -421,7 +419,6 @@ describe('useBookActions', () => {
       expect(mockAppService.saveLibraryBooks).not.toHaveBeenCalled();
       expect(mockLibraryStoreState.setLibrary).not.toHaveBeenCalled();
       expect(mockLibraryStoreState.library).toEqual([accountBBook]);
-      expect(mockAppService.deleteBook).not.toHaveBeenCalled();
     });
 
     it('fails closed when the owner changes before the final single commit', async () => {
@@ -478,7 +475,6 @@ describe('useBookActions', () => {
       expect(mockAppService.saveLibraryBooks).not.toHaveBeenCalled();
       expect(mockLibraryStoreState.library).toBe(currentLibrary);
       expect(mockLibraryStoreState.setLibrary).not.toHaveBeenCalled();
-      expect(mockAppService.deleteBook).not.toHaveBeenCalled();
     });
 
     it('keeps the durable outbox intent when local finalization fails', async () => {
@@ -494,7 +490,6 @@ describe('useBookActions', () => {
 
       expect(mockLibraryStoreState.setLibrary).not.toHaveBeenCalled();
       expect(enqueueBooksForSync).toHaveBeenCalledWith([expect.any(Object)], 'user-1');
-      expect(mockAppService.deleteBook).not.toHaveBeenCalled();
     });
 
     it('leaves durable and visible state untouched when sync enqueue fails', async () => {
@@ -512,7 +507,6 @@ describe('useBookActions', () => {
       expect(mockAppService.saveLibraryBooks).not.toHaveBeenCalled();
       expect(mockLibraryStoreState.library).toBe(previousLibrary);
       expect(mockLibraryStoreState.setLibrary).not.toHaveBeenCalled();
-      expect(mockAppService.deleteBook).not.toHaveBeenCalled();
     });
 
     it('commits and hides a durable terminal failed deletion intent', async () => {
@@ -534,7 +528,6 @@ describe('useBookActions', () => {
       expect(mockAppService.saveLibraryBooks).toHaveBeenCalledTimes(1);
       expect(committedLibrary[0]?.deletedAt).toEqual(expect.any(Number));
       expect(mockLibraryStoreState.setLibrary).toHaveBeenCalledWith(committedLibrary);
-      expect(mockAppService.deleteBook).not.toHaveBeenCalled();
     });
 
     it('fails closed on unknown delivery identity without visible mutation or cleanup', async () => {
@@ -551,7 +544,6 @@ describe('useBookActions', () => {
 
       expect(mockAppService.saveLibraryBooks).not.toHaveBeenCalled();
       expect(mockLibraryStoreState.setLibrary).not.toHaveBeenCalled();
-      expect(mockAppService.deleteBook).not.toHaveBeenCalled();
     });
 
     it('does not eagerly delete hash-addressed bytes or cloud assets', async () => {
@@ -563,7 +555,6 @@ describe('useBookActions', () => {
         await result.current.permanentlyDeleteBook(book);
       });
 
-      expect(mockAppService.deleteBook).not.toHaveBeenCalled();
       expect(mockAppService.deleteDir).not.toHaveBeenCalled();
       expect(mockLibraryStoreState.setLibrary).toHaveBeenCalled();
     });
@@ -706,7 +697,6 @@ describe('useBookActions', () => {
       expect(mockLibraryStoreState.setLibrary).not.toHaveBeenCalled();
       expect(mockLibraryStoreState.library).toEqual([accountBBook]);
       expect(mockLibraryViewStoreState.clearSelection).not.toHaveBeenCalled();
-      expect(mockAppService.deleteBook).not.toHaveBeenCalled();
     });
 
     it('fails closed when the owner changes before the final bulk commit', async () => {
@@ -773,7 +763,6 @@ describe('useBookActions', () => {
       expect(mockLibraryStoreState.library).toBe(currentLibrary);
       expect(mockLibraryStoreState.setLibrary).not.toHaveBeenCalled();
       expect(mockLibraryViewStoreState.clearSelection).not.toHaveBeenCalled();
-      expect(mockAppService.deleteBook).not.toHaveBeenCalled();
     });
 
     it('commits only selected tombstones when bulk delivery is durably failed', async () => {
@@ -803,7 +792,6 @@ describe('useBookActions', () => {
       expect(mockLibraryStoreState.setLibrary).toHaveBeenCalledWith(committedLibrary);
       expect(mockLibraryViewStoreState.clearSelection).toHaveBeenCalled();
       expect(mockLibraryViewStoreState.setSelectMode).toHaveBeenCalledWith(false);
-      expect(mockAppService.deleteBook).not.toHaveBeenCalled();
     });
 
     it('keeps durable bulk outbox intent when local finalization fails', async () => {

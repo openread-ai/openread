@@ -121,7 +121,6 @@ vi.mock('@/utils/serializer', () => ({
 vi.mock('@/libs/storage', () => ({
   downloadFile: vi.fn(),
   uploadFile: vi.fn(),
-  deleteFile: vi.fn(),
   createProgressHandler: vi.fn(),
   batchGetDownloadUrls: vi.fn(),
 }));
@@ -192,8 +191,7 @@ vi.mock('uuid', () => ({
 import type { CatalogDownloadUrlResponse } from '@openread/types';
 import type { Book, BookFormat } from '@/types/book';
 import { BaseAppService, createImportBookContext } from '@/services/appService';
-import { CloudSyncService } from '@/services/cloudSync';
-import { deleteFile, downloadFile } from '@/libs/storage';
+import { downloadFile } from '@/libs/storage';
 import { getConfigFilename, getCoverFilename, getDir, getLocalBookFilename } from '@/utils/book';
 import { partialMD5 } from '@/utils/md5';
 import { ImportFailureError } from '@/services/importFailure';
@@ -325,64 +323,6 @@ async function expectImportFailureReason(
   }
   throw new Error(`Expected import to fail with ${reason}`);
 }
-
-describe('appService deleteBook storage lifecycle', () => {
-  let appService: TestAppService;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    appService = new TestAppService();
-  });
-
-  it('local delete removes only the local book file and clears downloadedAt', async () => {
-    const book = createMockBook({ downloadedAt: 123, coverDownloadedAt: 456, uploadedAt: 789 });
-    const fs = (appService as unknown as { fs: FileSystem }).fs;
-    vi.mocked(fs.exists).mockResolvedValue(true);
-
-    await appService.deleteBook(book, 'local');
-
-    expect(fs.removeFile).toHaveBeenCalledWith('mock-local-filename', 'Books');
-    expect(fs.removeFile).not.toHaveBeenCalledWith('mock-cover-filename', 'Books');
-    expect(deleteFile).not.toHaveBeenCalled();
-    expect(book.downloadedAt).toBeNull();
-    expect(book.coverDownloadedAt).toBe(456);
-    expect(book.uploadedAt).toBe(789);
-    expect(book.deletedAt).toBeNull();
-  });
-
-  it('cloud delete delegates to CloudSyncService and clears uploadedAt only', async () => {
-    await appService.prepareBooksDir();
-    const cloudDeleteSpy = vi.spyOn(CloudSyncService.prototype, 'deleteBookFromCloud');
-    const book = createMockBook({ downloadedAt: 123, uploadedAt: 789, deletedAt: null });
-    const fs = (appService as unknown as { fs: FileSystem }).fs;
-
-    await appService.deleteBook(book, 'cloud');
-
-    expect(cloudDeleteSpy).toHaveBeenCalledWith(book);
-    expect(fs.removeFile).not.toHaveBeenCalled();
-    expect(book.uploadedAt).toBeNull();
-    expect(book.downloadedAt).toBe(123);
-    expect(book.deletedAt).toBeNull();
-  });
-
-  it('both delete removes local book and cover, delegates cloud delete, and tombstones the book', async () => {
-    await appService.prepareBooksDir();
-    const cloudDeleteSpy = vi.spyOn(CloudSyncService.prototype, 'deleteBookFromCloud');
-    const book = createMockBook({ downloadedAt: 123, coverDownloadedAt: 456, uploadedAt: 789 });
-    const fs = (appService as unknown as { fs: FileSystem }).fs;
-    vi.mocked(fs.exists).mockResolvedValue(true);
-
-    await appService.deleteBook(book, 'both');
-
-    expect(fs.removeFile).toHaveBeenCalledWith('mock-local-filename', 'Books');
-    expect(fs.removeFile).toHaveBeenCalledWith('mock-cover-filename', 'Books');
-    expect(cloudDeleteSpy).toHaveBeenCalledWith(book);
-    expect(book.deletedAt).toEqual(expect.any(Number));
-    expect(book.downloadedAt).toBeNull();
-    expect(book.coverDownloadedAt).toBeNull();
-    expect(book.uploadedAt).toBeNull();
-  });
-});
 
 describe('appService book content loading', () => {
   let appService: TestAppService;

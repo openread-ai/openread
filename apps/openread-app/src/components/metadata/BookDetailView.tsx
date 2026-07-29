@@ -1,10 +1,8 @@
-import clsx from 'clsx';
 import React from 'react';
 import DOMPurify from 'dompurify';
 import {
   MdOutlineCloudDownload,
   MdOutlineCloudUpload,
-  MdOutlineDelete,
   MdOutlineEdit,
   MdSaveAlt,
 } from 'react-icons/md';
@@ -21,17 +19,12 @@ import {
   formatTitle,
 } from '@/utils/book';
 import BookCover from '@/components/BookCover';
-import Dropdown from '../Dropdown';
-import MenuItem from '../MenuItem';
 
 interface BookDetailViewProps {
   book: Book;
   metadata: BookMetadata | null;
   fileSize: number | null;
   onEdit?: () => void;
-  onDelete?: () => void;
-  onDeleteCloudBackup?: () => void;
-  onDeleteLocalCopy?: () => void;
   onDownload?: () => void;
   onUpload?: () => void;
   onExport?: () => void;
@@ -42,9 +35,6 @@ const BookDetailView: React.FC<BookDetailViewProps> = ({
   metadata,
   fileSize,
   onEdit,
-  onDelete,
-  onDeleteCloudBackup,
-  onDeleteLocalCopy,
   onDownload,
   onUpload,
   onExport,
@@ -75,42 +65,6 @@ const BookDetailView: React.FC<BookDetailViewProps> = ({
               >
                 <MdOutlineEdit className='hover:fill-blue-500' />
               </button>
-            )}
-            {onDelete && (
-              <Dropdown
-                label={_('Delete Book Options')}
-                className='dropdown-bottom flex justify-center'
-                buttonClassName='btn btn-ghost h-8 min-h-8 w-8 p-0'
-                toggleButton={<MdOutlineDelete className='fill-red-500' />}
-              >
-                <div
-                  className={clsx(
-                    'delete-menu dropdown-content dropdown-center no-triangle',
-                    'border-base-300 !bg-base-200 z-20 mt-1 max-w-[90vw] shadow-2xl',
-                  )}
-                >
-                  <MenuItem
-                    noIcon
-                    transient
-                    label={_('Remove from Cloud & Device')}
-                    onClick={onDelete}
-                  />
-                  <MenuItem
-                    noIcon
-                    transient
-                    label={_('Remove from Cloud Only')}
-                    onClick={onDeleteCloudBackup}
-                    disabled={!book.uploadedAt}
-                  />
-                  <MenuItem
-                    noIcon
-                    transient
-                    label={_('Remove from Device Only')}
-                    onClick={onDeleteLocalCopy}
-                    disabled={!book.downloadedAt}
-                  />
-                </div>
-              </Dropdown>
             )}
             {book.uploadedAt && onDownload && (
               <button onClick={onDownload} title={_('Download from Cloud')}>

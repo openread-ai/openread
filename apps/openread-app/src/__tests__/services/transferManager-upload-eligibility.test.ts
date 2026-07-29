@@ -38,7 +38,6 @@ function resetTransferManagerForTest(
   manager.appService = {
     uploadBook: overrides.uploadBook ?? vi.fn(async () => {}),
     downloadBook: overrides.downloadBook ?? vi.fn(async () => {}),
-    deleteBook: vi.fn(async () => {}),
   };
   manager.getLibrary = () => library;
   manager.updateBook = overrides.updateBook ?? vi.fn(async () => {});
@@ -394,7 +393,6 @@ describe('TransferManager upload eligibility', () => {
     const appService = {
       uploadBook: vi.fn(async () => {}),
       downloadBook: vi.fn(async () => {}),
-      deleteBook: vi.fn(async () => {}),
     } as unknown as Parameters<typeof transferManager.initialize>[0];
     const manager = transferManager as unknown as { isInitialized: boolean };
     manager.isInitialized = false;
@@ -411,7 +409,6 @@ describe('TransferManager upload eligibility', () => {
     expect(transfers[validId]).toEqual(persistedTransfers[validId]);
     expect(appService.uploadBook).not.toHaveBeenCalled();
     expect(appService.downloadBook).not.toHaveBeenCalled();
-    expect(appService.deleteBook).not.toHaveBeenCalled();
 
     const persistedQueue = JSON.parse(
       localStorage.getItem(LOCAL_PERSISTENCE_KEYS.transferQueue)!,

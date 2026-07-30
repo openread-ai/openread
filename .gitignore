@@ -95,3 +95,6 @@ pi-session-*.html
 
 # Start Dev local state
 .startdev/
+
+# Supabase CLI local scratch (contains project ref / pooler URL)
+supabase/.temp/

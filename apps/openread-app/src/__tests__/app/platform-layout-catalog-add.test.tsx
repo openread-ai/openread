@@ -76,6 +76,9 @@ vi.mock('@/hooks/useTranslation', () => ({
 }));
 
 vi.mock('@/hooks/useTransferQueue', () => ({ useTransferQueue: vi.fn() }));
+vi.mock('@/hooks/useDeletedBookArtifactCleanup', () => ({
+  useDeletedBookArtifactCleanup: vi.fn(),
+}));
 vi.mock('@/services/auth/clientAuth', () => ({
   clientAuth: { hasStoredSession: () => false },
 }));

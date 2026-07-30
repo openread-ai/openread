@@ -32,6 +32,8 @@ function resetTransferManagerForTest(
     updateBook: ((book: Book) => Promise<void>) | null;
     _: (key: string, vars?: Record<string, string>) => string;
     isInitialized: boolean;
+    initializationPromise: Promise<void> | null;
+    currentOwnerUserId: string | null;
     recoveredTerminalBackgroundUploadIds: Set<string>;
   };
   const library = overrides.library ?? [baseBook()];
@@ -43,10 +45,13 @@ function resetTransferManagerForTest(
   manager.updateBook = overrides.updateBook ?? vi.fn(async () => {});
   manager._ = (key, vars) => (vars?.['title'] ? key.replace('{{title}}', vars['title']) : key);
   manager.isInitialized = true;
+  manager.initializationPromise = Promise.resolve();
+  manager.currentOwnerUserId = 'user-a';
   manager.recoveredTerminalBackgroundUploadIds = new Set();
 }
 
 async function executeTransferForTest(transfer: TransferItem) {
+  transfer.ownerUserId ??= 'user-a';
   await (
     transferManager as unknown as {
       executeTransfer: (transfer: TransferItem) => Promise<void>;
@@ -87,6 +92,7 @@ describe('TransferManager upload eligibility', () => {
 
     expect(id).toBeTruthy();
     expect(useTransferStore.getState().transfers[id!]!).toMatchObject({
+      ownerUserId: 'user-a',
       bookTitle: 'Manual Book',
       type: 'upload',
     });
@@ -176,7 +182,9 @@ describe('TransferManager upload eligibility', () => {
     resetTransferManagerForTest({ uploadBook, library: [book] });
     const dispatchSpy = vi.spyOn(eventDispatcher, 'dispatch');
 
-    const id = useTransferStore.getState().addTransfer(book.hash, book.title, 'upload', 1, false);
+    const id = useTransferStore
+      .getState()
+      .addTransfer(book.hash, book.title, 'upload', 1, false, 'user-a');
     await executeTransferForTest(useTransferStore.getState().transfers[id]!);
 
     const toastDetail = getLastToastDetail(dispatchSpy);
@@ -200,7 +208,9 @@ describe('TransferManager upload eligibility', () => {
     resetTransferManagerForTest({ downloadBook, library: [book] });
     const dispatchSpy = vi.spyOn(eventDispatcher, 'dispatch');
 
-    const id = useTransferStore.getState().addTransfer(book.hash, book.title, 'download', 1, false);
+    const id = useTransferStore
+      .getState()
+      .addTransfer(book.hash, book.title, 'download', 1, false, 'user-a');
     await executeTransferForTest(useTransferStore.getState().transfers[id]!);
 
     const toastDetail = getLastToastDetail(dispatchSpy);
@@ -225,7 +235,7 @@ describe('TransferManager upload eligibility', () => {
 
     const id = useTransferStore
       .getState()
-      .addTransfer(missingBook.hash, missingBook.title, 'upload', 1, true);
+      .addTransfer(missingBook.hash, missingBook.title, 'upload', 1, true, 'user-a');
     await executeTransferForTest(useTransferStore.getState().transfers[id]!);
     await vi.runOnlyPendingTimersAsync();
 
@@ -252,7 +262,9 @@ describe('TransferManager upload eligibility', () => {
     const dispatchSpy = vi.spyOn(eventDispatcher, 'dispatch');
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    const id = useTransferStore.getState().addTransfer(book.hash, book.title, 'upload', 1, true);
+    const id = useTransferStore
+      .getState()
+      .addTransfer(book.hash, book.title, 'upload', 1, true, 'user-a');
     await executeTransferForTest(useTransferStore.getState().transfers[id]!);
 
     const transfer = useTransferStore.getState().transfers[id]!;
@@ -276,7 +288,9 @@ describe('TransferManager upload eligibility', () => {
     const dispatchSpy = vi.spyOn(eventDispatcher, 'dispatch');
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    const id = useTransferStore.getState().addTransfer(book.hash, book.title, 'upload', 1, true);
+    const id = useTransferStore
+      .getState()
+      .addTransfer(book.hash, book.title, 'upload', 1, true, 'user-a');
     await executeTransferForTest(useTransferStore.getState().transfers[id]!);
 
     const transfer = useTransferStore.getState().transfers[id]!;
@@ -299,7 +313,9 @@ describe('TransferManager upload eligibility', () => {
     const dispatchSpy = vi.spyOn(eventDispatcher, 'dispatch');
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    const id = useTransferStore.getState().addTransfer(book.hash, book.title, 'upload', 1, true);
+    const id = useTransferStore
+      .getState()
+      .addTransfer(book.hash, book.title, 'upload', 1, true, 'user-a');
     await executeTransferForTest(useTransferStore.getState().transfers[id]!);
     await vi.runOnlyPendingTimersAsync();
 
@@ -325,7 +341,9 @@ describe('TransferManager upload eligibility', () => {
     resetTransferManagerForTest({ uploadBook, library: [book] });
     vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    const id = useTransferStore.getState().addTransfer(book.hash, book.title, 'upload', 1, true);
+    const id = useTransferStore
+      .getState()
+      .addTransfer(book.hash, book.title, 'upload', 1, true, 'user-a');
     await executeTransferForTest(useTransferStore.getState().transfers[id]!);
     useTransferStore.getState().pauseQueue();
 
@@ -342,6 +360,7 @@ describe('TransferManager upload eligibility', () => {
   it('restores retryable failed background uploads as pending for startup recovery', () => {
     const failedBackgroundUpload: TransferItem = {
       id: 'background-upload',
+      ownerUserId: 'user-a',
       bookHash: baseBook().hash,
       bookTitle: 'Manual Book',
       type: 'upload',
@@ -381,8 +400,31 @@ describe('TransferManager upload eligibility', () => {
       title: 'Deleted Book',
     });
     const store = useTransferStore.getState();
-    const validId = store.addTransfer(validBook.hash, validBook.title, 'upload', 1, true);
-    const orphanedId = store.addTransfer(orphanedBook.hash, orphanedBook.title, 'upload', 1, true);
+    const validId = store.addTransfer(validBook.hash, validBook.title, 'upload', 1, true, 'user-a');
+    const orphanedId = store.addTransfer(
+      orphanedBook.hash,
+      orphanedBook.title,
+      'upload',
+      1,
+      true,
+      'user-a',
+    );
+    const foreignId = store.addTransfer(
+      orphanedBook.hash,
+      orphanedBook.title,
+      'upload',
+      1,
+      true,
+      'user-b',
+    );
+    const legacyId = 'legacy-ownerless-upload';
+    const foreignTransfer = useTransferStore.getState().transfers[foreignId]!;
+    useTransferStore.setState((state) => ({
+      transfers: {
+        ...state.transfers,
+        [legacyId]: { ...foreignTransfer, id: legacyId, ownerUserId: undefined },
+      },
+    }));
     const persistedTransfers = { ...useTransferStore.getState().transfers };
     localStorage.setItem(
       LOCAL_PERSISTENCE_KEYS.transferQueue,
@@ -394,19 +436,30 @@ describe('TransferManager upload eligibility', () => {
       uploadBook: vi.fn(async () => {}),
       downloadBook: vi.fn(async () => {}),
     } as unknown as Parameters<typeof transferManager.initialize>[0];
-    const manager = transferManager as unknown as { isInitialized: boolean };
+    const manager = transferManager as unknown as {
+      isInitialized: boolean;
+      initializationPromise: Promise<void> | null;
+      currentOwnerUserId: string | null;
+    };
     manager.isInitialized = false;
+    manager.initializationPromise = null;
+    manager.currentOwnerUserId = null;
 
     await transferManager.initialize(
       appService,
       () => [validBook],
       vi.fn(async () => {}),
       (key) => key,
+      'user-a',
     );
 
     const transfers = useTransferStore.getState().transfers;
     expect(transfers[orphanedId]).toBeUndefined();
     expect(transfers[validId]).toEqual(persistedTransfers[validId]);
+    expect(transfers[foreignId]).toEqual(persistedTransfers[foreignId]);
+    expect(transfers[legacyId]).toEqual(persistedTransfers[legacyId]);
+    expect(transfers[foreignId]?.status).toBe('pending');
+    expect(transfers[legacyId]?.status).toBe('pending');
     expect(appService.uploadBook).not.toHaveBeenCalled();
     expect(appService.downloadBook).not.toHaveBeenCalled();
 
@@ -415,6 +468,94 @@ describe('TransferManager upload eligibility', () => {
     ) as { transfers: Record<string, TransferItem> };
     expect(persistedQueue.transfers[orphanedId]).toBeUndefined();
     expect(persistedQueue.transfers[validId]).toEqual(persistedTransfers[validId]);
+    expect(persistedQueue.transfers[foreignId]).toEqual(persistedTransfers[foreignId]);
+    expect(persistedQueue.transfers[legacyId]).toEqual(persistedTransfers[legacyId]);
+  });
+
+  it('retains another owner transfer as pending when the active account changes', () => {
+    const book = baseBook();
+    transferManager.setActiveOwnerUserId('user-b');
+    const id = useTransferStore
+      .getState()
+      .addTransfer(book.hash, book.title, 'upload', 1, true, 'user-b');
+    useTransferStore.getState().setTransferStatus(id, 'in_progress');
+
+    transferManager.setActiveOwnerUserId('user-a');
+
+    expect(useTransferStore.getState().transfers[id]).toMatchObject({
+      ownerUserId: 'user-b',
+      status: 'pending',
+      error: undefined,
+    });
+  });
+
+  it('rejects cancel and retry mutations for foreign and legacy ownerless transfers', () => {
+    const store = useTransferStore.getState();
+    const book = baseBook();
+    const ownId = store.addTransfer(book.hash, book.title, 'upload', 1, true, 'user-a');
+    const foreignId = store.addTransfer(book.hash, book.title, 'upload', 1, true, 'user-b');
+    const legacyId = 'legacy-ownerless-mutation';
+    useTransferStore.setState((state) => ({
+      transfers: {
+        ...state.transfers,
+        [legacyId]: { ...state.transfers[foreignId]!, id: legacyId, ownerUserId: undefined },
+      },
+    }));
+    [ownId, foreignId, legacyId].forEach((id) =>
+      useTransferStore.getState().setTransferStatus(id, 'failed', 'failure'),
+    );
+
+    transferManager.cancelTransfer(foreignId);
+    transferManager.retryTransfer(foreignId);
+    transferManager.cancelTransfer(legacyId);
+    transferManager.retryTransfer(legacyId);
+
+    expect(useTransferStore.getState().transfers[foreignId]).toMatchObject({
+      ownerUserId: 'user-b',
+      status: 'failed',
+      error: 'failure',
+    });
+    expect(useTransferStore.getState().transfers[legacyId]).toMatchObject({
+      ownerUserId: undefined,
+      status: 'failed',
+      error: 'failure',
+    });
+
+    useTransferStore.getState().pauseQueue();
+    transferManager.retryTransfer(ownId);
+    expect(useTransferStore.getState().transfers[ownId]).toMatchObject({
+      ownerUserId: 'user-a',
+      status: 'pending',
+      error: undefined,
+    });
+    transferManager.cancelTransfer(ownId);
+    expect(useTransferStore.getState().transfers[ownId]?.status).toBe('cancelled');
+  });
+
+  it('does not process or terminal-fail another owner pending upload', async () => {
+    const currentBook = baseBook();
+    const foreignBook = baseBook({
+      hash: testOpenReadBookRef('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'),
+      title: 'Other Owner Book',
+    });
+    const uploadBook = vi.fn(async () => {});
+    resetTransferManagerForTest({ uploadBook, library: [currentBook] });
+    const id = useTransferStore
+      .getState()
+      .addTransfer(foreignBook.hash, foreignBook.title, 'upload', 1, true, 'user-b');
+
+    await (
+      transferManager as unknown as {
+        _processQueueInternal: () => Promise<void>;
+      }
+    )._processQueueInternal();
+
+    expect(useTransferStore.getState().transfers[id]).toMatchObject({
+      ownerUserId: 'user-b',
+      status: 'pending',
+    });
+    expect(useTransferStore.getState().transfers[id]).not.toHaveProperty('error');
+    expect(uploadBook).not.toHaveBeenCalled();
   });
 
   it('restores transfers with the persisted queue pause state', () => {
@@ -479,7 +620,9 @@ describe('TransferManager upload eligibility', () => {
 
   it('does not queue duplicate background uploads for terminal background failures', () => {
     const book = baseBook();
-    const id = useTransferStore.getState().addTransfer(book.hash, book.title, 'upload', 1, true);
+    const id = useTransferStore
+      .getState()
+      .addTransfer(book.hash, book.title, 'upload', 1, true, 'user-a');
     useTransferStore.getState().setTransferStatus(id, 'failed', 'STORAGE_LIMIT_REACHED');
 
     const returnedId = transferManager.queueUpload(book, 1, true);
@@ -490,7 +633,9 @@ describe('TransferManager upload eligibility', () => {
 
   it('recovers terminal background uploads by resetting the existing transfer', () => {
     const book = baseBook();
-    const id = useTransferStore.getState().addTransfer(book.hash, book.title, 'upload', 1, true);
+    const id = useTransferStore
+      .getState()
+      .addTransfer(book.hash, book.title, 'upload', 1, true, 'user-a');
     useTransferStore.getState().setTransferStatus(id, 'failed', 'STORAGE_LIMIT_REACHED');
     useTransferStore.getState().pauseQueue();
 
@@ -515,7 +660,9 @@ describe('TransferManager upload eligibility', () => {
     resetTransferManagerForTest({ uploadBook, library: [book] });
     vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    const id = useTransferStore.getState().addTransfer(book.hash, book.title, 'upload', 1, true);
+    const id = useTransferStore
+      .getState()
+      .addTransfer(book.hash, book.title, 'upload', 1, true, 'user-a');
     useTransferStore.getState().setTransferStatus(id, 'failed', 'STORAGE_LIMIT_REACHED');
     useTransferStore.getState().pauseQueue();
 
@@ -539,7 +686,9 @@ describe('TransferManager upload eligibility', () => {
       hash: testOpenReadBookRef('catalog:65119855-9d37-4caf-a7a4-4a5f9c9572d5'),
       catalogBookId: '65119855-9d37-4caf-a7a4-4a5f9c9572d5',
     });
-    const id = useTransferStore.getState().addTransfer(book.hash, book.title, 'upload', 1, true);
+    const id = useTransferStore
+      .getState()
+      .addTransfer(book.hash, book.title, 'upload', 1, true, 'user-a');
     useTransferStore.getState().setTransferStatus(id, 'failed', 'STORAGE_LIMIT_REACHED');
 
     expect(transferManager.recoverTerminalBackgroundUploads([book])).toEqual([]);
@@ -557,7 +706,7 @@ describe('TransferManager upload eligibility', () => {
     resetTransferManagerForTest({ uploadBook, library: [book] });
     vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    useTransferStore.getState().addTransfer(book.hash, book.title, 'upload', 1, true);
+    useTransferStore.getState().addTransfer(book.hash, book.title, 'upload', 1, true, 'user-a');
     await (
       transferManager as unknown as {
         _processQueueInternal: () => Promise<void>;
@@ -576,7 +725,9 @@ describe('TransferManager upload eligibility', () => {
 
   it('promotes a delayed background upload when the user manually requests upload', () => {
     const book = baseBook();
-    const id = useTransferStore.getState().addTransfer(book.hash, book.title, 'upload', 10, true);
+    const id = useTransferStore
+      .getState()
+      .addTransfer(book.hash, book.title, 'upload', 10, true, 'user-a');
     useTransferStore
       .getState()
       .deferTransfer(id, 'Background backup retry scheduled: network-error', Date.now() + 60_000);
@@ -598,7 +749,9 @@ describe('TransferManager upload eligibility', () => {
     const book = baseBook();
     resetTransferManagerForTest({ library: [book] });
     const dispatchSpy = vi.spyOn(eventDispatcher, 'dispatch');
-    const id = useTransferStore.getState().addTransfer(book.hash, book.title, 'upload', 10, true);
+    const id = useTransferStore
+      .getState()
+      .addTransfer(book.hash, book.title, 'upload', 10, true, 'user-a');
     const staleBackgroundTransfer = useTransferStore.getState().transfers[id]!;
     useTransferStore.getState().promoteTransferToForeground(id, 1);
 
@@ -622,7 +775,9 @@ describe('TransferManager upload eligibility', () => {
     });
     const dispatchSpy = vi.spyOn(eventDispatcher, 'dispatch');
 
-    const id = useTransferStore.getState().addTransfer(book.hash, book.title, 'upload', 1, true);
+    const id = useTransferStore
+      .getState()
+      .addTransfer(book.hash, book.title, 'upload', 1, true, 'user-a');
     await executeTransferForTest(useTransferStore.getState().transfers[id]!);
 
     expect(book.uploadedAt).toBe(123);

@@ -1,21 +1,35 @@
 import { useEffect, useCallback, useMemo } from 'react';
 import { useEnv } from '@/context/EnvContext';
+import { useAuth } from '@/context/AuthContext';
 import { useTranslation } from './useTranslation';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useSettingsStore } from '@/store/settingsStore';
-import { useTransferStore, TransferType } from '@/store/transferStore';
+import { isTransferOwnedBy, useTransferStore, TransferType } from '@/store/transferStore';
 import { transferManager } from '@/services/transferManager';
 import { Book } from '@/types/book';
 import { hasUserBookUploadSource } from '@/utils/book';
 
 export function useTransferQueue(libraryLoaded = true, delayInit = 0) {
   const { envConfig, appService } = useEnv();
+  const { user } = useAuth();
   const _ = useTranslation();
 
   const library = useLibraryStore((state) => state.library);
+  const libraryOwnerUserId = useLibraryStore((state) => state.libraryOwnerUserId);
+  const activeOwnerUserId = user?.id === libraryOwnerUserId ? user.id : null;
+  const queueReady = Boolean(activeOwnerUserId && libraryLoaded);
   const autoUpload = useSettingsStore((state) => state.settings.autoUpload);
   const transfers = useTransferStore((state) => state.transfers);
   const isQueuePaused = useTransferStore((state) => state.isQueuePaused);
+  const visibleTransfers = useMemo(
+    () =>
+      activeOwnerUserId
+        ? Object.values(transfers).filter((transfer) =>
+            isTransferOwnedBy(transfer, activeOwnerUserId),
+          )
+        : [],
+    [activeOwnerUserId, transfers],
+  );
 
   useEffect(() => {
     const initManager = async () => {
@@ -25,7 +39,13 @@ export function useTransferQueue(libraryLoaded = true, delayInit = 0) {
           await useLibraryStore.getState().updateBook(envConfig, book);
         };
         const translationFn = _;
-        await transferManager.initialize(appService, getLibrary, updateBookFn, translationFn);
+        await transferManager.initialize(
+          appService,
+          getLibrary,
+          updateBookFn,
+          translationFn,
+          activeOwnerUserId!,
+        );
 
         // Auto-upload is a durability promise, not a best-effort import-time side effect.
         // If a book was imported before the transfer manager became ready, enqueue it
@@ -49,16 +69,24 @@ export function useTransferQueue(libraryLoaded = true, delayInit = 0) {
       }
     };
 
-    // Initialize transfer manager only when library is loaded
-    if (libraryLoaded) {
-      setTimeout(() => {
-        initManager();
-      }, delayInit);
-    }
-  }, [appService, envConfig, libraryLoaded, delayInit, _]);
+    transferManager.setActiveOwnerUserId(activeOwnerUserId);
+    if (!activeOwnerUserId || !queueReady) return;
+
+    const timer = setTimeout(() => {
+      void initManager();
+    }, delayInit);
+    return () => clearTimeout(timer);
+  }, [activeOwnerUserId, appService, envConfig, delayInit, queueReady, _]);
 
   useEffect(() => {
-    if (!libraryLoaded || autoUpload === false || !transferManager.isReady() || !appService) return;
+    if (
+      !activeOwnerUserId ||
+      !queueReady ||
+      autoUpload === false ||
+      !transferManager.isReady() ||
+      !appService
+    )
+      return;
 
     let cancelled = false;
 
@@ -85,7 +113,7 @@ export function useTransferQueue(libraryLoaded = true, delayInit = 0) {
     return () => {
       cancelled = true;
     };
-  }, [appService, autoUpload, library, libraryLoaded]);
+  }, [activeOwnerUserId, appService, autoUpload, library, queueReady]);
 
   const queueUpload = useCallback((book: Book, priority?: number) => {
     return transferManager.queueUpload(book, priority);
@@ -120,56 +148,92 @@ export function useTransferQueue(libraryLoaded = true, delayInit = 0) {
   }, []);
 
   const clearCompleted = useCallback(() => {
-    useTransferStore.getState().clearCompleted();
-  }, []);
+    if (!activeOwnerUserId) return;
+    const store = useTransferStore.getState();
+    Object.values(store.transfers)
+      .filter(
+        (transfer) =>
+          isTransferOwnedBy(transfer, activeOwnerUserId) && transfer.status === 'completed',
+      )
+      .forEach((transfer) => store.removeTransfer(transfer.id));
+  }, [activeOwnerUserId]);
 
   const clearFailed = useCallback(() => {
-    useTransferStore.getState().clearFailed();
-  }, []);
+    if (!activeOwnerUserId) return;
+    const store = useTransferStore.getState();
+    Object.values(store.transfers)
+      .filter(
+        (transfer) =>
+          isTransferOwnedBy(transfer, activeOwnerUserId) &&
+          (transfer.status === 'failed' || transfer.status === 'cancelled'),
+      )
+      .forEach((transfer) => store.removeTransfer(transfer.id));
+  }, [activeOwnerUserId]);
 
   const clearAll = useCallback(() => {
-    useTransferStore.getState().clearAll();
-  }, []);
+    if (!activeOwnerUserId) return;
+    const store = useTransferStore.getState();
+    Object.values(store.transfers)
+      .filter((transfer) => isTransferOwnedBy(transfer, activeOwnerUserId))
+      .forEach((transfer) => store.removeTransfer(transfer.id));
+  }, [activeOwnerUserId]);
 
-  const getTransferProgress = useCallback((bookHash: string, type: TransferType) => {
-    return useTransferStore.getState().getTransferByBookHash(bookHash, type);
-  }, []);
+  const getTransferProgress = useCallback(
+    (bookHash: string, type: TransferType) => {
+      if (!activeOwnerUserId) return undefined;
+      return Object.values(useTransferStore.getState().transfers).find(
+        (transfer) =>
+          isTransferOwnedBy(transfer, activeOwnerUserId) &&
+          transfer.bookHash === bookHash &&
+          transfer.type === type &&
+          (transfer.status === 'pending' || transfer.status === 'in_progress'),
+      );
+    },
+    [activeOwnerUserId],
+  );
 
-  const stats = useMemo(() => {
-    const transferList = Object.values(transfers);
-    return {
-      pending: transferList.filter((t) => t.status === 'pending').length,
-      active: transferList.filter((t) => t.status === 'in_progress').length,
-      completed: transferList.filter((t) => t.status === 'completed').length,
-      failed: transferList.filter((t) => t.status === 'failed' || t.status === 'cancelled').length,
-      total: transferList.length,
-    };
-  }, [transfers]);
+  const stats = useMemo(
+    () => ({
+      pending: visibleTransfers.filter((transfer) => transfer.status === 'pending').length,
+      active: visibleTransfers.filter((transfer) => transfer.status === 'in_progress').length,
+      completed: visibleTransfers.filter((transfer) => transfer.status === 'completed').length,
+      failed: visibleTransfers.filter(
+        (transfer) => transfer.status === 'failed' || transfer.status === 'cancelled',
+      ).length,
+      total: visibleTransfers.length,
+    }),
+    [visibleTransfers],
+  );
 
-  const pendingTransfers = useMemo(() => {
-    return Object.values(transfers).filter((t) => t.status === 'pending');
-  }, [transfers]);
+  const pendingTransfers = useMemo(
+    () => visibleTransfers.filter((transfer) => transfer.status === 'pending'),
+    [visibleTransfers],
+  );
 
-  const activeTransfers = useMemo(() => {
-    return Object.values(transfers).filter((t) => t.status === 'in_progress');
-  }, [transfers]);
+  const activeTransfers = useMemo(
+    () => visibleTransfers.filter((transfer) => transfer.status === 'in_progress'),
+    [visibleTransfers],
+  );
 
-  const failedTransfers = useMemo(() => {
-    return Object.values(transfers).filter(
-      (t) => t.status === 'failed' || t.status === 'cancelled',
-    );
-  }, [transfers]);
+  const failedTransfers = useMemo(
+    () =>
+      visibleTransfers.filter(
+        (transfer) => transfer.status === 'failed' || transfer.status === 'cancelled',
+      ),
+    [visibleTransfers],
+  );
 
-  const completedTransfers = useMemo(() => {
-    return Object.values(transfers).filter((t) => t.status === 'completed');
-  }, [transfers]);
+  const completedTransfers = useMemo(
+    () => visibleTransfers.filter((transfer) => transfer.status === 'completed'),
+    [visibleTransfers],
+  );
 
   const hasActiveTransfers = useMemo(() => {
     return pendingTransfers.length > 0 || activeTransfers.length > 0;
   }, [pendingTransfers, activeTransfers]);
 
   return {
-    transfers: Object.values(transfers),
+    transfers: visibleTransfers,
     isQueuePaused,
     stats,
     pendingTransfers,

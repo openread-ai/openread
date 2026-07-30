@@ -38,7 +38,7 @@ interface BookDataState {
   updateBooknotes: (key: string, booknotes: BookNote[]) => BookConfig | undefined;
   getBookDataByReaderKey: (bookKey: string | null) => BookData | null;
   getBookDataByRef: (bookRef: string | null) => BookData | null;
-  clearBookDataByReaderKey: (bookKey: string | null) => void;
+  clearBookDataByRef: (bookRef: string | null) => void;
 }
 
 export const useBookDataStore = create<BookDataState>((set, get) => ({
@@ -78,18 +78,16 @@ export const useBookDataStore = create<BookDataState>((set, get) => ({
     if (!id) return null;
     return get().booksData[id] || null;
   },
-  clearBookDataByReaderKey: (bookKey: string | null) => {
-    const id = parseBookRefFromReaderBookKey(bookKey);
+  clearBookDataByRef: (bookRef: string | null) => {
+    const id = normalizeBookReference(bookRef);
     if (!id) {
-      logger.warn('Ignoring clearBookDataByReaderKey for invalid reader key', { bookKey });
+      logger.warn('Ignoring clearBookDataByRef for invalid book ref', { bookRef });
       return;
     }
     set((state) => {
-      const newBooksData = { ...state.booksData };
-      delete newBooksData[id];
-      return {
-        booksData: newBooksData,
-      };
+      const { [id]: _bookData, ...booksData } = state.booksData;
+      const { [id]: _preSyncedConfig, ...preSyncedConfigs } = state.preSyncedConfigs;
+      return { booksData, preSyncedConfigs };
     });
   },
   getConfig: (key: string | null) => {

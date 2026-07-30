@@ -236,8 +236,9 @@ export const indexedDBFileSystem: FileSystem = {
 
       request.onsuccess = () => {
         const files = request.result as { path: string }[];
+        const childPrefix = `${fp}/`;
         files.forEach((file) => {
-          if (file.path.startsWith(fp)) {
+          if (file.path === fp || file.path.startsWith(childPrefix)) {
             store.delete(file.path);
           }
         });
@@ -258,11 +259,12 @@ export const indexedDBFileSystem: FileSystem = {
 
       request.onsuccess = () => {
         const files = request.result as { path: string; content: string | ArrayBuffer | Blob }[];
+        const childPrefix = `${fp}/`;
         resolve(
           files
-            .filter((file) => file.path.startsWith(fp))
+            .filter((file) => file.path === fp || file.path.startsWith(childPrefix))
             .map((file) => ({
-              path: file.path.slice(fp.length + 1),
+              path: file.path === fp ? '' : file.path.slice(childPrefix.length),
               size:
                 file.content instanceof Blob
                   ? file.content.size

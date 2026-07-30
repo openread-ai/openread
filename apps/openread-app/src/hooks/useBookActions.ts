@@ -14,7 +14,6 @@ import {
   SyncMutationContextUnavailableError,
 } from '@/services/sync/helpers';
 import { runAccountLibraryMutation } from '@/services/accountLibraryLifecycle';
-import { useBookDataStore } from '@/store/bookDataStore';
 import { SyncMutationDeliveryError } from '@/services/sync/engine';
 import type { Book, ReadingStatus } from '@/types/book';
 import { createLogger } from '@/utils/logger';
@@ -246,14 +245,11 @@ export function useBookActions() {
       setLibrary(
         applyDeletionTombstones(useLibraryStore.getState().library, targetHashes, deletedAt),
       );
-      const bookKey = `${book.hash}-${book.format}`;
-      useBookDataStore.getState().setConfig(bookKey, { booknotes: [], progress: undefined });
       removeDeletedBooksFromCollections(targetHashes);
     });
 
-    // Hash-addressed book bytes and AI records can be shared across account
-    // projections. The durable outbox tombstone owns remote deletion; eager
-    // destructive cleanup here could delete another account's resources.
+    // Local artifacts are evicted by the replayable, account-checked lifecycle pass.
+    // The delete path only commits the durable tombstone and library projection.
     return delivery;
   }, []);
 
@@ -299,15 +295,10 @@ export function useBookActions() {
         );
         clearSelection();
         setSelectMode(false);
-        for (const book of books) {
-          const bookKey = `${book.hash}-${book.format}`;
-          useBookDataStore.getState().setConfig(bookKey, { booknotes: [], progress: undefined });
-        }
         removeDeletedBooksFromCollections(targetHashes);
       });
 
-      // Hash-addressed bytes remain untouched; the durable outbox tombstones
-      // are the canonical cross-platform deletion mechanism.
+      // Local artifacts are evicted by the replayable, account-checked lifecycle pass.
       return delivery;
     },
     [clearSelection, setSelectMode],

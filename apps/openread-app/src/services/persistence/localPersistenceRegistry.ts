@@ -1,4 +1,5 @@
 import { AUTH_STORAGE_KEYS } from '@openread/auth';
+import { normalizeBookReference, parseBookRefFromReaderBookKey } from '@openread/types';
 
 export type PersistenceScope =
   | 'auth-owned'
@@ -354,4 +355,34 @@ export function isRegisteredLocalPersistenceKey(key: string): boolean {
   return (
     registeredExactKeys.has(key) || registeredPrefixes.some((prefix) => key.startsWith(prefix))
   );
+}
+
+const BOOK_LOCAL_PERSISTENCE_PREFIXES = [
+  LOCAL_PERSISTENCE_PREFIXES.readerSearchHistory,
+  LOCAL_PERSISTENCE_PREFIXES.rsvpWordsPerMinute,
+  LOCAL_PERSISTENCE_PREFIXES.rsvpPunctuationPause,
+  LOCAL_PERSISTENCE_PREFIXES.rsvpPosition,
+] as const;
+
+export function removeBookLocalPersistence(
+  bookRef: string,
+  storage: Storage = localStorage,
+): number {
+  const targetRef = normalizeBookReference(bookRef);
+  if (!targetRef) return 0;
+
+  const matchingKeys: string[] = [];
+  for (let index = 0; index < storage.length; index += 1) {
+    const key = storage.key(index);
+    if (!key) continue;
+
+    const prefix = BOOK_LOCAL_PERSISTENCE_PREFIXES.find((candidate) => key.startsWith(candidate));
+    if (!prefix) continue;
+
+    const storedRef = parseBookRefFromReaderBookKey(key.slice(prefix.length));
+    if (storedRef === targetRef) matchingKeys.push(key);
+  }
+
+  matchingKeys.forEach((key) => storage.removeItem(key));
+  return matchingKeys.length;
 }

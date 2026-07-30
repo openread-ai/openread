@@ -1,6 +1,6 @@
 import { Book } from '@/types/book';
 import { AppService } from '@/types/system';
-import { useTransferStore, TransferItem } from '@/store/transferStore';
+import { isTransferOwnedBy, useTransferStore, TransferItem } from '@/store/transferStore';
 import { TranslationFunc } from '@/hooks/useTranslation';
 import { ProgressPayload } from '@/utils/transfer';
 import { eventDispatcher } from '@/utils/event';
@@ -35,6 +35,8 @@ class TransferManager {
   private isProcessing = false;
   private abortControllers: Map<string, AbortController> = new Map();
   private isInitialized = false;
+  private initializationPromise: Promise<void> | null = null;
+  private currentOwnerUserId: string | null = null;
   private recoveredTerminalBackgroundUploadIds = new Set<string>();
   private getLibrary: (() => Book[]) | null = null;
   private updateBook: ((book: Book) => Promise<void>) | null = null;
@@ -54,32 +56,74 @@ class TransferManager {
     getLibrary: () => Book[],
     updateBook: (book: Book) => Promise<void>,
     translationFn: TranslationFunc,
+    ownerUserId: string,
   ): Promise<void> {
-    if (this.isInitialized) return;
-
     this.appService = appService;
     this.getLibrary = getLibrary;
     this.updateBook = updateBook;
     this._ = translationFn;
-    await this.loadPersistedQueue();
-    this.reconcilePendingTransfers(getLibrary());
-    this.isInitialized = true;
+    this.setActiveOwnerUserId(ownerUserId);
 
-    // Start processing queue
-    this.processQueue();
+    if (!this.isInitialized) {
+      this.initializationPromise ??= this.loadPersistedQueue().then(() => {
+        this.isInitialized = true;
+      });
+      await this.initializationPromise;
+    }
+
+    if (this.currentOwnerUserId !== ownerUserId) return;
+    this.reconcilePendingTransfers(getLibrary(), ownerUserId);
+    void this.processQueue();
+  }
+
+  setActiveOwnerUserId(ownerUserId: string | null): void {
+    if (this.currentOwnerUserId === ownerUserId) return;
+
+    this.currentOwnerUserId = ownerUserId;
+    if (this.queueWakeTimer) {
+      clearTimeout(this.queueWakeTimer);
+      this.queueWakeTimer = null;
+    }
+
+    const store = useTransferStore.getState();
+    Object.values(store.transfers)
+      .filter(
+        (transfer) => transfer.status === 'in_progress' && transfer.ownerUserId !== ownerUserId,
+      )
+      .forEach((transfer) => {
+        this.abortControllers.get(transfer.id)?.abort();
+        this.abortControllers.delete(transfer.id);
+        store.retryTransfer(transfer.id);
+      });
+    store.setActiveCount(
+      store.getActiveTransfers().filter((transfer) => transfer.ownerUserId === ownerUserId).length,
+    );
+    if (this.isInitialized) this.persistQueue();
   }
 
   isReady(): boolean {
-    return this.isInitialized && this.appService !== null;
+    return this.isInitialized && this.appService !== null && this.currentOwnerUserId !== null;
+  }
+
+  private isTransferOwnedByCurrentUser(transfer: TransferItem): boolean {
+    return isTransferOwnedBy(transfer, this.currentOwnerUserId);
   }
 
   queueUpload(book: Book, priority: number = 10, isBackground: boolean = false): string | null {
-    if (!isUserCloudUploadEligible(book)) return null;
+    if (!isUserCloudUploadEligible(book) || !this.isReady() || !this.currentOwnerUserId)
+      return null;
 
     const store = useTransferStore.getState();
+    const ownerUserId = this.currentOwnerUserId;
 
-    // Check if already queued or in progress
-    const existing = store.getTransferByBookHash(book.hash, 'upload');
+    // Check if already queued or in progress for this owner.
+    const existing = Object.values(store.transfers).find(
+      (transfer) =>
+        transfer.ownerUserId === ownerUserId &&
+        transfer.bookHash === book.hash &&
+        transfer.type === 'upload' &&
+        (transfer.status === 'pending' || transfer.status === 'in_progress'),
+    );
     if (existing) {
       if (existing.isBackground && !isBackground) {
         store.promoteTransferToForeground(existing.id, priority);
@@ -95,6 +139,7 @@ class TransferManager {
         .find(
           (transfer) =>
             transfer.status === 'failed' &&
+            transfer.ownerUserId === ownerUserId &&
             transfer.bookHash === book.hash &&
             transfer.type === 'upload' &&
             transfer.isBackground,
@@ -102,21 +147,43 @@ class TransferManager {
       if (terminalBackgroundUpload) return terminalBackgroundUpload.id;
     }
 
-    const transferId = store.addTransfer(book.hash, book.title, 'upload', priority, isBackground);
+    const transferId = store.addTransfer(
+      book.hash,
+      book.title,
+      'upload',
+      priority,
+      isBackground,
+      ownerUserId,
+    );
     this.persistQueue();
     this.processQueue();
     return transferId;
   }
 
   queueDownload(book: Book, priority: number = 10): string | null {
-    const store = useTransferStore.getState();
+    if (!this.isReady() || !this.currentOwnerUserId) return null;
 
-    const existing = store.getTransferByBookHash(book.hash, 'download');
+    const store = useTransferStore.getState();
+    const ownerUserId = this.currentOwnerUserId;
+    const existing = Object.values(store.transfers).find(
+      (transfer) =>
+        transfer.ownerUserId === ownerUserId &&
+        transfer.bookHash === book.hash &&
+        transfer.type === 'download' &&
+        (transfer.status === 'pending' || transfer.status === 'in_progress'),
+    );
     if (existing) {
       return existing.id;
     }
 
-    const transferId = store.addTransfer(book.hash, book.title, 'download', priority);
+    const transferId = store.addTransfer(
+      book.hash,
+      book.title,
+      'download',
+      priority,
+      false,
+      ownerUserId,
+    );
     this.persistQueue();
     this.processQueue();
     return transferId;
@@ -130,6 +197,8 @@ class TransferManager {
   }
 
   recoverTerminalBackgroundUploads(books: Book[]): string[] {
+    if (!this.currentOwnerUserId) return [];
+    const ownerUserId = this.currentOwnerUserId;
     const eligibleBookHashes = new Set<string>(
       books.filter(isUserCloudUploadEligible).map((book) => book.hash),
     );
@@ -141,6 +210,7 @@ class TransferManager {
       .filter(
         (transfer) =>
           transfer.status === 'failed' &&
+          transfer.ownerUserId === ownerUserId &&
           transfer.type === 'upload' &&
           transfer.isBackground &&
           eligibleBookHashes.has(transfer.bookHash) &&
@@ -160,18 +230,25 @@ class TransferManager {
   }
 
   cancelTransfer(transferId: string): void {
+    const store = useTransferStore.getState();
+    const transfer = store.transfers[transferId];
+    if (!transfer || !this.isTransferOwnedByCurrentUser(transfer)) return;
+
     const controller = this.abortControllers.get(transferId);
     if (controller) {
       controller.abort();
       this.abortControllers.delete(transferId);
     }
 
-    useTransferStore.getState().setTransferStatus(transferId, 'cancelled');
+    store.setTransferStatus(transferId, 'cancelled');
     this.persistQueue();
   }
 
   retryTransfer(transferId: string): void {
     const store = useTransferStore.getState();
+    const transfer = store.transfers[transferId];
+    if (!transfer || !this.isTransferOwnedByCurrentUser(transfer)) return;
+
     store.retryTransfer(transferId);
     this.persistQueue();
     this.processQueue();
@@ -179,7 +256,9 @@ class TransferManager {
 
   retryAllFailed(): void {
     const store = useTransferStore.getState();
-    const failed = store.getFailedTransfers();
+    const failed = store
+      .getFailedTransfers()
+      .filter((transfer) => this.isTransferOwnedByCurrentUser(transfer));
     failed.forEach((transfer) => {
       store.retryTransfer(transfer.id);
     });
@@ -215,8 +294,12 @@ class TransferManager {
 
     if (store.isQueuePaused || !this.isReady()) return;
 
-    const pending = store.getPendingTransfers();
-    const activeCount = store.getActiveTransfers().length;
+    const pending = store
+      .getPendingTransfers()
+      .filter((transfer) => this.isTransferOwnedByCurrentUser(transfer));
+    const activeCount = store
+      .getActiveTransfers()
+      .filter((transfer) => this.isTransferOwnedByCurrentUser(transfer)).length;
     const maxConcurrent = store.maxConcurrent;
 
     const availableSlots = maxConcurrent - activeCount;
@@ -239,7 +322,9 @@ class TransferManager {
     // Check if more items to process
     const newStore = useTransferStore.getState();
     if (newStore.isQueuePaused) return;
-    if (newStore.getPendingTransfers().length > 0) {
+    if (
+      newStore.getPendingTransfers().some((transfer) => this.isTransferOwnedByCurrentUser(transfer))
+    ) {
       this.scheduleProcessQueue(100);
     } else {
       this.scheduleNextDelayedPending(newStore);
@@ -249,7 +334,12 @@ class TransferManager {
   private scheduleNextDelayedPending(store = useTransferStore.getState()): void {
     const now = Date.now();
     const nextAvailableAt = Object.values(store.transfers)
-      .filter((transfer) => transfer.status === 'pending' && (transfer.availableAt ?? 0) > now)
+      .filter(
+        (transfer) =>
+          this.isTransferOwnedByCurrentUser(transfer) &&
+          transfer.status === 'pending' &&
+          (transfer.availableAt ?? 0) > now,
+      )
       .reduce<number | null>((earliest, transfer) => {
         const availableAt = transfer.availableAt!;
         return earliest === null ? availableAt : Math.min(earliest, availableAt);
@@ -272,6 +362,7 @@ class TransferManager {
   }
 
   private async executeTransfer(transfer: TransferItem): Promise<void> {
+    if (!this.isTransferOwnedByCurrentUser(transfer)) return;
     if (!this.appService || !this.getLibrary || !this.updateBook) {
       logger.error('TransferManager not properly initialized');
       return;
@@ -317,7 +408,9 @@ class TransferManager {
           return;
         }
         await this.appService.uploadBook(book, progressHandler);
+        if (!this.isTransferOwnedByCurrentUser(transfer)) return;
         await this.updateBook(book);
+        if (!this.isTransferOwnedByCurrentUser(transfer)) return;
         void import('@/services/sync/helpers')
           .then(({ enqueueFileMetadataForBookUpload }) => enqueueFileMetadataForBookUpload(book))
           .catch((error) => {
@@ -325,12 +418,14 @@ class TransferManager {
           });
       } else if (transfer.type === 'download') {
         await this.appService.downloadBook(book, false, false, progressHandler);
+        if (!this.isTransferOwnedByCurrentUser(transfer)) return;
         book.downloadedAt = Date.now();
         book.coverImageUrl =
           (await this.appService.generateCoverImageUrl(book)) ?? book.coverImageUrl;
         await this.updateBook(book);
       }
 
+      if (!this.isTransferOwnedByCurrentUser(transfer)) return;
       useTransferStore.getState().setTransferStatus(transfer.id, 'completed');
       eventDispatcher.dispatch('transfer-completed', { book, type: transfer.type });
 
@@ -348,8 +443,8 @@ class TransferManager {
         });
       }
     } catch (error) {
-      if (abortController.signal.aborted) {
-        // Already cancelled, don't update status
+      if (abortController.signal.aborted || !this.isTransferOwnedByCurrentUser(transfer)) {
+        // Cancellation and account switches retain the transfer for its owner.
         return;
       }
 
@@ -470,7 +565,11 @@ class TransferManager {
       this.abortControllers.delete(transfer.id);
 
       const currentStore = useTransferStore.getState();
-      currentStore.setActiveCount(Math.max(0, currentStore.getActiveTransfers().length));
+      currentStore.setActiveCount(
+        currentStore
+          .getActiveTransfers()
+          .filter((activeTransfer) => this.isTransferOwnedByCurrentUser(activeTransfer)).length,
+      );
       this.persistQueue();
 
       // Continue processing unless this transfer deliberately delayed its own retry.
@@ -478,12 +577,15 @@ class TransferManager {
     }
   }
 
-  private reconcilePendingTransfers(library: Book[]): void {
+  private reconcilePendingTransfers(library: Book[], ownerUserId: string): void {
     const libraryBookHashes = new Set<string>(library.map((book) => book.hash));
     const store = useTransferStore.getState();
     const orphanedTransferIds = Object.values(store.transfers)
       .filter(
-        (transfer) => transfer.status === 'pending' && !libraryBookHashes.has(transfer.bookHash),
+        (transfer) =>
+          transfer.ownerUserId === ownerUserId &&
+          transfer.status === 'pending' &&
+          !libraryBookHashes.has(transfer.bookHash),
       )
       .map((transfer) => transfer.id);
 

@@ -138,4 +138,20 @@ describe('webAppService IndexedDB Blob storage', () => {
     expect(file.size).toBe(4);
     expect(arrayBufferSpy).not.toHaveBeenCalled();
   });
+
+  it('removes only the exact directory and leaves a sibling with the same prefix intact', async () => {
+    await indexedDBFileSystem.writeFile('abc/book.epub', 'Books', 'delete me');
+    await indexedDBFileSystem.writeFile('abc123/book.epub', 'Books', 'keep me');
+
+    await expect(indexedDBFileSystem.readDir('abc', 'Books')).resolves.toEqual([
+      { path: 'book.epub', size: 9 },
+    ]);
+
+    await indexedDBFileSystem.removeDir('abc', 'Books');
+
+    await expect(indexedDBFileSystem.exists('abc/book.epub', 'Books')).resolves.toBe(false);
+    await expect(indexedDBFileSystem.readFile('abc123/book.epub', 'Books', 'text')).resolves.toBe(
+      'keep me',
+    );
+  });
 });

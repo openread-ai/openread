@@ -120,6 +120,7 @@ const InlineQuestionBar: React.FC<InlineQuestionBarProps> = ({ bookKey }) => {
         trimmed.slice(0, 50),
         getParallelHashes(),
       );
+      if (!conversationId) return;
       setPendingQuestion(trimmed);
       openAIChat(trimmed, conversationId);
 

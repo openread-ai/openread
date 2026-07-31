@@ -47,7 +47,11 @@ import type { DBBook, DBBookConfig, DBBookNote } from '@/types/records';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import type { AIMessage } from '@/services/ai/types';
 import { aiStore } from '@/services/ai/storage/aiStore';
-import { useAIChatStore } from '@/store/aiChatStore';
+import {
+  getBookChatGeneration,
+  isBookChatGenerationCurrent,
+  useAIChatStore,
+} from '@/store/aiChatStore';
 import { isSyncableBookRef, parseSyncableBookRef } from '@openread/types';
 import { getDeviceId } from '@/services/deviceService';
 import { getCanonicalSyncCursor, setCanonicalSyncCursor } from './cursors';
@@ -1155,19 +1159,25 @@ export class SyncWorker {
   async pullRemoteAIConversations(): Promise<void> {
     if (isOffline() || !this.userId) return;
 
+    const userId = this.userId;
     const bookHash = parseSyncableBookRef(useAIChatStore.getState().currentBookHash);
     if (!bookHash) return;
-
-    if (!this.aiPullGuard.tryEnter()) return;
+    const generation = getBookChatGeneration(bookHash);
+    const canApply = () =>
+      this.userId === userId &&
+      parseSyncableBookRef(useAIChatStore.getState().currentBookHash) === bookHash &&
+      isBookChatGenerationCurrent(bookHash, generation);
+    if (!canApply() || !this.aiPullGuard.tryEnter()) return;
 
     try {
       const cursorScope = scopedBookCursor(bookHash);
       const since =
         Math.min(
-          getCanonicalSyncCursor(this.userId, 'aiConversation', cursorScope),
-          getCanonicalSyncCursor(this.userId, 'aiMessage', cursorScope),
+          getCanonicalSyncCursor(userId, 'aiConversation', cursorScope),
+          getCanonicalSyncCursor(userId, 'aiMessage', cursorScope),
         ) + 1;
       const localConversations = await aiStore.getAllConversations(bookHash);
+      if (!canApply()) return;
       const result = await pullCanonicalSyncChanges(
         since,
         'ai',
@@ -1175,21 +1185,17 @@ export class SyncWorker {
         undefined,
         localConversations.map((conversation) => conversation.id),
       );
+      if (!canApply()) return;
       const remoteConversations = result.aiConversations ?? [];
       const remoteMessages = result.aiMessages ?? [];
       if (!remoteConversations.length && !remoteMessages.length) {
         setCanonicalSyncCursor(
-          this.userId,
+          userId,
           'aiConversation',
           result.cursorByEntity?.aiConversation,
           cursorScope,
         );
-        setCanonicalSyncCursor(
-          this.userId,
-          'aiMessage',
-          result.cursorByEntity?.aiMessage,
-          cursorScope,
-        );
+        setCanonicalSyncCursor(userId, 'aiMessage', result.cursorByEntity?.aiMessage, cursorScope);
         return;
       }
 
@@ -1199,9 +1205,10 @@ export class SyncWorker {
         return !local || conversation.updatedAt > local.updatedAt;
       });
 
-      if (merged.length > 0) {
-        await aiStore.upsertConversations(merged);
+      if (merged.length > 0 && !(await aiStore.upsertConversations(merged, canApply))) {
+        return;
       }
+      if (!canApply()) return;
 
       let newMessages: AIMessage[] = [];
       if (remoteMessages.length > 0) {
@@ -1211,38 +1218,39 @@ export class SyncWorker {
         const localMessageArrays = await Promise.all(
           conversationIds.map((id) => aiStore.getMessages(id)),
         );
+        if (!canApply()) return;
         const localMsgIds = new Set(localMessageArrays.flat().map((m) => m.id));
         newMessages = remoteMessages.filter((message) => !localMsgIds.has(message.id));
-        if (newMessages.length > 0) {
-          await aiStore.upsertMessages(newMessages);
+        if (newMessages.length > 0 && !(await aiStore.upsertMessages(newMessages, canApply))) {
+          return;
         }
       }
+      if (!canApply()) return;
 
       setCanonicalSyncCursor(
-        this.userId,
+        userId,
         'aiConversation',
         result.cursorByEntity?.aiConversation ?? maxAIConversationTimestamp(remoteConversations),
         cursorScope,
       );
       setCanonicalSyncCursor(
-        this.userId,
+        userId,
         'aiMessage',
         result.cursorByEntity?.aiMessage ?? maxAIMessageTimestamp(remoteMessages),
         cursorScope,
       );
 
       if (merged.length > 0) {
-        const { currentBookHash, conversations: existing } = useAIChatStore.getState();
-        if (currentBookHash === bookHash) {
-          const freshConversations = await aiStore.getConversations(bookHash);
-          const changed =
-            freshConversations.length !== existing.length ||
-            freshConversations.some(
-              (c, i) => c.id !== existing[i]?.id || c.updatedAt !== existing[i]?.updatedAt,
-            );
-          if (changed) {
-            useAIChatStore.setState({ conversations: freshConversations });
-          }
+        const { conversations: existing } = useAIChatStore.getState();
+        const freshConversations = await aiStore.getConversations(bookHash);
+        if (!canApply()) return;
+        const changed =
+          freshConversations.length !== existing.length ||
+          freshConversations.some(
+            (c, i) => c.id !== existing[i]?.id || c.updatedAt !== existing[i]?.updatedAt,
+          );
+        if (changed) {
+          useAIChatStore.setState({ conversations: freshConversations });
         }
       }
       if (newMessages.length > 0) {
@@ -1252,6 +1260,12 @@ export class SyncWorker {
           newMessages.some((m) => m.conversationId === activeConversationId)
         ) {
           const freshMessages = await aiStore.getMessages(activeConversationId);
+          if (
+            !canApply() ||
+            useAIChatStore.getState().activeConversationId !== activeConversationId
+          ) {
+            return;
+          }
           const changed =
             freshMessages.length !== existingMsgs.length ||
             freshMessages.some((m, i) => m.id !== existingMsgs[i]?.id);

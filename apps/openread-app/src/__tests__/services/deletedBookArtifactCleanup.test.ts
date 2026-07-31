@@ -1,8 +1,27 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+const mocks = vi.hoisted(() => ({
+  deleteBookConversations: vi.fn(
+    async (_bookHash: string, canDelete: () => boolean, onDeleteStart: () => void) => {
+      if (!canDelete()) return false;
+      onDeleteStart();
+      return true;
+    },
+  ),
+}));
+
+vi.mock('@/services/ai/storage/aiStore', () => ({
+  aiStore: { deleteBookConversations: mocks.deleteBookConversations },
+}));
+
 import { runAccountLibraryMutation } from '@/services/accountLibraryLifecycle';
 import { cleanupDeletedBookArtifacts } from '@/services/deletedBookArtifactCleanup';
 import { LOCAL_PERSISTENCE_PREFIXES } from '@/services/persistence/localPersistenceRegistry';
+import {
+  getBookChatGeneration,
+  isBookChatGenerationCurrent,
+  useAIChatStore,
+} from '@/store/aiChatStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import type { TransferItem, TransferType } from '@/store/transferStore';
 import type { Book } from '@/types/book';
@@ -80,6 +99,34 @@ function seedBookData(...hashes: Book['hash'][]) {
   });
 }
 
+function seedAIChatState(hash: Book['hash']) {
+  const conversation = {
+    id: `conversation-${hash}`,
+    bookHash: hash,
+    title: 'Chat',
+    createdAt: 1,
+    updatedAt: 2,
+  };
+  const message = {
+    id: `message-${hash}`,
+    conversationId: conversation.id,
+    role: 'user' as const,
+    content: 'Question',
+    createdAt: 2,
+  };
+  useAIChatStore.setState({
+    activeConversationId: conversation.id,
+    conversations: [conversation],
+    messages: [message],
+    isLoadingHistory: true,
+    currentBookHash: hash,
+    pendingQuestion: 'Pending',
+    chatStatus: 'streaming',
+    suggestions: ['Follow up'],
+  });
+  return { conversation, message };
+}
+
 interface CleanupOverrides {
   libraryLoaded?: boolean;
   libraryReconciliationSettled?: boolean;
@@ -118,7 +165,25 @@ const runCleanup = (appService: AppService, library: Book[], overrides: CleanupO
 describe('cleanupDeletedBookArtifacts', () => {
   beforeEach(() => {
     localStorage.clear();
+    useAIChatStore.setState({
+      activeConversationId: null,
+      conversations: [],
+      messages: [],
+      isLoadingHistory: false,
+      currentBookHash: null,
+      pendingQuestion: null,
+      chatStatus: null,
+      suggestions: [],
+    });
     useBookDataStore.setState({ booksData: {}, preSyncedConfigs: {} });
+    mocks.deleteBookConversations.mockReset();
+    mocks.deleteBookConversations.mockImplementation(
+      async (_bookHash: string, canDelete: () => boolean, onDeleteStart: () => void) => {
+        if (!canDelete()) return false;
+        onDeleteStart();
+        return true;
+      },
+    );
   });
 
   it('evicts all hash-addressed artifacts while retaining the tombstone row', async () => {
@@ -132,6 +197,7 @@ describe('cleanupDeletedBookArtifacts', () => {
       [directoryKey(`search/${hash}`, 'Cache')]: [{ path: 'query.json', size: 10 }],
     });
     seedBookData(hash);
+    seedAIChatState(hash);
     const targetKey = `${LOCAL_PERSISTENCE_PREFIXES.readerSearchHistory}${hash}`;
     const otherHash = testLocalBookHash('cleanup-other');
     const otherKey = `${LOCAL_PERSISTENCE_PREFIXES.readerSearchHistory}${otherHash}`;
@@ -155,6 +221,84 @@ describe('cleanupDeletedBookArtifacts', () => {
     expect(localStorage.getItem(otherKey)).toBe('other');
     expect(useBookDataStore.getState().booksData[hash]).toBeUndefined();
     expect(useBookDataStore.getState().preSyncedConfigs[hash]).toBeUndefined();
+    expect(useAIChatStore.getState()).toMatchObject({
+      activeConversationId: null,
+      conversations: [],
+      messages: [],
+      isLoadingHistory: false,
+      currentBookHash: null,
+      pendingQuestion: null,
+      chatStatus: null,
+      suggestions: [],
+    });
+    expect(mocks.deleteBookConversations).toHaveBeenCalledWith(
+      hash,
+      expect.any(Function),
+      expect.any(Function),
+    );
+    expect(tombstone.deletedAt).toBe(2);
+  });
+
+  it('preserves runtime chat state for another book', async () => {
+    const hash = testLocalBookHash('cleanup-chat-target');
+    const otherHash = testLocalBookHash('cleanup-chat-other');
+    const { appService } = createAppService();
+    const state = seedAIChatState(otherHash);
+
+    const summary = await runCleanup(appService, [book(hash)]);
+
+    expect(summary.evictedBookHashes).toEqual([hash]);
+    expect(useAIChatStore.getState()).toMatchObject({
+      activeConversationId: state.conversation.id,
+      conversations: [state.conversation],
+      messages: [state.message],
+      isLoadingHistory: true,
+      currentBookHash: otherHash,
+      pendingQuestion: 'Pending',
+      chatStatus: 'streaming',
+      suggestions: ['Follow up'],
+    });
+  });
+
+  it('keeps both book bytes and chat when the book is not evictable', async () => {
+    const hash = testLocalBookHash('cleanup-chat-blocked');
+    const { appService, directories } = createAppService({
+      [directoryKey(hash, 'Books')]: [{ path: 'book.epub', size: 100 }],
+    });
+    const state = seedAIChatState(hash);
+
+    const summary = await runCleanup(appService, [book(hash)], {
+      transfers: [transfer(hash, 'upload')],
+    });
+
+    expect(summary).toMatchObject({ evicted: 0, retained: 1, failed: 0 });
+    expect(directories.has(directoryKey(hash, 'Books'))).toBe(true);
+    expect(mocks.deleteBookConversations).not.toHaveBeenCalled();
+    expect(useAIChatStore.getState()).toMatchObject({
+      currentBookHash: hash,
+      conversations: [state.conversation],
+      messages: [state.message],
+    });
+  });
+
+  it('keeps the tombstone retryable when chat deletion fails', async () => {
+    const hash = testLocalBookHash('cleanup-chat-failure');
+    const tombstone = book(hash);
+    const { appService } = createAppService();
+    const state = seedAIChatState(hash);
+    const generation = getBookChatGeneration(hash);
+    mocks.deleteBookConversations.mockRejectedValueOnce(new Error('IndexedDB unavailable'));
+
+    const summary = await runCleanup(appService, [tombstone]);
+
+    expect(summary).toMatchObject({ candidates: 1, evicted: 0, failed: 1 });
+    expect(summary.evictedBookHashes).toEqual([]);
+    expect(isBookChatGenerationCurrent(hash, generation)).toBe(true);
+    expect(useAIChatStore.getState()).toMatchObject({
+      currentBookHash: hash,
+      conversations: [state.conversation],
+      messages: [state.message],
+    });
     expect(tombstone.deletedAt).toBe(2);
   });
 
@@ -292,6 +436,42 @@ describe('cleanupDeletedBookArtifacts', () => {
     });
 
     expect(summary).toMatchObject({ evicted: 0, retained: 1, failed: 0, bytesReclaimed: 100 });
+    expect(localStorage.getItem(targetKey)).toBe('keep');
+    expect(useBookDataStore.getState().booksData[hash]).toBeDefined();
+    expect(mocks.deleteBookConversations).not.toHaveBeenCalled();
+  });
+
+  it('rechecks live gates after the AI store opens before deleting chat', async () => {
+    const hash = testLocalBookHash('cleanup-live-chat-dispatch');
+    const tombstone = book(hash);
+    const { appService } = createAppService();
+    const generation = getBookChatGeneration(hash);
+    const currentState = {
+      library: [tombstone] as Book[],
+      libraryLoaded: true,
+      libraryReconciliationSettled: true,
+      transfers: [] as TransferItem[],
+      openReaderBookKeys: [] as string[],
+    };
+    mocks.deleteBookConversations.mockImplementationOnce(async (_bookHash, canDelete) => {
+      currentState.openReaderBookKeys = [`${hash}::reader-session`];
+      return canDelete();
+    });
+    const targetKey = `${LOCAL_PERSISTENCE_PREFIXES.readerSearchHistory}${hash}`;
+    localStorage.setItem(targetKey, 'keep');
+    seedBookData(hash);
+
+    const summary = await runCleanup(appService, [tombstone], {
+      getCurrentState: () => currentState,
+    });
+
+    expect(summary).toMatchObject({ evicted: 0, retained: 1, failed: 0 });
+    expect(mocks.deleteBookConversations).toHaveBeenCalledWith(
+      hash,
+      expect.any(Function),
+      expect.any(Function),
+    );
+    expect(isBookChatGenerationCurrent(hash, generation)).toBe(true);
     expect(localStorage.getItem(targetKey)).toBe('keep');
     expect(useBookDataStore.getState().booksData[hash]).toBeDefined();
   });

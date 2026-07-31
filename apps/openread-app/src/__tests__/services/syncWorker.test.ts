@@ -91,11 +91,13 @@ const mocks = vi.hoisted(() => {
 
   const aiStore = {
     getAllConversations: vi.fn(async () => []),
-    upsertConversations: vi.fn(async () => undefined),
+    upsertConversations: vi.fn(async () => true),
     getMessages: vi.fn(async () => []),
-    upsertMessages: vi.fn(async () => undefined),
+    upsertMessages: vi.fn(async () => true),
     getConversations: vi.fn(async () => []),
   };
+  const getBookChatGeneration = vi.fn(() => 0);
+  const isBookChatGenerationCurrent = vi.fn(() => true);
 
   return {
     libraryBook,
@@ -106,6 +108,8 @@ const mocks = vi.hoisted(() => {
     appService,
     aiState,
     aiStore,
+    getBookChatGeneration,
+    isBookChatGenerationCurrent,
     pushChanges: vi.fn(),
     pullChanges: vi.fn(),
     listFiles: vi.fn(async () => ({
@@ -188,6 +192,8 @@ vi.mock('@/services/ai/storage/aiStore', () => ({
 }));
 
 vi.mock('@/store/aiChatStore', () => ({
+  getBookChatGeneration: mocks.getBookChatGeneration,
+  isBookChatGenerationCurrent: mocks.isBookChatGenerationCurrent,
   useAIChatStore: {
     getState: vi.fn(() => mocks.aiState),
     setState: vi.fn((patch: Partial<typeof mocks.aiState>) => Object.assign(mocks.aiState, patch)),
@@ -263,11 +269,17 @@ describe('SyncWorker book reconcile queue', () => {
     mocks.aiStore.getAllConversations.mockClear();
     mocks.aiStore.getAllConversations.mockResolvedValue([]);
     mocks.aiStore.upsertConversations.mockClear();
+    mocks.aiStore.upsertConversations.mockResolvedValue(true);
     mocks.aiStore.getMessages.mockClear();
     mocks.aiStore.getMessages.mockResolvedValue([]);
     mocks.aiStore.upsertMessages.mockClear();
+    mocks.aiStore.upsertMessages.mockResolvedValue(true);
     mocks.aiStore.getConversations.mockClear();
     mocks.aiStore.getConversations.mockResolvedValue([]);
+    mocks.getBookChatGeneration.mockReset();
+    mocks.getBookChatGeneration.mockReturnValue(0);
+    mocks.isBookChatGenerationCurrent.mockReset();
+    mocks.isBookChatGenerationCurrent.mockReturnValue(true);
     mocks.listFiles.mockReset();
     mocks.listFiles.mockResolvedValue({
       files: [] as TestFileRecord[],
@@ -1330,14 +1342,52 @@ describe('SyncWorker book reconcile queue', () => {
       undefined,
       [],
     );
-    expect(mocks.aiStore.upsertConversations).toHaveBeenCalledWith([
-      expect.objectContaining({ id: 'conversation-1' }),
-    ]);
-    expect(mocks.aiStore.upsertMessages).toHaveBeenCalledWith([
-      expect.objectContaining({ id: 'message-1' }),
-    ]);
+    expect(mocks.aiStore.upsertConversations).toHaveBeenCalledWith(
+      [expect.objectContaining({ id: 'conversation-1' })],
+      expect.any(Function),
+    );
+    expect(mocks.aiStore.upsertMessages).toHaveBeenCalledWith(
+      [expect.objectContaining({ id: 'message-1' })],
+      expect.any(Function),
+    );
     expect(nowSpy).not.toHaveBeenCalled();
     nowSpy.mockRestore();
+  });
+
+  it('does not apply a remote AI pull invalidated by book chat eviction', async () => {
+    const { SyncWorker } = await import('@/services/sync/syncWorker');
+    const worker = new SyncWorker();
+    (worker as unknown as { stopped: boolean; userId: string }).stopped = false;
+    (worker as unknown as { stopped: boolean; userId: string }).userId = 'user-1';
+
+    let resolvePull: ((value: unknown) => void) | undefined;
+    mocks.pullChanges.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolvePull = resolve;
+        }),
+    );
+
+    const pull = worker.pullRemoteAIConversations();
+    await vi.waitFor(() => expect(mocks.pullChanges).toHaveBeenCalledOnce());
+    mocks.isBookChatGenerationCurrent.mockReturnValue(false);
+    resolvePull?.({
+      aiConversations: [
+        {
+          id: 'late-conversation',
+          bookHash: mocks.libraryBook.hash,
+          title: 'Late remote thread',
+          createdAt: 1000,
+          updatedAt: 2000,
+        },
+      ],
+      aiMessages: [],
+      cursorByEntity: {},
+    });
+    await pull;
+
+    expect(mocks.aiStore.upsertConversations).not.toHaveBeenCalled();
+    expect(mocks.aiStore.upsertMessages).not.toHaveBeenCalled();
   });
 
   it('applies canonical collection tombstones and advances the settings watermark', async () => {

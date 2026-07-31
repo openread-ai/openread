@@ -14,7 +14,11 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useReaderStore } from '@/store/readerStore';
-import { useAIChatStore } from '@/store/aiChatStore';
+import {
+  getBookChatGeneration,
+  isBookChatGenerationCurrent,
+  useAIChatStore,
+} from '@/store/aiChatStore';
 import { useAIQuotaStore } from '@/store/aiQuotaStore';
 import { usePrimaryBookHash } from '@/app/reader/hooks/usePrimaryBookHash';
 import { useAuth } from '@/context/AuthContext';
@@ -275,6 +279,12 @@ const AIAssistantChat = ({
         const msg = item.message;
         if (msg.role === 'system') return;
 
+        const generation = getBookChatGeneration(chatBookHash);
+        const isCurrentBookChat = () =>
+          isBookChatGenerationCurrent(chatBookHash, generation) &&
+          useAIChatStore.getState().currentBookHash === chatBookHash;
+        if (!isCurrentBookChat()) return;
+
         const textContent = msg.content
           .filter(
             (part): part is { type: 'text'; text: string } =>
@@ -304,6 +314,7 @@ const AIAssistantChat = ({
               : null;
         if (!conversationId) {
           conversationId = await createConversation(chatBookHash, textContent.slice(0, 50));
+          if (!conversationId || !isCurrentBookChat()) return;
         }
 
         if (
@@ -321,7 +332,7 @@ const AIAssistantChat = ({
 
         // Deduplicate: skip if this exact message ID already exists in store
         const current = useAIChatStore.getState().messages;
-        if (current.some((m) => m.id === msg.id)) return;
+        if (current.some((m) => m.id === msg.id) || !isCurrentBookChat()) return;
 
         await addMessage({
           conversationId,

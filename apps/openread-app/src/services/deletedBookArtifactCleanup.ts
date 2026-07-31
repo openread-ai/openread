@@ -1,8 +1,10 @@
 import { normalizeBookReference, parseBookRefFromReaderBookKey } from '@openread/types';
 
 import { runAccountLibraryMutation } from '@/services/accountLibraryLifecycle';
+import { aiStore } from '@/services/ai/storage/aiStore';
 import { resolveBookAvailability } from '@/services/libraryBookAvailability';
 import { removeBookLocalPersistence } from '@/services/persistence/localPersistenceRegistry';
+import { beginBookChatEviction, finishBookChatEviction, useAIChatStore } from '@/store/aiChatStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import type { TransferItem } from '@/store/transferStore';
 import type { Book } from '@/types/book';
@@ -147,6 +149,24 @@ async function cleanupDeletedBookArtifactsUnlocked(
     }
 
     try {
+      if (!canEvict()) {
+        summary.retained += 1;
+        continue;
+      }
+      let chatEvictionStarted = false;
+      try {
+        const chatDeleted = await aiStore.deleteBookConversations(book.hash, canEvict, () => {
+          beginBookChatEviction(book.hash);
+          chatEvictionStarted = true;
+        });
+        if (!chatDeleted || !canEvict()) {
+          summary.retained += 1;
+          continue;
+        }
+        useAIChatStore.getState().clearBookChatState(book.hash);
+      } finally {
+        if (chatEvictionStarted) finishBookChatEviction(book.hash);
+      }
       summary.localStorageKeysRemoved += removeBookLocalPersistence(
         normalizedBookRef,
         input.storage,

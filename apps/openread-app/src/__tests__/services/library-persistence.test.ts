@@ -84,5 +84,71 @@ describe('LibraryPersistence', () => {
       expect(savedData[0].coverImageUrl).toBeUndefined();
       expect(savedData[0].hash).toBe('h1');
     });
+
+    it('serializes concurrent saves so the latest invocation reaches disk last', async () => {
+      let releaseFirstWrite!: () => void;
+      const firstWrite = new Promise<void>((resolve) => {
+        releaseFirstWrite = resolve;
+      });
+      (mockFs.writeFile as ReturnType<typeof vi.fn>).mockImplementation(
+        async (_path: string, _base: string, _content: string) => {
+          if ((mockFs.writeFile as ReturnType<typeof vi.fn>).mock.calls.length === 1) {
+            await firstWrite;
+          }
+        },
+      );
+      const firstBooks = [
+        { hash: 'h1', title: 'First' },
+      ] as unknown as import('@/types/book').Book[];
+      const latestBooks = [
+        { hash: 'h1', title: 'Latest' },
+      ] as unknown as import('@/types/book').Book[];
+
+      const firstSave = persistence.saveLibraryBooks(firstBooks);
+      await vi.waitFor(() => expect(mockFs.writeFile).toHaveBeenCalledTimes(1));
+      const latestSave = persistence.saveLibraryBooks(latestBooks);
+      await Promise.resolve();
+      expect(mockFs.writeFile).toHaveBeenCalledTimes(1);
+
+      releaseFirstWrite();
+      await Promise.all([firstSave, latestSave]);
+
+      const calls = (mockFs.writeFile as ReturnType<typeof vi.fn>).mock.calls;
+      expect(calls.map((call) => call[0])).toEqual([
+        'library.json.bak',
+        'library.json',
+        'library.json.bak',
+        'library.json',
+      ]);
+      expect(calls.slice(0, 2).map((call) => JSON.parse(call[2] as string)[0].title)).toEqual([
+        'First',
+        'First',
+      ]);
+      expect(calls.slice(2).map((call) => JSON.parse(call[2] as string)[0].title)).toEqual([
+        'Latest',
+        'Latest',
+      ]);
+    });
+
+    it('continues the save queue after a rejected write', async () => {
+      (mockFs.writeFile as ReturnType<typeof vi.fn>)
+        .mockRejectedValueOnce(new Error('disk full'))
+        .mockResolvedValue(undefined);
+      const firstBooks = [
+        { hash: 'h1', title: 'First' },
+      ] as unknown as import('@/types/book').Book[];
+      const recoveredBooks = [
+        { hash: 'h1', title: 'Recovered' },
+      ] as unknown as import('@/types/book').Book[];
+
+      const failedSave = persistence.saveLibraryBooks(firstBooks);
+      const recoveredSave = persistence.saveLibraryBooks(recoveredBooks);
+
+      await expect(failedSave).rejects.toThrow('disk full');
+      await expect(recoveredSave).resolves.toBeUndefined();
+      expect(mockFs.writeFile).toHaveBeenCalledTimes(3);
+      const calls = (mockFs.writeFile as ReturnType<typeof vi.fn>).mock.calls;
+      expect(JSON.parse(calls[2]![2] as string)[0].title).toBe('Recovered');
+    });
   });
 });

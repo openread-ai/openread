@@ -82,7 +82,7 @@ const Reader: React.FC<{ ids?: string }> = ({ ids }) => {
 
   useTheme({ systemUIVisible: settings.alwaysShowStatusBar, appThemeColor: 'base-100' });
   useScreenWakeLock(settings.screenWakeLock);
-  useTransferQueue(libraryLoaded, 5000);
+  useTransferQueue(libraryLoaded, 5000, libraryReconciliationSettled);
 
   useEffect(() => {
     mountAdditionalFonts(document);

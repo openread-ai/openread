@@ -77,8 +77,7 @@ describe('TransferManager upload eligibility', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.useFakeTimers();
-    useTransferStore.getState().clearAll();
-    useTransferStore.getState().resumeQueue();
+    useTransferStore.setState({ transfers: {}, isQueuePaused: false, activeCount: 0 });
     localStorage.clear();
     resetTransferManagerForTest();
   });
@@ -393,7 +392,7 @@ describe('TransferManager upload eligibility', () => {
     });
   });
 
-  it('drops persisted pending orphans on initialization while preserving valid transfers', async () => {
+  it('retains pending orphans until reconciliation settles, then prunes only settled absence', async () => {
     const validBook = baseBook();
     const orphanedBook = baseBook({
       hash: testOpenReadBookRef('fedcba9876543210fedcba9876543210'),
@@ -430,7 +429,7 @@ describe('TransferManager upload eligibility', () => {
       LOCAL_PERSISTENCE_KEYS.transferQueue,
       JSON.stringify({ transfers: persistedTransfers, isQueuePaused: true }),
     );
-    store.clearAll();
+    useTransferStore.setState({ transfers: {} });
 
     const appService = {
       uploadBook: vi.fn(async () => {}),
@@ -451,6 +450,20 @@ describe('TransferManager upload eligibility', () => {
       vi.fn(async () => {}),
       (key) => key,
       'user-a',
+      false,
+    );
+
+    expect(useTransferStore.getState().transfers[orphanedId]).toEqual(
+      persistedTransfers[orphanedId],
+    );
+
+    await transferManager.initialize(
+      appService,
+      () => [validBook],
+      vi.fn(async () => {}),
+      (key) => key,
+      'user-a',
+      true,
     );
 
     const transfers = useTransferStore.getState().transfers;

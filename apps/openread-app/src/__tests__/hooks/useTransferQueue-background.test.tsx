@@ -156,6 +156,7 @@ describe('useTransferQueue background backup recovery', () => {
       expect.any(Function),
       expect.any(Function),
       'user-a',
+      false,
     );
   });
 
@@ -191,6 +192,39 @@ describe('useTransferQueue background backup recovery', () => {
     await waitFor(() => expect(mocks.appService.exists).toHaveBeenCalled());
     expect(mocks.transferManager.recoverTerminalBackgroundUploads).not.toHaveBeenCalled();
     expect(mocks.transferManager.queueBatchUploads).not.toHaveBeenCalled();
+  });
+
+  it('passes reconciliation settlement through without treating it as owner loss', async () => {
+    const { useTransferQueue } = await import('@/hooks/useTransferQueue');
+    const { rerender } = renderHook(({ settled }) => useTransferQueue(true, 0, settled), {
+      initialProps: { settled: false },
+    });
+
+    await waitFor(() =>
+      expect(mocks.transferManager.initialize).toHaveBeenCalledWith(
+        mocks.appService,
+        expect.any(Function),
+        expect.any(Function),
+        expect.any(Function),
+        'user-a',
+        false,
+      ),
+    );
+    mocks.transferManager.setActiveOwnerUserId.mockClear();
+
+    rerender({ settled: true });
+
+    await waitFor(() =>
+      expect(mocks.transferManager.initialize).toHaveBeenLastCalledWith(
+        mocks.appService,
+        expect.any(Function),
+        expect.any(Function),
+        expect.any(Function),
+        'user-a',
+        true,
+      ),
+    );
+    expect(mocks.transferManager.setActiveOwnerUserId).not.toHaveBeenCalledWith(null);
   });
 
   it('does not treat same-owner reconciliation readiness as owner loss', async () => {
@@ -229,7 +263,7 @@ describe('useTransferQueue background backup recovery', () => {
     expect(mocks.transferState.transfers['own']?.status).toBe('in_progress');
   });
 
-  it('exposes and clears only transfers owned by the active account', async () => {
+  it('exposes and clears terminal transfers only for the active account', async () => {
     const hash = book().hash;
     const makeTransfer = (
       id: string,
@@ -291,13 +325,7 @@ describe('useTransferQueue background backup recovery', () => {
     act(() => result.current.clearFailed());
     expect(mocks.transferState.transfers['own-failed']).toBeUndefined();
     expect(mocks.transferState.transfers['foreign-failed']).toBeDefined();
-
-    act(() => result.current.clearAll());
-    expect(Object.keys(mocks.transferState.transfers).sort()).toEqual([
-      'foreign',
-      'foreign-completed',
-      'foreign-failed',
-      'legacy',
-    ]);
+    expect(mocks.transferState.transfers['own']).toBeDefined();
+    expect(mocks.transferState.transfers['legacy']).toBeDefined();
   });
 });

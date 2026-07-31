@@ -6,6 +6,7 @@ import { ProgressPayload } from '@/utils/transfer';
 import { eventDispatcher } from '@/utils/event';
 import { createLogger } from '@/utils/logger';
 import { isUserCloudUploadEligible } from '@/utils/book';
+import { resolveBookAvailability } from '@/services/libraryBookAvailability';
 import { LOCAL_PERSISTENCE_KEYS } from '@/services/persistence/localPersistenceRegistry';
 import {
   classifyTransferError,
@@ -57,6 +58,7 @@ class TransferManager {
     updateBook: (book: Book) => Promise<void>,
     translationFn: TranslationFunc,
     ownerUserId: string,
+    libraryReconciliationSettled: boolean,
   ): Promise<void> {
     this.appService = appService;
     this.getLibrary = getLibrary;
@@ -72,7 +74,7 @@ class TransferManager {
     }
 
     if (this.currentOwnerUserId !== ownerUserId) return;
-    this.reconcilePendingTransfers(getLibrary(), ownerUserId);
+    this.reconcilePendingTransfers(getLibrary(), ownerUserId, libraryReconciliationSettled);
     void this.processQueue();
   }
 
@@ -577,15 +579,23 @@ class TransferManager {
     }
   }
 
-  private reconcilePendingTransfers(library: Book[], ownerUserId: string): void {
-    const libraryBookHashes = new Set<string>(library.map((book) => book.hash));
+  private reconcilePendingTransfers(
+    library: Book[],
+    ownerUserId: string,
+    libraryReconciliationSettled: boolean,
+  ): void {
     const store = useTransferStore.getState();
     const orphanedTransferIds = Object.values(store.transfers)
       .filter(
         (transfer) =>
           transfer.ownerUserId === ownerUserId &&
           transfer.status === 'pending' &&
-          !libraryBookHashes.has(transfer.bookHash),
+          resolveBookAvailability({
+            bookHash: transfer.bookHash,
+            library,
+            libraryLoaded: true,
+            libraryReconciliationSettled,
+          }).state === 'absent',
       )
       .map((transfer) => transfer.id);
 

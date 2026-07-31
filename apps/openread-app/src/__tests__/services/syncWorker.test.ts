@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => {
   const libraryState = {
     library: [libraryBook] as Book[],
     libraryLoaded: true,
+    libraryOwnerUserId: 'user-1' as string | null,
     getVisibleLibrary: vi.fn(() => libraryState.library.filter((book) => !book.deletedAt)),
     updateBooks: vi.fn(),
     setLibrary: vi.fn((books: Book[]) => {
@@ -115,6 +116,15 @@ const mocks = vi.hoisted(() => {
       totalPages: 1,
     })),
     getAppService: vi.fn(async () => appService),
+    cleanupDeletedBookArtifacts: vi.fn(async (_input?: unknown) => ({
+      candidates: 0,
+      evicted: 0,
+      retained: 0,
+      failed: 0,
+      bytesReclaimed: 0,
+      localStorageKeysRemoved: 0,
+      evictedBookHashes: [] as string[],
+    })),
   };
 });
 
@@ -125,6 +135,10 @@ vi.mock('@/services/sync/client', () => ({
 
 vi.mock('@/libs/storage', () => ({
   listFiles: mocks.listFiles,
+}));
+
+vi.mock('@/services/deletedBookArtifactCleanup', () => ({
+  cleanupDeletedBookArtifacts: mocks.cleanupDeletedBookArtifacts,
 }));
 
 vi.mock('@/utils/supabase', () => ({
@@ -219,6 +233,7 @@ describe('SyncWorker book reconcile queue', () => {
     window.localStorage.clear();
     mocks.libraryState.library = [mocks.libraryBook];
     mocks.libraryState.libraryLoaded = true;
+    mocks.libraryState.libraryOwnerUserId = 'user-1';
     mocks.libraryState.getVisibleLibrary.mockImplementation(() =>
       mocks.libraryState.library.filter((book) => !book.deletedAt),
     );
@@ -235,7 +250,8 @@ describe('SyncWorker book reconcile queue', () => {
     mocks.appService.downloadBookCovers.mockClear();
     mocks.appService.generateCoverImageUrl.mockReset();
     mocks.appService.generateCoverImageUrl.mockResolvedValue(null);
-    mocks.appService.saveLibraryBooks.mockClear();
+    mocks.appService.saveLibraryBooks.mockReset();
+    mocks.appService.saveLibraryBooks.mockResolvedValue(undefined);
     mocks.appService.loadBookConfig.mockReset();
     mocks.appService.loadBookConfig.mockResolvedValue({ updatedAt: 0 } as BookConfig);
     mocks.appService.saveBookConfig.mockClear();
@@ -261,6 +277,17 @@ describe('SyncWorker book reconcile queue', () => {
       totalPages: 1,
     });
     mocks.pullChanges.mockResolvedValue({ books: [] });
+    mocks.pushChanges.mockReset();
+    mocks.cleanupDeletedBookArtifacts.mockReset();
+    mocks.cleanupDeletedBookArtifacts.mockResolvedValue({
+      candidates: 0,
+      evicted: 0,
+      retained: 0,
+      failed: 0,
+      bytesReclaimed: 0,
+      localStorageKeysRemoved: 0,
+      evictedBookHashes: [],
+    });
   });
 
   it('keeps a busy delivery caller pending until its requested rerun completes', async () => {
@@ -530,6 +557,268 @@ describe('SyncWorker book reconcile queue', () => {
 
     expect(recoverFailed).toHaveBeenCalledTimes(1);
     expect(drainOnce).toHaveBeenCalledTimes(2);
+  });
+
+  it('prunes a server-absent tombstone only after local artifact eviction completes', async () => {
+    const { SyncWorker } = await import('@/services/sync/syncWorker');
+    const tombstone = { ...mocks.libraryBook, deletedAt: 2 } as Book;
+    mocks.libraryState.library = [tombstone];
+    mocks.pushChanges.mockResolvedValueOnce({
+      reconcile: { upsert: [], remove: [tombstone.hash] },
+    });
+    mocks.cleanupDeletedBookArtifacts.mockResolvedValueOnce({
+      candidates: 1,
+      evicted: 1,
+      retained: 0,
+      failed: 0,
+      bytesReclaimed: 100,
+      localStorageKeysRemoved: 1,
+      evictedBookHashes: [tombstone.hash],
+    });
+    const worker = new SyncWorker();
+    (worker as unknown as { stopped: boolean; userId: string }).stopped = false;
+    (worker as unknown as { stopped: boolean; userId: string }).userId = 'user-1';
+
+    await worker.pullNow('books');
+
+    expect(mocks.cleanupDeletedBookArtifacts).toHaveBeenCalledWith(
+      expect.objectContaining({
+        library: [tombstone],
+        ownerUserId: 'user-1',
+      }),
+    );
+    expect(mocks.libraryState.library).toEqual([]);
+    expect(mocks.appService.saveLibraryBooks).toHaveBeenCalledWith([]);
+  });
+
+  it('converts a cross-device server removal to a durable tombstone before eviction and prune', async () => {
+    const { SyncWorker } = await import('@/services/sync/syncWorker');
+    const activeBook = { ...mocks.libraryBook, deletedAt: null, uploadedAt: 1 } as Book;
+    mocks.libraryState.library = [activeBook];
+    mocks.pushChanges.mockResolvedValueOnce({
+      reconcile: { upsert: [], remove: [activeBook.hash] },
+    });
+    mocks.cleanupDeletedBookArtifacts.mockResolvedValueOnce({
+      candidates: 1,
+      evicted: 1,
+      retained: 0,
+      failed: 0,
+      bytesReclaimed: 100,
+      localStorageKeysRemoved: 1,
+      evictedBookHashes: [activeBook.hash],
+    });
+    const worker = new SyncWorker();
+    (worker as unknown as { stopped: boolean; userId: string }).stopped = false;
+    (worker as unknown as { stopped: boolean; userId: string }).userId = 'user-1';
+
+    await worker.pullNow('books');
+
+    const cleanupInput = mocks.cleanupDeletedBookArtifacts.mock.calls[0]?.[0] as {
+      library: Book[];
+      getCurrentState: () => { libraryReconciliationSettled: boolean };
+    };
+    expect(cleanupInput.library).toEqual([
+      expect.objectContaining({
+        hash: activeBook.hash,
+        deletedAt: expect.any(Number),
+        downloadedAt: null,
+        coverDownloadedAt: null,
+      }),
+    ]);
+    expect(cleanupInput.getCurrentState().libraryReconciliationSettled).toBe(true);
+    expect(mocks.appService.saveLibraryBooks.mock.calls[0]?.[0]).toEqual(cleanupInput.library);
+    expect(mocks.appService.saveLibraryBooks.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.cleanupDeletedBookArtifacts.mock.invocationCallOrder[0]!,
+    );
+    expect(mocks.cleanupDeletedBookArtifacts.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.appService.saveLibraryBooks.mock.invocationCallOrder[1]!,
+    );
+    expect(mocks.appService.saveLibraryBooks.mock.calls[1]?.[0]).toEqual([]);
+    expect(mocks.libraryState.library).toEqual([]);
+  });
+
+  it('leaves a never-uploaded non-catalog active row untouched for a synthetic removal', async () => {
+    const { SyncWorker } = await import('@/services/sync/syncWorker');
+    const localOnlyBook = {
+      ...mocks.libraryBook,
+      deletedAt: null,
+      uploadedAt: null,
+      catalogBookId: undefined,
+    } as Book;
+    mocks.libraryState.library = [localOnlyBook];
+    mocks.pushChanges.mockResolvedValueOnce({
+      reconcile: { upsert: [], remove: [localOnlyBook.hash] },
+    });
+    const worker = new SyncWorker();
+    (worker as unknown as { stopped: boolean; userId: string }).stopped = false;
+    (worker as unknown as { stopped: boolean; userId: string }).userId = 'user-1';
+
+    await worker.pullNow('books');
+
+    expect(mocks.libraryState.library).toEqual([localOnlyBook]);
+    expect(mocks.cleanupDeletedBookArtifacts).not.toHaveBeenCalled();
+    expect(mocks.appService.saveLibraryBooks).not.toHaveBeenCalled();
+  });
+
+  it('queues an ordinary concurrent save before the durable tombstone repair', async () => {
+    const { SyncWorker } = await import('@/services/sync/syncWorker');
+    const activeBook = { ...mocks.libraryBook, deletedAt: null, uploadedAt: 1 } as Book;
+    const unrelated = {
+      ...mocks.libraryBook,
+      hash: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      title: 'Unrelated',
+    } as Book;
+    const added = {
+      ...mocks.libraryBook,
+      hash: 'cccccccccccccccccccccccccccccccc',
+      title: 'Added concurrently',
+    } as Book;
+    mocks.libraryState.library = [activeBook, unrelated];
+    mocks.pushChanges.mockResolvedValueOnce({
+      reconcile: { upsert: [], remove: [activeBook.hash] },
+    });
+    let releaseFirstSave!: () => void;
+    const firstSaveGate = new Promise<void>((resolve) => {
+      releaseFirstSave = resolve;
+    });
+    let releaseOrdinarySave!: () => void;
+    const ordinarySaveGate = new Promise<void>((resolve) => {
+      releaseOrdinarySave = resolve;
+    });
+    let saveTail = Promise.resolve();
+    let saveInvocation = 0;
+    let durableLibrary: Book[] = [];
+    mocks.appService.saveLibraryBooks.mockImplementation((books: Book[]) => {
+      const invocation = saveInvocation++;
+      const snapshot = books.map((book) => ({ ...book }));
+      const save = saveTail.then(async () => {
+        if (invocation === 0) await firstSaveGate;
+        if (invocation === 1) await ordinarySaveGate;
+        durableLibrary = snapshot;
+      });
+      saveTail = save.catch(() => undefined);
+      return save;
+    });
+    const worker = new SyncWorker();
+    (worker as unknown as { stopped: boolean; userId: string }).stopped = false;
+    (worker as unknown as { stopped: boolean; userId: string }).userId = 'user-1';
+
+    const pull = worker.pullNow('books');
+    await vi.waitFor(() => expect(mocks.appService.saveLibraryBooks).toHaveBeenCalledTimes(1));
+    const updatedUnrelated = { ...unrelated, title: 'Unrelated updated concurrently' };
+    const ordinaryLibrary = [activeBook, updatedUnrelated, added];
+    mocks.libraryState.setLibrary(ordinaryLibrary);
+    const ordinarySave = mocks.appService.saveLibraryBooks(ordinaryLibrary);
+    releaseFirstSave();
+    await vi.waitFor(() => expect(mocks.appService.saveLibraryBooks).toHaveBeenCalledTimes(3));
+    releaseOrdinarySave();
+    await Promise.all([ordinarySave, pull]);
+
+    expect(mocks.libraryState.library).toEqual([
+      expect.objectContaining({ hash: activeBook.hash, deletedAt: expect.any(Number) }),
+      updatedUnrelated,
+      added,
+    ]);
+    expect(mocks.appService.saveLibraryBooks.mock.calls[1]?.[0]).toEqual(ordinaryLibrary);
+    expect(mocks.appService.saveLibraryBooks.mock.calls[2]?.[0]).toEqual(
+      mocks.libraryState.library,
+    );
+    expect(durableLibrary).toEqual(mocks.libraryState.library);
+  });
+
+  it('repersists an active revival that lands during the final prune save', async () => {
+    const { SyncWorker } = await import('@/services/sync/syncWorker');
+    const tombstone = { ...mocks.libraryBook, deletedAt: 2 } as Book;
+    const revived = { ...tombstone, deletedAt: null, updatedAt: 3 } as Book;
+    mocks.libraryState.library = [tombstone];
+    mocks.pushChanges.mockResolvedValueOnce({
+      reconcile: { upsert: [], remove: [tombstone.hash] },
+    });
+    mocks.cleanupDeletedBookArtifacts.mockResolvedValueOnce({
+      candidates: 1,
+      evicted: 1,
+      retained: 0,
+      failed: 0,
+      bytesReclaimed: 100,
+      localStorageKeysRemoved: 1,
+      evictedBookHashes: [tombstone.hash],
+    });
+    let resolvePruneSave!: () => void;
+    const pruneSave = new Promise<void>((resolve) => {
+      resolvePruneSave = resolve;
+    });
+    mocks.appService.saveLibraryBooks.mockImplementationOnce(() => pruneSave);
+    const worker = new SyncWorker();
+    (worker as unknown as { stopped: boolean; userId: string }).stopped = false;
+    (worker as unknown as { stopped: boolean; userId: string }).userId = 'user-1';
+
+    const pull = worker.pullNow('books');
+    await vi.waitFor(() => expect(mocks.appService.saveLibraryBooks).toHaveBeenCalledWith([]));
+    mocks.libraryState.setLibrary([revived]);
+    resolvePruneSave();
+    await pull;
+
+    expect(mocks.appService.saveLibraryBooks).toHaveBeenCalledTimes(2);
+    expect(mocks.appService.saveLibraryBooks.mock.calls[1]?.[0]).toEqual([revived]);
+    expect(mocks.libraryState.library).toEqual([revived]);
+  });
+
+  it('retains a server-absent tombstone through failed eviction and prunes it on a later success', async () => {
+    const { SyncWorker } = await import('@/services/sync/syncWorker');
+    const tombstone = { ...mocks.libraryBook, deletedAt: 2 } as Book;
+    mocks.libraryState.library = [tombstone];
+    mocks.pushChanges.mockResolvedValue({
+      reconcile: { upsert: [], remove: [tombstone.hash] },
+    });
+    mocks.cleanupDeletedBookArtifacts
+      .mockResolvedValueOnce({
+        candidates: 1,
+        evicted: 0,
+        retained: 0,
+        failed: 1,
+        bytesReclaimed: 0,
+        localStorageKeysRemoved: 0,
+        evictedBookHashes: [],
+      })
+      .mockResolvedValueOnce({
+        candidates: 1,
+        evicted: 1,
+        retained: 0,
+        failed: 0,
+        bytesReclaimed: 100,
+        localStorageKeysRemoved: 1,
+        evictedBookHashes: [tombstone.hash],
+      });
+    const worker = new SyncWorker();
+    (worker as unknown as { stopped: boolean; userId: string }).stopped = false;
+    (worker as unknown as { stopped: boolean; userId: string }).userId = 'user-1';
+
+    await worker.pullNow('books');
+
+    expect(mocks.libraryState.library).toEqual([tombstone]);
+    expect(mocks.appService.saveLibraryBooks).not.toHaveBeenCalled();
+
+    await worker.pullNow('books');
+
+    expect(mocks.cleanupDeletedBookArtifacts).toHaveBeenCalledTimes(2);
+    expect(mocks.libraryState.library).toEqual([]);
+    expect(mocks.appService.saveLibraryBooks).toHaveBeenCalledWith([]);
+  });
+
+  it('does not prune an evicted tombstone without settled server absence', async () => {
+    const { SyncWorker } = await import('@/services/sync/syncWorker');
+    const tombstone = { ...mocks.libraryBook, deletedAt: 2 } as Book;
+    mocks.libraryState.library = [tombstone];
+    mocks.pushChanges.mockResolvedValueOnce({ reconcile: { upsert: [], remove: [] } });
+    const worker = new SyncWorker();
+    (worker as unknown as { stopped: boolean; userId: string }).stopped = false;
+    (worker as unknown as { stopped: boolean; userId: string }).userId = 'user-1';
+
+    await worker.pullNow('books');
+
+    expect(mocks.cleanupDeletedBookArtifacts).not.toHaveBeenCalled();
+    expect(mocks.libraryState.library).toEqual([tombstone]);
+    expect(mocks.appService.saveLibraryBooks).not.toHaveBeenCalled();
   });
 
   it('recovers a cover from canonical files metadata when book uploadedAt is missing', async () => {

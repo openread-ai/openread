@@ -18,6 +18,7 @@ export interface DeletedBookArtifactCleanupSummary {
   failed: number;
   bytesReclaimed: number;
   localStorageKeysRemoved: number;
+  evictedBookHashes: string[];
 }
 
 interface CleanupState {
@@ -59,6 +60,7 @@ function canEvictBook(
   bookHash: string,
   normalizedBookRef: NonNullable<ReturnType<typeof normalizeBookReference>>,
 ): boolean {
+  // The account lock serializes transitions, but a queued request can acquire it after its owner changed.
   if (!input.ownerUserId || !input.isOwnerCurrent()) return false;
 
   const state = input.getCurrentState();
@@ -117,6 +119,7 @@ async function cleanupDeletedBookArtifactsUnlocked(
     failed: 0,
     bytesReclaimed: 0,
     localStorageKeysRemoved: 0,
+    evictedBookHashes: [],
   };
 
   for (const book of candidates) {
@@ -150,6 +153,7 @@ async function cleanupDeletedBookArtifactsUnlocked(
       );
       useBookDataStore.getState().clearBookDataByRef(normalizedBookRef);
       summary.evicted += 1;
+      summary.evictedBookHashes.push(book.hash);
     } catch {
       summary.failed += 1;
     }

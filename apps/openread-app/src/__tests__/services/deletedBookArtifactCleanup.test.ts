@@ -147,6 +147,7 @@ describe('cleanupDeletedBookArtifacts', () => {
       failed: 0,
       bytesReclaimed: 135,
       localStorageKeysRemoved: 1,
+      evictedBookHashes: [hash],
     });
     expect(directories.has(directoryKey(hash, 'Books'))).toBe(false);
     expect(directories.has(directoryKey(`search/${hash}`, 'Cache'))).toBe(false);

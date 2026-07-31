@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
     failed: 0,
     bytesReclaimed: 0,
     localStorageKeysRemoved: 0,
+    evictedBookHashes: [],
   })),
   appService: {},
 }));

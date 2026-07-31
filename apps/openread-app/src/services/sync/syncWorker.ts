@@ -20,15 +20,21 @@ import {
 } from './engine';
 import { pullCanonicalSyncChanges, reconcileCanonicalBooks, type SyncType } from './client';
 import { listFiles } from '@/libs/storage';
+import { isCatalogBackedBook } from '@/utils/book';
 import { supabase } from '@/utils/supabase';
 import {
   transformBookFromDB,
   transformBookConfigFromDB,
   transformBookNoteFromDB,
 } from '@/utils/transform';
+import { runAccountLibraryMutation } from '@/services/accountLibraryLifecycle';
+import { cleanupDeletedBookArtifacts } from '@/services/deletedBookArtifactCleanup';
 import { useLibraryStore } from '@/store/libraryStore';
+import { useReaderStore } from '@/store/readerStore';
+import { useTransferStore } from '@/store/transferStore';
 import envConfig from '@/services/environment';
-import type { BookConfig, BookDataRecord, BookNote } from '@/types/book';
+import type { Book, BookConfig, BookDataRecord, BookNote } from '@/types/book';
+import type { AppService } from '@/types/system';
 import {
   applyRemoteBookConfigRows,
   applyRemoteBookNoteRows,
@@ -775,12 +781,7 @@ export class SyncWorker {
       }
 
       if (reconcile.remove?.length) {
-        const removeSet = new Set(reconcile.remove);
-        const current = useLibraryStore.getState().library;
-        const remaining = current.filter((b) => !removeSet.has(b.hash));
-        useLibraryStore.getState().setLibrary(remaining);
-        const appService = await envConfig.getAppService();
-        await appService.saveLibraryBooks(remaining);
+        await this.applyServerBookRemovals(reconcile.remove, reconcileUserId);
       }
 
       // Download covers AFTER all store mutations are complete.
@@ -794,6 +795,115 @@ export class SyncWorker {
     }
   }
 
+  private isCurrentLibraryOwner(userId: string): boolean {
+    return (
+      !this.stopped &&
+      this.userId === userId &&
+      useLibraryStore.getState().libraryOwnerUserId === userId
+    );
+  }
+
+  private async persistLibraryTransform(
+    appService: AppService,
+    reconcileUserId: string,
+    transform: (library: Book[]) => Book[],
+  ): Promise<Book[] | null> {
+    // Ordinary library writers do not share the account lock, so retry until a save matches live state.
+    let repairStaleWrite = false;
+
+    while (this.isCurrentLibraryOwner(reconcileUserId)) {
+      const current = useLibraryStore.getState().library;
+      const transformed = transform(current);
+      if (transformed === current && !repairStaleWrite) return current;
+
+      await appService.saveLibraryBooks(transformed);
+      if (!this.isCurrentLibraryOwner(reconcileUserId)) return null;
+
+      if (useLibraryStore.getState().library !== current) {
+        repairStaleWrite = true;
+        continue;
+      }
+
+      if (transformed !== current) {
+        useLibraryStore.getState().setLibrary(transformed);
+      }
+      return transformed;
+    }
+
+    return null;
+  }
+
+  private async applyServerBookRemovals(
+    removedBookHashes: string[],
+    reconcileUserId: string | null,
+  ): Promise<void> {
+    if (!reconcileUserId) return;
+
+    const removeSet = new Set(removedBookHashes);
+    const appService = await envConfig.getAppService();
+    const deletedAt = Date.now();
+    const tombstonedLibrary = await runAccountLibraryMutation(() =>
+      this.persistLibraryTransform(appService, reconcileUserId, (current) => {
+        let changed = false;
+        const next = current.map((book) => {
+          if (
+            !removeSet.has(book.hash) ||
+            book.deletedAt ||
+            (!book.uploadedAt && !isCatalogBackedBook(book))
+          ) {
+            return book;
+          }
+          changed = true;
+          return {
+            ...book,
+            deletedAt,
+            updatedAt: Math.max(book.updatedAt ?? 0, deletedAt),
+            downloadedAt: null,
+            coverDownloadedAt: null,
+          };
+        });
+        return changed ? next : current;
+      }),
+    );
+    if (!tombstonedLibrary) return;
+
+    const confirmedTombstones = tombstonedLibrary.filter(
+      (book) => removeSet.has(book.hash) && Boolean(book.deletedAt),
+    );
+    if (confirmedTombstones.length === 0) return;
+
+    const cleanup = await cleanupDeletedBookArtifacts({
+      appService,
+      library: confirmedTombstones,
+      ownerUserId: reconcileUserId,
+      isOwnerCurrent: () => this.isCurrentLibraryOwner(reconcileUserId),
+      getCurrentState: () => {
+        const libraryState = useLibraryStore.getState();
+        return {
+          library: libraryState.library,
+          libraryLoaded: libraryState.libraryLoaded,
+          // reconcile.remove is authoritative server absence for these exact hashes.
+          libraryReconciliationSettled: true,
+          transfers: Object.values(useTransferStore.getState().transfers),
+          openReaderBookKeys: useReaderStore.getState().bookKeys,
+        };
+      },
+    });
+    const prunableHashes = new Set(
+      cleanup.evictedBookHashes.filter((bookHash) => removeSet.has(bookHash)),
+    );
+    if (prunableHashes.size === 0) return;
+
+    await runAccountLibraryMutation(() =>
+      this.persistLibraryTransform(appService, reconcileUserId, (current) => {
+        const remaining = current.filter(
+          (book) => !(prunableHashes.has(book.hash) && Boolean(book.deletedAt)),
+        );
+        return remaining.length === current.length ? current : remaining;
+      }),
+    );
+  }
+
   /**
    * Download covers for books that have canonical files metadata but no local cover file.
    * `files` is the object-lifecycle source of truth; `uploadedAt` remains a fallback for
@@ -802,7 +912,7 @@ export class SyncWorker {
   private async downloadMissingCovers(): Promise<void> {
     try {
       const appService = await envConfig.getAppService();
-      const { getCoverFilename, isCatalogBackedBook } = await import('@/utils/book');
+      const { getCoverFilename } = await import('@/utils/book');
 
       const coverFileBookHashes = new Set<string>();
       try {

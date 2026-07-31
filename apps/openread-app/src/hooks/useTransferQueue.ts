@@ -9,7 +9,11 @@ import { transferManager } from '@/services/transferManager';
 import { Book } from '@/types/book';
 import { hasUserBookUploadSource } from '@/utils/book';
 
-export function useTransferQueue(libraryLoaded = true, delayInit = 0) {
+export function useTransferQueue(
+  libraryLoaded = true,
+  delayInit = 0,
+  libraryReconciliationSettled = false,
+) {
   const { envConfig, appService } = useEnv();
   const { user } = useAuth();
   const _ = useTranslation();
@@ -45,6 +49,7 @@ export function useTransferQueue(libraryLoaded = true, delayInit = 0) {
           updateBookFn,
           translationFn,
           activeOwnerUserId!,
+          libraryReconciliationSettled,
         );
 
         // Auto-upload is a durability promise, not a best-effort import-time side effect.
@@ -76,7 +81,15 @@ export function useTransferQueue(libraryLoaded = true, delayInit = 0) {
       void initManager();
     }, delayInit);
     return () => clearTimeout(timer);
-  }, [activeOwnerUserId, appService, envConfig, delayInit, queueReady, _]);
+  }, [
+    activeOwnerUserId,
+    appService,
+    envConfig,
+    delayInit,
+    libraryReconciliationSettled,
+    queueReady,
+    _,
+  ]);
 
   useEffect(() => {
     if (
@@ -170,14 +183,6 @@ export function useTransferQueue(libraryLoaded = true, delayInit = 0) {
       .forEach((transfer) => store.removeTransfer(transfer.id));
   }, [activeOwnerUserId]);
 
-  const clearAll = useCallback(() => {
-    if (!activeOwnerUserId) return;
-    const store = useTransferStore.getState();
-    Object.values(store.transfers)
-      .filter((transfer) => isTransferOwnedBy(transfer, activeOwnerUserId))
-      .forEach((transfer) => store.removeTransfer(transfer.id));
-  }, [activeOwnerUserId]);
-
   const getTransferProgress = useCallback(
     (bookHash: string, type: TransferType) => {
       if (!activeOwnerUserId) return undefined;
@@ -252,7 +257,6 @@ export function useTransferQueue(libraryLoaded = true, delayInit = 0) {
     resumeQueue,
     clearCompleted,
     clearFailed,
-    clearAll,
     getTransferProgress,
   };
 }

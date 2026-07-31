@@ -14,6 +14,10 @@
     "./catalog-source-verification": {
       "types": "./dist/catalog-source-verification.d.ts",
       "import": "./dist/catalog-source-verification.js"
+    },
+    "./book-child-registry": {
+      "types": "./dist/book-child-registry.d.ts",
+      "import": "./dist/book-child-registry.js"
     }
   },
   "files": [

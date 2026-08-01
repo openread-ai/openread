@@ -127,6 +127,18 @@ describe('ModelPicker', () => {
     });
   });
 
+  it('should keep internal Qwen out of the Groq fallback picker', async () => {
+    mockFetch.mockRejectedValue(new Error('Network error'));
+    render(
+      <ModelPicker {...defaultProps} provider='groq' selectedModel='llama-3.3-70b-versatile' />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('llama-3.3-70b-versatile')).toBeTruthy();
+    });
+    expect(screen.queryByText('qwen/qwen3.6-27b')).toBeNull();
+  });
+
   it('should reset search when popover closes', async () => {
     const { rerender } = render(<ModelPicker {...defaultProps} />);
 

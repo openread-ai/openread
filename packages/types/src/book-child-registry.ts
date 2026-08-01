@@ -1,3 +1,8 @@
+const BOOK_TOMBSTONE_CASCADE = {
+  rpc: 'soft_delete_active_files_for_book_tombstone',
+  argumentTypes: ['uuid', 'text', 'timestamp with time zone'],
+} as const;
+
 export const BOOK_CHILD_REGISTRY = {
   files: {
     bookLink: {
@@ -6,9 +11,7 @@ export const BOOK_CHILD_REGISTRY = {
       bookHashColumn: 'book_hash',
     },
     tombstoneCascade: {
-      stage: 'implemented',
-      rpc: 'soft_delete_active_files_for_book_tombstone',
-      argumentTypes: ['uuid', 'text', 'timestamp with time zone'],
+      ...BOOK_TOMBSTONE_CASCADE,
       resultIdColumn: 'file_id',
     },
   },
@@ -18,7 +21,7 @@ export const BOOK_CHILD_REGISTRY = {
       userColumn: 'user_id',
       bookHashColumn: 'book_hash',
     },
-    tombstoneCascade: { stage: 'stage-b' },
+    tombstoneCascade: BOOK_TOMBSTONE_CASCADE,
   },
   book_configs: {
     bookLink: {
@@ -26,7 +29,7 @@ export const BOOK_CHILD_REGISTRY = {
       userColumn: 'user_id',
       bookHashColumn: 'book_hash',
     },
-    tombstoneCascade: { stage: 'stage-b' },
+    tombstoneCascade: BOOK_TOMBSTONE_CASCADE,
   },
   ai_conversations: {
     bookLink: {
@@ -34,7 +37,7 @@ export const BOOK_CHILD_REGISTRY = {
       userColumn: 'user_id',
       bookHashColumn: 'book_hash',
     },
-    tombstoneCascade: { stage: 'stage-b' },
+    tombstoneCascade: BOOK_TOMBSTONE_CASCADE,
   },
   ai_messages: {
     bookLink: {
@@ -48,7 +51,7 @@ export const BOOK_CHILD_REGISTRY = {
         bookHashColumn: 'book_hash',
       },
     },
-    tombstoneCascade: { stage: 'stage-b' },
+    tombstoneCascade: BOOK_TOMBSTONE_CASCADE,
   },
 } as const;
 

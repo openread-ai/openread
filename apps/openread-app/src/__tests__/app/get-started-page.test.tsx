@@ -21,6 +21,8 @@ vi.mock('@/hooks/useEmptyLibraryOnboarding', () => ({
   useEmptyLibraryOnboarding: () => ({
     variant: mockVariant,
     completeOnboarding: mockCompleteOnboarding,
+    onboardingCompleted: mockVariant === 'empty-library',
+    shouldRouteToGetStarted: mockVariant === 'onboarding',
   }),
 }));
 
@@ -108,12 +110,15 @@ describe('GetStartedPage', () => {
     });
   });
 
-  it('completes onboarding when dismissed without importing', () => {
+  it('completes onboarding and routes home when dismissed without importing', () => {
     render(<GetStartedPage />);
 
     screen.getByTestId('dismiss').click();
 
     expect(mockCompleteOnboarding).toHaveBeenCalledTimes(1);
-    expect(mockReplace).not.toHaveBeenCalled();
+    expect(mockReplace).toHaveBeenCalledWith('/home');
+    expect(mockCompleteOnboarding.mock.invocationCallOrder[0]).toBeLessThan(
+      mockReplace.mock.invocationCallOrder[0]!,
+    );
   });
 });

@@ -40,6 +40,7 @@ describe('useEmptyLibraryOnboarding', () => {
   it('uses onboarding variant for an account with no onboarding state and no library history', () => {
     const { result } = renderHook(() => useEmptyLibraryOnboarding());
     expect(result.current.variant).toBe('onboarding');
+    expect(result.current.shouldRouteToGetStarted).toBe(true);
   });
 
   it('uses empty-library variant after the same account completes onboarding', () => {
@@ -51,6 +52,7 @@ describe('useEmptyLibraryOnboarding', () => {
 
     expect(localStorage.getItem(emptyLibraryOnboardingKey('user-a'))).toBe('completed');
     expect(result.current.variant).toBe('empty-library');
+    expect(result.current.shouldRouteToGetStarted).toBe(false);
   });
 
   it('does not leak onboarding completion across accounts in the same browser', () => {
@@ -61,6 +63,7 @@ describe('useEmptyLibraryOnboarding', () => {
 
     expect(localStorage.getItem(emptyLibraryOnboardingKey('user-a'))).toBe('completed');
     expect(result.current.variant).toBe('onboarding');
+    expect(result.current.shouldRouteToGetStarted).toBe(true);
   });
 
   it('uses empty-library variant when tombstones or prior library records exist', () => {
@@ -75,6 +78,7 @@ describe('useEmptyLibraryOnboarding', () => {
     const { result } = renderHook(() => useEmptyLibraryOnboarding());
 
     expect(result.current.variant).toBe('empty-library');
+    expect(result.current.shouldRouteToGetStarted).toBe(false);
   });
 
   it('uses empty-library variant when sync history exists', () => {
@@ -83,5 +87,6 @@ describe('useEmptyLibraryOnboarding', () => {
     const { result } = renderHook(() => useEmptyLibraryOnboarding());
 
     expect(result.current.variant).toBe('empty-library');
+    expect(result.current.shouldRouteToGetStarted).toBe(false);
   });
 });

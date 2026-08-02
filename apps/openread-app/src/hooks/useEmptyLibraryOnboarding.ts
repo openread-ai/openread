@@ -31,6 +31,7 @@ interface EmptyLibraryOnboardingState {
   variant: EmptyLibraryVariant;
   completeOnboarding: () => void;
   onboardingCompleted: boolean;
+  shouldRouteToGetStarted: boolean;
 }
 
 export function useEmptyLibraryOnboarding(): EmptyLibraryOnboardingState {
@@ -43,8 +44,8 @@ export function useEmptyLibraryOnboarding(): EmptyLibraryOnboardingState {
   const onboardingCompleted = hasCompletedEmptyLibraryOnboarding(userId);
 
   const hasBooksTombstonesOrSyncHistory = library.length > 0 || Boolean(lastSyncAt);
-  const variant: EmptyLibraryVariant =
-    !onboardingCompleted && !hasBooksTombstonesOrSyncHistory ? 'onboarding' : 'empty-library';
+  const shouldRouteToGetStarted = !onboardingCompleted && !hasBooksTombstonesOrSyncHistory;
+  const variant: EmptyLibraryVariant = shouldRouteToGetStarted ? 'onboarding' : 'empty-library';
 
   const completeOnboarding = useCallback(() => {
     markEmptyLibraryOnboardingCompletedForUser(userId);
@@ -61,5 +62,5 @@ export function useEmptyLibraryOnboarding(): EmptyLibraryOnboardingState {
     return () => window.removeEventListener('storage', handleStorage);
   }, [userId]);
 
-  return { variant, completeOnboarding, onboardingCompleted };
+  return { variant, completeOnboarding, onboardingCompleted, shouldRouteToGetStarted };
 }

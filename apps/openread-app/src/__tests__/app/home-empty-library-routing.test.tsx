@@ -6,6 +6,7 @@ import type { ReactNode } from 'react';
 const mockReplace = vi.fn();
 let mockLibraryLoaded = true;
 let mockVisibleBookCount = 0;
+let mockShouldRouteToGetStarted = true;
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ replace: mockReplace }),
@@ -13,6 +14,15 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/context/LibraryLifecycleContext', () => ({
   useLibraryLifecycle: () => ({ libraryLoaded: mockLibraryLoaded }),
+}));
+
+vi.mock('@/hooks/useEmptyLibraryOnboarding', () => ({
+  useEmptyLibraryOnboarding: () => ({
+    variant: mockShouldRouteToGetStarted ? 'onboarding' : 'empty-library',
+    completeOnboarding: vi.fn(),
+    onboardingCompleted: !mockShouldRouteToGetStarted,
+    shouldRouteToGetStarted: mockShouldRouteToGetStarted,
+  }),
 }));
 
 vi.mock('@/hooks/useTranslation', () => ({
@@ -63,15 +73,28 @@ describe('Home empty-library routing', () => {
     vi.clearAllMocks();
     mockLibraryLoaded = true;
     mockVisibleBookCount = 0;
+    mockShouldRouteToGetStarted = true;
   });
 
-  it('redirects loaded zero-visible-book libraries to /get-started', async () => {
+  it('redirects incomplete loaded zero-visible-book libraries to /get-started', async () => {
     render(<HomePage />);
 
     await waitFor(() => {
       expect(mockReplace).toHaveBeenCalledWith('/get-started');
     });
     expect(screen.queryByTestId('continue-reading')).toBeNull();
+  });
+
+  it('renders empty Home after onboarding is completed with zero visible books', () => {
+    mockShouldRouteToGetStarted = false;
+
+    render(<HomePage />);
+
+    expect(mockReplace).not.toHaveBeenCalled();
+    expect(screen.getByTestId('continue-reading')).toBeTruthy();
+    expect(screen.getByTestId('recently-added')).toBeTruthy();
+    expect(screen.getByTestId('featured-from-explore')).toBeTruthy();
+    expect(screen.getByTestId('home-search')).toBeTruthy();
   });
 
   it('renders regular Home dashboard when visible books exist', () => {

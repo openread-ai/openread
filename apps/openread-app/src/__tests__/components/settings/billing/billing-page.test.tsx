@@ -99,20 +99,22 @@ describe('BillingPage', () => {
     expect(screen.queryByTestId('storage-meter')).toBeNull();
   });
 
-  it('should show full layout for paid users', () => {
+  it('should show full layout for paid users and pass plan-change semantics to cards', () => {
+    const currentPeriodEnd = new Date('2030-01-15T12:00:00.000Z');
+    const changePlan = vi.fn();
     mockUseSubscription.mockReturnValue({
       subscription: {
         planId: 'reader',
         planName: 'Reader',
         status: 'active',
-        currentPeriodEnd: null,
+        currentPeriodEnd,
         cancelAtPeriodEnd: false,
       },
       plans: [],
       invoices: [],
       isLoading: false,
       error: null,
-      upgradeToPlan: vi.fn(),
+      upgradeToPlan: changePlan,
       openPortal: vi.fn(),
     });
 
@@ -129,6 +131,13 @@ describe('BillingPage', () => {
     expect(screen.getByTestId('payment-method')).toBeTruthy();
     expect(screen.getByTestId('invoice-list')).toBeTruthy();
     expect(screen.getByTestId('plan-cards')).toBeTruthy();
+    expect(mockPlanCards).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        currentPlanId: 'reader',
+        currentPeriodEnd,
+        onPlanChange: changePlan,
+      }),
+    );
   });
 
   it('should show Available Plans heading for paid users', () => {

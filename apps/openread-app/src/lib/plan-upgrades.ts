@@ -7,6 +7,7 @@ export {
   normalizeBillingInterval,
   requiresBillingPortal,
   resolveFeatureAccess,
+  resolvePlanChangeDirection,
   resolvePlanUpgradeIntent,
   resolveTargetPlan,
 } from '@openread/entitlements';
@@ -17,6 +18,7 @@ export type {
   FeatureAccessResult,
   FeatureDefinition,
   FeatureLaunchOverrides,
+  PlanChangeDirection,
   UpgradeFeature,
   UpgradeIntent,
 } from '@openread/entitlements';

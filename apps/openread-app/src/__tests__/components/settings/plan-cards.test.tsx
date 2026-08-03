@@ -18,7 +18,13 @@ vi.mock('next/navigation', () => ({
 
 // Mock useTranslation
 vi.mock('@/hooks/useTranslation', () => ({
-  useTranslation: () => (key: string) => key,
+  useTranslation: () => (key: string, vars?: Record<string, unknown>) => {
+    if (!vars) return key;
+    return Object.entries(vars).reduce(
+      (result, [name, value]) => result.replace(`{{${name}}}`, String(value)),
+      key,
+    );
+  },
 }));
 
 // Mock getLocale
@@ -118,12 +124,13 @@ const mockPlans: PlanDetails[] = [
 ];
 
 describe('PlanCards', () => {
-  const mockOnUpgrade = vi.fn();
+  const mockOnPlanChange = vi.fn();
   const mockOnManagePlan = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
     mockTierConfigState.config = undefined;
+    mockOnPlanChange.mockResolvedValue(undefined);
     mockOnManagePlan.mockResolvedValue(undefined);
   });
 
@@ -133,7 +140,7 @@ describe('PlanCards', () => {
 
   describe('Rendering', () => {
     it('should render all 3 plan cards from tier config', () => {
-      render(<PlanCards plans={mockPlans} onUpgrade={mockOnUpgrade} />);
+      render(<PlanCards plans={mockPlans} onPlanChange={mockOnPlanChange} />);
       // Plans now come from tier config: Free, Reader, Pro
       expect(screen.getByText('Free')).toBeTruthy();
       expect(screen.getByText('Reader')).toBeTruthy();
@@ -141,12 +148,12 @@ describe('PlanCards', () => {
     });
 
     it('should show "Most Popular" badge on Reader plan', () => {
-      render(<PlanCards plans={mockPlans} onUpgrade={mockOnUpgrade} />);
+      render(<PlanCards plans={mockPlans} onPlanChange={mockOnPlanChange} />);
       expect(screen.getByText('Most Popular')).toBeTruthy();
     });
 
     it('should show plan prices from tier config', () => {
-      render(<PlanCards plans={mockPlans} onUpgrade={mockOnUpgrade} />);
+      render(<PlanCards plans={mockPlans} onPlanChange={mockOnPlanChange} />);
       expect(screen.getByText('$0.00')).toBeTruthy();
       expect(screen.getByText('$9.99')).toBeTruthy();
       expect(screen.getByText('$19.99')).toBeTruthy();
@@ -167,21 +174,21 @@ describe('PlanCards', () => {
         },
       };
 
-      render(<PlanCards plans={[]} onUpgrade={mockOnUpgrade} />);
+      render(<PlanCards plans={[]} onPlanChange={mockOnPlanChange} />);
 
       expect(screen.getByText('Scholar')).toBeTruthy();
       expect(screen.getByText('$12.34')).toBeTruthy();
     });
 
     it('should show feature groups', () => {
-      render(<PlanCards plans={mockPlans} onUpgrade={mockOnUpgrade} />);
+      render(<PlanCards plans={mockPlans} onPlanChange={mockOnPlanChange} />);
       // Feature groups from tier config
       const aiHeaders = screen.getAllByText('AI Features');
       expect(aiHeaders.length).toBe(3);
     });
 
     it('should show loading skeletons when isLoading is true', () => {
-      render(<PlanCards plans={[]} isLoading={true} onUpgrade={mockOnUpgrade} />);
+      render(<PlanCards plans={[]} isLoading={true} onPlanChange={mockOnPlanChange} />);
       // Should render skeleton loaders
       const skeletons = document.querySelectorAll('.animate-pulse');
       expect(skeletons.length).toBeGreaterThan(0);
@@ -190,13 +197,13 @@ describe('PlanCards', () => {
 
   describe('Billing Cycle Toggle', () => {
     it('should show billing cycle toggle', () => {
-      render(<PlanCards plans={mockPlans} onUpgrade={mockOnUpgrade} />);
+      render(<PlanCards plans={mockPlans} onPlanChange={mockOnPlanChange} />);
       expect(screen.getByText('Monthly')).toBeTruthy();
       expect(screen.getByText('Annual')).toBeTruthy();
     });
 
     it('should switch prices when toggling to annual', () => {
-      render(<PlanCards plans={mockPlans} onUpgrade={mockOnUpgrade} />);
+      render(<PlanCards plans={mockPlans} onPlanChange={mockOnPlanChange} />);
 
       // Initially monthly: $9.99, $19.99
       expect(screen.getByText('$9.99')).toBeTruthy();
@@ -210,24 +217,30 @@ describe('PlanCards', () => {
     });
 
     it('should show "Save 17%" badge', () => {
-      render(<PlanCards plans={mockPlans} onUpgrade={mockOnUpgrade} />);
+      render(<PlanCards plans={mockPlans} onPlanChange={mockOnPlanChange} />);
       expect(screen.getByText('Save 17%')).toBeTruthy();
     });
   });
 
   describe('Current Plan Indication', () => {
     it('should mark the current plan with Current badge', () => {
-      render(<PlanCards plans={mockPlans} currentPlanId='reader' onUpgrade={mockOnUpgrade} />);
+      render(
+        <PlanCards plans={mockPlans} currentPlanId='reader' onPlanChange={mockOnPlanChange} />,
+      );
       expect(screen.getByText('Current')).toBeTruthy();
     });
 
     it('should show "Current Plan" button for current plan', () => {
-      render(<PlanCards plans={mockPlans} currentPlanId='reader' onUpgrade={mockOnUpgrade} />);
+      render(
+        <PlanCards plans={mockPlans} currentPlanId='reader' onPlanChange={mockOnPlanChange} />,
+      );
       expect(screen.getByText('Current Plan')).toBeTruthy();
     });
 
     it('should disable the current plan button', () => {
-      render(<PlanCards plans={mockPlans} currentPlanId='reader' onUpgrade={mockOnUpgrade} />);
+      render(
+        <PlanCards plans={mockPlans} currentPlanId='reader' onPlanChange={mockOnPlanChange} />,
+      );
       const currentPlanButton = screen.getByText('Current Plan').closest('button');
       expect(currentPlanButton).toHaveProperty('disabled', true);
     });
@@ -235,22 +248,35 @@ describe('PlanCards', () => {
 
   describe('Upgrade Actions', () => {
     it('should show "Switch Plan" button for other plans when user has a plan', () => {
-      render(<PlanCards plans={mockPlans} currentPlanId='free' onUpgrade={mockOnUpgrade} />);
+      render(<PlanCards plans={mockPlans} currentPlanId='free' onPlanChange={mockOnPlanChange} />);
       const switchButtons = screen.getAllByText('Switch Plan');
       // Should have 2 switch buttons (for Reader and Pro)
       expect(switchButtons.length).toBe(2);
     });
 
-    it('should call onUpgrade when clicking upgrade button', async () => {
-      mockOnUpgrade.mockResolvedValue(undefined);
-      render(<PlanCards plans={mockPlans} currentPlanId='free' onUpgrade={mockOnUpgrade} />);
+    it('should call onPlanChange directly when clicking a Free-to-Reader upgrade', async () => {
+      mockOnPlanChange.mockResolvedValue(undefined);
+      render(<PlanCards plans={mockPlans} currentPlanId='free' onPlanChange={mockOnPlanChange} />);
 
       const switchButtons = screen.getAllByText('Switch Plan');
       fireEvent.click(switchButtons[0]!);
 
       await waitFor(() => {
-        expect(mockOnUpgrade).toHaveBeenCalledWith('reader', 'month');
+        expect(mockOnPlanChange).toHaveBeenCalledWith('reader', 'month');
       });
+    });
+
+    it('should submit a paid Reader-to-Pro upgrade directly without a confirmation', async () => {
+      render(
+        <PlanCards plans={mockPlans} currentPlanId='reader' onPlanChange={mockOnPlanChange} />,
+      );
+
+      fireEvent.click(screen.getByText('Switch Plan'));
+
+      await waitFor(() => {
+        expect(mockOnPlanChange).toHaveBeenCalledWith('pro', 'month');
+      });
+      expect(screen.queryByText('Continue with downgrade')).toBeNull();
     });
 
     it('should route cancellation to Free through Manage Plan instead of checkout', async () => {
@@ -258,7 +284,7 @@ describe('PlanCards', () => {
         <PlanCards
           plans={mockPlans}
           currentPlanId='reader'
-          onUpgrade={mockOnUpgrade}
+          onPlanChange={mockOnPlanChange}
           onManagePlan={mockOnManagePlan}
         />,
       );
@@ -268,7 +294,7 @@ describe('PlanCards', () => {
       await waitFor(() => {
         expect(mockOnManagePlan).toHaveBeenCalledTimes(1);
       });
-      expect(mockOnUpgrade).not.toHaveBeenCalled();
+      expect(mockOnPlanChange).not.toHaveBeenCalled();
     });
 
     it('should disable paid plan CTAs when product IDs are unavailable', async () => {
@@ -278,14 +304,18 @@ describe('PlanCards', () => {
       }));
 
       render(
-        <PlanCards plans={plansWithoutProductId} currentPlanId='free' onUpgrade={mockOnUpgrade} />,
+        <PlanCards
+          plans={plansWithoutProductId}
+          currentPlanId='free'
+          onPlanChange={mockOnPlanChange}
+        />,
       );
 
       const switchButtons = screen.getAllByText('Switch Plan');
       expect(switchButtons[0]!.closest('button')).toHaveProperty('disabled', true);
       fireEvent.click(switchButtons[0]!);
 
-      expect(mockOnUpgrade).not.toHaveBeenCalled();
+      expect(mockOnPlanChange).not.toHaveBeenCalled();
       expect(mockDispatch).not.toHaveBeenCalled();
     });
 
@@ -294,9 +324,9 @@ describe('PlanCards', () => {
       const slowUpgrade = new Promise<void>((resolve) => {
         resolveUpgrade = resolve;
       });
-      mockOnUpgrade.mockReturnValue(slowUpgrade);
+      mockOnPlanChange.mockReturnValue(slowUpgrade);
 
-      render(<PlanCards plans={mockPlans} currentPlanId='free' onUpgrade={mockOnUpgrade} />);
+      render(<PlanCards plans={mockPlans} currentPlanId='free' onPlanChange={mockOnPlanChange} />);
 
       const switchButtons = screen.getAllByText('Switch Plan');
       fireEvent.click(switchButtons[0]!);
@@ -311,26 +341,80 @@ describe('PlanCards', () => {
   });
 
   describe('Plan Change Restrictions', () => {
-    it('should use canonical subscription changes for paid downgrades and Manage Plan for Free', () => {
+    it('confirms a Pro-to-Reader downgrade with its target and period-end effective date', async () => {
       render(
         <PlanCards
           plans={mockPlans}
           currentPlanId='pro'
-          onUpgrade={mockOnUpgrade}
+          currentPeriodEnd={new Date('2030-01-15T12:00:00.000Z')}
+          onPlanChange={mockOnPlanChange}
+          onManagePlan={mockOnManagePlan}
+        />,
+      );
+
+      fireEvent.click(screen.getByText('Switch Plan'));
+
+      expect(screen.getByText('Downgrade to Reader?')).toBeTruthy();
+      expect(
+        screen.getByText(
+          'Your current plan stays active until January 15, 2030. A downgrade to Reader takes effect at the end of that billing period and will not charge you today.',
+        ),
+      ).toBeTruthy();
+      expect(mockOnPlanChange).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByText('Continue with downgrade'));
+
+      await waitFor(() => {
+        expect(mockOnPlanChange).toHaveBeenCalledWith('reader', 'month');
+      });
+    });
+
+    it('fails safely instead of inventing a downgrade date when period end is unavailable', () => {
+      render(
+        <PlanCards
+          plans={mockPlans}
+          currentPlanId='pro'
+          currentPeriodEnd={null}
+          onPlanChange={mockOnPlanChange}
+          onManagePlan={mockOnManagePlan}
+        />,
+      );
+
+      fireEvent.click(screen.getByText('Switch Plan'));
+
+      expect(screen.queryByText('Continue with downgrade')).toBeNull();
+      expect(mockOnPlanChange).not.toHaveBeenCalled();
+      expect(mockDispatch).toHaveBeenCalledWith('toast', {
+        type: 'error',
+        message: 'Billing period end is unavailable. Please refresh and try again.',
+      });
+    });
+
+    it('keeps cancel-to-Free routed through Manage Plan', () => {
+      render(
+        <PlanCards
+          plans={mockPlans}
+          currentPlanId='pro'
+          currentPeriodEnd={new Date('2030-01-15T12:00:00.000Z')}
+          onPlanChange={mockOnPlanChange}
           onManagePlan={mockOnManagePlan}
         />,
       );
 
       const manageButtons = screen.getAllByText('Manage Plan');
-      expect(manageButtons.length).toBe(1);
+      expect(manageButtons).toHaveLength(1);
       expect(manageButtons[0]!.closest('button')).toHaveProperty('disabled', false);
-      expect(screen.queryAllByText('Switch Plan')).toHaveLength(1);
+      fireEvent.click(manageButtons[0]!);
+
+      expect(mockOnManagePlan).toHaveBeenCalledTimes(1);
+      expect(mockOnPlanChange).not.toHaveBeenCalled();
+      expect(screen.queryByText('Continue with downgrade')).toBeNull();
     });
   });
 
   describe('Accessibility', () => {
     it('should have accessible check icons', () => {
-      render(<PlanCards plans={mockPlans} onUpgrade={mockOnUpgrade} />);
+      render(<PlanCards plans={mockPlans} onPlanChange={mockOnPlanChange} />);
       const checkIcons = document.querySelectorAll('[aria-hidden="true"]');
       expect(checkIcons.length).toBeGreaterThan(0);
     });

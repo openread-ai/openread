@@ -28,7 +28,6 @@ export const LOCAL_PERSISTENCE_KEYS = {
   authUser: AUTH_STORAGE_KEYS.user,
   qaForceSignedOutUntil: 'openread_qa_force_signed_out_until',
   qaLastError: 'openread_qa_last_error',
-  platformBooksSeeded: 'openread_platform_books_seeded',
   libraryOwnerUserId: 'openread_library_owner_user_id',
   libraryPaintCache: 'openread_library_paint_cache_v1',
   lastLibraryParams: 'lastLibraryParams',
@@ -297,14 +296,6 @@ export const LOCAL_PERSISTENCE_REGISTRY = [
     scope: 'setting-local-only',
     description: 'Account-scoped empty-library onboarding completion sentinel.',
     deletionCriteria: 'May be cleared to replay empty-library onboarding for one browser account.',
-  },
-  {
-    key: LOCAL_PERSISTENCE_KEYS.platformBooksSeeded,
-    storage: 'localStorage',
-    owner: 'hooks/usePlatformBooks',
-    scope: 'derived',
-    description: 'Local sentinel preventing repeated built-in platform book seeding.',
-    deletionCriteria: 'May be cleared when platform seed behavior changes or library resets.',
   },
   {
     key: LOCAL_PERSISTENCE_KEYS.lastAppUpdateCheck,

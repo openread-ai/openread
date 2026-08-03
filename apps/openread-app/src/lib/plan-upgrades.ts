@@ -16,6 +16,7 @@ export type {
   BillingInterval,
   FeatureAccessResult,
   FeatureDefinition,
+  FeatureLaunchOverrides,
   UpgradeFeature,
   UpgradeIntent,
 } from '@openread/entitlements';

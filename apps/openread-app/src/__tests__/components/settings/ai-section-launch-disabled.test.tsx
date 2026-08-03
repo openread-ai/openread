@@ -7,6 +7,7 @@ vi.mock('@/services/launchFeatures', async () => {
   );
   return {
     ...actual,
+    getLaunchFeatureOverrides: () => ({}),
     LAUNCH_BYOK_ENABLED: false,
   };
 });

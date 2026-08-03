@@ -14,6 +14,7 @@ import {
   formatPriceDisplay,
   resolveFeatureAccess,
   type FeatureAccessResult,
+  type FeatureLaunchOverrides,
   type UpgradeFeature,
 } from '@/lib/plan-upgrades';
 
@@ -36,15 +37,31 @@ const GATE_FEATURES = {
 /**
  * Get feature gates for a plan. Falls back to free tier for unknown plans.
  */
-export function getTierGates(plan: UserPlan, config: TierConfig): TierGates {
+export function getTierGates(
+  plan: UserPlan,
+  config: TierConfig,
+  launchOverrides: FeatureLaunchOverrides = {},
+): TierGates {
   const normalizedPlan = config.tiers[plan] ? plan : 'free';
   return {
-    can_tts: resolveFeatureAccess(GATE_FEATURES.can_tts, normalizedPlan, config).allowed,
-    can_sync: resolveFeatureAccess(GATE_FEATURES.can_sync, normalizedPlan, config).allowed,
-    can_translate: resolveFeatureAccess(GATE_FEATURES.can_translate, normalizedPlan, config)
+    can_tts: resolveFeatureAccess(GATE_FEATURES.can_tts, normalizedPlan, config, launchOverrides)
       .allowed,
-    can_byok: resolveFeatureAccess(GATE_FEATURES.can_byok, normalizedPlan, config).allowed,
-    can_boost: resolveFeatureAccess(GATE_FEATURES.can_boost, normalizedPlan, config).allowed,
+    can_sync: resolveFeatureAccess(GATE_FEATURES.can_sync, normalizedPlan, config, launchOverrides)
+      .allowed,
+    can_translate: resolveFeatureAccess(
+      GATE_FEATURES.can_translate,
+      normalizedPlan,
+      config,
+      launchOverrides,
+    ).allowed,
+    can_byok: resolveFeatureAccess(GATE_FEATURES.can_byok, normalizedPlan, config, launchOverrides)
+      .allowed,
+    can_boost: resolveFeatureAccess(
+      GATE_FEATURES.can_boost,
+      normalizedPlan,
+      config,
+      launchOverrides,
+    ).allowed,
   };
 }
 
@@ -66,8 +83,9 @@ export function checkFeatureGate(
   feature: GatedFeature,
   plan: UserPlan,
   config: TierConfig,
+  launchOverrides: FeatureLaunchOverrides = {},
 ): FeatureGateResult {
-  return resolveFeatureAccess(feature, plan, config);
+  return resolveFeatureAccess(feature, plan, config, launchOverrides);
 }
 
 export { FEATURE_REGISTRY, TIER_DISPLAY_NAMES, formatPriceDisplay };

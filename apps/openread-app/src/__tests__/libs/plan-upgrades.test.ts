@@ -25,7 +25,7 @@ describe('plan-upgrades', () => {
   });
 
   it('keeps disabled launch features unavailable without upgrade CTAs', () => {
-    for (const feature of ['tts', 'translate', 'boost'] as const) {
+    for (const feature of ['storage', 'boost', 'byok', 'tts', 'translate'] as const) {
       const result = resolveFeatureAccess(feature, 'free', TEST_TIER_CONFIG);
       expect(result.allowed).toBe(false);
       expect(result.availableOnAnyTier).toBe(false);

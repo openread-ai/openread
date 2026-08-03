@@ -17,6 +17,7 @@ vi.mock('@/services/environment', () => ({
 }));
 
 vi.mock('@/services/launchFeatures', () => ({
+  getLaunchFeatureOverrides: () => ({}),
   LAUNCH_MCP_ENABLED: false,
 }));
 

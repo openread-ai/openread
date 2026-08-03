@@ -5,6 +5,7 @@ import type { UserPlan } from '@/types/quota';
 // Mock state
 let mockUser: { id: string } | null = null;
 let mockUserProfilePlan: UserPlan | undefined = undefined;
+const launchAdapterState = vi.hoisted(() => ({ overrides: {} as Record<string, boolean> }));
 
 // Mock useAuth
 vi.mock('@/context/AuthContext', () => ({
@@ -43,6 +44,10 @@ vi.mock('@/hooks/useTierConfig', async () => {
   };
 });
 
+vi.mock('@/services/launchFeatures', () => ({
+  getLaunchFeatureOverrides: () => launchAdapterState.overrides,
+}));
+
 import { useFeatureGate } from '@/hooks/useFeatureGate';
 
 describe('useFeatureGate', () => {
@@ -50,6 +55,7 @@ describe('useFeatureGate', () => {
     vi.clearAllMocks();
     mockUser = null;
     mockUserProfilePlan = undefined;
+    launchAdapterState.overrides = {};
   });
 
   // ─── Free tier ─────────────────────────────────────────────────────
@@ -115,6 +121,8 @@ describe('useFeatureGate', () => {
       expect(result.current.allowed).toBe(false);
       expect(result.current.requiredTier).toBe('reader');
       expect(result.current.message).toContain('Bring Your Own Key');
+      expect(result.current.message).toContain('not currently available');
+      expect(result.current.ctaText).toBe('');
     });
 
     it('should gate boost for free users', async () => {
@@ -172,7 +180,20 @@ describe('useFeatureGate', () => {
       expect(result.current.ctaText).toBe('');
     });
 
-    it('should allow BYOK for reader users', async () => {
+    it('should hold BYOK for reader users when the adapter override is unset', async () => {
+      const { result } = renderHook(() => useFeatureGate('byok'));
+
+      await waitFor(() => {
+        expect(result.current.isLoading).toBe(false);
+      });
+
+      expect(result.current.allowed).toBe(false);
+      expect(result.current.message).toContain('not currently available');
+      expect(result.current.ctaText).toBe('');
+    });
+
+    it('should transport an explicit BYOK adapter override into the UI gate', async () => {
+      launchAdapterState.overrides = { byok: true };
       const { result } = renderHook(() => useFeatureGate('byok'));
 
       await waitFor(() => {
@@ -180,6 +201,7 @@ describe('useFeatureGate', () => {
       });
 
       expect(result.current.allowed).toBe(true);
+      expect(result.current.message).toBe('');
     });
 
     it('should not allow boost for reader users because boosts are disabled', async () => {
@@ -203,24 +225,20 @@ describe('useFeatureGate', () => {
       mockUserProfilePlan = 'pro';
     });
 
-    it('should allow sync and BYOK for pro users', async () => {
-      const features = ['sync', 'byok'] as const;
+    it('should allow live sync for pro users', async () => {
+      const { result } = renderHook(() => useFeatureGate('sync'));
 
-      for (const feature of features) {
-        const { result } = renderHook(() => useFeatureGate(feature));
+      await waitFor(() => {
+        expect(result.current.isLoading).toBe(false);
+      });
 
-        await waitFor(() => {
-          expect(result.current.isLoading).toBe(false);
-        });
-
-        expect(result.current.allowed).toBe(true);
-        expect(result.current.message).toBe('');
-        expect(result.current.plan).toBe('pro');
-      }
+      expect(result.current.allowed).toBe(true);
+      expect(result.current.message).toBe('');
+      expect(result.current.plan).toBe('pro');
     });
 
-    it('should not allow TTS, translation, or boost for pro users because they are disabled', async () => {
-      const features = ['tts', 'translate', 'boost'] as const;
+    it('should not allow held features for pro users', async () => {
+      const features = ['byok', 'tts', 'translate', 'boost'] as const;
 
       for (const feature of features) {
         const { result } = renderHook(() => useFeatureGate(feature));
@@ -314,7 +332,8 @@ describe('useFeatureGate', () => {
       expect(result.current.ctaText).toBe('');
     });
 
-    it('should include Reader price for BYOK gate', async () => {
+    it('should include Reader price for BYOK when the adapter override enables it', async () => {
+      launchAdapterState.overrides = { byok: true };
       const { result } = renderHook(() => useFeatureGate('byok'));
 
       await waitFor(() => {

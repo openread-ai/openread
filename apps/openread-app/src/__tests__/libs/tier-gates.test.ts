@@ -42,7 +42,7 @@ describe('tier-gates', () => {
       expect(gates.can_tts).toBe(false);
       expect(gates.can_sync).toBe(true);
       expect(gates.can_translate).toBe(false);
-      expect(gates.can_byok).toBe(true);
+      expect(gates.can_byok).toBe(false);
       expect(gates.can_boost).toBe(false);
     });
 
@@ -51,7 +51,7 @@ describe('tier-gates', () => {
       expect(gates.can_tts).toBe(false);
       expect(gates.can_sync).toBe(true);
       expect(gates.can_translate).toBe(false);
-      expect(gates.can_byok).toBe(true);
+      expect(gates.can_byok).toBe(false);
       expect(gates.can_boost).toBe(false);
     });
 
@@ -134,20 +134,27 @@ describe('tier-gates', () => {
     });
 
     describe('BYOK gate', () => {
-      it('free: not allowed, requires reader', () => {
+      it('free: held before tier evaluation', () => {
         const result = checkFeatureGate('byok', 'free', TEST_TIER_CONFIG);
         expect(result.allowed).toBe(false);
         expect(result.requiredTier).toBe('reader');
         expect(result.message).toContain('Bring Your Own Key');
+        expect(result.message).toContain('not currently available');
+        expect(result.ctaText).toBe('');
       });
 
-      it('reader: allowed', () => {
+      it('reader: held when the app override is unset', () => {
         const result = checkFeatureGate('byok', 'reader', TEST_TIER_CONFIG);
+        expect(result.allowed).toBe(false);
+      });
+
+      it('reader: allowed when the app override enables BYOK', () => {
+        const result = checkFeatureGate('byok', 'reader', TEST_TIER_CONFIG, { byok: true });
         expect(result.allowed).toBe(true);
       });
 
-      it('pro: allowed', () => {
-        const result = checkFeatureGate('byok', 'pro', TEST_TIER_CONFIG);
+      it('pro: allowed when the app override enables BYOK', () => {
+        const result = checkFeatureGate('byok', 'pro', TEST_TIER_CONFIG, { byok: true });
         expect(result.allowed).toBe(true);
       });
     });
@@ -192,7 +199,7 @@ describe('tier-gates', () => {
         tts: [false, false, false],
         sync: [true, true, true],
         translate: [false, false, false],
-        byok: [false, true, true],
+        byok: [false, false, false],
         boost: [false, false, false],
       };
 
@@ -231,8 +238,8 @@ describe('tier-gates', () => {
         expect(result.ctaText).toBe('');
       });
 
-      it('free user BYOK gate shows Reader price', () => {
-        const result = checkFeatureGate('byok', 'free', TEST_TIER_CONFIG);
+      it('free user BYOK gate shows Reader price when the app override enables it', () => {
+        const result = checkFeatureGate('byok', 'free', TEST_TIER_CONFIG, { byok: true });
         expect(result.priceDisplay).toBe('$9.99/mo');
         expect(result.ctaText).toContain('Reader');
       });
@@ -273,9 +280,9 @@ describe('tier-gates', () => {
         },
       };
 
-      const result = checkFeatureGate('tts', 'reader', config);
+      const result = checkFeatureGate('tts', 'reader', config, { tts: true });
       expect(result.allowed).toBe(true);
-      expect(getTierGates('reader', config).can_tts).toBe(true);
+      expect(getTierGates('reader', config, { tts: true }).can_tts).toBe(true);
     });
   });
 

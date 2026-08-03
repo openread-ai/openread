@@ -16,6 +16,7 @@ import { useTierConfig } from '@/hooks/useTierConfig';
 import type { UserPlan } from '@/types/quota';
 import { checkFeatureGate, type GatedFeature, type FeatureGateResult } from '@/lib/tier-gates';
 import { getFeatureDefinition } from '@/lib/plan-upgrades';
+import { getLaunchFeatureOverrides } from '@/services/launchFeatures';
 
 export type { GatedFeature, FeatureGateResult };
 
@@ -71,7 +72,7 @@ export function useFeatureGate(feature: GatedFeature): UseFeatureGateReturn {
         ctaText: '',
       } satisfies FeatureGateResult;
     }
-    return checkFeatureGate(feature, plan, config);
+    return checkFeatureGate(feature, plan, config, getLaunchFeatureOverrides());
   }, [config, error, feature, plan]);
 
   return {

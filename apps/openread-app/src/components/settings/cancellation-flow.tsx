@@ -12,33 +12,51 @@ import { RetentionOffer } from './retention-offer';
 import { PreCancelPrompt } from './pre-cancel-prompt';
 import { CancelSurvey, type CancelSurveyData } from './cancel-survey';
 import { CancelConfirmation } from './cancel-confirmation';
+import { resolvePlanFeatureLosses } from '@openread/entitlements';
 import { useTranslation } from '@/hooks/useTranslation';
+import { useTierConfig } from '@/hooks/useTierConfig';
 import { eventDispatcher } from '@/utils/event';
 import { getAPIBaseUrl } from '@/services/environment';
 import { getAccessToken } from '@/utils/access';
-import { LAUNCH_TTS_ENABLED, LAUNCH_TRANSLATION_ENABLED } from '@/services/launchFeatures';
 import { createLogger } from '@/utils/logger';
 import type { PaymentProvider } from '@/types/payment';
+import type { UserPlan } from '@/types/quota';
 import { getIAPManagementUrl } from '@/libs/payment/iap/client';
 
 const logger = createLogger('cancellation-flow');
 
 type CancelStep = 'retention' | 'survey' | 'confirm';
 
-const FEATURES_LOST = [
-  'Unlimited library books',
-  'Cloud sync across devices',
-  'AI-powered book analysis',
-  // Launch holdback: keep copy available for post-launch, but do not show it now.
-  ...(LAUNCH_TTS_ENABLED ? ['Text-to-speech (TTS)'] : []),
-  ...(LAUNCH_TRANSLATION_ENABLED ? ['Extended translation limits'] : []),
-  'Priority support',
-];
+interface IAPPreCancelPromptProps {
+  planId: UserPlan;
+  planName: string;
+  onKeep: () => void;
+  onProceed: () => void;
+}
+
+function IAPPreCancelPrompt({ planId, planName, onKeep, onProceed }: IAPPreCancelPromptProps) {
+  const { config, isLoading } = useTierConfig();
+  const features = config
+    ? resolvePlanFeatureLosses(planId, 'free', config).map(({ label }) => label)
+    : [];
+  const status = isLoading ? 'loading' : config ? 'ready' : 'unavailable';
+
+  return (
+    <PreCancelPrompt
+      planName={planName}
+      features={features}
+      status={status}
+      onKeep={onKeep}
+      onProceed={onProceed}
+    />
+  );
+}
 
 interface CancellationFlowProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   source: PaymentProvider;
+  planId: UserPlan;
   planName: string;
   periodEnd: Date | null;
 }
@@ -47,6 +65,7 @@ export function CancellationFlow({
   open,
   onOpenChange,
   source,
+  planId,
   planName,
   periodEnd,
 }: CancellationFlowProps) {
@@ -216,9 +235,9 @@ export function CancellationFlow({
               isApplyingCoupon={isApplyingCoupon}
             />
           ) : (
-            <PreCancelPrompt
+            <IAPPreCancelPrompt
+              planId={planId}
               planName={planName}
-              features={FEATURES_LOST}
               onKeep={handleClose}
               onProceed={() => setStep('survey')}
             />

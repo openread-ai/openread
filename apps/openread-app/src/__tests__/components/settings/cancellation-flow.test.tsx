@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
+import { getGen3V3FallbackTierConfig } from '@openread/types';
 
 // ─── Mocks ───────────────────────────────────────────────────────────
 
@@ -25,6 +26,13 @@ vi.mock('@/utils/access', () => ({
 
 vi.mock('@/services/environment', () => ({
   getAPIBaseUrl: () => '/api',
+}));
+
+const { mockUseTierConfig } = vi.hoisted(() => ({
+  mockUseTierConfig: vi.fn(),
+}));
+vi.mock('@/hooks/useTierConfig', () => ({
+  useTierConfig: () => mockUseTierConfig(),
 }));
 
 const mockDispatch = vi.fn();
@@ -290,12 +298,18 @@ describe('CancellationFlow', () => {
     open: true,
     onOpenChange: vi.fn(),
     source: 'stripe' as const,
+    planId: 'reader' as const,
     planName: 'Reader',
     periodEnd: new Date('2026-05-01'),
   };
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUseTierConfig.mockReturnValue({
+      config: getGen3V3FallbackTierConfig(),
+      isLoading: false,
+      error: null,
+    });
     global.fetch = vi.fn();
   });
 
@@ -467,10 +481,63 @@ describe('CancellationFlow', () => {
       expect(screen.queryByText('Special offer: 20% off your next month')).toBeNull();
     });
 
-    it('should list features that will be lost', () => {
+    it('blocks cancellation while plan details are loading', () => {
+      mockUseTierConfig.mockReturnValue({
+        config: null,
+        isLoading: true,
+        error: null,
+      });
+
       render(<CancellationFlow {...appleProps} />);
-      expect(screen.getByText('Cloud sync across devices')).toBeTruthy();
-      expect(screen.getByText('AI-powered book analysis')).toBeTruthy();
+
+      expect(screen.getByText('Loading plan details...')).toBeTruthy();
+      expect(screen.queryByText("Here's what you'll lose with Reader:")).toBeNull();
+      expect(screen.queryByText('Continue canceling')).toBeNull();
+      expect(screen.getByText('Keep my plan')).toBeTruthy();
+    });
+
+    it('blocks cancellation when plan details are unavailable', () => {
+      mockUseTierConfig.mockReturnValue({
+        config: null,
+        isLoading: false,
+        error: new Error('tier config unavailable'),
+      });
+
+      render(<CancellationFlow {...appleProps} />);
+
+      expect(screen.getByText('Plan details are temporarily unavailable.')).toBeTruthy();
+      expect(screen.queryByText("Here's what you'll lose with Reader:")).toBeNull();
+      expect(screen.queryByText('Continue canceling')).toBeNull();
+      expect(screen.getByText('Keep my plan')).toBeTruthy();
+    });
+
+    it('should derive Reader to Free losses from the live registry', () => {
+      render(<CancellationFlow {...appleProps} />);
+
+      expect(screen.getByText('Unlimited library')).toBeTruthy();
+      expect(screen.getByText('Standard AI models')).toBeTruthy();
+      for (const excludedLabel of [
+        'Cloud Sync',
+        'Cloud sync across devices',
+        'AI-powered book analysis',
+        'More cloud storage',
+        'Bring Your Own Key',
+        'Text-to-Speech',
+        'Translation',
+        'AI Boosts',
+        'Priority support',
+      ]) {
+        expect(screen.queryByText(excludedLabel)).toBeNull();
+      }
+    });
+
+    it('adds the live Pro-only loss when canceling Pro', () => {
+      render(<CancellationFlow {...appleProps} planId='pro' planName='Pro' />);
+
+      expect(screen.getByText('Unlimited library')).toBeTruthy();
+      expect(screen.getByText('Standard AI models')).toBeTruthy();
+      expect(screen.getByText('Early feature access')).toBeTruthy();
+      expect(screen.queryByText('Cloud Sync')).toBeNull();
     });
 
     it('should proceed to survey on "Continue canceling"', () => {

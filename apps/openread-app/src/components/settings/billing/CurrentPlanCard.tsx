@@ -187,6 +187,7 @@ export function CurrentPlanCard({
           onOpenChange={setShowCancelDialog}
           periodEnd={subscription.currentPeriodEnd}
           source={subscription.source}
+          planId={subscription.planId}
           planName={subscription.planName}
         />
       )}

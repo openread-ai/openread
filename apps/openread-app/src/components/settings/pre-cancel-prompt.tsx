@@ -4,14 +4,23 @@ import { Button } from '@/components/primitives/button';
 import { useTranslation } from '@/hooks/useTranslation';
 import { AlertTriangle } from 'lucide-react';
 
+type PreCancelPromptStatus = 'loading' | 'ready' | 'unavailable';
+
 interface PreCancelPromptProps {
   planName: string;
   features: string[];
+  status?: PreCancelPromptStatus;
   onKeep: () => void;
   onProceed: () => void;
 }
 
-export function PreCancelPrompt({ planName, features, onKeep, onProceed }: PreCancelPromptProps) {
+export function PreCancelPrompt({
+  planName,
+  features,
+  status = 'ready',
+  onKeep,
+  onProceed,
+}: PreCancelPromptProps) {
   const _ = useTranslation();
 
   return (
@@ -22,22 +31,34 @@ export function PreCancelPrompt({ planName, features, onKeep, onProceed }: PreCa
             <AlertTriangle className='text-warning h-5 w-5' aria-hidden='true' />
           </div>
           <div className='space-y-2'>
-            <p className='text-base-content font-semibold'>
-              {_("Here's what you'll lose with {{planName}}:", { planName })}
-            </p>
-            <ul className='text-base-content/60 list-inside list-disc space-y-1 text-sm'>
-              {features.map((feature) => (
-                <li key={feature}>{_(feature)}</li>
-              ))}
-            </ul>
+            {status === 'ready' ? (
+              <>
+                <p className='text-base-content font-semibold'>
+                  {_("Here's what you'll lose with {{planName}}:", { planName })}
+                </p>
+                <ul className='text-base-content/60 list-inside list-disc space-y-1 text-sm'>
+                  {features.map((feature) => (
+                    <li key={feature}>{_(feature)}</li>
+                  ))}
+                </ul>
+              </>
+            ) : (
+              <p className='text-base-content/60 text-sm' role='status' aria-live='polite'>
+                {status === 'loading'
+                  ? _('Loading plan details...')
+                  : _('Plan details are temporarily unavailable.')}
+              </p>
+            )}
           </div>
         </div>
       </div>
 
       <div className='flex flex-col gap-2 sm:flex-row sm:justify-end'>
-        <Button variant='outline' onClick={onProceed}>
-          {_('Continue canceling')}
-        </Button>
+        {status === 'ready' && (
+          <Button variant='outline' onClick={onProceed}>
+            {_('Continue canceling')}
+          </Button>
+        )}
         <Button onClick={onKeep}>{_('Keep my plan')}</Button>
       </div>
     </div>

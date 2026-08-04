@@ -21,8 +21,12 @@ vi.mock('@/utils/tailwind', () => ({
 }));
 
 vi.mock('@/components/settings/cancel-subscription-dialog', () => ({
-  CancelSubscriptionDialog: ({ open }: { open: boolean }) =>
-    open ? <div data-testid='cancel-dialog'>Cancel Dialog</div> : null,
+  CancelSubscriptionDialog: ({ open, planId }: { open: boolean; planId: string }) =>
+    open ? (
+      <div data-testid='cancel-dialog' data-plan-id={planId}>
+        Cancel Dialog
+      </div>
+    ) : null,
 }));
 
 // ─── Helpers ─────────────────────────────────────────────────────────
@@ -167,6 +171,6 @@ describe('CurrentPlanCard', () => {
 
     fireEvent.click(screen.getByText('Cancel'));
 
-    expect(screen.getByTestId('cancel-dialog')).toBeTruthy();
+    expect(screen.getByTestId('cancel-dialog').getAttribute('data-plan-id')).toBe('reader');
   });
 });

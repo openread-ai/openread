@@ -28,10 +28,6 @@ export interface LibraryLimitInfo {
   currentCount: number;
   /** Current user plan */
   plan: UserPlan;
-  /** Display name of the next paid tier (for upgrade CTA) */
-  upgradeTierName: string;
-  /** Monthly price in cents of the cheapest paid tier (for upgrade CTA) */
-  upgradePriceCents: number;
   /** Whether the hook data is still loading */
   isLoading: boolean;
 }
@@ -50,15 +46,10 @@ export function checkLibraryLimit(
 }
 
 /**
- * React hook for library limit state.
+ * React hook for library quota state.
  *
- * @example
- * ```tsx
- * const { canAddBook, libraryLimit, upgradePriceCents } = useLibraryLimit();
- * if (!canAddBook) {
- *   return <LibraryLimitBanner limit={libraryLimit} priceCents={upgradePriceCents} />;
- * }
- * ```
+ * Upgrade presentation is resolved separately at the UI boundary so this hook
+ * remains authoritative only for whether another book can be added.
  */
 export function useLibraryLimit(): LibraryLimitInfo {
   const { user } = useAuth();
@@ -77,23 +68,18 @@ export function useLibraryLimit(): LibraryLimitInfo {
     return library.filter((b) => !b.deletedAt).length;
   }, [library]);
 
-  const { canAddBook, libraryLimit, upgradeTierName, upgradePriceCents } = useMemo(() => {
+  const { canAddBook, libraryLimit } = useMemo(() => {
     if (!config) {
       return {
         canAddBook: false,
         libraryLimit: 0,
-        upgradeTierName: '',
-        upgradePriceCents: 0,
       };
     }
 
     const { allowed, limit } = checkLibraryLimit(currentCount, plan, config);
-    const readerTier = config.tiers.reader;
     return {
       canAddBook: allowed,
       libraryLimit: limit,
-      upgradeTierName: readerTier.display_name,
-      upgradePriceCents: readerTier.display_price_cents,
     };
   }, [config, currentCount, plan]);
 
@@ -102,8 +88,6 @@ export function useLibraryLimit(): LibraryLimitInfo {
     libraryLimit,
     currentCount,
     plan,
-    upgradeTierName,
-    upgradePriceCents,
     isLoading,
   };
 }

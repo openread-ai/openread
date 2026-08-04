@@ -534,7 +534,7 @@ class TransferManager {
             'not-authenticated': _('Please log in to continue'),
             'storage-limit-reached': _('Storage limit reached. Upgrade your plan or remove files.'),
             'storage-not-available': _('Cloud storage is not available on your current plan.'),
-            'library-limit-reached': _('Library limit reached. Upgrade for unlimited library.'),
+            'library-limit-reached': _('Library limit reached.'),
             'library-book-missing': _('Book not found in library'),
             'local-file-missing': _(
               'Book file is not available on this device. Re-download or re-import it before cloud upload.',

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ImportFailureError } from '@/services/importFailure';
 import {
   createFailedImportOutcome,
+  createLibraryLimitImportOutcome,
   createUnsupportedImportOutcome,
   selectedBookFileName,
   summarizeImportFailureOutcomes,
@@ -24,6 +25,19 @@ describe('useBookImport import outcomes', () => {
       reason: 'unsupported-format',
       userBucket: 'unsupported-format',
       userMessage: 'This file format is not supported.',
+    });
+  });
+
+  it('preserves the library-limit reason without embedding an upgrade nudge', () => {
+    const outcome = createLibraryLimitImportOutcome({
+      path: '/Users/private/Books/blocked.epub',
+    });
+
+    expect(outcome).toEqual({
+      fileName: 'blocked.epub',
+      status: 'skipped',
+      reason: 'library-limit',
+      userMessage: 'Library limit reached.',
     });
   });
 

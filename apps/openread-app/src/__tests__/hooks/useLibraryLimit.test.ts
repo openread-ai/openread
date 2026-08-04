@@ -221,16 +221,6 @@ describe('useLibraryLimit', () => {
       expect(result.current.canAddBook).toBe(true);
     });
 
-    it('returns upgrade info for CTA', () => {
-      mockQuotaState.userProfilePlan = 'free';
-      mockLibraryStoreState.library = createMockBooks(10);
-
-      const { result } = renderHook(() => useLibraryLimit());
-
-      expect(result.current.upgradeTierName).toBe('Reader');
-      expect(result.current.upgradePriceCents).toBe(999);
-    });
-
     it('defaults to free plan when user is not logged in', () => {
       mockAuthState.user = null as never;
       mockQuotaState.userProfilePlan = undefined;

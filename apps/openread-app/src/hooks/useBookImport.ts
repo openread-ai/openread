@@ -105,7 +105,7 @@ export function createLibraryLimitImportOutcome(
     fileName: selectedBookFileName(selectedFile),
     status: 'skipped',
     reason: 'library-limit',
-    userMessage: 'Library full. Upgrade for unlimited.',
+    userMessage: 'Library limit reached.',
   };
 }
 
@@ -129,7 +129,7 @@ export function useBookImport() {
   const { appService } = useEnv();
   const { selectFiles } = useFileSelector(appService, _);
   const { syncBooks } = useSync();
-  const { canAddBook, libraryLimit, upgradePriceCents, upgradeTierName } = useLibraryLimit();
+  const { canAddBook, libraryLimit, isLoading: isLibraryLimitLoading } = useLibraryLimit();
 
   useEffect(() => {
     const handleTransferComplete = async (event: CustomEvent) => {
@@ -148,9 +148,9 @@ export function useBookImport() {
   const warnLibraryFull = useCallback(() => {
     eventDispatcher.dispatch('toast', {
       type: 'warning',
-      message: `Library full (${libraryLimit} books). Upgrade for unlimited.`,
+      message: 'Library limit reached.',
     });
-  }, [libraryLimit]);
+  }, []);
 
   const importSelectedBookFiles = useCallback(
     async (files: SelectedFile[]): Promise<BookImportResult> => {
@@ -338,8 +338,7 @@ export function useBookImport() {
     canAddBook,
     importDisabled: !canAddBook,
     libraryLimit,
-    upgradePriceCents,
-    upgradeTierName,
+    isLibraryLimitLoading,
     importSelectedBookFiles,
     openImportPicker,
   };

@@ -7,8 +7,30 @@ import type { Book } from '@/types/book';
 import type { GridSize } from '@/store/libraryViewStore';
 
 // Hoisted mocks (available inside vi.mock factories)
-const { mockSetLibrary } = vi.hoisted(() => ({
+const { mockSetLibrary, mockLibraryLimitState, mockLibraryFeatureGate } = vi.hoisted(() => ({
   mockSetLibrary: vi.fn(),
+  mockLibraryLimitState: {
+    canAddBook: true,
+    libraryLimit: null as number | null,
+    currentCount: 0,
+    plan: 'free' as const,
+    isLoading: false,
+  },
+  mockLibraryFeatureGate: {
+    feature: 'library' as const,
+    label: 'Unlimited library',
+    allowed: false,
+    availableOnAnyTier: true,
+    requiredTier: 'reader' as const,
+    requiredTierName: 'Reader',
+    upgradeIntent: { plan: 'reader' as const, interval: 'month' as const },
+    message: 'Unlimited library is available on Reader.',
+    priceDisplay: '$9.99/mo',
+    ctaText: 'Start Reader — $9.99/mo',
+    plan: 'free' as const,
+    isLoading: false,
+    error: null,
+  },
 }));
 
 // Mock functions
@@ -180,15 +202,11 @@ vi.mock('@/hooks/useSync', () => ({
 
 // Mock useLibraryLimit — prevent jwtDecode crash from fake token strings
 vi.mock('@/hooks/useLibraryLimit', () => ({
-  useLibraryLimit: vi.fn(() => ({
-    canAddBook: true,
-    libraryLimit: null,
-    currentCount: 0,
-    plan: 'free',
-    upgradeTierName: 'Reader',
-    upgradePriceCents: 499,
-    isLoading: false,
-  })),
+  useLibraryLimit: vi.fn(() => mockLibraryLimitState),
+}));
+
+vi.mock('@/hooks/useFeatureGate', () => ({
+  useFeatureGate: vi.fn(() => mockLibraryFeatureGate),
 }));
 
 // Mock useLibraryViewStore
@@ -267,6 +285,7 @@ import { useLibraryBooks } from '@/hooks/useLibraryBooks';
 import { useSync } from '@/hooks/useSync';
 import { useLibraryViewStore } from '@/store/libraryViewStore';
 import { useAuth } from '@/context/AuthContext';
+import { eventDispatcher } from '@/utils/event';
 
 const makeUseSyncMock = (overrides: Partial<ReturnType<typeof useSync>> = {}) =>
   ({
@@ -295,6 +314,11 @@ describe('LibraryPageClient', () => {
     mockLibraryViewState.searchQuery = '';
     mockLibraryViewState.isSelectMode = false;
     mockLibraryViewState.selectedBooks = [];
+    mockLibraryLimitState.canAddBook = true;
+    mockLibraryLimitState.libraryLimit = null;
+    mockLibraryLimitState.currentCount = 0;
+    mockLibraryLimitState.isLoading = false;
+    mockLibraryFeatureGate.isLoading = false;
 
     // Reset importBook to default success behavior
     mockImportBook.mockResolvedValue({ hash: testOpenReadBookRef('new-book'), title: 'New Book' });
@@ -315,6 +339,7 @@ describe('LibraryPageClient', () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     cleanup();
   });
 
@@ -345,6 +370,32 @@ describe('LibraryPageClient', () => {
       render(<LibraryPageClient filter='all' title='All Books' />);
       expect(screen.queryByTestId('onboarding-dialog')).toBeNull();
       expect(screen.getByTestId('library-header')).toBeTruthy();
+    });
+
+    it('shows the canonical entitlement CTA only after the library quota is exhausted', () => {
+      const beforeLimit = render(<LibraryPageClient filter='all' title='All Books' />);
+      expect(screen.queryByText(mockLibraryFeatureGate.message)).toBeNull();
+      beforeLimit.unmount();
+
+      mockLibraryLimitState.canAddBook = false;
+      mockLibraryLimitState.libraryLimit = 10;
+      mockLibraryLimitState.currentCount = 10;
+      render(<LibraryPageClient filter='all' title='All Books' />);
+
+      expect(screen.getByText(mockLibraryFeatureGate.message)).toBeTruthy();
+      const link = screen.getByRole('link', { name: /Start Reader/ });
+      expect(link.textContent).toContain(mockLibraryFeatureGate.ctaText);
+      expect(link.getAttribute('href')).toBe('/settings/billing#plans');
+    });
+
+    it('does not present an upgrade while the library quota is loading', () => {
+      mockLibraryLimitState.canAddBook = false;
+      mockLibraryLimitState.libraryLimit = 10;
+      mockLibraryLimitState.isLoading = true;
+
+      render(<LibraryPageClient filter='all' title='All Books' />);
+
+      expect(screen.queryByText(mockLibraryFeatureGate.message)).toBeNull();
     });
   });
 
@@ -827,6 +878,24 @@ describe('LibraryPageClient', () => {
       await waitFor(() => {
         expect(mockImportBook).toHaveBeenCalledTimes(2);
       });
+    });
+
+    it('keeps a blocked drop neutral while preserving the quota decision', () => {
+      mockLibraryLimitState.canAddBook = false;
+      mockLibraryLimitState.libraryLimit = 10;
+      mockLibraryLimitState.currentCount = 10;
+      const dispatchSpy = vi.spyOn(eventDispatcher, 'dispatch');
+      const epubFile = new File(['content'], 'test.epub', { type: 'application/epub+zip' });
+      const { container } = render(<LibraryPageClient filter='all' title='All Books' />);
+      const dropZone = container.firstChild as HTMLElement;
+
+      fireEvent.drop(dropZone, { dataTransfer: { files: [epubFile] } });
+
+      expect(dispatchSpy).toHaveBeenCalledWith('toast', {
+        type: 'warning',
+        message: 'Library limit reached.',
+      });
+      expect(mockImportBook).not.toHaveBeenCalled();
     });
 
     it('should filter out unsupported file types on drop', async () => {

@@ -15,6 +15,7 @@ const {
   mockGetAddRequest,
   mockLibrary,
   mockLibraryLifecycle,
+  mockLibraryLimit,
   mockPullNow,
 } = vi.hoisted(() => {
   const mockAuth = {
@@ -33,6 +34,12 @@ const {
     libraryLoaded: true,
     libraryReconciliationSettled: true,
   };
+  const mockLibraryLimit = {
+    canAddBook: true,
+    libraryLimit: 100 as number | null,
+    currentCount: 1,
+    isLoading: false,
+  };
   return {
     mockAuth,
     mockDispatch: vi.fn(),
@@ -40,6 +47,7 @@ const {
     mockGetAddRequest: vi.fn(),
     mockLibrary,
     mockLibraryLifecycle,
+    mockLibraryLimit,
     mockPullNow: vi.fn(async () => {
       mockLibrary.library = [
         {
@@ -57,12 +65,7 @@ vi.mock('@/context/LibraryLifecycleContext', () => ({
   useLibraryLifecycle: () => mockLibraryLifecycle,
 }));
 vi.mock('@/hooks/useLibraryLimit', () => ({
-  useLibraryLimit: () => ({
-    canAddBook: true,
-    libraryLimit: 100,
-    currentCount: 1,
-    isLoading: false,
-  }),
+  useLibraryLimit: () => mockLibraryLimit,
 }));
 vi.mock('@/services/platform/client', () => ({
   platform: {
@@ -126,6 +129,10 @@ describe('useCatalogImport durable Add', () => {
     mockLibrary.library = [];
     mockLibraryLifecycle.libraryLoaded = true;
     mockLibraryLifecycle.libraryReconciliationSettled = true;
+    mockLibraryLimit.canAddBook = true;
+    mockLibraryLimit.libraryLimit = 100;
+    mockLibraryLimit.currentCount = 1;
+    mockLibraryLimit.isLoading = false;
     mockImportBook.mockReset();
     mockGetAddRequest.mockReset();
     mockDispatch.mockReset();
@@ -220,6 +227,29 @@ describe('useCatalogImport durable Add', () => {
     mockLibraryLifecycle.libraryReconciliationSettled = true;
     rerender();
     expect(result.current.getImportState(catalogBookId)).toEqual({ status: 'idle' });
+  });
+
+  it('keeps the catalog library-limit error neutral without changing the readiness gate', async () => {
+    mockLibraryLimit.canAddBook = false;
+    mockLibraryLimit.libraryLimit = 10;
+    mockLibraryLimit.currentCount = 10;
+    const { result } = renderHook(() => useCatalogImport());
+
+    await act(async () => result.current.importBook('11111111-1111-4111-8111-111111111111'));
+
+    expect(mockDispatch).toHaveBeenCalledWith('toast', {
+      message: 'Library limit reached.',
+      type: 'warning',
+    });
+    expect(mockImportBook).not.toHaveBeenCalled();
+    expect(result.current.getImportReadiness('11111111-1111-4111-8111-111111111111')).toMatchObject(
+      {
+        ready: false,
+        blockedReason: 'library_full',
+        canAddBook: false,
+        currentCount: 10,
+      },
+    );
   });
 
   it('posts with a persisted user-scoped idempotency key and never fetches OAPEN in browser', async () => {

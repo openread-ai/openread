@@ -83,6 +83,20 @@ describe('useFeatureGate', () => {
       expect(result.current.plan).toBe('free');
     });
 
+    it('derives the unlimited-library message and CTA from the entitlement registry', async () => {
+      const { result } = renderHook(() => useFeatureGate('library'));
+
+      await waitFor(() => {
+        expect(result.current.isLoading).toBe(false);
+      });
+
+      expect(result.current.allowed).toBe(false);
+      expect(result.current.message).toBe('Unlimited library is available on Reader.');
+      expect(result.current.priceDisplay).toBe('$9.99/mo');
+      expect(result.current.ctaText).toBe('Start Reader — $9.99/mo');
+      expect(result.current.upgradeIntent).toEqual({ plan: 'reader', interval: 'month' });
+    });
+
     it('should allow sync for free users', async () => {
       const { result } = renderHook(() => useFeatureGate('sync'));
 

@@ -113,7 +113,7 @@ export function useCatalogImport(): UseCatalogImportReturn {
             : readiness.blockedReason === 'library_limit_loading'
               ? 'Checking your library limit. Please try again.'
               : readiness.blockedReason === 'library_full'
-                ? `Library full (${libraryLimit} books). Upgrade for unlimited.`
+                ? 'Library limit reached.'
                 : null;
         if (message) eventDispatcher.dispatch('toast', { message, type: 'warning' });
         return;

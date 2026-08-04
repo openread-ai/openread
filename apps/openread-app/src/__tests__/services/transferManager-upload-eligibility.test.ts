@@ -199,6 +199,31 @@ describe('TransferManager upload eligibility', () => {
     expect(retrySpy).toHaveBeenCalledWith(id);
   });
 
+  it('keeps the library-limit reason and retry control while removing upgrade copy', async () => {
+    const book = baseBook();
+    const uploadBook = vi.fn(async () => {
+      throw new Error('LIBRARY_LIMIT_REACHED');
+    });
+    resetTransferManagerForTest({ uploadBook, library: [book] });
+    const dispatchSpy = vi.spyOn(eventDispatcher, 'dispatch');
+
+    const id = useTransferStore
+      .getState()
+      .addTransfer(book.hash, book.title, 'upload', 1, false, 'user-a');
+    await executeTransferForTest(useTransferStore.getState().transfers[id]!);
+
+    const toastDetail = getLastToastDetail(dispatchSpy);
+    expect(toastDetail).toMatchObject({
+      type: 'error',
+      message: 'Library limit reached.',
+      action: expect.objectContaining({ label: 'Retry' }),
+    });
+    expect(useTransferStore.getState().transfers[id]).toMatchObject({
+      status: 'failed',
+      error: 'LIBRARY_LIMIT_REACHED',
+    });
+  });
+
   it('adds a Retry action to terminal foreground download failure toasts', async () => {
     const book = baseBook();
     const downloadBook = vi.fn(async () => {

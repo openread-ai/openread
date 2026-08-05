@@ -11,6 +11,7 @@ import { FooterBarChildProps } from './types';
 import { formatProgress } from '@/utils/progress';
 import { LAUNCH_TTS_ENABLED } from '@/services/launchFeatures';
 import Button from '@/components/Button';
+import { getProgressDisplayInfo } from './progressUtils';
 
 const DesktopFooterBar: React.FC<FooterBarChildProps> = ({
   bookKey,
@@ -37,7 +38,16 @@ const DesktopFooterBar: React.FC<FooterBarChildProps> = ({
   const { section, pageinfo } = progress || {};
   const template = progressStyle === 'fraction' ? '{current} / {total}' : '{percent}%';
   const pageInfo = bookData?.isFixedLayout ? section : pageinfo;
-  const progressInfo = formatProgress(pageInfo?.current, pageInfo?.total, template, false, 'en', 0);
+  const atEnd = !!(view?.renderer as { atEnd?: boolean } | undefined)?.atEnd;
+  const displayPageInfo = getProgressDisplayInfo(pageInfo, atEnd);
+  const progressInfo = formatProgress(
+    displayPageInfo?.current,
+    displayPageInfo?.total,
+    template,
+    false,
+    'en',
+    0,
+  );
 
   const rangeInputRef = useRef<HTMLInputElement>(null);
 
@@ -108,7 +118,7 @@ const DesktopFooterBar: React.FC<FooterBarChildProps> = ({
       {progressValid && (
         <span
           title={_('Reading Progress')}
-          aria-label={`${_('Reading Progress')}: ${Math.round(progressFraction * 100)}%`}
+          aria-label={`${_('Reading Progress')}: ${atEnd ? 100 : Math.round(progressFraction * 100)}%`}
           className='mx-2 text-center text-sm'
         >
           <span aria-hidden='true'>{progressInfo}</span>

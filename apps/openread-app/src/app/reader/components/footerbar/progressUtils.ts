@@ -14,3 +14,12 @@ export function computeProgress(
   const progressFraction = progressValid ? (info!.current + 1) / info!.total : 0;
   return { progressValid, progressFraction };
 }
+
+/** Keep terminal counters honest without changing stored or seek progress. */
+export function getProgressDisplayInfo(
+  info: PageInfo | undefined,
+  atEnd: boolean,
+): PageInfo | undefined {
+  if (!info || !atEnd || info.total <= 0) return info;
+  return { ...info, current: info.total - 1 };
+}

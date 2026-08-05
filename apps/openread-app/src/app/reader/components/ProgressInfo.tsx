@@ -10,6 +10,7 @@ import { formatNumber, formatProgress } from '@/utils/progress';
 import { saveViewSettings } from '@/helpers/settings';
 import { LOCAL_PERSISTENCE_KEYS } from '@/services/persistence/localPersistenceRegistry';
 import { normalizeReaderLayout } from '../utils/readerLayoutContract';
+import { getProgressDisplayInfo } from './footerbar/progressUtils';
 
 interface PageInfoProps {
   bookKey: string;
@@ -63,7 +64,15 @@ const ProgressInfoView: React.FC<PageInfoProps> = ({
   const lang = localStorage?.getItem(LOCAL_PERSISTENCE_KEYS.i18nextLanguage) || '';
   const localize = isVertical && lang.toLowerCase().startsWith('zh');
   const progress = bookData?.isFixedLayout ? section : pageinfo;
-  const progressInfo = formatProgress(progress?.current, progress?.total, template, localize, lang);
+  const atEnd = !!(view?.renderer as { atEnd?: boolean } | undefined)?.atEnd;
+  const displayProgress = getProgressDisplayInfo(progress, atEnd);
+  const progressInfo = formatProgress(
+    displayProgress?.current,
+    displayProgress?.total,
+    template,
+    localize,
+    lang,
+  );
 
   const timeLeft = timeinfo
     ? _('{{time}} min left in chapter', {
@@ -140,10 +149,10 @@ const ProgressInfoView: React.FC<PageInfoProps> = ({
       )}
       onClick={() => cycleProgressInfoModes()}
       aria-label={[
-        progress
+        displayProgress
           ? _('On {{current}} of {{total}} page', {
-              current: progress.current + 1,
-              total: progress.total,
+              current: displayProgress.current + 1,
+              total: displayProgress.total,
             })
           : '',
         timeLeft,

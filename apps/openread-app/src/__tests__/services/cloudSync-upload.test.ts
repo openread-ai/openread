@@ -1,12 +1,23 @@
 import { testOpenReadBookRef } from '../utils/bookIdentityFixtures';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CloudSyncService, COVER_DOWNLOAD_CONCURRENCY } from '@/services/cloudSync';
 import type { Book } from '@/types/book';
 import type { FileSystem } from '@/types/system';
 import { batchGetDownloadUrls, downloadFile, uploadFile } from '@/libs/storage';
 import { CLOUD_BOOKS_SUBDIR } from '@/services/constants';
-import { getCoverFilename, getRemoteBookFilename } from '@/utils/book';
+import { getCoverFilename, getLocalBookFilename, getRemoteBookFilename } from '@/utils/book';
+
+const mockCaptureMessage = vi.hoisted(() => vi.fn());
+
+vi.mock('@sentry/nextjs', () => ({
+  captureMessage: mockCaptureMessage,
+}));
+
+vi.mock('@/utils/misc', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/utils/misc')>()),
+  getOSPlatform: () => 'macos',
+}));
 
 vi.mock('@/libs/storage', () => ({
   createProgressHandler: () => () => {},
@@ -44,6 +55,11 @@ const createCoverBooks = (count: number): Book[] =>
 describe('CloudSyncService storage lifecycle', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv('NEXT_PUBLIC_APP_PLATFORM', 'tauri');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it('does not mark a cover-only record as uploaded without local book bytes', async () => {
@@ -55,6 +71,7 @@ describe('CloudSyncService storage lifecycle', () => {
 
     expect(uploadFile).not.toHaveBeenCalled();
     expect(book.uploadedAt).toBeUndefined();
+    expect(mockCaptureMessage).not.toHaveBeenCalled();
   });
 
   it('uploads a local manual book and marks it uploaded', async () => {
@@ -68,6 +85,47 @@ describe('CloudSyncService storage lifecycle', () => {
     expect(book.sizeBytes).toBe(4);
     expect(book.uploadedAt).toEqual(expect.any(Number));
     expect(book.downloadedAt).toEqual(expect.any(Number));
+    expect(mockCaptureMessage).toHaveBeenCalledWith(
+      'Sideloaded cover pipeline produced no usable cover',
+      {
+        level: 'warning',
+        tags: {
+          reason: 'upload-skipped-no-local-cover',
+          format: 'epub',
+          platform: 'tauri',
+        },
+        extra: {
+          book_hash: book.hash,
+          title: 'Manual Book',
+          size_bytes: 4,
+        },
+      },
+    );
+  });
+
+  it('stays silent when a local cover is uploaded', async () => {
+    const book = baseBook();
+    const fs = createFs(new Set([getLocalBookFilename(book), getCoverFilename(book)]));
+    const service = new CloudSyncService(fs, '/books', async (path) => `/books/${path}`);
+
+    await service.uploadBook(book);
+
+    expect(uploadFile).toHaveBeenCalledTimes(2);
+    expect(mockCaptureMessage).not.toHaveBeenCalled();
+  });
+
+  it('keeps upload behavior unchanged when Sentry is unavailable', async () => {
+    const book = baseBook();
+    const fs = createFs(new Set([getLocalBookFilename(book)]));
+    const service = new CloudSyncService(fs, '/books', async (path) => `/books/${path}`);
+    mockCaptureMessage.mockImplementationOnce(() => {
+      throw new Error('Sentry not initialized');
+    });
+
+    await expect(service.uploadBook(book)).resolves.toBeUndefined();
+
+    expect(uploadFile).toHaveBeenCalledTimes(1);
+    expect(book.uploadedAt).toEqual(expect.any(Number));
   });
 
   it('does not mark a book downloaded when download verification rejects', async () => {

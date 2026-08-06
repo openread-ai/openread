@@ -103,6 +103,7 @@ import {
   toImportFailureError,
 } from '@/services/importFailure';
 import type { ImportFailureReason } from '@/services/importFailure';
+import { captureCoverPipelineWarning } from '@/services/coverPipelineObservability';
 
 const logger = createLogger('appService');
 const CATALOG_DOWNLOAD_READY_DEADLINE_MS = 90_000;
@@ -680,12 +681,41 @@ export abstract class BaseAppService implements AppService {
       const coverFileExists = await this.fs.exists(coverFilename, 'Books');
       if (saveCover && (!coverFileExists || overwrite)) {
         currentFailureReason = 'cover-extraction-failed';
-        let cover = await loadedBook.getCover();
+        let cover: Blob | null;
+        try {
+          cover = await loadedBook.getCover();
+        } catch (error) {
+          captureCoverPipelineWarning({
+            reason: 'extraction-threw',
+            format: book.format,
+            bookHash: book.hash,
+            title: book.title,
+            sizeBytes: fileobj.size,
+            errorName: error instanceof Error ? error.name : 'UnknownError',
+          });
+          throw error;
+        }
+        if (!cover) {
+          captureCoverPipelineWarning({
+            reason: 'extraction-empty',
+            format: book.format,
+            bookHash: book.hash,
+            title: book.title,
+            sizeBytes: fileobj.size,
+          });
+        }
         if (cover?.type === 'image/svg+xml') {
           try {
             logger.info('Converting SVG cover to PNG...');
             cover = await svg2png(cover);
           } catch (err) {
+            captureCoverPipelineWarning({
+              reason: 'svg-fallback',
+              format: book.format,
+              bookHash: book.hash,
+              title: book.title,
+              sizeBytes: fileobj.size,
+            });
             logger.warn('SVG to PNG conversion failed, using original SVG:', err);
           }
         }

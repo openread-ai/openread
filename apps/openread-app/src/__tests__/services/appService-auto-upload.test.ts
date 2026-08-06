@@ -8,6 +8,7 @@ const {
   mockGetState,
   mockGetDownloadUrl,
   mockGetCover,
+  mockCaptureMessage,
   MockDocumentLoader,
 } = vi.hoisted(() => {
   const getCover = vi.fn(async () => null as Blob | null);
@@ -41,9 +42,14 @@ const {
       format: 'epub',
     })),
     mockGetCover: getCover,
+    mockCaptureMessage: vi.fn(),
     MockDocumentLoader: FakeDocumentLoader,
   };
 });
+
+vi.mock('@sentry/nextjs', () => ({
+  captureMessage: mockCaptureMessage,
+}));
 
 vi.mock('@/services/transferManager', () => ({
   transferManager: {
@@ -197,6 +203,7 @@ import { partialMD5 } from '@/utils/md5';
 import { ImportFailureError } from '@/services/importFailure';
 import type { ImportFailureReason } from '@/services/importFailure';
 import type { FileSystem, BaseDir, ResolvedPath, SelectDirectoryMode } from '@/types/system';
+import { svg2png } from '@/utils/svg';
 
 class TestAppService extends BaseAppService {
   protected fs: FileSystem = {
@@ -297,15 +304,17 @@ function resetImportBookMocks() {
   vi.mocked(getCoverFilename).mockReturnValue('mock-cover-filename');
   vi.mocked(getConfigFilename).mockReturnValue('mock-config-filename');
   mockGetCover.mockResolvedValue(null);
+  mockCaptureMessage.mockReset();
+  vi.mocked(svg2png).mockReset();
   mockIsReady.mockReturnValue(true);
   mockGetState.mockReturnValue({
     settings: { autoUpload: true },
   });
 }
 
-function createCoverBlob(): Blob {
+function createCoverBlob(type = 'image/png'): Blob {
   return {
-    type: 'image/png',
+    type,
     arrayBuffer: vi.fn(async () => new ArrayBuffer(5)),
   } as unknown as Blob;
 }
@@ -822,9 +831,14 @@ describe('appService importBook transaction-like rollback', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv('NEXT_PUBLIC_APP_PLATFORM', 'tauri');
     resetImportBookMocks();
     mockIsReady.mockReturnValue(false);
     appService = new TestAppService();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it('classifies empty non-TXT files as file-empty before parsing', async () => {
@@ -853,7 +867,29 @@ describe('appService importBook transaction-like rollback', () => {
     expect(books).toHaveLength(0);
   });
 
-  it('cleans a newly written book file when cover extraction fails', async () => {
+  it('reports an empty cover extraction without changing successful import behavior', async () => {
+    const { files } = installTrackedBooksFs(appService);
+    const books: Book[] = [];
+
+    const result = await appService.importBook(new File(['test content'], 'test.epub'), books);
+
+    expect(result).toEqual(books[0]);
+    expect(files.has('mock-cover-filename')).toBe(false);
+    expect(mockCaptureMessage).toHaveBeenCalledWith(
+      'Sideloaded cover pipeline produced no usable cover',
+      {
+        level: 'warning',
+        tags: { reason: 'extraction-empty', format: 'epub', platform: 'tauri' },
+        extra: {
+          book_hash: 'd41d8cd98f00b204e9800998ecf8427e',
+          title: 'Test Book',
+          size_bytes: 12,
+        },
+      },
+    );
+  });
+
+  it('reports a thrown cover extraction and preserves the existing failure', async () => {
     const { files } = installTrackedBooksFs(appService);
     const books: Book[] = [];
     mockGetCover.mockRejectedValue(new Error('cover failed'));
@@ -868,6 +904,48 @@ describe('appService importBook transaction-like rollback', () => {
     expect(files.has('mock-config-filename')).toBe(false);
     expect(books).toHaveLength(0);
     expect(mockQueueUpload).not.toHaveBeenCalled();
+    expect(mockCaptureMessage).toHaveBeenCalledWith(
+      'Sideloaded cover pipeline produced no usable cover',
+      {
+        level: 'warning',
+        tags: { reason: 'extraction-threw', format: 'epub', platform: 'tauri' },
+        extra: {
+          book_hash: 'd41d8cd98f00b204e9800998ecf8427e',
+          title: 'Test Book',
+          size_bytes: 12,
+          error_name: 'Error',
+        },
+      },
+    );
+    const capturedPayload = mockCaptureMessage.mock.calls[0]?.[1] as
+      | { extra?: Record<string, unknown> }
+      | undefined;
+    expect(capturedPayload?.extra).not.toHaveProperty('error_message');
+    expect(capturedPayload?.extra).not.toHaveProperty('stack');
+  });
+
+  it('reports the SVG conversion fallback and preserves the original cover', async () => {
+    const { files } = installTrackedBooksFs(appService);
+    const books: Book[] = [];
+    mockGetCover.mockResolvedValue(createCoverBlob('image/svg+xml'));
+    vi.mocked(svg2png).mockRejectedValue(new Error('conversion failed'));
+
+    const result = await appService.importBook(new File(['test content'], 'test.epub'), books);
+
+    expect(result).toEqual(books[0]);
+    expect(files.has('mock-cover-filename')).toBe(true);
+    expect(mockCaptureMessage).toHaveBeenCalledWith(
+      'Sideloaded cover pipeline produced no usable cover',
+      {
+        level: 'warning',
+        tags: { reason: 'svg-fallback', format: 'epub', platform: 'tauri' },
+        extra: {
+          book_hash: 'd41d8cd98f00b204e9800998ecf8427e',
+          title: 'Test Book',
+          size_bytes: 12,
+        },
+      },
+    );
   });
 
   it('cleans newly created book and cover files when config save fails', async () => {
@@ -1033,6 +1111,7 @@ describe('appService importBook transaction-like rollback', () => {
     expect(files.has('mock-local-filename')).toBe(true);
     expect(files.has('mock-cover-filename')).toBe(true);
     expect(files.has('mock-config-filename')).toBe(true);
+    expect(mockCaptureMessage).not.toHaveBeenCalled();
   });
 
   it('uses an import context to avoid full-library scans for duplicate lookup', async () => {

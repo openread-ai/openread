@@ -833,6 +833,78 @@ describe('SyncWorker book reconcile queue', () => {
     expect(mocks.appService.saveLibraryBooks).not.toHaveBeenCalled();
   });
 
+  it('downloads a missing local cover on steady-state startup without book changes', async () => {
+    const { SyncWorker } = await import('@/services/sync/syncWorker');
+    const worker = new SyncWorker();
+    mocks.appService.exists.mockResolvedValue(false);
+    mocks.appService.generateCoverImageUrl.mockResolvedValue('blob:cover');
+    mocks.listFiles.mockResolvedValue({
+      files: [
+        {
+          id: 'steady-state-cover',
+          file_key: `user-1/Openread/Books/${mocks.libraryBook.hash}/cover.png`,
+          file_size: 1234,
+          file_type: 'cover',
+          book_hash: mocks.libraryBook.hash,
+          created_at: '2026-08-06T00:00:00.000Z',
+          updated_at: '2026-08-06T00:00:00.000Z',
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 1,
+      totalPages: 1,
+    });
+    mocks.pushChanges.mockResolvedValue({});
+
+    try {
+      worker.start('user-1');
+
+      await vi.waitFor(() =>
+        expect(mocks.appService.downloadBookCovers).toHaveBeenCalledWith([mocks.libraryBook]),
+      );
+      expect(mocks.appService.generateCoverImageUrl).toHaveBeenCalledWith(mocks.libraryBook);
+    } finally {
+      worker.stop();
+    }
+  });
+
+  it('does not redownload a steady-state cover that already exists locally', async () => {
+    const { SyncWorker } = await import('@/services/sync/syncWorker');
+    const worker = new SyncWorker();
+    mocks.appService.exists.mockResolvedValue(true);
+    mocks.appService.generateCoverImageUrl.mockResolvedValue('blob:cover');
+    mocks.listFiles.mockResolvedValue({
+      files: [
+        {
+          id: 'existing-local-cover',
+          file_key: `user-1/Openread/Books/${mocks.libraryBook.hash}/cover.png`,
+          file_size: 1234,
+          file_type: 'cover',
+          book_hash: mocks.libraryBook.hash,
+          created_at: '2026-08-06T00:00:00.000Z',
+          updated_at: '2026-08-06T00:00:00.000Z',
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 1,
+      totalPages: 1,
+    });
+    mocks.pushChanges.mockResolvedValue({});
+
+    try {
+      worker.start('user-1');
+
+      await vi.waitFor(() =>
+        expect(mocks.appService.generateCoverImageUrl).toHaveBeenCalledWith(mocks.libraryBook),
+      );
+      expect(mocks.appService.downloadBookCovers).not.toHaveBeenCalled();
+    } finally {
+      worker.stop();
+    }
+  });
+
   it('recovers a cover from canonical files metadata when book uploadedAt is missing', async () => {
     const { SyncWorker } = await import('@/services/sync/syncWorker');
     const worker = new SyncWorker();

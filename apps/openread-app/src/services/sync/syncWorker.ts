@@ -411,7 +411,13 @@ export class SyncWorker {
 
     // Hydrate books immediately on startup. Do not let stale offline queue pushes
     // block the remote Library pull for a fresh browser/webview session.
-    this.reconcileBooks();
+    // Cover convergence must remain sequential with reconciliation so it cannot
+    // race with Library store mutations.
+    const startupUserId = this.userId;
+    void this.reconcileBooks().then(() => {
+      if (this.stopped || this.userId !== startupUserId) return;
+      return this.downloadMissingCovers();
+    });
     void this.runSyncCycleWithTerminalFailureRecovery();
   }
 

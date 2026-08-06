@@ -6,7 +6,10 @@ export type CoverPipelineWarningReason =
   | 'extraction-empty'
   | 'extraction-threw'
   | 'svg-fallback'
-  | 'upload-skipped-no-local-cover';
+  | 'upload-skipped-no-local-cover'
+  | 'download-intent-rejected'
+  | 'download-skipped-no-url'
+  | 'cover-download-threw';
 
 interface CoverPipelineWarning {
   reason: CoverPipelineWarningReason;

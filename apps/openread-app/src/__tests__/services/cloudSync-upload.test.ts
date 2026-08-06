@@ -52,6 +52,20 @@ const createCoverBooks = (count: number): Book[] =>
     }),
   );
 
+const coverDownloadResult = (
+  book: Book,
+  overrides: { downloadUrl?: string; sizeBytes?: number | null } = {},
+) => ({
+  lfp: getCoverFilename(book),
+  cfp: `${CLOUD_BOOKS_SUBDIR}/${getCoverFilename(book)}`,
+  bookHash: book.hash,
+  title: book.title,
+  format: book.format,
+  downloadUrl: `https://r2.example/${book.hash}/cover.png`,
+  sizeBytes: 123,
+  ...overrides,
+});
+
 describe('CloudSyncService storage lifecycle', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -150,12 +164,7 @@ describe('CloudSyncService storage lifecycle', () => {
   it('bounds private cloud cover downloads at the shared cover sync seam', async () => {
     const books = createCoverBooks(48);
     vi.mocked(batchGetDownloadUrls).mockResolvedValue(
-      books.map((book) => ({
-        lfp: getCoverFilename(book),
-        cfp: `${CLOUD_BOOKS_SUBDIR}/${getCoverFilename(book)}`,
-        downloadUrl: `https://r2.example/${book.hash}/cover.png`,
-        sizeBytes: 123,
-      })),
+      books.map((book) => coverDownloadResult(book)),
     );
 
     let activeDownloads = 0;
@@ -178,17 +187,47 @@ describe('CloudSyncService storage lifecycle', () => {
     expect(downloadFile).toHaveBeenCalledTimes(books.length);
     expect(maxActiveDownloads).toBeLessThanOrEqual(COVER_DOWNLOAD_CONCURRENCY);
     expect(Math.max(...books.map((book) => book.coverDownloadedAt ?? 0))).toBeGreaterThan(0);
+    expect(mockCaptureMessage).not.toHaveBeenCalled();
+  });
+
+  it('reports a missing cover download URL and preserves the non-fatal skip', async () => {
+    const book = baseBook();
+    vi.mocked(batchGetDownloadUrls).mockResolvedValue([
+      coverDownloadResult(book, { downloadUrl: undefined, sizeBytes: null }),
+    ]);
+    const service = new CloudSyncService(createFs(new Set()), '/books', async (path) => path);
+
+    await expect(service.downloadBookCovers([book], {} as never)).resolves.toBeUndefined();
+
+    expect(downloadFile).not.toHaveBeenCalled();
+    expect(mockCaptureMessage).toHaveBeenCalledWith(
+      'Sideloaded cover pipeline produced no usable cover',
+      {
+        level: 'warning',
+        tags: {
+          reason: 'download-skipped-no-url',
+          format: 'epub',
+          platform: 'tauri',
+        },
+        extra: {
+          book_hash: book.hash,
+          title: 'Manual Book',
+          size_bytes: null,
+        },
+      },
+    );
+    const capturedPayload = mockCaptureMessage.mock.calls[0]?.[1] as
+      | { extra?: Record<string, unknown> }
+      | undefined;
+    expect(capturedPayload?.extra).not.toHaveProperty('message');
+    expect(capturedPayload?.extra).not.toHaveProperty('error_message');
+    expect(capturedPayload?.extra).not.toHaveProperty('stack');
   });
 
   it('keeps private cloud cover download failures non-fatal', async () => {
     const books = createCoverBooks(3);
     vi.mocked(batchGetDownloadUrls).mockResolvedValue(
-      books.map((book) => ({
-        lfp: getCoverFilename(book),
-        cfp: `${CLOUD_BOOKS_SUBDIR}/${getCoverFilename(book)}`,
-        downloadUrl: `https://r2.example/${book.hash}/cover.png`,
-        sizeBytes: 123,
-      })),
+      books.map((book) => coverDownloadResult(book)),
     );
     vi.mocked(downloadFile)
       .mockRejectedValueOnce(new Error('Download intent failed: 429'))
@@ -202,6 +241,29 @@ describe('CloudSyncService storage lifecycle', () => {
     expect(books[0]!.coverDownloadedAt).toBeUndefined();
     expect(books[1]!.coverDownloadedAt).toEqual(expect.any(Number));
     expect(books[2]!.coverDownloadedAt).toEqual(expect.any(Number));
+    expect(mockCaptureMessage).toHaveBeenCalledWith(
+      'Sideloaded cover pipeline produced no usable cover',
+      {
+        level: 'warning',
+        tags: {
+          reason: 'cover-download-threw',
+          format: 'epub',
+          platform: 'tauri',
+        },
+        extra: {
+          book_hash: books[0]!.hash,
+          title: 'Book 0',
+          size_bytes: 123,
+          error_name: 'Error',
+        },
+      },
+    );
+    const capturedPayload = mockCaptureMessage.mock.calls[0]?.[1] as
+      | { extra?: Record<string, unknown> }
+      | undefined;
+    expect(capturedPayload?.extra).not.toHaveProperty('message');
+    expect(capturedPayload?.extra).not.toHaveProperty('error_message');
+    expect(capturedPayload?.extra).not.toHaveProperty('stack');
   });
 
   it('does not request private cover URLs for catalog books', async () => {

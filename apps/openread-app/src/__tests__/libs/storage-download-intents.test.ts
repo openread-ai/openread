@@ -1,9 +1,14 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { batchGetDownloadUrls } from '@/libs/storage';
 
-const { fetchWithAuthMock } = vi.hoisted(() => ({
+const { fetchWithAuthMock, mockCaptureMessage } = vi.hoisted(() => ({
   fetchWithAuthMock: vi.fn(),
+  mockCaptureMessage: vi.fn(),
+}));
+
+vi.mock('@sentry/nextjs', () => ({
+  captureMessage: mockCaptureMessage,
 }));
 
 vi.mock('@/services/environment', () => ({
@@ -13,6 +18,11 @@ vi.mock('@/services/environment', () => ({
 
 vi.mock('@/utils/fetch', () => ({
   fetchWithAuth: fetchWithAuthMock,
+}));
+
+vi.mock('@/utils/misc', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/utils/misc')>()),
+  getOSPlatform: () => 'macos',
 }));
 
 vi.mock('@/utils/logger', () => ({
@@ -28,6 +38,9 @@ const coverFiles = (count: number) =>
   Array.from({ length: count }, (_, index) => ({
     lfp: `book-${index}/cover.png`,
     cfp: `books/book-${index}/cover.png`,
+    bookHash: index.toString(16).padStart(32, '0'),
+    title: `Book ${index}`,
+    format: 'epub' as const,
   }));
 
 const response = (body: unknown, ok = true, status = 200) =>
@@ -40,6 +53,11 @@ const response = (body: unknown, ok = true, status = 200) =>
 describe('batchGetDownloadUrls', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv('NEXT_PUBLIC_APP_PLATFORM', 'tauri');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it('bounds cover download intent requests by the requested concurrency', async () => {
@@ -68,6 +86,7 @@ describe('batchGetDownloadUrls', () => {
     expect(maxActiveRequests).toBeLessThanOrEqual(4);
     expect(results).toHaveLength(files.length);
     expect(results.every((result) => result.downloadUrl)).toBe(true);
+    expect(mockCaptureMessage).not.toHaveBeenCalled();
   });
 
   it('treats 429 cover download intent failures as non-fatal missing URLs', async () => {
@@ -87,5 +106,28 @@ describe('batchGetDownloadUrls', () => {
       downloadUrl: 'https://r2.example/books/book-1/cover.png',
       sizeBytes: 123,
     });
+    expect(mockCaptureMessage).toHaveBeenCalledWith(
+      'Sideloaded cover pipeline produced no usable cover',
+      {
+        level: 'warning',
+        tags: {
+          reason: 'download-intent-rejected',
+          format: 'epub',
+          platform: 'tauri',
+        },
+        extra: {
+          book_hash: '00000000000000000000000000000000',
+          title: 'Book 0',
+          size_bytes: null,
+          error_name: 'StorageHttpError',
+        },
+      },
+    );
+    const capturedPayload = mockCaptureMessage.mock.calls[0]?.[1] as
+      | { extra?: Record<string, unknown> }
+      | undefined;
+    expect(capturedPayload?.extra).not.toHaveProperty('message');
+    expect(capturedPayload?.extra).not.toHaveProperty('error_message');
+    expect(capturedPayload?.extra).not.toHaveProperty('stack');
   });
 });

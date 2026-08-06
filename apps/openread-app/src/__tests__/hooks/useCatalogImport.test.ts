@@ -458,6 +458,36 @@ describe('useCatalogImport durable Add', () => {
     expect(localStorage.getItem('openread.catalog-add.v1.user-1')).toContain(ready.addRequestId);
   });
 
+  it('preserves the loading readiness gate from the canonical presentation contract', () => {
+    expect(
+      resolveCatalogImportReadiness({
+        token: 'token',
+        user: {},
+        current: { status: 'idle' },
+        canAddBook: false,
+        libraryLimit: null,
+        currentCount: 0,
+        isLibraryLimitLoading: true,
+        isLibraryLimitResolved: false,
+      }),
+    ).toMatchObject({ ready: false, blockedReason: 'library_limit_loading' });
+  });
+
+  it('reports unresolved library config honestly instead of claiming the library is full', () => {
+    expect(
+      resolveCatalogImportReadiness({
+        token: 'token',
+        user: {},
+        current: { status: 'idle' },
+        canAddBook: false,
+        libraryLimit: null,
+        currentCount: 0,
+        isLibraryLimitLoading: false,
+        isLibraryLimitResolved: false,
+      }),
+    ).toMatchObject({ ready: false, blockedReason: 'library_limit_unavailable' });
+  });
+
   it('keeps auth, capacity, and in-flight readiness gates', () => {
     expect(
       resolveCatalogImportReadiness({

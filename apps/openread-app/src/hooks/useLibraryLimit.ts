@@ -6,8 +6,8 @@
  * Client-side hook for checking whether the current user can add books
  * to their library, based on the tier-config library_limit.
  *
- * Uses the client-safe tier contract endpoint. If the runtime config cannot
- * be loaded, book additions are denied rather than guessed from stale defaults.
+ * Uses the client-safe tier contract endpoint. An unresolved runtime contract is
+ * represented separately from a resolved quota denial.
  */
 
 import { useMemo } from 'react';
@@ -30,6 +30,10 @@ export interface LibraryLimitInfo {
   plan: UserPlan;
   /** Whether the hook data is still loading */
   isLoading: boolean;
+  /** Whether the tier and plan inputs resolved successfully */
+  isResolved: boolean;
+  /** Runtime entitlement input error, if resolution failed */
+  error: Error | null;
 }
 
 /**
@@ -53,11 +57,13 @@ export function checkLibraryLimit(
  */
 export function useLibraryLimit(): LibraryLimitInfo {
   const { user } = useAuth();
-  const { userProfilePlan, isLoading: isQuotaLoading } = useQuotaStats();
-  const { config, isLoading: isTierConfigLoading } = useTierConfig();
+  const { userProfilePlan, isLoading: isQuotaLoading, error: quotaError } = useQuotaStats();
+  const { config, isLoading: isTierConfigLoading, error: tierConfigError } = useTierConfig();
   const library = useLibraryStore((state) => state.library);
 
   const isLoading = user === undefined || Boolean(user && isQuotaLoading) || isTierConfigLoading;
+  const error = tierConfigError ?? quotaError;
+  const isResolved = Boolean(config) && !isLoading && !error;
 
   const plan: UserPlan = useMemo(() => {
     if (!user) return 'free';
@@ -69,10 +75,13 @@ export function useLibraryLimit(): LibraryLimitInfo {
   }, [library]);
 
   const { canAddBook, libraryLimit } = useMemo(() => {
-    if (!config) {
+    if (!config || !isResolved) {
       return {
+        // Server writers enforce the limit, but the client cannot surface a
+        // LIBRARY_LIMIT_REACHED sync conflict yet. Block unresolved imports so a book
+        // cannot appear locally while silently failing to sync.
         canAddBook: false,
-        libraryLimit: 0,
+        libraryLimit: null,
       };
     }
 
@@ -81,7 +90,7 @@ export function useLibraryLimit(): LibraryLimitInfo {
       canAddBook: allowed,
       libraryLimit: limit,
     };
-  }, [config, currentCount, plan]);
+  }, [config, currentCount, isResolved, plan]);
 
   return {
     canAddBook,
@@ -89,5 +98,7 @@ export function useLibraryLimit(): LibraryLimitInfo {
     currentCount,
     plan,
     isLoading,
+    isResolved,
+    error,
   };
 }

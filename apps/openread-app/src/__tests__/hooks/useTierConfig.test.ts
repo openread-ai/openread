@@ -46,7 +46,25 @@ describe('useTierConfig', () => {
     expect(result.current.error).toBeNull();
   });
 
-  it('fails closed when the canonical tier contract cannot be loaded', async () => {
+  it('retries bounded transient failures before resolving the canonical tier contract', async () => {
+    mockGetTierConfig
+      .mockRejectedValueOnce(new Error('temporary tier config failure'))
+      .mockRejectedValueOnce(new Error('temporary tier config failure'))
+      .mockResolvedValueOnce(mockTierConfig);
+
+    const { useTierConfig } = await import('@/hooks/useTierConfig');
+    const { result } = renderHook(() => useTierConfig());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(mockGetTierConfig).toHaveBeenCalledTimes(3);
+    expect(result.current.config).toEqual(mockTierConfig);
+    expect(result.current.error).toBeNull();
+  });
+
+  it('surfaces the final error after bounded retries are exhausted', async () => {
     mockGetTierConfig.mockRejectedValue(new Error('tier config unavailable'));
 
     const { useTierConfig } = await import('@/hooks/useTierConfig');
@@ -56,6 +74,7 @@ describe('useTierConfig', () => {
       expect(result.current.isLoading).toBe(false);
     });
 
+    expect(mockGetTierConfig).toHaveBeenCalledTimes(3);
     expect(result.current.config).toBeNull();
     expect(result.current.error?.message).toBe('tier config unavailable');
   });

@@ -1,9 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
+import { getFallbackConfig } from '@/lib/tier-defaults';
+
+const TEST_TIER_CONFIG = getFallbackConfig();
 
 // --- Mock values that tests can mutate ---
 let mockAuthToken: string | null = null;
 let mockOfflineAiSupported = true;
+const mockTierConfigState = vi.hoisted(() => ({
+  config: null as ReturnType<typeof getFallbackConfig> | null,
+  isLoading: false,
+  error: null as Error | null,
+}));
 
 // Mock dependencies
 vi.mock('@/hooks/useTranslation', () => ({
@@ -46,13 +54,9 @@ vi.mock('@/hooks/useQuotaStats', () => ({
   }),
 }));
 
-vi.mock('@/hooks/useTierConfig', async () => {
-  const { getFallbackConfig } =
-    await vi.importActual<typeof import('@/lib/tier-defaults')>('@/lib/tier-defaults');
-  return {
-    useTierConfig: () => ({ config: getFallbackConfig(), isLoading: false, error: null }),
-  };
-});
+vi.mock('@/hooks/useTierConfig', () => ({
+  useTierConfig: () => mockTierConfigState,
+}));
 
 vi.mock('@/store/settingsStore', () => {
   const mockState = {
@@ -149,6 +153,9 @@ describe('AiSection - BYOK UI (free user)', () => {
     vi.clearAllMocks();
     mockAuthToken = null;
     mockOfflineAiSupported = true;
+    mockTierConfigState.config = TEST_TIER_CONFIG;
+    mockTierConfigState.isLoading = false;
+    mockTierConfigState.error = null;
   });
 
   afterEach(() => {
@@ -171,6 +178,17 @@ describe('AiSection - BYOK UI (free user)', () => {
     expect(screen.getByText(/Bring Your Own Key is available on Reader/)).toBeTruthy();
     // CTA shows tier name and price from Gen 3 v3 (ctaText: "Start Reader -- $9.99/mo")
     expect(screen.getByText(/Start Reader/)).toBeTruthy();
+  });
+
+  it('shows the tier error without an upgrade claim when config never resolves', () => {
+    mockTierConfigState.config = null;
+    mockTierConfigState.error = new Error('tier config unavailable');
+
+    render(<AiSection />);
+
+    expect(screen.getByText('tier config unavailable')).toBeTruthy();
+    expect(screen.queryByText('Reader+')).toBeNull();
+    expect(screen.queryByText(/Upgrade to unlock/)).toBeNull();
   });
 
   it('should render the enable AI toggle', () => {

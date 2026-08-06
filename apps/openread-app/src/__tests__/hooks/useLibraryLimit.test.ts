@@ -7,22 +7,31 @@ const TEST_TIER_CONFIG = getFallbackConfig();
 
 // ── Hoisted mocks ──────────────────────────────────────
 
-const { mockAuthState, mockQuotaState, mockLibraryStoreState } = vi.hoisted(() => {
-  const mockAuthState = {
-    token: 'test-token',
-    user: { id: 'user-1' },
-    logout: vi.fn(),
-    refresh: vi.fn(),
-  };
-  const mockQuotaState = {
-    quotas: [],
-    userProfilePlan: 'free' as 'free' | 'reader' | 'pro' | undefined,
-  };
-  const mockLibraryStoreState = {
-    library: [] as Array<{ hash: string; deletedAt?: number | null }>,
-  };
-  return { mockAuthState, mockQuotaState, mockLibraryStoreState };
-});
+const { mockAuthState, mockQuotaState, mockLibraryStoreState, mockTierConfigState } = vi.hoisted(
+  () => {
+    const mockAuthState = {
+      token: 'test-token',
+      user: { id: 'user-1' },
+      logout: vi.fn(),
+      refresh: vi.fn(),
+    };
+    const mockQuotaState = {
+      quotas: [],
+      userProfilePlan: 'free' as 'free' | 'reader' | 'pro' | undefined,
+      isLoading: false,
+      error: null as Error | null,
+    };
+    const mockLibraryStoreState = {
+      library: [] as Array<{ hash: string; deletedAt?: number | null }>,
+    };
+    const mockTierConfigState = {
+      config: null as ReturnType<typeof getFallbackConfig> | null,
+      isLoading: false,
+      error: null as Error | null,
+    };
+    return { mockAuthState, mockQuotaState, mockLibraryStoreState, mockTierConfigState };
+  },
+);
 
 vi.mock('@/context/AuthContext', () => ({
   useAuth: () => mockAuthState,
@@ -48,13 +57,9 @@ vi.mock('@/utils/logger', () => ({
   }),
 }));
 
-vi.mock('@/hooks/useTierConfig', async () => {
-  const { getFallbackConfig } =
-    await vi.importActual<typeof import('@/lib/tier-defaults')>('@/lib/tier-defaults');
-  return {
-    useTierConfig: () => ({ config: getFallbackConfig(), isLoading: false, error: null }),
-  };
-});
+vi.mock('@/hooks/useTierConfig', () => ({
+  useTierConfig: () => mockTierConfigState,
+}));
 
 // ── Import SUT after mocks ─────────────────────────────
 
@@ -77,7 +82,12 @@ describe('useLibraryLimit', () => {
     mockAuthState.token = 'test-token';
     mockAuthState.user = { id: 'user-1' } as never;
     mockQuotaState.userProfilePlan = 'free';
+    mockQuotaState.isLoading = false;
+    mockQuotaState.error = null;
     mockLibraryStoreState.library = [];
+    mockTierConfigState.config = TEST_TIER_CONFIG;
+    mockTierConfigState.isLoading = false;
+    mockTierConfigState.error = null;
   });
 
   describe('getLibraryLimitForPlan (pure function)', () => {
@@ -230,6 +240,33 @@ describe('useLibraryLimit', () => {
 
       expect(result.current.plan).toBe('free');
       expect(result.current.canAddBook).toBe(false);
+    });
+
+    it('represents loading config separately from a reached limit', () => {
+      mockTierConfigState.config = null;
+      mockTierConfigState.isLoading = true;
+
+      const { result } = renderHook(() => useLibraryLimit());
+
+      expect(result.current.canAddBook).toBe(false);
+      expect(result.current.libraryLimit).toBeNull();
+      expect(result.current.isResolved).toBe(false);
+      expect(result.current.isLoading).toBe(true);
+      expect(result.current.error).toBeNull();
+    });
+
+    it('preserves an exhausted config error without claiming the limit was reached', () => {
+      const configError = new Error('tier config unavailable');
+      mockTierConfigState.config = null;
+      mockTierConfigState.error = configError;
+
+      const { result } = renderHook(() => useLibraryLimit());
+
+      expect(result.current.canAddBook).toBe(false);
+      expect(result.current.libraryLimit).toBeNull();
+      expect(result.current.isResolved).toBe(false);
+      expect(result.current.isLoading).toBe(false);
+      expect(result.current.error).toBe(configError);
     });
 
     it('returns isLoading true when user is undefined', () => {

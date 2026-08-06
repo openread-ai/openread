@@ -27,6 +27,7 @@ export function canOpenImportedBook(
 export type CatalogImportBlockedReason =
   | 'auth_required'
   | 'library_limit_loading'
+  | 'library_limit_unavailable'
   | 'library_full'
   | 'already_importing';
 
@@ -57,7 +58,9 @@ export function resolveCatalogImportReadiness(input: {
   libraryLimit: number | null;
   currentCount: number;
   isLibraryLimitLoading: boolean;
+  isLibraryLimitResolved?: boolean;
 }): CatalogImportReadiness {
+  const isLibraryLimitResolved = input.isLibraryLimitResolved ?? !input.isLibraryLimitLoading;
   const base = {
     isAuthenticated: Boolean(input.token && input.user),
     canAddBook: input.canAddBook,
@@ -69,8 +72,17 @@ export function resolveCatalogImportReadiness(input: {
   if (!base.isAuthenticated) return { ...base, ready: false, blockedReason: 'auth_required' };
   if (base.currentStatus === 'importing')
     return { ...base, ready: false, blockedReason: 'already_importing' };
-  if (base.isLibraryLimitLoading)
-    return { ...base, ready: false, blockedReason: 'library_limit_loading' };
+  // Keep both import surfaces unavailable until the client can explain a
+  // LIBRARY_LIMIT_REACHED sync conflict instead of leaving a book silently unsynced.
+  if (!isLibraryLimitResolved) {
+    return {
+      ...base,
+      ready: false,
+      blockedReason: base.isLibraryLimitLoading
+        ? 'library_limit_loading'
+        : 'library_limit_unavailable',
+    };
+  }
   if (!base.canAddBook) return { ...base, ready: false, blockedReason: 'library_full' };
   return { ...base, ready: true, blockedReason: null };
 }
@@ -82,6 +94,7 @@ export function useCatalogImport(): UseCatalogImportReturn {
     libraryLimit,
     currentCount,
     isLoading: isLibraryLimitLoading,
+    isResolved: isLibraryLimitResolved,
   } = useLibraryLimit();
   const importStates = useCatalogAddStore((state) => state.importStates);
   const library = useLibraryStore((state) => state.library);
@@ -105,6 +118,7 @@ export function useCatalogImport(): UseCatalogImportReturn {
         libraryLimit,
         currentCount,
         isLibraryLimitLoading,
+        isLibraryLimitResolved,
       });
       if (!readiness.ready) {
         const message =
@@ -112,9 +126,11 @@ export function useCatalogImport(): UseCatalogImportReturn {
             ? 'Sign in to add books to your library'
             : readiness.blockedReason === 'library_limit_loading'
               ? 'Checking your library limit. Please try again.'
-              : readiness.blockedReason === 'library_full'
-                ? 'Library limit reached.'
-                : null;
+              : readiness.blockedReason === 'library_limit_unavailable'
+                ? 'Unable to verify your library limit. Please try again.'
+                : readiness.blockedReason === 'library_full'
+                  ? 'Library limit reached.'
+                  : null;
         if (message) eventDispatcher.dispatch('toast', { message, type: 'warning' });
         return;
       }
@@ -128,7 +144,15 @@ export function useCatalogImport(): UseCatalogImportReturn {
       }
       await startCatalogAdd(user.id, catalogBookId).catch(() => undefined);
     },
-    [canAddBook, currentCount, isLibraryLimitLoading, libraryLimit, token, user],
+    [
+      canAddBook,
+      currentCount,
+      isLibraryLimitLoading,
+      isLibraryLimitResolved,
+      libraryLimit,
+      token,
+      user,
+    ],
   );
 
   const getImportState = useCallback(
@@ -157,8 +181,18 @@ export function useCatalogImport(): UseCatalogImportReturn {
         libraryLimit,
         currentCount,
         isLibraryLimitLoading,
+        isLibraryLimitResolved,
       }),
-    [canAddBook, currentCount, getImportState, isLibraryLimitLoading, libraryLimit, token, user],
+    [
+      canAddBook,
+      currentCount,
+      getImportState,
+      isLibraryLimitLoading,
+      isLibraryLimitResolved,
+      libraryLimit,
+      token,
+      user,
+    ],
   );
   const resetImportState = useCallback(
     (catalogBookId: string) => {

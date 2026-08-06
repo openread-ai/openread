@@ -8,6 +8,8 @@ const mockCompleteOnboarding = vi.fn();
 let mockVisibleBookCount = 0;
 let mockVariant: 'onboarding' | 'empty-library' = 'onboarding';
 let mockLibraryLoaded = true;
+let mockImportDisabled = false;
+let mockImportDisabledReason: string | null = null;
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ replace: mockReplace }),
@@ -29,7 +31,8 @@ vi.mock('@/hooks/useEmptyLibraryOnboarding', () => ({
 vi.mock('@/hooks/useBookImport', () => ({
   useBookImport: () => ({
     openImportPicker: mockOpenImportPicker,
-    importDisabled: false,
+    importDisabled: mockImportDisabled,
+    importDisabledReason: mockImportDisabledReason,
   }),
 }));
 
@@ -49,13 +52,22 @@ vi.mock('@/components/platform/empty-library-start-screen', () => ({
     variant,
     onImport,
     onDismissOnboarding,
+    importDisabled,
+    importDisabledReason,
   }: {
     variant: 'onboarding' | 'empty-library';
     onImport: () => void;
     onDismissOnboarding: () => void;
+    importDisabled?: boolean;
+    importDisabledReason?: string | null;
   }) => (
     <div data-testid='start-screen' data-variant={variant}>
-      <button data-testid='import' onClick={onImport}>
+      <button
+        data-testid='import'
+        onClick={onImport}
+        disabled={importDisabled}
+        title={importDisabledReason ?? undefined}
+      >
         Import
       </button>
       <button data-testid='dismiss' onClick={onDismissOnboarding}>
@@ -77,6 +89,8 @@ describe('GetStartedPage', () => {
     mockVisibleBookCount = 0;
     mockVariant = 'onboarding';
     mockLibraryLoaded = true;
+    mockImportDisabled = false;
+    mockImportDisabledReason = null;
   });
 
   it('renders the onboarding variant from account-scoped onboarding state', () => {
@@ -91,6 +105,17 @@ describe('GetStartedPage', () => {
     render(<GetStartedPage />);
 
     expect(screen.getByTestId('start-screen').dataset.variant).toBe('empty-library');
+  });
+
+  it('passes the honest unavailable reason to the onboarding import control', () => {
+    mockImportDisabled = true;
+    mockImportDisabledReason = 'Unable to verify your library limit. Please try again.';
+
+    render(<GetStartedPage />);
+
+    const importButton = screen.getByTestId('import') as HTMLButtonElement;
+    expect(importButton.disabled).toBe(true);
+    expect(importButton.title).toBe(mockImportDisabledReason);
   });
 
   it('completes onboarding and routes home after successful import creates visible books', async () => {

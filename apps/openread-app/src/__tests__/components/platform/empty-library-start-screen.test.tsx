@@ -58,6 +58,23 @@ describe('EmptyLibraryStartScreen', () => {
     expect(screen.queryByTestId('empty-library-dismiss-btn')).toBeNull();
   });
 
+  it('explains why import is unavailable when entitlement inputs fail', () => {
+    const reason = 'Unable to verify your library limit. Please try again.';
+    render(
+      <EmptyLibraryStartScreen
+        variant='onboarding'
+        onImport={mockOnImport}
+        importDisabled
+        importDisabledReason={reason}
+      />,
+    );
+
+    const importButton = screen.getByTestId('empty-library-import-btn') as HTMLButtonElement;
+    expect(importButton.disabled).toBe(true);
+    expect(importButton.getAttribute('aria-describedby')).toBe('empty-library-import-status');
+    expect(screen.getByRole('status').textContent).toBe(reason);
+  });
+
   it('calls handlers for import and onboarding dismissal', () => {
     render(
       <EmptyLibraryStartScreen

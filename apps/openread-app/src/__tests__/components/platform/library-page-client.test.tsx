@@ -15,6 +15,8 @@ const { mockSetLibrary, mockLibraryLimitState, mockLibraryFeatureGate } = vi.hoi
     currentCount: 0,
     plan: 'free' as const,
     isLoading: false,
+    isResolved: true,
+    error: null as Error | null,
   },
   mockLibraryFeatureGate: {
     feature: 'library' as const,
@@ -29,6 +31,7 @@ const { mockSetLibrary, mockLibraryLimitState, mockLibraryFeatureGate } = vi.hoi
     ctaText: 'Start Reader — $9.99/mo',
     plan: 'free' as const,
     isLoading: false,
+    isResolved: true,
     error: null,
   },
 }));
@@ -246,15 +249,24 @@ vi.mock('@/components/platform/library-header', () => ({
     title,
     bookCount,
     onImport,
+    importDisabled,
+    importDisabledReason,
   }: {
     title: string;
     bookCount: number;
     onImport: () => void;
+    importDisabled?: boolean;
+    importDisabledReason?: string | null;
   }) => (
     <div data-testid='library-header'>
       <span data-testid='header-title'>{title}</span>
       <span data-testid='book-count'>{bookCount}</span>
-      <button data-testid='import-button' onClick={onImport}>
+      <button
+        data-testid='import-button'
+        onClick={onImport}
+        disabled={importDisabled}
+        title={importDisabledReason ?? undefined}
+      >
         Import
       </button>
     </div>
@@ -318,7 +330,10 @@ describe('LibraryPageClient', () => {
     mockLibraryLimitState.libraryLimit = null;
     mockLibraryLimitState.currentCount = 0;
     mockLibraryLimitState.isLoading = false;
+    mockLibraryLimitState.isResolved = true;
+    mockLibraryLimitState.error = null;
     mockLibraryFeatureGate.isLoading = false;
+    mockLibraryFeatureGate.isResolved = true;
 
     // Reset importBook to default success behavior
     mockImportBook.mockResolvedValue({ hash: testOpenReadBookRef('new-book'), title: 'New Book' });
@@ -386,6 +401,22 @@ describe('LibraryPageClient', () => {
       const link = screen.getByRole('link', { name: /Start Reader/ });
       expect(link.textContent).toContain(mockLibraryFeatureGate.ctaText);
       expect(link.getAttribute('href')).toBe('/settings/billing#plans');
+      expect((screen.getByTestId('import-button') as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it('hides the upgrade and explains disabled import when tier config fails', () => {
+      mockLibraryLimitState.canAddBook = false;
+      mockLibraryLimitState.libraryLimit = null;
+      mockLibraryLimitState.isLoading = false;
+      mockLibraryLimitState.isResolved = false;
+      mockLibraryLimitState.error = new Error('tier config unavailable');
+
+      render(<LibraryPageClient filter='all' title='All Books' />);
+
+      const importButton = screen.getByTestId('import-button') as HTMLButtonElement;
+      expect(importButton.disabled).toBe(true);
+      expect(importButton.title).toBe('Unable to verify your library limit. Please try again.');
+      expect(screen.queryByText(mockLibraryFeatureGate.message)).toBeNull();
     });
 
     it('does not present an upgrade while the library quota is loading', () => {

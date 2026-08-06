@@ -25,6 +25,8 @@ export interface UseFeatureGateReturn extends FeatureGateResult {
   plan: UserPlan;
   /** Whether the hook is still loading user state */
   isLoading: boolean;
+  /** Whether the gate was evaluated from resolved tier and plan inputs */
+  isResolved: boolean;
   /** Runtime tier-config load error, if gates cannot be evaluated safely */
   error: Error | null;
 }
@@ -56,29 +58,31 @@ export function useFeatureGate(feature: GatedFeature): UseFeatureGateReturn {
     return userProfilePlan || 'free';
   }, [user, userProfilePlan]);
 
+  const isResolved = Boolean(config) && !isLoading && !error;
   const gateResult = useMemo(() => {
-    if (!config) {
+    if (!config || !isResolved) {
       const definition = getFeatureDefinition(feature);
       return {
         feature,
         label: definition.label,
         allowed: false,
         availableOnAnyTier: false,
-        requiredTier: definition.suggestedTier,
-        requiredTierName: definition.suggestedTier,
+        requiredTier: 'free',
+        requiredTierName: '',
         upgradeIntent: null,
-        message: error?.message ?? 'Tier configuration is unavailable.',
+        message: isLoading ? '' : (error?.message ?? 'Tier configuration is unavailable.'),
         priceDisplay: '',
         ctaText: '',
       } satisfies FeatureGateResult;
     }
     return checkFeatureGate(feature, plan, config, getLaunchFeatureOverrides());
-  }, [config, error, feature, plan]);
+  }, [config, error, feature, isLoading, isResolved, plan]);
 
   return {
     ...gateResult,
     plan,
     isLoading,
+    isResolved,
     error,
   };
 }

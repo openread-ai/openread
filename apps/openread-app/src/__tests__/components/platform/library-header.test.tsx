@@ -116,6 +116,8 @@ vi.mock('@/components/primitives/button', () => ({
     children,
     onClick,
     title,
+    disabled,
+    'aria-label': ariaLabel,
     variant,
     size,
     className,
@@ -125,6 +127,8 @@ vi.mock('@/components/primitives/button', () => ({
     children: React.ReactNode;
     onClick?: () => void;
     title?: string;
+    disabled?: boolean;
+    'aria-label'?: string;
     variant?: string;
     size?: string;
     className?: string;
@@ -138,6 +142,8 @@ vi.mock('@/components/primitives/button', () => ({
       data-active={dataActive}
       onClick={onClick}
       title={title}
+      disabled={disabled}
+      aria-label={ariaLabel}
       className={`${className || ''} ${variant === 'secondary' ? 'bg-secondary' : ''}`}
     >
       {children}
@@ -315,6 +321,16 @@ describe('LibraryHeader', () => {
       render(<LibraryHeader {...defaultProps} />);
       fireEvent.click(screen.getByTestId('import-button'));
       expect(defaultProps.onImport).toHaveBeenCalled();
+    });
+
+    it('uses the unresolved entitlement reason instead of claiming the library is full', () => {
+      const reason = 'Unable to verify your library limit. Please try again.';
+      render(<LibraryHeader {...defaultProps} importDisabled importDisabledReason={reason} />);
+
+      const importButton = screen.getByTestId('import-button') as HTMLButtonElement;
+      expect(importButton.disabled).toBe(true);
+      expect(importButton.title).toBe(reason);
+      expect(importButton.getAttribute('aria-label')).toBe(reason);
     });
   });
 

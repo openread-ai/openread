@@ -62,13 +62,15 @@ const TranslationToggler = ({ bookKey }: { bookKey: string }) => {
         setTranslationEnabled(!translationEnabled);
       }}
       label={
-        !translateGate.allowed
-          ? _('Translation') + ' (' + translateGate.requiredTierName + ')'
-          : translationAvailable
-            ? translationEnabled
-              ? _('Disable Translation')
-              : _('Enable Translation')
-            : _('Translation Disabled')
+        !translateGate.isResolved
+          ? _('Translation')
+          : !translateGate.allowed
+            ? _('Translation') + ' (' + translateGate.requiredTierName + ')'
+            : translationAvailable
+              ? translationEnabled
+                ? _('Disable Translation')
+                : _('Enable Translation')
+              : _('Translation Disabled')
       }
     ></Button>
   );

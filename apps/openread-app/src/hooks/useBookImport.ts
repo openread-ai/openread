@@ -20,7 +20,10 @@ import type { Book } from '@/types/book';
 
 const logger = createLogger('book-import');
 
-export type BookImportSkippedReason = 'unsupported-format' | 'library-limit';
+export type BookImportSkippedReason =
+  | 'unsupported-format'
+  | 'library-limit'
+  | 'library-limit-unavailable';
 
 export type BookImportOutcome =
   | {
@@ -109,6 +112,17 @@ export function createLibraryLimitImportOutcome(
   };
 }
 
+export function createLibraryLimitUnavailableImportOutcome(
+  selectedFile: SelectedFile,
+): Extract<BookImportOutcome, { status: 'skipped' }> {
+  return {
+    fileName: selectedBookFileName(selectedFile),
+    status: 'skipped',
+    reason: 'library-limit-unavailable',
+    userMessage: 'Unable to verify your library limit. Please try again.',
+  };
+}
+
 export function summarizeImportFailureOutcomes(outcomes: BookImportOutcome[]): string | null {
   const failed = outcomes.filter((outcome) => outcome.status === 'failed');
   if (failed.length === 0) return null;
@@ -129,7 +143,24 @@ export function useBookImport() {
   const { appService } = useEnv();
   const { selectFiles } = useFileSelector(appService, _);
   const { syncBooks } = useSync();
-  const { canAddBook, libraryLimit, isLoading: isLibraryLimitLoading } = useLibraryLimit();
+  const {
+    canAddBook,
+    libraryLimit,
+    isLoading: isLibraryLimitLoading,
+    isResolved: isLibraryLimitResolved,
+    error: libraryLimitError,
+  } = useLibraryLimit();
+  // Server writers enforce library limits, but the client does not surface
+  // LIBRARY_LIMIT_REACHED sync conflicts yet. Keep unresolved imports blocked so a book
+  // cannot appear locally while silently failing to sync.
+  const importDisabled = !canAddBook;
+  const importDisabledReason = !isLibraryLimitResolved
+    ? isLibraryLimitLoading
+      ? 'Checking your library limit...'
+      : 'Unable to verify your library limit. Please try again.'
+    : importDisabled
+      ? 'Library limit reached.'
+      : null;
 
   useEffect(() => {
     const handleTransferComplete = async (event: CustomEvent) => {
@@ -145,12 +176,12 @@ export function useBookImport() {
     };
   }, [syncBooks]);
 
-  const warnLibraryFull = useCallback(() => {
+  const warnImportBlocked = useCallback(() => {
     eventDispatcher.dispatch('toast', {
       type: 'warning',
-      message: 'Library limit reached.',
+      message: importDisabledReason ?? 'Library limit reached.',
     });
-  }, []);
+  }, [importDisabledReason]);
 
   const importSelectedBookFiles = useCallback(
     async (files: SelectedFile[]): Promise<BookImportResult> => {
@@ -159,12 +190,16 @@ export function useBookImport() {
       }
 
       if (!canAddBook) {
-        warnLibraryFull();
+        warnImportBlocked();
         return {
           successCount: 0,
           failCount: 0,
           skippedForLimitCount: files.length,
-          outcomes: files.map(createLibraryLimitImportOutcome),
+          outcomes: files.map((file) =>
+            isLibraryLimitResolved
+              ? createLibraryLimitImportOutcome(file)
+              : createLibraryLimitUnavailableImportOutcome(file),
+          ),
         };
       }
 
@@ -184,12 +219,12 @@ export function useBookImport() {
       const remainingSlots =
         libraryLimit === null ? files.length : Math.max(libraryLimit - activeBefore.size, 0);
       if (remainingSlots <= 0) {
-        warnLibraryFull();
+        warnImportBlocked();
         return {
           successCount: 0,
           failCount: 0,
           skippedForLimitCount: files.length,
-          outcomes: files.map(createLibraryLimitImportOutcome),
+          outcomes: files.map((file) => createLibraryLimitImportOutcome(file)),
         };
       }
 
@@ -197,7 +232,7 @@ export function useBookImport() {
         const activeCount = useLibraryStore.getState().getVisibleLibrary().length;
         if (libraryLimit !== null && activeCount >= libraryLimit) {
           skippedForLimitCount = files.length - index;
-          outcomes.push(...files.slice(index).map(createLibraryLimitImportOutcome));
+          outcomes.push(...files.slice(index).map((file) => createLibraryLimitImportOutcome(file)));
           break;
         }
 
@@ -272,17 +307,17 @@ export function useBookImport() {
         });
       }
       if (skippedForLimitCount > 0) {
-        warnLibraryFull();
+        warnImportBlocked();
       }
 
       return { successCount, failCount, skippedForLimitCount, outcomes, libraryIndexSaveFailure };
     },
-    [appService, canAddBook, libraryLimit, warnLibraryFull],
+    [appService, canAddBook, isLibraryLimitResolved, libraryLimit, warnImportBlocked],
   );
 
   const openImportPicker = useCallback(async (): Promise<BookImportResult> => {
     if (!canAddBook) {
-      warnLibraryFull();
+      warnImportBlocked();
       return { successCount: 0, failCount: 0, skippedForLimitCount: 0, outcomes: [] };
     }
 
@@ -332,13 +367,16 @@ export function useBookImport() {
       });
       return { successCount: 0, failCount: 1, skippedForLimitCount: 0, outcomes: [] };
     }
-  }, [selectFiles, importSelectedBookFiles, _, canAddBook, warnLibraryFull]);
+  }, [selectFiles, importSelectedBookFiles, _, canAddBook, warnImportBlocked]);
 
   return {
     canAddBook,
-    importDisabled: !canAddBook,
+    importDisabled,
+    importDisabledReason,
     libraryLimit,
     isLibraryLimitLoading,
+    isLibraryLimitResolved,
+    libraryLimitError,
     importSelectedBookFiles,
     openImportPicker,
   };

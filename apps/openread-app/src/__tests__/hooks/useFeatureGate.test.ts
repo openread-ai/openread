@@ -1,11 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
+import { getFallbackConfig } from '@/lib/tier-defaults';
 import type { UserPlan } from '@/types/quota';
+
+const TEST_TIER_CONFIG = getFallbackConfig();
 
 // Mock state
 let mockUser: { id: string } | null = null;
 let mockUserProfilePlan: UserPlan | undefined = undefined;
 const launchAdapterState = vi.hoisted(() => ({ overrides: {} as Record<string, boolean> }));
+const mockTierConfigState = vi.hoisted(() => ({
+  config: null as ReturnType<typeof getFallbackConfig> | null,
+  isLoading: false,
+  error: null as Error | null,
+}));
 
 // Mock useAuth
 vi.mock('@/context/AuthContext', () => ({
@@ -36,13 +44,9 @@ vi.mock('@/utils/logger', () => ({
   })),
 }));
 
-vi.mock('@/hooks/useTierConfig', async () => {
-  const { getFallbackConfig } =
-    await vi.importActual<typeof import('@/lib/tier-defaults')>('@/lib/tier-defaults');
-  return {
-    useTierConfig: () => ({ config: getFallbackConfig(), isLoading: false, error: null }),
-  };
-});
+vi.mock('@/hooks/useTierConfig', () => ({
+  useTierConfig: () => mockTierConfigState,
+}));
 
 vi.mock('@/services/launchFeatures', () => ({
   getLaunchFeatureOverrides: () => launchAdapterState.overrides,
@@ -56,6 +60,28 @@ describe('useFeatureGate', () => {
     mockUser = null;
     mockUserProfilePlan = undefined;
     launchAdapterState.overrides = {};
+    mockTierConfigState.config = TEST_TIER_CONFIG;
+    mockTierConfigState.isLoading = false;
+    mockTierConfigState.error = null;
+  });
+
+  describe('unresolved tier configuration', () => {
+    it('reports an honest unavailable state without claiming an upgrade tier', () => {
+      const configError = new Error('tier config unavailable');
+      mockTierConfigState.config = null;
+      mockTierConfigState.error = configError;
+
+      const { result } = renderHook(() => useFeatureGate('byok'));
+
+      expect(result.current.allowed).toBe(false);
+      expect(result.current.isResolved).toBe(false);
+      expect(result.current.error).toBe(configError);
+      expect(result.current.requiredTierName).toBe('');
+      expect(result.current.upgradeIntent).toBeNull();
+      expect(result.current.message).toBe('tier config unavailable');
+      expect(result.current.priceDisplay).toBe('');
+      expect(result.current.ctaText).toBe('');
+    });
   });
 
   // ─── Free tier ─────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { OPENREAD_NODE_BASE_URL } from '@/services/constants';
 import {
@@ -12,6 +12,7 @@ const originalNodeBaseUrl = process.env['NEXT_PUBLIC_NODE_BASE_URL'];
 
 describe('environment node API base URL', () => {
   afterEach(() => {
+    vi.unstubAllEnvs();
     if (originalNodeBaseUrl === undefined) {
       delete process.env['NEXT_PUBLIC_NODE_BASE_URL'];
     } else {
@@ -41,4 +42,40 @@ describe('environment node API base URL', () => {
       'https://staging-api.openread.ai/catalog/books/catalog-id/cover',
     );
   });
+
+  it('keeps surviving Next API callers same-origin in web development', () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    vi.stubEnv('NEXT_PUBLIC_APP_PLATFORM', 'web');
+
+    const baseUrl = getNodeAPIBaseUrl();
+
+    expect({
+      edgeTTS: `${baseUrl}/tts/edge`,
+      appleIAP: `${baseUrl}/apple/iap-verify`,
+      googleIAP: `${baseUrl}/google/iap-verify`,
+      syncPush: `${baseUrl}/sync/push`,
+      syncPull: `${baseUrl}/sync/pull`,
+      syncReconcile: `${baseUrl}/sync/reconcile`,
+    }).toEqual({
+      edgeTTS: '/api/tts/edge',
+      appleIAP: '/api/apple/iap-verify',
+      googleIAP: '/api/google/iap-verify',
+      syncPush: '/api/sync/push',
+      syncPull: '/api/sync/pull',
+      syncReconcile: '/api/sync/reconcile',
+    });
+  });
+
+  it.each([
+    { nodeEnv: 'production', appPlatform: 'web' },
+    { nodeEnv: 'development', appPlatform: 'tauri' },
+  ])(
+    'keeps node and product API origins identical for $nodeEnv $appPlatform builds',
+    ({ nodeEnv, appPlatform }) => {
+      vi.stubEnv('NODE_ENV', nodeEnv);
+      vi.stubEnv('NEXT_PUBLIC_APP_PLATFORM', appPlatform);
+
+      expect(getNodeAPIBaseUrl()).toBe(getProductAPIBaseUrl());
+    },
+  );
 });

@@ -16,6 +16,7 @@ vi.mock('@/utils/access', () => ({
 
 vi.mock('@/services/environment', () => ({
   getNodeAPIBaseUrl: () => '/api',
+  getProductAPIBaseUrl: () => 'https://api.openread.test/api',
 }));
 
 vi.mock('@/utils/logger', () => ({
@@ -86,7 +87,7 @@ describe('useStorageQuota', () => {
     expect(result.current.quota).toEqual(EXPECTED_QUOTA);
     expect(result.current.error).toBeNull();
     expect(global.fetch).toHaveBeenCalledWith(
-      '/api/files/stats',
+      'https://api.openread.test/api/files/stats',
       expect.objectContaining({
         headers: { Authorization: 'Bearer mock-access-token' },
       }),

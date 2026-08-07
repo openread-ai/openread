@@ -12,7 +12,7 @@ const { isWebAppPlatformMock, tauriDownloadMock, webDownloadMock } = vi.hoisted(
 }));
 
 vi.mock('@/services/environment', () => ({
-  getNodeAPIBaseUrl: () => 'https://api.openread.test',
+  getProductAPIBaseUrl: () => 'https://api.openread.test',
   isWebAppPlatform: isWebAppPlatformMock,
 }));
 

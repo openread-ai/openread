@@ -12,7 +12,8 @@ vi.mock('@sentry/nextjs', () => ({
 }));
 
 vi.mock('@/services/environment', () => ({
-  getNodeAPIBaseUrl: () => 'https://api.openread.test',
+  getNodeAPIBaseUrl: () => '/api',
+  getProductAPIBaseUrl: () => 'https://api.openread.test/api',
   isWebAppPlatform: () => true,
 }));
 
@@ -58,6 +59,24 @@ describe('batchGetDownloadUrls', () => {
 
   afterEach(() => {
     vi.unstubAllEnvs();
+  });
+
+  it('routes file intents to the canonical apps/api origin', async () => {
+    fetchWithAuthMock.mockResolvedValue(
+      response({
+        fileId: null,
+        objectKey: 'books/book-0/cover.png',
+        downloadUrl: 'https://r2.example/books/book-0/cover.png',
+        sizeBytes: 123,
+      }),
+    );
+
+    await batchGetDownloadUrls(coverFiles(1));
+
+    expect(fetchWithAuthMock).toHaveBeenCalledWith(
+      'https://api.openread.test/api/files/download-intent',
+      expect.objectContaining({ method: 'POST' }),
+    );
   });
 
   it('bounds cover download intent requests by the requested concurrency', async () => {

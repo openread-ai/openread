@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { getNodeAPIBaseUrl } from '@/services/environment';
+import { getProductAPIBaseUrl } from '@/services/environment';
 import { getAccessToken } from '@/utils/access';
 import { createLogger } from '@/utils/logger';
 import { normalizeUserPlan } from '@/lib/user-plan';
@@ -55,7 +55,7 @@ export function useStorageQuota() {
 
     try {
       const accessToken = await getAccessToken();
-      const response = await fetch(`${getNodeAPIBaseUrl()}/files/stats`, {
+      const response = await fetch(`${getProductAPIBaseUrl()}/files/stats`, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },

@@ -54,13 +54,19 @@ export const hasRemoteCopy = (
   );
 };
 
-export const isUserCloudUploadEligible = (
+export function hasAnyOpenableSource(
+  book: Pick<Book, 'downloadedAt' | 'storagePath' | 'uploadedAt' | 'url'>,
+) {
+  return Boolean(book.downloadedAt || book.storagePath || book.uploadedAt || book.url);
+}
+
+export const canUploadToUserCloud = (
   book: Pick<Book, 'catalogBookId' | 'deletedAt' | 'hash' | 'storagePath' | 'uploadedAt'>,
 ): boolean => {
   return !book.deletedAt && !hasRemoteCopy(book);
 };
 
-export const hasUserBookUploadSource = async (
+export const canUploadBookNow = async (
   book: Pick<
     Book,
     | 'catalogBookId'
@@ -75,7 +81,7 @@ export const hasUserBookUploadSource = async (
   >,
   appService: Pick<AppService, 'exists'>,
 ): Promise<boolean> => {
-  if (!isUserCloudUploadEligible(book)) return false;
+  if (!canUploadToUserCloud(book)) return false;
   if (book.url && isValidURL(book.url)) return true;
   return appService.exists(getLocalBookFilename(book as Book), 'Books');
 };

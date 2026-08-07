@@ -1,17 +1,12 @@
 import { Book, FIXED_LAYOUT_FORMATS } from '@/types/book';
+import { hasAnyOpenableSource } from '@/utils/book';
 
 export const PARALLEL_READ_MENU_LIMIT = 20;
-
-export function hasReaderOpenableSource(
-  book: Pick<Book, 'downloadedAt' | 'storagePath' | 'uploadedAt' | 'url'>,
-) {
-  return Boolean(book.downloadedAt || book.storagePath || book.uploadedAt || book.url);
-}
 
 export function canOfferBookForParallelRead(
   book: Pick<Book, 'format' | 'downloadedAt' | 'storagePath' | 'uploadedAt' | 'url'>,
 ) {
-  return !FIXED_LAYOUT_FORMATS.has(book.format) && hasReaderOpenableSource(book);
+  return !FIXED_LAYOUT_FORMATS.has(book.format) && hasAnyOpenableSource(book);
 }
 
 export function getParallelReadMenuBooks(books: Book[], activeBookId?: string) {

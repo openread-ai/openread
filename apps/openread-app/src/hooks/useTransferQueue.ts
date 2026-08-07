@@ -7,7 +7,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { isTransferOwnedBy, useTransferStore, TransferType } from '@/store/transferStore';
 import { transferManager } from '@/services/transferManager';
 import { Book } from '@/types/book';
-import { hasUserBookUploadSource } from '@/utils/book';
+import { canUploadBookNow } from '@/utils/book';
 
 export function useTransferQueue(
   libraryLoaded = true,
@@ -60,7 +60,7 @@ export function useTransferQueue(
           const sourceResults = await Promise.all(
             getLibrary().map(async (book) => ({
               book,
-              canUpload: await hasUserBookUploadSource(book, appService),
+              canUpload: await canUploadBookNow(book, appService),
             })),
           );
           const pendingUploadBooks = sourceResults
@@ -107,7 +107,7 @@ export function useTransferQueue(
       const sourceResults = await Promise.all(
         library.map(async (book) => ({
           book,
-          canUpload: await hasUserBookUploadSource(book, appService),
+          canUpload: await canUploadBookNow(book, appService),
         })),
       );
       if (cancelled) return;

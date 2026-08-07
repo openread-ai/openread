@@ -5,7 +5,7 @@ import { TranslationFunc } from '@/hooks/useTranslation';
 import { ProgressPayload } from '@/utils/transfer';
 import { eventDispatcher } from '@/utils/event';
 import { createLogger } from '@/utils/logger';
-import { isUserCloudUploadEligible } from '@/utils/book';
+import { canUploadToUserCloud } from '@/utils/book';
 import { resolveBookAvailability } from '@/services/libraryBookAvailability';
 import { LOCAL_PERSISTENCE_KEYS } from '@/services/persistence/localPersistenceRegistry';
 import {
@@ -112,8 +112,7 @@ class TransferManager {
   }
 
   queueUpload(book: Book, priority: number = 10, isBackground: boolean = false): string | null {
-    if (!isUserCloudUploadEligible(book) || !this.isReady() || !this.currentOwnerUserId)
-      return null;
+    if (!canUploadToUserCloud(book) || !this.isReady() || !this.currentOwnerUserId) return null;
 
     const store = useTransferStore.getState();
     const ownerUserId = this.currentOwnerUserId;
@@ -193,7 +192,7 @@ class TransferManager {
 
   queueBatchUploads(books: Book[], priority: number = 10, isBackground: boolean = false): string[] {
     return books
-      .filter(isUserCloudUploadEligible)
+      .filter(canUploadToUserCloud)
       .map((book) => this.queueUpload(book, priority, isBackground))
       .filter((id): id is string => id !== null);
   }
@@ -202,7 +201,7 @@ class TransferManager {
     if (!this.currentOwnerUserId) return [];
     const ownerUserId = this.currentOwnerUserId;
     const eligibleBookHashes = new Set<string>(
-      books.filter(isUserCloudUploadEligible).map((book) => book.hash),
+      books.filter(canUploadToUserCloud).map((book) => book.hash),
     );
     if (eligibleBookHashes.size === 0) return [];
 
@@ -405,7 +404,7 @@ class TransferManager {
       }
 
       if (transfer.type === 'upload') {
-        if (!isUserCloudUploadEligible(book)) {
+        if (!canUploadToUserCloud(book)) {
           store.setTransferStatus(transfer.id, 'completed');
           return;
         }

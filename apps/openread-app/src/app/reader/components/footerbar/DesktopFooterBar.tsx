@@ -133,6 +133,12 @@ const DesktopFooterBar: React.FC<FooterBarChildProps> = ({
         aria-label={_('Jump to Location')}
         value={progressValue}
         onChange={(e) => handleProgressChange(parseInt(e.target.value, 10))}
+        onPointerUp={(event) => {
+          if (event.pointerType !== 'touch') event.currentTarget.blur();
+        }}
+        onPointerCancel={(event) => {
+          if (event.pointerType !== 'touch') event.currentTarget.blur();
+        }}
       />
       {/* Launch holdback: hide desktop TTS button until post-launch. */}
       {LAUNCH_TTS_ENABLED && (

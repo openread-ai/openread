@@ -833,6 +833,70 @@ describe('SyncWorker book reconcile queue', () => {
     expect(mocks.appService.saveLibraryBooks).not.toHaveBeenCalled();
   });
 
+  it('logs a zero-candidate cover convergence decision with its exclusion reason', async () => {
+    const { SyncWorker } = await import('@/services/sync/syncWorker');
+    const coveredBook = { ...mocks.libraryBook, coverImageUrl: 'blob:existing' } as Book;
+    mocks.libraryState.library = [coveredBook];
+    mocks.pushChanges.mockResolvedValueOnce({ reconcile: { upsert: [], remove: [] } });
+    const worker = new SyncWorker();
+    (worker as unknown as { stopped: boolean; userId: string }).stopped = false;
+    (worker as unknown as { stopped: boolean; userId: string }).userId = 'user-1';
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    try {
+      await worker.pullNow('books');
+
+      expect(logSpy).toHaveBeenCalledWith('[SyncWorker] Cover convergence decision:', {
+        libraryLength: 1,
+        candidatesLength: 0,
+        needsDownloadLength: 0,
+        coverFileBookHashesSize: 0,
+        excluded: {
+          deleted: { count: 0, titles: [] },
+          'catalog-backed': { count: 0, titles: [] },
+          'has-cover-url': { count: 1, titles: ['Local Book'] },
+          'no-file-metadata': { count: 0, titles: [] },
+          'local-file-exists': { count: 0, titles: [] },
+        },
+      });
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+
+  it('attributes a candidate excluded by the local existence check', async () => {
+    const { SyncWorker } = await import('@/services/sync/syncWorker');
+    const localCoverBook = { ...mocks.libraryBook, uploadedAt: 1 } as Book;
+    mocks.libraryState.library = [localCoverBook];
+    mocks.appService.exists.mockResolvedValue(true);
+    mocks.pushChanges.mockResolvedValueOnce({ reconcile: { upsert: [], remove: [] } });
+    const worker = new SyncWorker();
+    (worker as unknown as { stopped: boolean; userId: string }).stopped = false;
+    (worker as unknown as { stopped: boolean; userId: string }).userId = 'user-1';
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    try {
+      await worker.pullNow('books');
+
+      expect(logSpy).toHaveBeenCalledWith('[SyncWorker] Cover convergence decision:', {
+        libraryLength: 1,
+        candidatesLength: 1,
+        needsDownloadLength: 0,
+        coverFileBookHashesSize: 0,
+        excluded: {
+          deleted: { count: 0, titles: [] },
+          'catalog-backed': { count: 0, titles: [] },
+          'has-cover-url': { count: 0, titles: [] },
+          'no-file-metadata': { count: 0, titles: [] },
+          'local-file-exists': { count: 1, titles: ['Local Book'] },
+        },
+      });
+      expect(mocks.appService.downloadBookCovers).not.toHaveBeenCalled();
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+
   it('downloads a missing local cover on steady-state startup without book changes', async () => {
     const { SyncWorker } = await import('@/services/sync/syncWorker');
     const worker = new SyncWorker();

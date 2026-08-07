@@ -937,17 +937,47 @@ export class SyncWorker {
       }
 
       const library = useLibraryStore.getState().library;
-      const candidates = library.filter(
-        (book) =>
-          !book.deletedAt &&
-          !isCatalogBackedBook(book) &&
-          !book.coverImageUrl &&
-          (Boolean(book.uploadedAt) || coverFileBookHashes.has(book.hash)),
-      );
+      const excludedTitles = {
+        deleted: [] as string[],
+        'catalog-backed': [] as string[],
+        'has-cover-url': [] as string[],
+        'no-file-metadata': [] as string[],
+        'local-file-exists': [] as string[],
+      };
+      const candidates = library.filter((book) => {
+        let reason: keyof typeof excludedTitles | null = null;
+        if (book.deletedAt) reason = 'deleted';
+        else if (isCatalogBackedBook(book)) reason = 'catalog-backed';
+        else if (book.coverImageUrl) reason = 'has-cover-url';
+        else if (!(Boolean(book.uploadedAt) || coverFileBookHashes.has(book.hash))) {
+          reason = 'no-file-metadata';
+        }
+        if (!reason) return true;
+        excludedTitles[reason].push(book.title);
+        return false;
+      });
       const existResults = await Promise.all(
         candidates.map((book) => appService.exists(getCoverFilename(book), 'Books')),
       );
+      existResults.forEach((exists, index) => {
+        if (exists) excludedTitles['local-file-exists'].push(candidates[index]!.title);
+      });
       const needsDownload = candidates.filter((_, i) => !existResults[i]);
+      const summarize = (titles: string[]) => ({ count: titles.length, titles });
+
+      console.log('[SyncWorker] Cover convergence decision:', {
+        libraryLength: library.length,
+        candidatesLength: candidates.length,
+        needsDownloadLength: needsDownload.length,
+        coverFileBookHashesSize: coverFileBookHashes.size,
+        excluded: {
+          deleted: summarize(excludedTitles.deleted),
+          'catalog-backed': summarize(excludedTitles['catalog-backed']),
+          'has-cover-url': summarize(excludedTitles['has-cover-url']),
+          'no-file-metadata': summarize(excludedTitles['no-file-metadata']),
+          'local-file-exists': summarize(excludedTitles['local-file-exists']),
+        },
+      });
 
       if (needsDownload.length > 0) {
         console.log(

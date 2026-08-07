@@ -558,6 +558,12 @@ export class SyncWorker {
   }
 
   private handleOnline = (): void => {
+    const reconnectUserId = this.userId;
+    void this.reconcileBooks().then(() => {
+      if (this.stopped || this.userId !== reconnectUserId) return;
+      return this.downloadMissingCovers();
+    });
+
     // Resume: recover terminal failed outbox records once per session/user, then drain normally.
     void this.drainQueueWithTerminalFailureRecovery();
   };

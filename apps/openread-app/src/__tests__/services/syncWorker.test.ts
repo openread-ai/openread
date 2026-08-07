@@ -942,6 +942,153 @@ describe('SyncWorker book reconcile queue', () => {
     }
   });
 
+  it('converges a missing user-import cover after an offline start reconnects', async () => {
+    const { SyncWorker } = await import('@/services/sync/syncWorker');
+    const syncedUserBook = {
+      ...mocks.libraryBook,
+      catalogBookId: null,
+      storagePath: 'Openread/Books/user-import.epub',
+    } as Book;
+    mocks.libraryState.library = [syncedUserBook];
+    const worker = new SyncWorker();
+    let online = false;
+    const onlineSpy = vi.spyOn(window.navigator, 'onLine', 'get').mockImplementation(() => online);
+    mocks.pushChanges.mockResolvedValue({});
+    mocks.appService.exists.mockResolvedValue(false);
+    mocks.appService.downloadBookCovers.mockName('downloadBookCovers');
+    mocks.appService.generateCoverImageUrl.mockResolvedValue('blob:cover');
+    mocks.listFiles.mockImplementation(async () => {
+      if (!online) throw new Error('offline');
+      return {
+        files: [
+          {
+            id: 'reconnected-cover',
+            file_key: `user-1/Openread/Books/${syncedUserBook.hash}/cover.png`,
+            file_size: 1234,
+            file_type: 'cover',
+            book_hash: syncedUserBook.hash,
+            created_at: '2026-08-06T00:00:00.000Z',
+            updated_at: '2026-08-06T00:00:00.000Z',
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 1,
+        totalPages: 1,
+      };
+    });
+
+    try {
+      worker.start('user-1');
+
+      await vi.waitFor(() => expect(mocks.listFiles).toHaveBeenCalledTimes(1));
+      expect(mocks.appService.downloadBookCovers).not.toHaveBeenCalled();
+
+      online = true;
+      window.dispatchEvent(new Event('online'));
+
+      await vi.waitFor(() => expect(mocks.appService.downloadBookCovers).toHaveBeenCalledTimes(1));
+      expect(mocks.appService.downloadBookCovers).toHaveBeenCalledWith([syncedUserBook]);
+      expect(mocks.appService.generateCoverImageUrl).toHaveBeenCalledWith(syncedUserBook);
+    } finally {
+      worker.stop();
+      onlineSpy.mockRestore();
+    }
+  });
+
+  it('waits for reconnect reconciliation before cover convergence', async () => {
+    const { SyncWorker } = await import('@/services/sync/syncWorker');
+    const syncedUserBook = {
+      ...mocks.libraryBook,
+      catalogBookId: null,
+      storagePath: 'Openread/Books/user-import.epub',
+    } as Book;
+    mocks.libraryState.library = [syncedUserBook];
+    const worker = new SyncWorker();
+    let online = false;
+    const onlineSpy = vi.spyOn(window.navigator, 'onLine', 'get').mockImplementation(() => online);
+    let resolveReconcile!: (value: unknown) => void;
+    const reconcile = new Promise<unknown>((resolve) => {
+      resolveReconcile = resolve;
+    });
+    mocks.pushChanges.mockReturnValue(reconcile);
+    mocks.appService.exists.mockResolvedValue(false);
+    mocks.appService.generateCoverImageUrl.mockResolvedValue('blob:cover');
+    mocks.listFiles.mockImplementation(async () => {
+      if (!online) throw new Error('offline');
+      return {
+        files: [
+          {
+            id: 'reconnected-cover',
+            file_key: `user-1/Openread/Books/${syncedUserBook.hash}/cover.png`,
+            file_size: 1234,
+            file_type: 'cover',
+            book_hash: syncedUserBook.hash,
+            created_at: '2026-08-06T00:00:00.000Z',
+            updated_at: '2026-08-06T00:00:00.000Z',
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 1,
+        totalPages: 1,
+      };
+    });
+
+    try {
+      worker.start('user-1');
+
+      await vi.waitFor(() => expect(mocks.listFiles).toHaveBeenCalledTimes(1));
+      expect(mocks.appService.downloadBookCovers).not.toHaveBeenCalled();
+      mocks.listFiles.mockClear();
+
+      online = true;
+      window.dispatchEvent(new Event('online'));
+
+      await vi.waitFor(() => expect(mocks.pushChanges).toHaveBeenCalledTimes(1));
+      expect(mocks.listFiles).not.toHaveBeenCalled();
+
+      resolveReconcile({});
+      await vi.waitFor(() =>
+        expect(mocks.appService.downloadBookCovers).toHaveBeenCalledWith([syncedUserBook]),
+      );
+      expect(mocks.appService.generateCoverImageUrl).toHaveBeenCalledWith(syncedUserBook);
+    } finally {
+      worker.stop();
+      onlineSpy.mockRestore();
+    }
+  });
+
+  it('checks but does not redownload an existing local cover after reconnect', async () => {
+    const { SyncWorker } = await import('@/services/sync/syncWorker');
+    const locallyCoveredBook = { ...mocks.libraryBook, uploadedAt: 1 } as Book;
+    mocks.libraryState.library = [locallyCoveredBook];
+    const worker = new SyncWorker();
+    let online = false;
+    const onlineSpy = vi.spyOn(window.navigator, 'onLine', 'get').mockImplementation(() => online);
+    mocks.appService.exists.mockResolvedValue(true);
+    mocks.pushChanges.mockResolvedValue({});
+
+    try {
+      worker.start('user-1');
+
+      await vi.waitFor(() => expect(mocks.appService.exists).toHaveBeenCalledTimes(1));
+      expect(mocks.appService.downloadBookCovers).not.toHaveBeenCalled();
+      mocks.appService.exists.mockClear();
+      mocks.appService.generateCoverImageUrl.mockClear();
+
+      online = true;
+      window.dispatchEvent(new Event('online'));
+
+      await vi.waitFor(() => expect(mocks.appService.exists).toHaveBeenCalledTimes(1));
+      expect(mocks.appService.generateCoverImageUrl).toHaveBeenCalledWith(locallyCoveredBook);
+      expect(mocks.appService.downloadBookCovers).not.toHaveBeenCalled();
+    } finally {
+      worker.stop();
+      onlineSpy.mockRestore();
+    }
+  });
+
   it('downloads a missing local cover for a synced user import on steady-state startup', async () => {
     const { SyncWorker } = await import('@/services/sync/syncWorker');
     const syncedUserBook = {

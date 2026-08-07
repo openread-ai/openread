@@ -233,6 +233,14 @@ const deletionRecord = (): StoredSyncMutation => ({
   lastError: null,
 });
 
+const remoteCopyCases = Array.from({ length: 16 }, (_, mask) => ({
+  label: mask.toString(2).padStart(4, '0'),
+  catalogBookId: Boolean(mask & 1),
+  storagePath: Boolean(mask & 2),
+  catalogHash: Boolean(mask & 4),
+  uploadedAt: Boolean(mask & 8),
+}));
+
 describe('SyncWorker book reconcile queue', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -672,6 +680,43 @@ describe('SyncWorker book reconcile queue', () => {
     expect(mocks.appService.saveLibraryBooks).not.toHaveBeenCalled();
   });
 
+  it.each(remoteCopyCases)(
+    'preserves server-removal eligibility for remote-copy combination $label',
+    async ({ catalogBookId, storagePath, catalogHash, uploadedAt }) => {
+      const { SyncWorker } = await import('@/services/sync/syncWorker');
+      const book = {
+        ...mocks.libraryBook,
+        hash: (catalogHash
+          ? 'catalog:7231ff9a-24b9-4074-9369-bc7f88ffb179'
+          : mocks.libraryBook.hash) as Book['hash'],
+        catalogBookId: catalogBookId ? '7231ff9a-24b9-4074-9369-bc7f88ffb179' : null,
+        storagePath: storagePath ? 'Openread/Books/remote-copy.epub' : null,
+        uploadedAt: uploadedAt ? 1 : null,
+        deletedAt: null,
+      } as Book;
+      mocks.libraryState.library = [book];
+      mocks.pushChanges.mockResolvedValueOnce({
+        reconcile: { upsert: [], remove: [book.hash] },
+      });
+      const worker = new SyncWorker();
+      (worker as unknown as { stopped: boolean; userId: string }).stopped = false;
+      (worker as unknown as { stopped: boolean; userId: string }).userId = 'user-1';
+      const expectedRemoval = catalogBookId || storagePath || catalogHash || uploadedAt;
+
+      await worker.pullNow('books');
+
+      if (expectedRemoval) {
+        expect(mocks.libraryState.library).toEqual([
+          expect.objectContaining({ hash: book.hash, deletedAt: expect.any(Number) }),
+        ]);
+        expect(mocks.cleanupDeletedBookArtifacts).toHaveBeenCalledTimes(1);
+      } else {
+        expect(mocks.libraryState.library).toEqual([book]);
+        expect(mocks.cleanupDeletedBookArtifacts).not.toHaveBeenCalled();
+      }
+    },
+  );
+
   it('queues an ordinary concurrent save before the durable tombstone repair', async () => {
     const { SyncWorker } = await import('@/services/sync/syncWorker');
     const activeBook = { ...mocks.libraryBook, deletedAt: null, uploadedAt: 1 } as Book;
@@ -897,8 +942,14 @@ describe('SyncWorker book reconcile queue', () => {
     }
   });
 
-  it('downloads a missing local cover on steady-state startup without book changes', async () => {
+  it('downloads a missing local cover for a synced user import on steady-state startup', async () => {
     const { SyncWorker } = await import('@/services/sync/syncWorker');
+    const syncedUserBook = {
+      ...mocks.libraryBook,
+      catalogBookId: null,
+      storagePath: 'Openread/Books/user-import.epub',
+    } as Book;
+    mocks.libraryState.library = [syncedUserBook];
     const worker = new SyncWorker();
     mocks.appService.exists.mockResolvedValue(false);
     mocks.appService.generateCoverImageUrl.mockResolvedValue('blob:cover');
@@ -906,10 +957,10 @@ describe('SyncWorker book reconcile queue', () => {
       files: [
         {
           id: 'steady-state-cover',
-          file_key: `user-1/Openread/Books/${mocks.libraryBook.hash}/cover.png`,
+          file_key: `user-1/Openread/Books/${syncedUserBook.hash}/cover.png`,
           file_size: 1234,
           file_type: 'cover',
-          book_hash: mocks.libraryBook.hash,
+          book_hash: syncedUserBook.hash,
           created_at: '2026-08-06T00:00:00.000Z',
           updated_at: '2026-08-06T00:00:00.000Z',
         },
@@ -925,9 +976,9 @@ describe('SyncWorker book reconcile queue', () => {
       worker.start('user-1');
 
       await vi.waitFor(() =>
-        expect(mocks.appService.downloadBookCovers).toHaveBeenCalledWith([mocks.libraryBook]),
+        expect(mocks.appService.downloadBookCovers).toHaveBeenCalledWith([syncedUserBook]),
       );
-      expect(mocks.appService.generateCoverImageUrl).toHaveBeenCalledWith(mocks.libraryBook);
+      expect(mocks.appService.generateCoverImageUrl).toHaveBeenCalledWith(syncedUserBook);
     } finally {
       worker.stop();
     }

@@ -266,6 +266,27 @@ describe('CloudSyncService storage lifecycle', () => {
     expect(capturedPayload?.extra).not.toHaveProperty('stack');
   });
 
+  it('downloads covers for storage-backed user imports', async () => {
+    const userBook = baseBook({ storagePath: 'Openread/Books/user-import.epub' });
+    vi.mocked(batchGetDownloadUrls).mockResolvedValue([coverDownloadResult(userBook)]);
+    vi.mocked(downloadFile).mockResolvedValue({});
+    const service = new CloudSyncService(createFs(new Set()), '/books', async (path) => path);
+
+    await service.downloadBookCovers([userBook], {} as never);
+
+    expect(batchGetDownloadUrls).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({
+          bookHash: userBook.hash,
+          title: userBook.title,
+          format: userBook.format,
+        }),
+      ],
+      { concurrency: COVER_DOWNLOAD_CONCURRENCY },
+    );
+    expect(downloadFile).toHaveBeenCalledTimes(1);
+  });
+
   it('does not request private cover URLs for catalog books', async () => {
     const catalogBook = baseBook({
       hash: testOpenReadBookRef('catalog:11111111-1111-4111-8111-111111111111'),

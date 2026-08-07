@@ -3,7 +3,7 @@ import type { AppService } from '@/types/system';
 import type { Book, BookContent } from '@/types/book';
 import type { ProgressHandler } from '@/utils/transfer';
 import { createLogger } from '@/utils/logger';
-import { isCatalogBackedBook } from '@/utils/book';
+import { hasRemoteCopy, isCatalogBackedBook } from '@/utils/book';
 import { useLibraryStore } from '@/store/libraryStore';
 
 const logger = createLogger('readerOpenRecovery');
@@ -56,8 +56,7 @@ export type ReaderOpenResult = {
   recovered: boolean;
 };
 
-const canRecoverReaderOpen = (book: Book): boolean =>
-  Boolean(isCatalogBackedBook(book) || book.uploadedAt);
+const canRecoverReaderOpen = (book: Book): boolean => hasRemoteCopy(book);
 
 const loadContent = async (
   appService: AppService,

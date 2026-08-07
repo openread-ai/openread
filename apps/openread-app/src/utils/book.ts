@@ -42,16 +42,22 @@ export const getConfigFilename = (book: Book) => {
   return `${book.hash}/config.json`;
 };
 
-export const isCatalogBackedBook = (
-  book: Pick<Book, 'catalogBookId' | 'hash' | 'storagePath'>,
+export const isCatalogBackedBook = (book: Pick<Book, 'catalogBookId' | 'hash'>): boolean => {
+  return Boolean(book.catalogBookId || isCatalogBookRef(book.hash));
+};
+
+export const hasRemoteCopy = (
+  book: Pick<Book, 'catalogBookId' | 'hash' | 'storagePath' | 'uploadedAt'>,
 ): boolean => {
-  return Boolean(book.catalogBookId || book.storagePath || isCatalogBookRef(book.hash));
+  return Boolean(
+    book.catalogBookId || book.storagePath || isCatalogBookRef(book.hash) || book.uploadedAt,
+  );
 };
 
 export const isUserCloudUploadEligible = (
   book: Pick<Book, 'catalogBookId' | 'deletedAt' | 'hash' | 'storagePath' | 'uploadedAt'>,
 ): boolean => {
-  return !book.deletedAt && !book.uploadedAt && !isCatalogBackedBook(book);
+  return !book.deletedAt && !hasRemoteCopy(book);
 };
 
 export const hasUserBookUploadSource = async (

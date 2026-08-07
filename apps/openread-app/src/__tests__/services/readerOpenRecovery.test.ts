@@ -60,6 +60,14 @@ const createContent = (book: Book, name: string, close = vi.fn(async () => {})) 
 
 const doc = { book: { metadata: { title: 'Recovered' } }, format: 'epub' };
 
+const remoteCopyCases = Array.from({ length: 16 }, (_, mask) => ({
+  label: mask.toString(2).padStart(4, '0'),
+  catalogBookId: Boolean(mask & 1),
+  storagePath: Boolean(mask & 2),
+  catalogHash: Boolean(mask & 4),
+  uploadedAt: Boolean(mask & 8),
+}));
+
 describe('loadReaderOpenDocument', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -161,6 +169,41 @@ describe('loadReaderOpenDocument', () => {
     lifecycle.dispose();
   });
 
+  it.each(remoteCopyCases)(
+    'preserves recovery eligibility for remote-copy combination $label',
+    async ({ catalogBookId, storagePath, catalogHash, uploadedAt }) => {
+      const book = createBook({
+        catalogBookId: catalogBookId ? '7231ff9a-24b9-4074-9369-bc7f88ffb179' : null,
+        storagePath: storagePath ? 'Openread/Books/recoverable.epub' : null,
+        hash: (catalogHash
+          ? 'catalog:7231ff9a-24b9-4074-9369-bc7f88ffb179'
+          : 'book-hash') as Book['hash'],
+        uploadedAt: uploadedAt ? 1 : null,
+      });
+      const appService = createAppService();
+      const initialContent = createContent(book, 'corrupt.epub');
+      vi.mocked(appService.loadBookContent).mockResolvedValueOnce(initialContent);
+      openMock.mockRejectedValueOnce(new Error('parse failed'));
+      const expectedRecovery = catalogBookId || storagePath || catalogHash || uploadedAt;
+
+      if (expectedRecovery) {
+        const recoveredContent = createContent(book, 'valid.epub');
+        vi.mocked(appService.redownloadBookContent).mockResolvedValueOnce(recoveredContent);
+        openMock.mockResolvedValueOnce(doc);
+
+        await expect(loadReaderOpenDocument(appService, book)).resolves.toMatchObject({
+          recovered: true,
+          content: recoveredContent,
+          doc,
+        });
+        expect(appService.redownloadBookContent).toHaveBeenCalledTimes(1);
+      } else {
+        await expect(loadReaderOpenDocument(appService, book)).rejects.toThrow('parse failed');
+        expect(appService.redownloadBookContent).not.toHaveBeenCalled();
+      }
+    },
+  );
+
   it('recovers a corrupt cloud-backed local book once and forwards progress', async () => {
     const book = createBook({ uploadedAt: 1, downloadedAt: 2 });
     const appService = createAppService();
@@ -188,8 +231,8 @@ describe('loadReaderOpenDocument', () => {
     expect(DocumentLoaderMock).toHaveBeenLastCalledWith(recoveredContent.file);
   });
 
-  it('recovers a corrupt catalog storage-backed local book', async () => {
-    const book = createBook({ storagePath: 'catalog/books/test.epub' });
+  it('recovers a corrupt storage-backed user book', async () => {
+    const book = createBook({ storagePath: 'Openread/Books/user-import.epub' });
     const appService = createAppService();
     const recoveredContent = createContent(book, 'valid.epub');
     vi.mocked(appService.loadBookContent).mockResolvedValueOnce(
@@ -291,7 +334,7 @@ describe('loadReaderOpenDocument', () => {
   });
 
   it('tries recovery only once and closes recovered content when the replacement still cannot open', async () => {
-    const book = createBook({ storagePath: 'catalog/books/test.epub' });
+    const book = createBook({ storagePath: 'Openread/Books/user-import.epub' });
     const appService = createAppService();
     const recoveredContent = createContent(book, 'still-corrupt.epub');
     vi.mocked(appService.loadBookContent).mockResolvedValueOnce(

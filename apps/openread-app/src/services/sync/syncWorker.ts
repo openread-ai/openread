@@ -20,7 +20,7 @@ import {
 } from './engine';
 import { pullCanonicalSyncChanges, reconcileCanonicalBooks, type SyncType } from './client';
 import { listFiles } from '@/libs/storage';
-import { isCatalogBackedBook } from '@/utils/book';
+import { hasRemoteCopy, isCatalogBackedBook } from '@/utils/book';
 import { supabase } from '@/utils/supabase';
 import {
   transformBookFromDB,
@@ -856,11 +856,7 @@ export class SyncWorker {
       this.persistLibraryTransform(appService, reconcileUserId, (current) => {
         let changed = false;
         const next = current.map((book) => {
-          if (
-            !removeSet.has(book.hash) ||
-            book.deletedAt ||
-            (!book.uploadedAt && !isCatalogBackedBook(book))
-          ) {
+          if (!removeSet.has(book.hash) || book.deletedAt || !hasRemoteCopy(book)) {
             return book;
           }
           changed = true;

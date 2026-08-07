@@ -2,6 +2,7 @@ import { testOpenReadBookRef } from './bookIdentityFixtures';
 import { describe, expect, it } from 'vitest';
 
 import {
+  hasRemoteCopy,
   hasUserBookUploadSource,
   isCatalogBackedBook,
   isUserCloudUploadEligible,
@@ -18,7 +19,34 @@ const baseBook = (overrides: Partial<Book> = {}): Book => ({
   ...overrides,
 });
 
+const predicateCases = Array.from({ length: 16 }, (_, mask) => ({
+  label: mask.toString(2).padStart(4, '0'),
+  catalogBookId: Boolean(mask & 1),
+  storagePath: Boolean(mask & 2),
+  catalogHash: Boolean(mask & 4),
+  uploadedAt: Boolean(mask & 8),
+}));
+
 describe('book upload eligibility', () => {
+  it.each(predicateCases)(
+    'classifies catalog origin and remote location for $label',
+    ({ catalogBookId, storagePath, catalogHash, uploadedAt }) => {
+      const book = baseBook({
+        catalogBookId: catalogBookId ? '65119855-9d37-4caf-a7a4-4a5f9c9572d5' : null,
+        storagePath: storagePath ? 'Openread/Books/manual/book.epub' : null,
+        hash: catalogHash
+          ? testOpenReadBookRef('catalog:65119855-9d37-4caf-a7a4-4a5f9c9572d5')
+          : testOpenReadBookRef('0123456789abcdef0123456789abcdef'),
+        uploadedAt: uploadedAt ? 1 : null,
+      });
+      const expectedCatalogOrigin = catalogBookId || catalogHash;
+      const expectedRemoteCopy = catalogBookId || storagePath || catalogHash || uploadedAt;
+
+      expect(isCatalogBackedBook(book)).toBe(expectedCatalogOrigin);
+      expect(hasRemoteCopy(book)).toBe(expectedRemoteCopy);
+      expect(isUserCloudUploadEligible(book)).toBe(!expectedRemoteCopy);
+    },
+  );
   it('allows manual local books that are not deleted and not uploaded', () => {
     expect(isUserCloudUploadEligible(baseBook())).toBe(true);
   });
@@ -44,10 +72,10 @@ describe('book upload eligibility', () => {
     expect(isUserCloudUploadEligible(book)).toBe(false);
   });
 
-  it('treats storage-backed books as already cloud-backed', () => {
-    const book = baseBook({ storagePath: 'catalog/books/65119855/book.epub' });
+  it('does not infer catalog origin from a user book storage location', () => {
+    const book = baseBook({ storagePath: 'Openread/Books/manual/book.epub' });
 
-    expect(isCatalogBackedBook(book)).toBe(true);
+    expect(isCatalogBackedBook(book)).toBe(false);
     expect(isUserCloudUploadEligible(book)).toBe(false);
   });
 

@@ -627,7 +627,7 @@ export function catalogBookSupportsUserDeviceFetchIntent(
 }
 
 export const CATALOG_SERVER_MATERIALIZATION_POLICY = 'format-agnostic-streaming-v2';
-export const CATALOG_SERVER_MATERIALIZATION_VERSION = 2;
+export const CATALOG_SERVER_MATERIALIZATION_VERSION = 3;
 
 export type CatalogServerMaterializationSnapshot = {
   policy: typeof CATALOG_SERVER_MATERIALIZATION_POLICY;

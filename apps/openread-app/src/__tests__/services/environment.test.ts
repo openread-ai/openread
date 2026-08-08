@@ -21,6 +21,7 @@ describe('environment node API base URL', () => {
   });
 
   it('defaults canonical backend traffic to the public API host', () => {
+    vi.stubEnv('NEXT_PUBLIC_APP_PLATFORM', 'tauri');
     delete process.env['NEXT_PUBLIC_NODE_BASE_URL'];
 
     expect(OPENREAD_NODE_BASE_URL).toBe('https://api.openread.ai');
@@ -33,6 +34,7 @@ describe('environment node API base URL', () => {
   });
 
   it('still allows explicit backend host overrides for self-hosted or staging builds', () => {
+    vi.stubEnv('NEXT_PUBLIC_APP_PLATFORM', 'tauri');
     process.env['NEXT_PUBLIC_NODE_BASE_URL'] = 'https://staging-api.openread.ai';
 
     expect(getNodeBaseUrl()).toBe('https://staging-api.openread.ai');
@@ -66,16 +68,19 @@ describe('environment node API base URL', () => {
     });
   });
 
-  it.each([
-    { nodeEnv: 'production', appPlatform: 'web' },
-    { nodeEnv: 'development', appPlatform: 'tauri' },
-  ])(
-    'keeps node and product API origins identical for $nodeEnv $appPlatform builds',
-    ({ nodeEnv, appPlatform }) => {
-      vi.stubEnv('NODE_ENV', nodeEnv);
-      vi.stubEnv('NEXT_PUBLIC_APP_PLATFORM', appPlatform);
+  it('routes product callers through the production web BFF without changing node callers', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('NEXT_PUBLIC_APP_PLATFORM', 'web');
 
-      expect(getNodeAPIBaseUrl()).toBe(getProductAPIBaseUrl());
-    },
-  );
+    expect(getNodeAPIBaseUrl()).toBe('https://api.openread.ai/api');
+    expect(getProductAPIBaseUrl()).toBe('/api');
+  });
+
+  it('keeps node and product API origins absolute for Tauri development', () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    vi.stubEnv('NEXT_PUBLIC_APP_PLATFORM', 'tauri');
+
+    expect(getNodeAPIBaseUrl()).toBe('https://api.openread.ai/api');
+    expect(getProductAPIBaseUrl()).toBe('https://api.openread.ai/api');
+  });
 });

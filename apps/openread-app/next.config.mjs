@@ -14,9 +14,61 @@ if (isDev) {
 
 const exportOutput = appPlatform !== 'web' && !isDev;
 const pdfjsAlias = path.resolve(process.cwd(), 'public/vendor/pdfjs');
+const OPENREAD_NODE_BASE_URL = 'https://api.openread.ai';
 
 const sentryEnvironment = resolveSentryEnvironment();
 const sentryRelease = resolveSentryRelease();
+
+const flyOwnedApiRewriteSources = [
+  '/api/books/:path*',
+  '/api/admin/:path*',
+  '/api/quota/:path*',
+  '/api/files/:path*',
+  '/api/user/delete',
+  '/api/api-keys/:path*',
+  '/api/settings/api-keys/:path*',
+  '/api/mcp/:path*',
+  '/api/pricing',
+];
+
+function platformApiOrigin() {
+  const configuredOrigin =
+    process.env['PLATFORM_API_BASE_URL'] ??
+    process.env['NEXT_PUBLIC_NODE_BASE_URL'] ??
+    process.env['NEXT_PUBLIC_PLATFORM_URL'] ??
+    OPENREAD_NODE_BASE_URL;
+
+  const url = new URL(configuredOrigin);
+  if (
+    !['http:', 'https:'].includes(url.protocol) ||
+    url.username ||
+    url.password ||
+    url.pathname !== '/' ||
+    url.search ||
+    url.hash
+  ) {
+    throw new Error(
+      'PLATFORM_API_BASE_URL, NEXT_PUBLIC_NODE_BASE_URL, or NEXT_PUBLIC_PLATFORM_URL must be an HTTP origin',
+    );
+  }
+  return url.origin;
+}
+
+const webApiRewrites = exportOutput
+  ? {}
+  : {
+      async rewrites() {
+        const origin = platformApiOrigin();
+        return {
+          beforeFiles: [],
+          afterFiles: flyOwnedApiRewriteSources.map((source) => ({
+            source,
+            destination: `${origin}${source}`,
+          })),
+          fallback: [],
+        };
+      },
+    };
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -34,6 +86,7 @@ const nextConfig = {
   assetPrefix: '',
   reactStrictMode: true,
   serverExternalPackages: ['isows'],
+  ...webApiRewrites,
   env: {
     NEXT_PUBLIC_SENTRY_DSN: process.env['NEXT_PUBLIC_SENTRY_DSN'],
     NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE: process.env['NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE'],

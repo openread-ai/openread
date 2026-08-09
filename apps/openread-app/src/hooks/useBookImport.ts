@@ -276,7 +276,7 @@ export function useBookImport() {
         .getVisibleLibrary()
         .filter((book) => !book.deletedAt && !book.uploadedAt);
       if (useSettingsStore.getState().settings.autoUpload !== false) {
-        transferManager.queueBatchUploads(uploadCandidates, 1);
+        transferManager.queueBatchUploads(uploadCandidates, 1, true);
       }
 
       const newBooks = useLibraryStore

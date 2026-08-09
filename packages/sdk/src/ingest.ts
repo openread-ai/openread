@@ -3,10 +3,15 @@
  * IngestClient for uploading books to the OpenRead platform.
  */
 
-import { parseMetaHash, parsePlatformBookHash } from '@openread/types';
+import {
+  PLATFORM_UPLOAD_FORMATS,
+  parseMetaHash,
+  parsePlatformBookHash,
+  parsePlatformUploadBookFormat,
+} from '@openread/types';
 import type {
   Book,
-  BookFormat,
+  PlatformUploadBookFormat,
   UploadUrlRequest,
   UploadUrlResponse,
   ConfirmUploadRequest,
@@ -17,6 +22,14 @@ import type {
 } from '@openread/types';
 import { OpenreadError } from './error.js';
 import type { Openread } from './index.js';
+
+const PLATFORM_UPLOAD_EXTENSION_PATTERN = new RegExp(
+  `\\.(${PLATFORM_UPLOAD_FORMATS.join('|')})$`,
+  'i',
+);
+const PLATFORM_UPLOAD_FORMAT_MESSAGE = PLATFORM_UPLOAD_FORMATS.map(
+  (format) => `.${format}`,
+).join(', ');
 
 /**
  * Options for uploading a book.
@@ -276,7 +289,7 @@ export class IngestClient {
    * 4. Upload file to R2
    * 5. Confirm upload
    *
-   * @param file - File to upload (must be .epub or .pdf)
+   * @param file - File in one of the canonical platform upload formats
    * @param options - Upload options
    * @returns Created book with metadata
    *
@@ -303,7 +316,7 @@ export class IngestClient {
     if (!format) {
       throw new OpenreadError(
         'INVALID_FORMAT',
-        'Unsupported file format. File must be .epub or .pdf'
+        `Unsupported file format. Supported formats: ${PLATFORM_UPLOAD_FORMAT_MESSAGE}`,
       );
     }
 
@@ -391,11 +404,9 @@ export class IngestClient {
    * Extract format from filename.
    * @internal
    */
-  private getFormat(filename: string): BookFormat | null {
+  private getFormat(filename: string): PlatformUploadBookFormat | null {
     const ext = filename.toLowerCase().split('.').pop();
-    if (ext === 'epub') return 'epub';
-    if (ext === 'pdf') return 'pdf';
-    return null;
+    return parsePlatformUploadBookFormat(ext);
   }
 
   /**
@@ -404,7 +415,7 @@ export class IngestClient {
    */
   private extractTitleFromFilename(filename: string): string {
     // Remove extension and replace common separators with spaces
-    const withoutExt = filename.replace(/\.(epub|pdf)$/i, '');
+    const withoutExt = filename.replace(PLATFORM_UPLOAD_EXTENSION_PATTERN, '');
     return withoutExt.replace(/[-_]/g, ' ').trim();
   }
 

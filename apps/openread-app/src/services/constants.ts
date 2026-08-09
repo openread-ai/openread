@@ -1,3 +1,4 @@
+import { PLATFORM_UPLOAD_FORMATS } from '@openread/types';
 import {
   AnnotatorConfig,
   BookFont,
@@ -28,20 +29,9 @@ export const LOCAL_IMAGES_SUBDIR = `${DATA_SUBDIR}/Images`;
 
 export const SETTINGS_FILENAME = 'settings.json';
 
-export const SUPPORTED_BOOK_EXTS = [
-  'epub',
-  'mobi',
-  'azw',
-  'azw3',
-  'fb2',
-  'zip',
-  'cbz',
-  'pdf',
-  'txt',
-];
+export const SUPPORTED_BOOK_EXTS: string[] = [...PLATFORM_UPLOAD_FORMATS];
 export const BOOK_ACCEPT_FORMATS = SUPPORTED_BOOK_EXTS.map((ext) => `.${ext}`).join(', ');
-export const UNSUPPORTED_BOOK_FILES_MESSAGE =
-  'No supported book files found. Supported formats: EPUB, PDF, MOBI, FB2, CBZ, AZW, TXT';
+export const UNSUPPORTED_BOOK_FILES_MESSAGE = `No supported book files found. Supported formats: ${SUPPORTED_BOOK_EXTS.map((ext) => ext.toUpperCase()).join(', ')}`;
 export const BOOK_UNGROUPED_NAME = '';
 export const BOOK_UNGROUPED_ID = '';
 

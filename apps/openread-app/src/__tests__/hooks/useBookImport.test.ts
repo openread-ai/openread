@@ -1,5 +1,7 @@
+import { PLATFORM_UPLOAD_FORMATS } from '@openread/types';
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { SUPPORTED_BOOK_EXTS } from '@/services/constants';
 import { ImportFailureError } from '@/services/importFailure';
 import { transferManager } from '@/services/transferManager';
 import { useLibraryStore } from '@/store/libraryStore';
@@ -8,7 +10,6 @@ import { useTransferStore, type TransferItem } from '@/store/transferStore';
 import type { Book } from '@/types/book';
 import { eventDispatcher } from '@/utils/event';
 import { testOpenReadBookRef } from '../utils/bookIdentityFixtures';
-
 const mockLibraryLimitState = vi.hoisted(() => ({
   canAddBook: false,
   libraryLimit: null as number | null,
@@ -39,6 +40,7 @@ import {
   createLibraryLimitImportOutcome,
   createLibraryLimitUnavailableImportOutcome,
   createUnsupportedImportOutcome,
+  isSupportedSelectedBookFile,
   selectedBookFileName,
   summarizeImportFailureOutcomes,
   useBookImport,
@@ -86,6 +88,16 @@ describe('useBookImport import outcomes', () => {
 
     expect(result.current.importDisabled).toBe(false);
     expect(result.current.importDisabledReason).toBeNull();
+  });
+
+  it('derives picker support from the canonical Stage 1 upload set', () => {
+    expect(SUPPORTED_BOOK_EXTS).toEqual(PLATFORM_UPLOAD_FORMATS);
+    for (const format of PLATFORM_UPLOAD_FORMATS) {
+      expect(isSupportedSelectedBookFile({ path: `/books/test.${format}` })).toBe(true);
+    }
+    for (const format of ['azw', 'fbz', 'txt', 'md', 'zip']) {
+      expect(isSupportedSelectedBookFile({ path: `/books/test.${format}` })).toBe(false);
+    }
   });
 
   it('uses only the safe file label for selected paths', () => {

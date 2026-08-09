@@ -1,3 +1,4 @@
+import { PLATFORM_UPLOAD_FORMATS } from '@openread/types';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Openread, OpenreadError } from './index.js';
 
@@ -471,12 +472,12 @@ describe('IngestClient', () => {
 
       await expect(sdk.ingest.uploadBook(file)).rejects.toMatchObject({
         code: 'INVALID_FORMAT',
-        message: expect.stringContaining('.epub or .pdf'),
+        message: `Unsupported file format. Supported formats: ${PLATFORM_UPLOAD_FORMATS.map((format) => `.${format}`).join(', ')}`,
       });
     });
 
-    it('accepts .epub files', async () => {
-      const file = new File(['content'], 'test.epub', { type: 'application/epub+zip' });
+    it.each(PLATFORM_UPLOAD_FORMATS)('accepts .%s files', async (format) => {
+      const file = new File(['content'], `my-book.${format}`);
 
       mockFetch
         .mockResolvedValueOnce({
@@ -498,33 +499,8 @@ describe('IngestClient', () => {
 
       const uploadUrlCall = mockFetch.mock.calls[0];
       const body = JSON.parse(uploadUrlCall[1].body);
-      expect(body.format).toBe('epub');
-    });
-
-    it('accepts .pdf files', async () => {
-      const file = new File(['content'], 'test.pdf', { type: 'application/pdf' });
-
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: async () => ({ uploadUrl: 'url', bookId: 'id' }),
-        })
-        .mockResolvedValueOnce({ ok: true, status: 200 })
-        .mockResolvedValueOnce({
-          ok: true,
-          status: 201,
-          json: async () => ({
-            book: { id: 'id' },
-            metadata: { titleSource: 'filename', authorSource: null, warnings: [] },
-          }),
-        });
-
-      await sdk.ingest.uploadBook(file);
-
-      const uploadUrlCall = mockFetch.mock.calls[0];
-      const body = JSON.parse(uploadUrlCall[1].body);
-      expect(body.format).toBe('pdf');
+      expect(body.format).toBe(format);
+      expect(body.title).toBe('my book');
     });
 
     it('can be cancelled before starting', async () => {

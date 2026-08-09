@@ -59,6 +59,7 @@ export type BookFormatRegistryEntry = {
   extensions: readonly string[];
   mimeType: string;
   maxBytes: number;
+  platformUploadMaxBytes?: number;
   reader: boolean;
   localImport: boolean;
   platformUpload: boolean;
@@ -68,7 +69,7 @@ export type BookFormatRegistryEntry = {
   catalogContentTypeClasses?: readonly CatalogContentTypeClass[];
 };
 
-const CATALOG_IMPORT_FORMAT_SUPPORT = {
+const PLATFORM_UPLOAD_FORMAT_SUPPORT = {
   reader: true,
   localImport: true,
   platformUpload: true,
@@ -89,7 +90,7 @@ export const BOOK_FORMAT_REGISTRY = {
     extensions: ['epub'],
     mimeType: 'application/epub+zip',
     maxBytes: 100 * 1024 * 1024,
-    ...CATALOG_IMPORT_FORMAT_SUPPORT,
+    ...PLATFORM_UPLOAD_FORMAT_SUPPORT,
     catalogAcceptHeader: 'application/epub+zip,*/*',
     catalogContentTypeClasses: ['epub', 'binary', 'missing'],
   },
@@ -99,7 +100,7 @@ export const BOOK_FORMAT_REGISTRY = {
     extensions: ['pdf'],
     mimeType: 'application/pdf',
     maxBytes: 200 * 1024 * 1024,
-    ...CATALOG_IMPORT_FORMAT_SUPPORT,
+    ...PLATFORM_UPLOAD_FORMAT_SUPPORT,
     catalogAcceptHeader: 'application/pdf,*/*',
     catalogContentTypeClasses: ['pdf', 'binary', 'missing'],
   },
@@ -109,7 +110,7 @@ export const BOOK_FORMAT_REGISTRY = {
     extensions: ['mobi'],
     mimeType: 'application/x-mobipocket-ebook',
     maxBytes: 100 * 1024 * 1024,
-    ...CATALOG_ONLY_FORMAT_SUPPORT,
+    ...PLATFORM_UPLOAD_FORMAT_SUPPORT,
     catalogAcceptHeader: 'application/x-mobipocket-ebook,application/octet-stream,*/*',
     catalogContentTypeClasses: ['mobi', 'binary', 'missing'],
   },
@@ -129,7 +130,7 @@ export const BOOK_FORMAT_REGISTRY = {
     extensions: ['azw3'],
     mimeType: 'application/vnd.amazon.ebook',
     maxBytes: 100 * 1024 * 1024,
-    ...CATALOG_ONLY_FORMAT_SUPPORT,
+    ...PLATFORM_UPLOAD_FORMAT_SUPPORT,
     catalogAcceptHeader: 'application/vnd.amazon.ebook,application/octet-stream,*/*',
     catalogContentTypeClasses: ['mobi', 'binary', 'missing'],
   },
@@ -139,7 +140,7 @@ export const BOOK_FORMAT_REGISTRY = {
     extensions: ['fb2'],
     mimeType: 'application/x-fictionbook+xml',
     maxBytes: 50 * 1024 * 1024,
-    ...CATALOG_ONLY_FORMAT_SUPPORT,
+    ...PLATFORM_UPLOAD_FORMAT_SUPPORT,
     catalogAcceptHeader: 'application/x-fictionbook+xml,application/xml,text/xml,*/*',
     catalogContentTypeClasses: ['fictionbook', 'xml', 'text', 'binary', 'missing'],
   },
@@ -159,7 +160,8 @@ export const BOOK_FORMAT_REGISTRY = {
     extensions: ['cbz'],
     mimeType: 'application/vnd.comicbook+zip',
     maxBytes: 500 * 1024 * 1024,
-    ...CATALOG_ONLY_FORMAT_SUPPORT,
+    platformUploadMaxBytes: 100 * 1024 * 1024,
+    ...PLATFORM_UPLOAD_FORMAT_SUPPORT,
     catalogAcceptHeader: 'application/vnd.comicbook+zip,application/zip,application/x-zip-compressed,*/*',
     catalogContentTypeClasses: ['archive', 'binary', 'missing'],
   },
@@ -184,6 +186,33 @@ export const BOOK_FORMAT_REGISTRY = {
     catalogContentTypeClasses: ['markdown', 'text', 'binary', 'missing'],
   },
 } as const satisfies Record<BookFormat, BookFormatRegistryEntry>;
+
+export type PlatformUploadBookFormat = {
+  [Format in BookFormat]: (typeof BOOK_FORMAT_REGISTRY)[Format]['platformUpload'] extends true
+    ? Format
+    : never;
+}[BookFormat];
+
+export const PLATFORM_UPLOAD_FORMATS = Object.freeze(
+  (Object.keys(BOOK_FORMAT_REGISTRY) as BookFormat[]).filter(
+    (format) => BOOK_FORMAT_REGISTRY[format].platformUpload,
+  ),
+) as readonly PlatformUploadBookFormat[];
+
+export function parsePlatformUploadBookFormat(value: unknown): PlatformUploadBookFormat | null {
+  return PLATFORM_UPLOAD_FORMATS.includes(value as PlatformUploadBookFormat)
+    ? (value as PlatformUploadBookFormat)
+    : null;
+}
+
+export const PLATFORM_UPLOAD_SIZE_LIMITS = Object.freeze(
+  Object.fromEntries(
+    PLATFORM_UPLOAD_FORMATS.map((format) => {
+      const entry: BookFormatRegistryEntry = BOOK_FORMAT_REGISTRY[format];
+      return [format, entry.platformUploadMaxBytes ?? entry.maxBytes];
+    }),
+  ),
+) as Readonly<Record<PlatformUploadBookFormat, number>>;
 
 export const CATALOG_IMPORT_FORMATS = Object.freeze(
   (Object.keys(BOOK_FORMAT_REGISTRY) as BookFormat[]).filter(

@@ -59,6 +59,12 @@ export type {
 
 // Book entity types
 export type { Book, BookCore, BookFormat, FileType } from './book.js';
+export {
+  PLATFORM_UPLOAD_FORMATS,
+  PLATFORM_UPLOAD_SIZE_LIMITS,
+  parsePlatformUploadBookFormat,
+} from './catalog-source-verification.js';
+export type { PlatformUploadBookFormat } from './catalog-source-verification.js';
 
 // API request/response types
 export type {

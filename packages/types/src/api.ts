@@ -3,8 +3,9 @@
  * API request and response types for the OpenRead platform REST API.
  */
 
-import type { Book, BookFormat } from './book.js';
+import type { Book } from './book.js';
 import type { BookId, MetaHash, PlatformBookHash } from './book-identity.js';
+import type { PlatformUploadBookFormat } from './catalog-source-verification.js';
 
 /**
  * Query parameters for GET /api/books.
@@ -77,7 +78,7 @@ export interface UploadUrlRequest {
   /**
    * File format of the book to upload.
    */
-  format: BookFormat;
+  format: PlatformUploadBookFormat;
 
   /**
    * SHA-256 hash of the file content.

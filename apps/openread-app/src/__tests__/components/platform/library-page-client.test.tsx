@@ -164,16 +164,6 @@ vi.mock('@/components/DropIndicator', () => ({
   default: () => <div data-testid='drop-indicator'>Drop to Import Books</div>,
 }));
 
-// Mock constants — spread original to preserve exports used by transitive imports
-vi.mock('@/services/constants', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/services/constants')>();
-  return {
-    ...actual,
-    SUPPORTED_BOOK_EXTS: ['epub', 'mobi', 'azw', 'azw3', 'fb2', 'zip', 'cbz', 'pdf', 'txt'],
-    BOOK_ACCEPT_FORMATS: '.epub, .mobi, .azw, .azw3, .fb2, .zip, .cbz, .pdf, .txt',
-  };
-});
-
 // Mock useAuth
 const mockUser = { id: 'user-1', email: 'test@example.com' };
 vi.mock('@/context/AuthContext', () => ({

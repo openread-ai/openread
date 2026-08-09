@@ -4,6 +4,7 @@
   "repository": "openread-ai/platform",
   "scripts": {
     "preflight:changed-files": "node scripts/ci/changed-files-preflight.mjs",
+    "preflight:selector-drift": "node scripts/ci/check-preflight-selector-drift.mjs",
     "billing:verify-contract": "node scripts/billing/verify-contract.mjs",
     "db:migrations:validate": "node scripts/db/validate-supabase-migrations.mjs",
     "ops:runtime:check": "bash scripts/ops/check-runtime-config.sh",

@@ -41,6 +41,9 @@ export const getCoverFilename = (book: Book) => {
 export const getConfigFilename = (book: Book) => {
   return `${book.hash}/config.json`;
 };
+export const getCatalogContentSourceFilename = (book: Book) => {
+  return `${book.hash}/catalog-content-source.json`;
+};
 
 export const isCatalogBackedBook = (book: Pick<Book, 'catalogBookId' | 'hash'>): boolean => {
   return Boolean(book.catalogBookId || isCatalogBookRef(book.hash));

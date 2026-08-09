@@ -18,6 +18,7 @@ export interface DBBook {
   storage_path?: string | null;
   size_bytes?: number | null;
   catalog_book_id?: string | null;
+  content_reconcile_required?: boolean;
   sync_version?: number;
   created_at?: string;
   updated_at?: string;

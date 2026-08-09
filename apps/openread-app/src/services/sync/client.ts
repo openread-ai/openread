@@ -171,6 +171,8 @@ const dbBookFromRecord = (record: SyncServerRecord<'book'>): BookRecord => {
     storagePath: payload.storagePath ?? null,
     catalog_book_id: payload.catalogBookId ?? null,
     catalogBookId: payload.catalogBookId ?? null,
+    content_reconcile_required: payload.contentReconcileRequired === true,
+    contentReconcileRequired: payload.contentReconcileRequired === true,
     created_at: iso(payload.createdAt) ?? iso(record.serverUpdatedAt)!,
     createdAt: payload.createdAt ?? record.serverUpdatedAt,
     updated_at: payload.updatedAt ?? record.serverUpdatedAt,

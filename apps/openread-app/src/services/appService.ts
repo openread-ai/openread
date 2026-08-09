@@ -93,7 +93,7 @@ import { svg2png } from '@/utils/svg';
 import { transferManager } from '@/services/transferManager';
 import { useSettingsStore } from '@/store/settingsStore';
 import { createLogger } from '@/utils/logger';
-import { CloudSyncService } from './cloudSync';
+import { CloudSyncService, recordCatalogContentSource } from './cloudSync';
 import { LibraryPersistence } from './libraryPersistence';
 import { platform } from '@/services/platform/client';
 import {
@@ -858,6 +858,13 @@ export abstract class BaseAppService implements AppService {
     redownload = false,
     onProgress?: ProgressHandler,
   ): Promise<void> {
+    if (isCatalogBackedBook(book)) {
+      // Catalog bytes come from the catalog signing path, never the user's private cloud key.
+      if (onlyCover) return;
+      if (!redownload && (await this.fs.exists(getLocalBookFilename(book), 'Books'))) return;
+      await this.downloadCatalogBackedBook(book, onProgress);
+      return;
+    }
     return this.cloudSync.downloadBook(book, this, onlyCover, redownload, onProgress);
   }
 
@@ -890,6 +897,7 @@ export abstract class BaseAppService implements AppService {
       onProgress,
     });
     assertCatalogDownloadActive(lifecycleSignal);
+    await recordCatalogContentSource(book, storagePath, this);
     book.storagePath = storagePath;
     book.downloadedAt = Date.now();
   }

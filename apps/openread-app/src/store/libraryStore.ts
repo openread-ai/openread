@@ -26,6 +26,10 @@ export function mergeLibraryBook(existing: Book, incoming: Book): Book {
       ? { ...incoming, coverImageUrl: existing.coverImageUrl ?? incoming.coverImageUrl }
       : { ...existing };
 
+  if (typeof incoming.contentReconcileRequired === 'boolean') {
+    winner.contentReconcileRequired = incoming.contentReconcileRequired;
+  }
+
   const incomingCatalogBookId = incoming.catalogBookId?.trim();
   const incomingStoragePath = incoming.storagePath?.trim();
   if (

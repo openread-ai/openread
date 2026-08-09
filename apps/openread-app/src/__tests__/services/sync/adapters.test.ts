@@ -65,9 +65,13 @@ const note = (overrides: Partial<BookNote> = {}): BookNote => ({
 
 describe('canonical sync mutation adapters', () => {
   it('builds valid canonical book mutations from local books', () => {
-    const mutation = buildBookMutation(book({ readingStatus: 'reading' }), context);
+    const mutation = buildBookMutation(
+      book({ readingStatus: 'reading', contentReconcileRequired: true }),
+      context,
+    );
 
     expect(validateSyncMutation(mutation).ok).toBe(true);
+    expect(mutation).not.toHaveProperty('payload.contentReconcileRequired');
     expect(mutation).toMatchObject({
       entity: 'book',
       entityId: 'd41d8cd98f00b204e9800998ecf8427e',

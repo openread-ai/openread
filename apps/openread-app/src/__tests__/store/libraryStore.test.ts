@@ -93,6 +93,7 @@ describe('libraryStore.updateBooks', () => {
         progress: [25, 100],
         catalogBookId: '7231ff9a-24b9-4074-9369-bc7f88ffb179',
         storagePath: 'catalog/books/standard-ebooks/pride.epub',
+        contentReconcileRequired: true,
       }),
     ]);
 
@@ -102,6 +103,7 @@ describe('libraryStore.updateBooks', () => {
       progress: [75, 100],
       catalogBookId: '7231ff9a-24b9-4074-9369-bc7f88ffb179',
       storagePath: 'catalog/books/standard-ebooks/pride.epub',
+      contentReconcileRequired: true,
       metadata: { publisher: 'Local Publisher' },
     });
   });

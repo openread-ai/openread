@@ -93,6 +93,7 @@ vi.mock('@/utils/book', () => ({
   getRemoteBookFilename: vi.fn(() => 'mock-remote-filename'),
   getCoverFilename: vi.fn(() => 'mock-cover-filename'),
   getConfigFilename: vi.fn(() => 'mock-config-filename'),
+  getCatalogContentSourceFilename: vi.fn(() => 'mock-catalog-content-source-filename'),
   getLibraryFilename: vi.fn(() => 'mock-library-filename'),
   getLibraryBackupFilename: vi.fn(() => 'mock-library-backup-filename'),
   INIT_BOOK_CONFIG: {},
@@ -447,6 +448,61 @@ describe('appService book content loading', () => {
     expect(book.storagePath).toBe('catalog/books/internet-archive/test/book.epub');
     expect(content.file).toBeInstanceOf(File);
     expect(book.downloadedAt).toEqual(expect.any(Number));
+    expect(fs.writeFile).toHaveBeenCalledWith(
+      'mock-catalog-content-source-filename',
+      'Books',
+      JSON.stringify({
+        storagePath: 'catalog/books/internet-archive/test/book.epub',
+        localFilename: 'mock-local-filename',
+      }),
+    );
+  });
+
+  it('reuses the redownload flag for catalog content replacement and records its source', async () => {
+    const fs = (appService as unknown as { fs: FileSystem }).fs;
+    vi.mocked(fs.exists).mockResolvedValue(true);
+    vi.mocked(downloadFile).mockResolvedValue({});
+    mockGetDownloadUrl.mockResolvedValueOnce({
+      status: 'ready',
+      downloadUrl: 'https://signed.example/replacement.epub',
+      expiresAt: Date.now() + 30_000,
+      sizeBytes: 654,
+      format: 'epub',
+      storagePath: 'catalog/books/gutenberg/book/new-sha/book.epub',
+    });
+    const book = createMockBook({
+      hash: testOpenReadBookRef('catalog:7231ff9a-24b9-4074-9369-bc7f88ffb179'),
+      catalogBookId: '7231ff9a-24b9-4074-9369-bc7f88ffb179',
+      storagePath: 'catalog/books/gutenberg/book/old-sha/book.epub',
+      progress: [4, 10],
+    });
+
+    await appService.prepareBooksDir();
+    await appService.downloadBook(book, false, true);
+
+    expect(downloadFile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appService,
+        cfp: 'catalog/books/gutenberg/book/new-sha/book.epub',
+        url: 'https://signed.example/replacement.epub',
+      }),
+    );
+    expect(fs.writeFile).toHaveBeenCalledWith(
+      'mock-catalog-content-source-filename',
+      'Books',
+      JSON.stringify({
+        storagePath: 'catalog/books/gutenberg/book/new-sha/book.epub',
+        localFilename: 'mock-local-filename',
+      }),
+    );
+    expect(fs.writeFile).toHaveBeenCalledTimes(1);
+    expect(fs.writeFile).not.toHaveBeenCalledWith(
+      'mock-config-filename',
+      expect.anything(),
+      expect.anything(),
+    );
+    expect(book.hash).toBe('catalog:7231ff9a-24b9-4074-9369-bc7f88ffb179');
+    expect(book.progress).toEqual([4, 10]);
   });
 
   it('retries typed preparing until ready and opens the post-ready format path', async () => {

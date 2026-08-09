@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { Book, BookConfig } from '@/types/book';
+import type { BaseDir } from '@/types/system';
 import type { StoredSyncMutation } from '@/services/sync/outbox';
 import { SyncMutationDeliveryError } from '@/services/sync/engine';
 
@@ -73,7 +74,10 @@ const mocks = vi.hoisted(() => {
   };
 
   const appService = {
-    exists: vi.fn(async () => true),
+    exists: vi.fn(async (_path: string, _base: BaseDir) => true),
+    readFile: vi.fn(async () => JSON.stringify({ storagePath: 'catalog/observed.epub' })),
+    writeFile: vi.fn(async () => undefined),
+    downloadBook: vi.fn(async () => undefined),
     downloadBookCovers: vi.fn(async () => undefined),
     generateCoverImageUrl: vi.fn(async () => null as string | null),
     saveLibraryBooks: vi.fn(),
@@ -261,6 +265,13 @@ describe('SyncWorker book reconcile queue', () => {
     mocks.platformSidebarState.collections = [];
     mocks.platformSidebarState.setState.mockClear();
     mocks.appService.exists.mockResolvedValue(true);
+    mocks.appService.readFile.mockReset();
+    mocks.appService.readFile.mockResolvedValue(
+      JSON.stringify({ storagePath: 'catalog/observed.epub' }),
+    );
+    mocks.appService.writeFile.mockClear();
+    mocks.appService.downloadBook.mockReset();
+    mocks.appService.downloadBook.mockResolvedValue(undefined);
     mocks.appService.downloadBookCovers.mockClear();
     mocks.appService.generateCoverImageUrl.mockReset();
     mocks.appService.generateCoverImageUrl.mockResolvedValue(null);
@@ -878,6 +889,44 @@ describe('SyncWorker book reconcile queue', () => {
     expect(mocks.appService.saveLibraryBooks).not.toHaveBeenCalled();
   });
 
+  it('keeps catalog reconciliation failures non-fatal and retries on the next sync', async () => {
+    const { SyncWorker } = await import('@/services/sync/syncWorker');
+    const catalogBook = {
+      ...mocks.libraryBook,
+      hash: 'catalog:7231ff9a-24b9-4074-9369-bc7f88ffb179',
+      catalogBookId: '7231ff9a-24b9-4074-9369-bc7f88ffb179',
+      storagePath: 'catalog/books/gutenberg/book/new-sha/book.epub',
+      contentReconcileRequired: true,
+    } as Book;
+    mocks.libraryState.library = [catalogBook];
+    mocks.appService.exists.mockImplementation(async (path: string, _base: BaseDir) =>
+      path.endsWith('.epub'),
+    );
+    mocks.appService.downloadBook
+      .mockRejectedValueOnce(new Error('network unavailable'))
+      .mockResolvedValueOnce(undefined);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const worker = new SyncWorker();
+    const internal = worker as unknown as {
+      stopped: boolean;
+      userId: string;
+      reconcileCatalogContent: (userId: string) => Promise<void>;
+    };
+    internal.stopped = false;
+    internal.userId = 'user-1';
+
+    await expect(internal.reconcileCatalogContent('user-1')).resolves.toBeUndefined();
+    await expect(internal.reconcileCatalogContent('user-1')).resolves.toBeUndefined();
+
+    expect(mocks.appService.downloadBook).toHaveBeenCalledTimes(2);
+    expect(mocks.appService.downloadBook).toHaveBeenCalledWith(catalogBook, false, true);
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[SyncWorker] Catalog content reconciliation failed',
+      expect.objectContaining({ bookHash: catalogBook.hash, errorName: 'Error' }),
+    );
+    warnSpy.mockRestore();
+  });
+
   it('logs a zero-candidate cover convergence decision with its exclusion reason', async () => {
     const { SyncWorker } = await import('@/services/sync/syncWorker');
     const coveredBook = { ...mocks.libraryBook, coverImageUrl: 'blob:existing' } as Book;
@@ -1232,6 +1281,9 @@ describe('SyncWorker book reconcile queue', () => {
       totalPages: 1,
     });
     mocks.pushChanges.mockResolvedValueOnce({ reconcile: { upsert: [], remove: [] } });
+    mocks.appService.readFile.mockResolvedValueOnce(
+      JSON.stringify({ storagePath: catalogBook.storagePath }),
+    );
     const worker = new SyncWorker();
     (worker as unknown as { stopped: boolean; userId: string }).stopped = false;
     (worker as unknown as { stopped: boolean; userId: string }).userId = 'user-1';
@@ -1239,7 +1291,8 @@ describe('SyncWorker book reconcile queue', () => {
     await worker.pullNow('books');
 
     expect(mocks.listFiles).toHaveBeenCalled();
-    expect(mocks.appService.exists).not.toHaveBeenCalled();
+    expect(mocks.appService.exists).toHaveBeenCalled();
+    expect(mocks.appService.downloadBook).not.toHaveBeenCalled();
     expect(mocks.appService.downloadBookCovers).not.toHaveBeenCalled();
     expect(mocks.appService.generateCoverImageUrl).not.toHaveBeenCalled();
   });

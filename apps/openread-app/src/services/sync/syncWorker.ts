@@ -29,6 +29,7 @@ import {
 } from '@/utils/transform';
 import { runAccountLibraryMutation } from '@/services/accountLibraryLifecycle';
 import { cleanupDeletedBookArtifacts } from '@/services/deletedBookArtifactCleanup';
+import { reconcileCatalogBookContent } from '@/services/cloudSync';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useTransferStore } from '@/store/transferStore';
@@ -770,6 +771,7 @@ export class SyncWorker {
           const books = result.books.map((b) => transformBookFromDB(b as unknown as DBBook));
           await useLibraryStore.getState().updateBooks(envConfig, books);
         }
+        await this.reconcileCatalogContent(reconcileUserId);
         await this.downloadMissingCovers();
         this.updateStatus({ syncing: false, error: null, lastSyncAt: Date.now() });
         return;
@@ -799,6 +801,8 @@ export class SyncWorker {
       if (reconcile.remove?.length) {
         await this.applyServerBookRemovals(reconcile.remove, reconcileUserId);
       }
+
+      await this.reconcileCatalogContent(reconcileUserId);
 
       // Download covers AFTER all store mutations are complete.
       // Must be sequential — see docs/epics/sync-fixes/005_cover_sync_race_condition.md
@@ -914,6 +918,25 @@ export class SyncWorker {
         return remaining.length === current.length ? current : remaining;
       }),
     );
+  }
+
+  private async reconcileCatalogContent(reconcileUserId: string | null): Promise<void> {
+    if (!reconcileUserId || !this.isCurrentLibraryOwner(reconcileUserId) || isOffline()) return;
+
+    const appService = await envConfig.getAppService();
+    const library = [...useLibraryStore.getState().library];
+    for (const book of library) {
+      if (!this.isCurrentLibraryOwner(reconcileUserId) || isOffline()) return;
+      try {
+        await reconcileCatalogBookContent(book, appService);
+      } catch (error) {
+        console.warn('[SyncWorker] Catalog content reconciliation failed', {
+          bookHash: book.hash,
+          errorName: error instanceof Error ? error.name : 'UnknownError',
+        });
+        if (isOffline()) return;
+      }
+    }
   }
 
   /**

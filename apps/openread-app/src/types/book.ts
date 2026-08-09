@@ -98,6 +98,8 @@ export interface Book extends BookCore {
   catalogBookId?: string | null;
   /** R2 object key for storage-backed catalog imports. */
   storagePath?: string | null;
+  /** Server-owned, bounded remediation signal. Clients consume but never write this field. */
+  contentReconcileRequired?: boolean;
 
   metadata?: BookMetadata;
 }

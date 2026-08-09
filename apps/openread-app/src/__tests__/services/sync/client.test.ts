@@ -51,7 +51,12 @@ describe('canonical sync backend client', () => {
             {
               entity: 'book',
               entityId: 'book-1',
-              payload: { hash: 'book-1', title: 'Book One', updatedAt: 1000 },
+              payload: {
+                hash: 'book-1',
+                title: 'Book One',
+                contentReconcileRequired: true,
+                updatedAt: 1000,
+              },
               serverRevision: 'rev-1',
               serverUpdatedAt: 1000,
             },
@@ -84,7 +89,14 @@ describe('canonical sync backend client', () => {
       cursors: { book: '1000' },
       entities: ['book'],
     });
-    expect(result.books).toMatchObject([{ hash: 'book-1', book_hash: 'book-1' }]);
+    expect(result.books).toMatchObject([
+      {
+        hash: 'book-1',
+        book_hash: 'book-1',
+        contentReconcileRequired: true,
+        content_reconcile_required: true,
+      },
+    ]);
   });
 
   it('carries canonical pull tombstones through to callers', async () => {

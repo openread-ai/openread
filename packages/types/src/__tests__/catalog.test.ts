@@ -3,11 +3,13 @@ import {
   CATALOG_ADD_FAILURE_CODES,
   CATALOG_ADD_REQUEST_STATES,
   CATALOG_MATERIALIZATION_FAILURE_CODES,
+  CATALOG_MATERIALIZATION_FAILURE_DETAIL_MAX_LENGTH,
   CATALOG_RETRYABLE_MATERIALIZATION_FAILURE_CODES,
   CATALOG_TERMINAL_MATERIALIZATION_FAILURE_CODES,
   isCatalogAddFailureCode,
   isCatalogAddRequestState,
   isCatalogMaterializationFailureCode,
+  isCatalogMaterializationFailureDetail,
 } from '../catalog.js';
 
 const terminalCodes = [
@@ -48,6 +50,20 @@ describe('catalog failure contracts', () => {
     for (const code of CATALOG_MATERIALIZATION_FAILURE_CODES) {
       expect(isCatalogMaterializationFailureCode(code)).toBe(true);
     }
+  });
+
+  it('accepts only bounded structured materialization failure detail', () => {
+    expect(isCatalogMaterializationFailureDetail('XML_TAG_UNTERMINATED:OFFSET=824')).toBe(true);
+    expect(isCatalogMaterializationFailureDetail('ZIP_HEADER_MISSING')).toBe(true);
+    expect(isCatalogMaterializationFailureDetail('SECRET_QUOTED_DOCUMENT_TEXT')).toBe(false);
+    expect(isCatalogMaterializationFailureDetail('/private/source.epub')).toBe(false);
+    expect(
+      isCatalogMaterializationFailureDetail(
+        `XML_TAG_UNTERMINATED:OFFSET=${'1'.repeat(
+          CATALOG_MATERIALIZATION_FAILURE_DETAIL_MAX_LENGTH,
+        )}`,
+      ),
+    ).toBe(false);
   });
 
   it('exposes only terminal Add meanings plus retry exhaustion and library capacity', () => {

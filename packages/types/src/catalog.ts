@@ -175,6 +175,70 @@ export type CatalogMaterializationState = 'pending' | 'running' | 'succeeded' | 
 export type CatalogAddRequestState = (typeof CATALOG_ADD_REQUEST_STATES)[number];
 export type CatalogAddPublicState = 'preparing' | 'ready' | 'failed';
 
+export const CATALOG_MATERIALIZATION_FAILURE_DETAIL_MAX_LENGTH = 160;
+export const CATALOG_MATERIALIZATION_FAILURE_DETAIL_PATTERN =
+  /^[A-Z][A-Z0-9_]*(?::[A-Z][A-Z0-9_]*=[0-9]+(?:,[A-Z][A-Z0-9_]*=[0-9]+)*)?$/;
+export const CATALOG_MATERIALIZATION_FAILURE_DETAIL_CATEGORIES = [
+  'DETAIL_UNAVAILABLE',
+  'END_SENTINEL_COUNT',
+  'EPUB_CONTAINER_MISSING',
+  'EPUB_MIMETYPE_INVALID',
+  'FINAL_RESOURCE_MISSING',
+  'LOCAL_REFERENCE_UNRESOLVED',
+  'OPF_COVER_BINDING_INVALID',
+  'OPF_ENTRY_MISSING',
+  'OPF_FINAL_STRUCTURE_INVALID',
+  'OPF_MANIFEST_HREF_MISSING',
+  'OPF_MANIFEST_ID_INVALID',
+  'OPF_ROOTFILE_INVALID',
+  'OPF_SPINE_INVALID',
+  'OPF_STRUCTURE_INVALID',
+  'OUTPUT_RESOURCE_DRIFT',
+  'OUTPUT_RESOURCE_UNKNOWN',
+  'PATCH_RANGE_INVALID',
+  'SENTINEL_LOCATION_INVALID',
+  'START_SENTINEL_COUNT',
+  'TRANSFORM_INVALID_UNCLASSIFIED',
+  'UNCHANGED_BYTES_DRIFT',
+  'XHTML_BODY_MISSING',
+  'XHTML_NAMESPACE_DRIFT',
+  'XHTML_ROOT_INVALID',
+  'XHTML_STRUCTURE_INVALID',
+  'XHTML_TITLE_INVALID',
+  'XML_ATTRIBUTE_INVALID',
+  'XML_CDATA_UNTERMINATED',
+  'XML_COMMENT_UNTERMINATED',
+  'XML_DECLARATION_UNTERMINATED',
+  'XML_LIMIT_EXCEEDED',
+  'XML_NAME_MISSING',
+  'XML_PROCESSING_INSTRUCTION_UNTERMINATED',
+  'XML_ROOT_UNBALANCED',
+  'XML_TAG_UNTERMINATED',
+  'XML_TOKEN_MISMATCH',
+  'ZIP_ENTRY_UNSUPPORTED',
+  'ZIP_EXTRA_FIELD_INVALID',
+  'ZIP_FILENAME_ENCODING_UNSUPPORTED',
+  'ZIP_FILENAME_INVALID',
+  'ZIP_HEADER_MISSING',
+  'ZIP_LAYOUT_UNSUPPORTED',
+  'ZIP_OUTPUT_ENTRY_MISSING',
+  'ZIP_STRUCTURE_INVALID',
+] as const;
+
+const catalogMaterializationFailureDetailCategories: ReadonlySet<string> = new Set(
+  CATALOG_MATERIALIZATION_FAILURE_DETAIL_CATEGORIES,
+);
+
+export function isCatalogMaterializationFailureDetail(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length >= 1 &&
+    value.length <= CATALOG_MATERIALIZATION_FAILURE_DETAIL_MAX_LENGTH &&
+    CATALOG_MATERIALIZATION_FAILURE_DETAIL_PATTERN.test(value) &&
+    catalogMaterializationFailureDetailCategories.has(value.split(':', 1)[0]!)
+  );
+}
+
 export interface CatalogAddRequestResponse {
   addRequestId: string;
   catalogBookId: string;
@@ -183,6 +247,7 @@ export interface CatalogAddRequestResponse {
   finalBookId?: string;
   bookHash?: SyncableBookRef | string;
   failureCode?: CatalogAddFailureCode;
+  failureDetail?: string;
 }
 
 /** @deprecated Catalog imports use the durable Catalog Add request contract. */

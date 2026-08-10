@@ -6,7 +6,6 @@ import type { ReactNode } from 'react';
 const mockReplace = vi.fn();
 let mockLibraryLoaded = true;
 let mockVisibleBookCount = 0;
-let mockShouldRouteToGetStarted = true;
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ replace: mockReplace }),
@@ -14,15 +13,6 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/context/LibraryLifecycleContext', () => ({
   useLibraryLifecycle: () => ({ libraryLoaded: mockLibraryLoaded }),
-}));
-
-vi.mock('@/hooks/useEmptyLibraryOnboarding', () => ({
-  useEmptyLibraryOnboarding: () => ({
-    variant: mockShouldRouteToGetStarted ? 'onboarding' : 'empty-library',
-    completeOnboarding: vi.fn(),
-    onboardingCompleted: !mockShouldRouteToGetStarted,
-    shouldRouteToGetStarted: mockShouldRouteToGetStarted,
-  }),
 }));
 
 vi.mock('@/hooks/useTranslation', () => ({
@@ -73,28 +63,16 @@ describe('Home empty-library routing', () => {
     vi.clearAllMocks();
     mockLibraryLoaded = true;
     mockVisibleBookCount = 0;
-    mockShouldRouteToGetStarted = true;
   });
 
-  it('redirects incomplete loaded zero-visible-book libraries to /get-started', async () => {
+  it('routes every loaded zero-visible-book library to the canonical import CTA', async () => {
     render(<HomePage />);
 
     await waitFor(() => {
       expect(mockReplace).toHaveBeenCalledWith('/get-started');
     });
     expect(screen.queryByTestId('continue-reading')).toBeNull();
-  });
-
-  it('renders empty Home after onboarding is completed with zero visible books', () => {
-    mockShouldRouteToGetStarted = false;
-
-    render(<HomePage />);
-
-    expect(mockReplace).not.toHaveBeenCalled();
-    expect(screen.getByTestId('continue-reading')).toBeTruthy();
-    expect(screen.getByTestId('recently-added')).toBeTruthy();
-    expect(screen.getByTestId('featured-from-explore')).toBeTruthy();
-    expect(screen.getByTestId('home-search')).toBeTruthy();
+    expect(screen.queryByTestId('home-search')).toBeNull();
   });
 
   it('renders regular Home dashboard when visible books exist', () => {
@@ -109,12 +87,14 @@ describe('Home empty-library routing', () => {
     expect(screen.getByTestId('home-search')).toBeTruthy();
   });
 
-  it('keeps loading skeletons while library is not loaded', () => {
+  it('keeps loading skeletons without flashing the CTA route or categories', () => {
     mockLibraryLoaded = false;
 
     render(<HomePage />);
 
     expect(mockReplace).not.toHaveBeenCalled();
     expect(screen.getAllByTestId('skeleton').length).toBe(2);
+    expect(screen.queryByTestId('continue-reading')).toBeNull();
+    expect(screen.queryByTestId('home-search')).toBeNull();
   });
 });

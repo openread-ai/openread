@@ -44,13 +44,16 @@ vi.mock('@/components/platform/book-section', () => ({
   BookSection: ({
     title,
     books,
+    emptyMessage,
     variant,
   }: {
     title: string;
     books: Book[];
+    emptyMessage?: string;
     variant?: 'row' | 'hero';
   }) => (
     <section data-testid={`section-${title}`} data-variant={variant ?? 'row'}>
+      {books.length === 0 ? emptyMessage : null}
       {books.map((book) => (
         <div key={book.hash}>{book.title}</div>
       ))}
@@ -164,6 +167,23 @@ describe('HomeSections', () => {
     expect(screen.getByText('Reading Book')).toBeTruthy();
     expect(screen.getByText('Fresh Book')).toBeTruthy();
     expect(sections).toEqual(['Featured from Explore']);
+  });
+
+  it('keeps category-specific empty messaging when the library is only partially empty', async () => {
+    const recent = [book('fresh-book', 'Fresh Book')];
+    mocks.useLibraryBooks.mockImplementation((options: { filter?: string }) => {
+      if (options.filter === 'reading') return { books: [], isLoading: false };
+      if (options.filter === 'recent') return { books: recent, isLoading: false };
+      return { books: [], isLoading: false };
+    });
+
+    const { HomeSections } = await import('@/app/(platform)/home/sections');
+    render(<HomeSections />);
+
+    expect(screen.getByTestId('section-Continue Reading').textContent).toContain(
+      'Start reading a book to see it here',
+    );
+    expect(screen.getByTestId('section-Recently Added').textContent).toContain('Fresh Book');
   });
 
   it('hides Featured Explore when rails fail or are empty', async () => {

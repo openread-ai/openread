@@ -4,8 +4,8 @@ Node-only foundation for disposable OpenRead accounts:
 
 1. provision a confirmed user with an admin-owned `app_metadata` marker;
 2. return credentials so Playwright can drive the product sign-in form;
-3. inventory the complete paginated `users/<id>/` R2 prefix plus canonical file/temp rows before deletion;
-4. independently verify password sign-in rejection, Supabase auth-user absence, canonical DB-row absence, and an empty R2 prefix;
+3. inventory both complete paginated user-owned R2 prefixes (`users/<id>/` and the intentional legacy `<id>/Openread/Books/`) plus canonical file/temp rows before deletion;
+4. independently verify password sign-in rejection, Supabase auth-user absence, canonical DB-row absence, and both empty R2 prefixes;
 5. reap stale marked accounts after interrupted runs.
 
 ## Safety contract
@@ -15,7 +15,7 @@ Node-only foundation for disposable OpenRead accounts:
 - Email shape is diagnostic only and is never a deletion condition.
 - The janitor lists candidates from Supabase Auth, then calls the same guarded deletion function.
 - Service-role and R2 credentials are read only from process environment in Node. They must never be passed to Playwright pages, bundled client code, logs, or committed files.
-- The janitor deletes and exact-zero verifies every `predelete` target before R2 cleanup, then proves the R2 prefix empty before auth deletion. Predelete, discovery, pagination, deletion, or verification failure leaves the marked auth user and later resources available for a retry.
+- The janitor deletes and exact-zero verifies every `predelete` target before R2 cleanup, then proves both user-owned R2 prefixes empty before auth deletion. Temp objects remain row-driven and HEAD-verified. Predelete, discovery, pagination, deletion, or verification failure leaves the marked auth user and later resources available for a retry.
 - Before provisioning or any cleanup mutation, the service-role-only `account_deletion_schema_inventory()` RPC derives every public `user_id` target plus `plans.id` and its actual auth-user FK delete behavior from `pg_catalog`. Missing, unexpected, reclassified, malformed, or unavailable inventory fails closed.
 
 ## Explicit coverage gap

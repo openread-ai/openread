@@ -6,6 +6,7 @@ import {
   S3Client,
 } from '@aws-sdk/client-s3';
 import { createClient } from '@supabase/supabase-js';
+import { getUserOwnedObjectPrefixes } from '@openread/storage';
 import { randomUUID } from 'node:crypto';
 import { createAccountLifecycle } from './account-lifecycle.mjs';
 
@@ -89,44 +90,47 @@ export async function finalizeProductAccountDeletion({
 
 export async function listUserObjectKeys({ userId, bucket, send }) {
   const keys = [];
-  const prefix = `users/${userId}/`;
-  const seenTokens = new Set();
-  let continuationToken;
-  do {
-    const requestToken = continuationToken;
-    const response = await send(
-      new ListObjectsV2Command({
-        Bucket: bucket,
-        Prefix: prefix,
-        ContinuationToken: continuationToken,
-        MaxKeys: 1000,
-      }),
-    );
-    if (response.Contents !== undefined && !Array.isArray(response.Contents)) {
-      throw new Error('R2 inventory returned malformed contents');
-    }
-    if (response.IsTruncated !== undefined && typeof response.IsTruncated !== 'boolean') {
-      throw new Error('R2 inventory returned malformed truncation metadata');
-    }
-    for (const object of response.Contents ?? []) {
-      if (typeof object.Key !== 'string') throw new Error('R2 inventory returned an empty key');
-      keys.push(object.Key);
-    }
-    if (response.IsTruncated) {
-      const nextToken = response.NextContinuationToken;
-      if (!nextToken) throw new Error('R2 inventory pagination returned no continuation token');
-      if (nextToken === requestToken || seenTokens.has(nextToken)) {
-        throw new Error('R2 inventory pagination did not advance');
+  for (const prefix of getUserOwnedObjectPrefixes(userId)) {
+    const seenTokens = new Set();
+    let continuationToken;
+    do {
+      const requestToken = continuationToken;
+      const response = await send(
+        new ListObjectsV2Command({
+          Bucket: bucket,
+          Prefix: prefix,
+          ContinuationToken: continuationToken,
+          MaxKeys: 1000,
+        }),
+      );
+      if (response.Contents !== undefined && !Array.isArray(response.Contents)) {
+        throw new Error('R2 inventory returned malformed contents');
       }
-      seenTokens.add(nextToken);
-      continuationToken = nextToken;
-    } else {
-      if (response.NextContinuationToken) {
-        throw new Error('R2 inventory returned a continuation token without truncation');
+      if (response.IsTruncated !== undefined && typeof response.IsTruncated !== 'boolean') {
+        throw new Error('R2 inventory returned malformed truncation metadata');
       }
-      continuationToken = undefined;
-    }
-  } while (continuationToken);
+      for (const object of response.Contents ?? []) {
+        if (typeof object.Key !== 'string' || !object.Key.startsWith(prefix)) {
+          throw new Error('R2 inventory returned an empty or out-of-prefix key');
+        }
+        keys.push(object.Key);
+      }
+      if (response.IsTruncated) {
+        const nextToken = response.NextContinuationToken;
+        if (!nextToken) throw new Error('R2 inventory pagination returned no continuation token');
+        if (nextToken === requestToken || seenTokens.has(nextToken)) {
+          throw new Error('R2 inventory pagination did not advance');
+        }
+        seenTokens.add(nextToken);
+        continuationToken = nextToken;
+      } else {
+        if (response.NextContinuationToken) {
+          throw new Error('R2 inventory returned a continuation token without truncation');
+        }
+        continuationToken = undefined;
+      }
+    } while (continuationToken);
+  }
   return keys;
 }
 

@@ -64,8 +64,9 @@ const createFakeRuntime = () => {
     queryFileRecords: async (userId) => fileRecords.get(userId) ?? [],
     listObjectKeys: async (userId) => {
       if (objectInventoryError) throw objectInventoryError;
-      const prefix = `users/${userId}/`;
-      return [...objects].filter((key) => key.startsWith(prefix));
+      return [...objects].filter(
+        (key) => key.startsWith(`users/${userId}/`) || key.startsWith(`${userId}/Openread/Books/`),
+      );
     },
     deleteTableRows: async ({ table }, userId) => {
       calls.sequence.push(`predelete:${table}`);
@@ -102,7 +103,19 @@ const createFakeRuntime = () => {
     },
     addArtifact(account, suffix = 'book.epub') {
       const key = `users/${account.userId}/books/${suffix}`;
-      fileRecords.set(account.userId, [{ file_key: key, file_type: 'book' }]);
+      fileRecords.set(account.userId, [
+        ...(fileRecords.get(account.userId) ?? []),
+        { file_key: key, file_type: 'book' },
+      ]);
+      objects.add(key);
+      return key;
+    },
+    addLegacyArtifact(account, suffix = 'hash/book.epub') {
+      const key = `${account.userId}/Openread/Books/${suffix}`;
+      fileRecords.set(account.userId, [
+        ...(fileRecords.get(account.userId) ?? []),
+        { file_key: key, file_type: 'book' },
+      ]);
       objects.add(key);
       return key;
     },
@@ -257,8 +270,11 @@ describe('OpenRead E2E account lifecycle', () => {
     const youngMarked = await runtime.lifecycle.provision('young-run');
     const unmarked = runtime.createUnmarkedUser('unmarked-old-user');
     const oldObject = runtime.addArtifact(oldMarked, 'old.epub');
+    const legacyObject = runtime.addLegacyArtifact(oldMarked);
     const rowlessObject = `users/${oldMarked.userId}/books/rowless.epub`;
+    const rowlessLegacyObject = `${oldMarked.userId}/Openread/Books/hash/rowless.epub`;
     runtime.objects.add(rowlessObject);
+    runtime.objects.add(rowlessLegacyObject);
     runtime.addRow('books', oldMarked.userId);
     runtime.addRow('user_catalog_wishlist', oldMarked.userId);
     runtime.setCreatedAt(oldMarked.userId, Date.parse('2026-08-11T00:00:00.000Z'));
@@ -272,13 +288,17 @@ describe('OpenRead E2E account lifecycle', () => {
     assert.equal(report.eligible, 1);
     assert.equal(runtime.users.has(oldMarked.userId), false);
     assert.equal(runtime.objects.has(oldObject), false);
+    assert.equal(runtime.objects.has(legacyObject), false);
     assert.equal(runtime.objects.has(rowlessObject), false);
+    assert.equal(runtime.objects.has(rowlessLegacyObject), false);
     assert.equal(runtime.users.has(youngMarked.userId), true);
     assert.equal(runtime.users.has(unmarked.id), true);
     assert.equal(runtime.rowCount('user_catalog_wishlist', oldMarked.userId), 0);
     assert.deepEqual(runtime.calls.adminDeleteUser, [oldMarked.userId]);
     assert.deepEqual(runtime.calls.sequence, [
       'predelete:user_catalog_wishlist',
+      'r2-delete',
+      'r2-delete',
       'r2-delete',
       'r2-delete',
       'auth-delete',

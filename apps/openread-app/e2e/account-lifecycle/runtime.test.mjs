@@ -18,22 +18,35 @@ const completeEnvironment = () => ({
 });
 
 describe('R2 user-prefix inventory', () => {
-  it('collects every page for the exact user prefix', async () => {
+  it('collects every page across both exact user-owned prefixes', async () => {
     const inputs = [];
     const keys = await listUserObjectKeys({
       userId: 'marked-user',
       bucket: 'test-bucket',
       send: async (command) => {
         inputs.push(command.input);
-        if (inputs.length === 1) {
+        if (command.input.Prefix === 'users/marked-user/' && !command.input.ContinuationToken) {
           return {
             Contents: [{ Key: 'users/marked-user/books/one.epub' }],
             IsTruncated: true,
             NextContinuationToken: 'page-2',
           };
         }
+        if (command.input.Prefix === 'users/marked-user/') {
+          return {
+            Contents: [{ Key: 'users/marked-user/books/two.epub' }],
+            IsTruncated: false,
+          };
+        }
+        if (!command.input.ContinuationToken) {
+          return {
+            Contents: [{ Key: 'marked-user/Openread/Books/hash/legacy-one.epub' }],
+            IsTruncated: true,
+            NextContinuationToken: 'legacy-page-2',
+          };
+        }
         return {
-          Contents: [{ Key: 'users/marked-user/books/two.epub' }],
+          Contents: [{ Key: 'marked-user/Openread/Books/hash/legacy-two.epub' }],
           IsTruncated: false,
         };
       },
@@ -42,10 +55,16 @@ describe('R2 user-prefix inventory', () => {
     assert.deepEqual(keys, [
       'users/marked-user/books/one.epub',
       'users/marked-user/books/two.epub',
+      'marked-user/Openread/Books/hash/legacy-one.epub',
+      'marked-user/Openread/Books/hash/legacy-two.epub',
     ]);
     assert.equal(inputs[0].Prefix, 'users/marked-user/');
     assert.equal(inputs[0].ContinuationToken, undefined);
     assert.equal(inputs[1].ContinuationToken, 'page-2');
+    assert.equal(inputs[2].Prefix, 'marked-user/Openread/Books/');
+    assert.equal(inputs[2].ContinuationToken, undefined);
+    assert.equal(inputs[3].Prefix, 'marked-user/Openread/Books/');
+    assert.equal(inputs[3].ContinuationToken, 'legacy-page-2');
   });
 
   it('fails closed when a truncated page has no continuation token', async () => {

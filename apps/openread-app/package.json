@@ -84,7 +84,7 @@
     "check:all": "pnpm check:translations && pnpm check:lookbehind-regex",
     "build-check": "pnpm build && pnpm build-web && pnpm check:all",
     "test:e2e": "dotenv -e .env.local -e .env.web -e .env.test.local -v NEXT_PUBLIC_APP_PLATFORM=web -- playwright test",
-    "build:e2e:account-lifecycle": "pnpm --filter @openread/types build",
+    "build:e2e:account-lifecycle": "pnpm --filter @openread/types build && pnpm --filter @openread/storage build",
     "test:e2e:account-lifecycle": "pnpm build:e2e:account-lifecycle && node --test e2e/account-lifecycle/*.test.mjs",
     "test:e2e:account-lifecycle:schema": "pnpm build:e2e:account-lifecycle && dotenv -e .env.local -e .env.web -e .env.test.local -- node --test e2e/account-lifecycle/schema-contract.integration.mjs",
     "test:e2e:account-lifecycle:live": "pnpm build:e2e:account-lifecycle && dotenv -e .env.local -e .env.web -e .env.test.local -- node e2e/account-lifecycle/live-verification.mjs",

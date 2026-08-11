@@ -1,4 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
+import { assertUserOwnedObjectKey } from '@openread/storage';
 import { ACCOUNT_DELETION_TARGETS, assertAccountDeletionSchemaInventory } from '@openread/types';
 
 export { ACCOUNT_DELETION_TARGETS };
@@ -19,7 +20,6 @@ export const UNMARKED_ACCOUNT_ERROR =
   'Refusing to delete account without the admin-owned OpenRead E2E marker';
 
 const RUN_ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,62}$/i;
-const USER_OBJECT_PREFIX = (userId) => `users/${userId}/`;
 
 const requiredFunction = (dependencies, name) => {
   const value = dependencies[name];
@@ -56,13 +56,10 @@ export const assertE2EAccountMarker = (user) => {
   if (!hasE2EAccountMarker(user)) throw new Error(UNMARKED_ACCOUNT_ERROR);
 };
 
-const normalizeUserPrefixKeys = (keys, userId) => {
+const normalizeUserOwnedKeys = (keys, userId) => {
   if (!Array.isArray(keys)) throw new Error('R2 inventory returned a non-array result');
-  const prefix = USER_OBJECT_PREFIX(userId);
   return keys.map((key) => {
-    if (typeof key !== 'string' || !key.startsWith(prefix) || key.includes('..')) {
-      throw new Error('R2 inventory contains an object outside the marked account namespace');
-    }
+    assertUserOwnedObjectKey(key, userId);
     return Object.freeze({ key, type: 'user-prefix' });
   });
 };
@@ -79,13 +76,13 @@ const normalizeFileRecords = (records, userId) => {
     if (!['book', 'cover', 'temp'].includes(type)) {
       throw new Error(`File metadata contains unsupported type: ${String(type)}`);
     }
-    if (type !== 'temp' && !key.startsWith(USER_OBJECT_PREFIX(userId))) {
-      throw new Error('User book object key is outside the marked account namespace');
-    }
-    if (type === 'temp' && !/^temp\/[^/]+\//.test(key)) {
+    if (type !== 'temp') assertUserOwnedObjectKey(key, userId);
+    if (
+      type === 'temp' &&
+      (!/^temp\/[^/]+\//.test(key) || key.includes('..') || key.includes('\\'))
+    ) {
       throw new Error('Temporary object key is outside the canonical temp namespace');
     }
-    if (key.includes('..')) throw new Error('Object key contains a traversal segment');
     return Object.freeze({ key, type });
   });
 };
@@ -135,7 +132,7 @@ export function createAccountLifecycle(dependencies) {
     ]);
     const artifacts = [
       ...normalizeFileRecords(fileRecords, userId),
-      ...normalizeUserPrefixKeys(prefixKeys, userId),
+      ...normalizeUserOwnedKeys(prefixKeys, userId),
     ];
     return [...new Map(artifacts.map((artifact) => [artifact.key, artifact])).values()];
   };
@@ -178,7 +175,7 @@ export function createAccountLifecycle(dependencies) {
     for (const artifact of artifacts) {
       if (await headObject(artifact.key)) remaining.push(artifact.key);
     }
-    const prefixKeys = normalizeUserPrefixKeys(await listObjectKeys(userId), userId).map(
+    const prefixKeys = normalizeUserOwnedKeys(await listObjectKeys(userId), userId).map(
       ({ key }) => key,
     );
     const remainingKeys = [...new Set([...remaining, ...prefixKeys])];

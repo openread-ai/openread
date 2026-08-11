@@ -234,14 +234,16 @@ const ReaderContent: React.FC<{
     navigateBackToLibrary();
   };
 
-  const handleCloseBooks = throttle(async () => {
+  const closeBooks = async () => {
     const settings = useSettingsStore.getState().settings;
     await Promise.all(bookKeys.map(async (key) => await saveConfigAndCloseBook(key)));
     await saveSettings(envConfig, settings);
-  }, 200);
+  };
 
-  const handleCloseBooksToLibrary = () => {
-    handleCloseBooks();
+  const handleCloseBooks = throttle(closeBooks, 200);
+
+  const handleCloseBooksToLibrary = async () => {
+    await closeBooks();
     if (isTauriAppPlatform()) {
       const currentWindow = getCurrentWindow();
       if (currentWindow.label === 'main') {
@@ -255,7 +257,7 @@ const ReaderContent: React.FC<{
   };
 
   const handleCloseBook = async (bookKey: string) => {
-    saveConfigAndCloseBook(bookKey);
+    await saveConfigAndCloseBook(bookKey);
     if (sideBarBookKey === bookKey) {
       setSideBarBookKey(getNextBookKey(sideBarBookKey));
     }

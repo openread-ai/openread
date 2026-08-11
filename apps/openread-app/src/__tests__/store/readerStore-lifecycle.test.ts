@@ -5,6 +5,7 @@ import { useReaderStore } from '@/store/readerStore';
 import type { EnvConfigType } from '@/services/environment';
 import type { Book } from '@/types/book';
 import type { AppService } from '@/types/system';
+import { createReaderBookKey } from '@openread/types';
 
 const catalogBookHash = 'catalog:7231ff9a-24b9-4074-9369-bc7f88ffb179' as Book['hash'];
 
@@ -20,6 +21,39 @@ function catalogBook(storagePath: string): Book {
     updatedAt: 1,
   } as Book;
 }
+
+const createViewState = (key: string) => ({
+  key,
+  view: null,
+  viewerKey: key,
+  isPrimary: true,
+  closing: false,
+  loading: false,
+  inited: true,
+  error: null,
+  progress: null,
+  ribbonVisible: false,
+  ttsEnabled: false,
+  rsvpEnabled: false,
+  syncing: false,
+  gridInsets: null,
+  viewSettings: null,
+});
+
+const relocate = (key: string, location: string, current: number) => {
+  const page = { current, total: 10 };
+  useReaderStore
+    .getState()
+    .setProgress(
+      key,
+      location,
+      {} as never,
+      page as never,
+      page as never,
+      {} as never,
+      new Range(),
+    );
+};
 
 describe('readerStore catalog open lifecycle', () => {
   beforeEach(() => {
@@ -92,5 +126,65 @@ describe('readerStore catalog open lifecycle', () => {
     expect(useBookDataStore.getState().booksData[catalogBookHash]).toBeUndefined();
     expect(useBookDataStore.getState().preSyncedConfigs[catalogBookHash]).toBeDefined();
     expect(useReaderStore.getState().viewStates['catalog-open']?.inited).not.toBe(true);
+  });
+});
+
+describe('readerStore close lifecycle', () => {
+  const book = {
+    hash: 'd41d8cd98f00b204e9800998ecf8427e',
+    title: 'Reader Close Book',
+    author: 'OpenRead',
+    format: 'epub',
+    progress: [1, 10],
+    createdAt: 1,
+    updatedAt: 1,
+  } as Book;
+  const bookKey = createReaderBookKey(book.hash);
+
+  beforeEach(() => {
+    useLibraryStore.setState({ library: [book], libraryOwnerUserId: 'account-a' });
+    useBookDataStore.setState({
+      booksData: {
+        [book.hash]: {
+          id: book.hash,
+          book,
+          file: null,
+          config: { location: 'epubcfi(/6/2)', progress: [1, 10], updatedAt: 1 },
+          bookDoc: null,
+          isFixedLayout: false,
+        },
+      },
+      preSyncedConfigs: {},
+    });
+    useReaderStore.setState({
+      viewStates: { [bookKey]: createViewState(bookKey) },
+      bookKeys: [bookKey],
+      hoveredBookKey: null,
+    });
+  });
+
+  it('accepts user relocates, rejects teardown relocates, and accepts again after teardown clears', () => {
+    relocate(bookKey, 'epubcfi(/6/4)', 1);
+    expect(useBookDataStore.getState().getConfig(bookKey)).toMatchObject({
+      location: 'epubcfi(/6/4)',
+      progress: [2, 10],
+    });
+    expect(useLibraryStore.getState().library[0]?.progress).toEqual([2, 10]);
+
+    useReaderStore.getState().setViewClosing(bookKey, true);
+    relocate(bookKey, 'epubcfi(/6/2)', 0);
+    expect(useBookDataStore.getState().getConfig(bookKey)).toMatchObject({
+      location: 'epubcfi(/6/4)',
+      progress: [2, 10],
+    });
+    expect(useLibraryStore.getState().library[0]?.progress).toEqual([2, 10]);
+
+    useReaderStore.getState().setViewClosing(bookKey, false);
+    relocate(bookKey, 'epubcfi(/6/6)', 2);
+    expect(useBookDataStore.getState().getConfig(bookKey)).toMatchObject({
+      location: 'epubcfi(/6/6)',
+      progress: [3, 10],
+    });
+    expect(useLibraryStore.getState().library[0]?.progress).toEqual([3, 10]);
   });
 });

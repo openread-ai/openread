@@ -61,7 +61,7 @@ const ReaderContent: React.FC<{
   const { saveSettings } = useSettingsStore();
   const { getConfig, getBookDataByReaderKey, saveConfig } = useBookDataStore();
   const { getView, setBookKeys, getViewSettings } = useReaderStore();
-  const { initViewState, getViewState, clearViewState } = useReaderStore();
+  const { initViewState, getViewState, clearViewState, setViewClosing } = useReaderStore();
   const { isSettingsDialogOpen, settingsDialogBookKey } = useSettingsStore();
   const [showDetailsBook, setShowDetailsBook] = useState<Book | null>(null);
   const isInitiating = useRef(false);
@@ -194,8 +194,7 @@ const ReaderContent: React.FC<{
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookKeys]);
 
-  const saveBookConfig = async (bookKey: string) => {
-    const config = getConfig(bookKey);
+  const saveBookConfig = async (bookKey: string, config = getConfig(bookKey)) => {
     const { book } = getBookDataByReaderKey(bookKey) || {};
     const { isPrimary } = getViewState(bookKey) || {};
     if (isPrimary && book && config) {
@@ -214,15 +213,22 @@ const ReaderContent: React.FC<{
       await clearDiscordPresence(appService);
     }
 
+    const config = getConfig(bookKey);
+    const view = getView(bookKey);
+    setViewClosing(bookKey, true);
     try {
-      getView(bookKey)?.close();
-      getView(bookKey)?.remove();
-    } catch {
-      logger.info('Error closing book', bookKey);
+      try {
+        view?.close();
+        view?.remove();
+      } catch {
+        logger.info('Error closing book', bookKey);
+      }
+      eventDispatcher.dispatch('tts-stop', { bookKey });
+      await saveBookConfig(bookKey, config);
+      clearViewState(bookKey);
+    } finally {
+      setViewClosing(bookKey, false);
     }
-    eventDispatcher.dispatch('tts-stop', { bookKey });
-    await saveBookConfig(bookKey);
-    clearViewState(bookKey);
   };
 
   const navigateBackToLibrary = () => {

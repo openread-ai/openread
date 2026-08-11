@@ -38,6 +38,7 @@ interface ViewState {
   view: FoliateView | null;
   viewerKey: string;
   isPrimary: boolean;
+  closing: boolean;
   loading: boolean;
   inited: boolean;
   error: string | null;
@@ -91,6 +92,7 @@ interface ReaderStore {
   ) => Promise<void>;
   clearViewState: (key: string) => void;
   getViewState: (key: string) => ViewState | null;
+  setViewClosing: (key: string, closing: boolean) => void;
   getGridInsets: (key: string) => Insets | null;
   setGridInsets: (key: string, insets: Insets | null) => void;
   setViewInited: (key: string, inited: boolean) => void;
@@ -133,6 +135,17 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
     });
   },
   getViewState: (key: string) => get().viewStates[key] || null,
+  setViewClosing: (key: string, closing: boolean) =>
+    set((state) => {
+      const viewState = state.viewStates[key];
+      if (!viewState) return state;
+      return {
+        viewStates: {
+          ...state.viewStates,
+          [key]: { ...viewState, closing },
+        },
+      };
+    }),
   initViewState: async (
     envConfig: EnvConfigType,
     id: string,
@@ -151,6 +164,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
           view: null,
           viewerKey: '',
           isPrimary: false,
+          closing: false,
           loading: true,
           inited: false,
           error: null,
@@ -255,6 +269,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
             view: null,
             viewerKey: `${key}-${uniqueId()}`,
             isPrimary,
+            closing: false,
             loading: false,
             inited: false,
             error: null,
@@ -279,6 +294,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
             view: null,
             viewerKey: '',
             isPrimary: false,
+            closing: false,
             loading: false,
             inited: false,
             error: 'Failed to load book.',
@@ -350,7 +366,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
       }
       const bookData = useBookDataStore.getState().booksData[id];
       const viewState = state.viewStates[key];
-      if (!viewState || !bookData) return state;
+      if (!viewState || !bookData || viewState.closing) return state;
 
       const pagePressInfo = bookData.isFixedLayout ? section : pageinfo;
       const progress: [number, number] = [pagePressInfo.current + 1, pagePressInfo.total];

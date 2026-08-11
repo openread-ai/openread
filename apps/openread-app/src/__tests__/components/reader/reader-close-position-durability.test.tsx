@@ -7,13 +7,16 @@ import type { Book } from '@/types/book';
 
 const {
   clearViewStateMock,
+  closeBookHandlerRef,
   dismissBookMock,
   getBookDataByReaderKeyMock,
   getConfigMock,
+  getViewMock,
   getViewStateMock,
   initViewStateMock,
   libraryState,
   saveConfigMock,
+  setViewClosingMock,
   useSettingsStoreMock,
 } = vi.hoisted(() => {
   const settingsState = {
@@ -24,13 +27,18 @@ const {
 
   return {
     clearViewStateMock: vi.fn(),
+    closeBookHandlerRef: {
+      current: null as null | ((bookKey: string) => Promise<void>),
+    },
     dismissBookMock: vi.fn(),
     getBookDataByReaderKeyMock: vi.fn(),
     getConfigMock: vi.fn(),
+    getViewMock: vi.fn(),
     getViewStateMock: vi.fn(),
     initViewStateMock: vi.fn(),
     libraryState,
     saveConfigMock: vi.fn(),
+    setViewClosingMock: vi.fn(),
     useSettingsStoreMock: Object.assign(
       () => ({
         saveSettings: vi.fn(),
@@ -84,12 +92,13 @@ vi.mock('@/store/libraryStore', () => ({
 
 vi.mock('@/store/readerStore', () => ({
   useReaderStore: () => ({
-    getView: vi.fn(() => ({ close: vi.fn(), remove: vi.fn() })),
+    getView: getViewMock,
     setBookKeys: vi.fn(),
     getViewSettings: vi.fn(() => ({})),
     initViewState: initViewStateMock,
     getViewState: getViewStateMock,
     clearViewState: clearViewStateMock,
+    setViewClosing: setViewClosingMock,
   }),
 }));
 
@@ -140,11 +149,14 @@ vi.mock('@/app/reader/components/sidebar/SideBar', () => ({
   ),
 }));
 vi.mock('@/app/reader/components/BooksGrid', () => ({
-  default: ({ onCloseBook }: { onCloseBook: (bookKey: string) => void }) => (
-    <button type='button' onClick={() => onCloseBook('reader-key-1')}>
-      Back to Library
-    </button>
-  ),
+  default: ({ onCloseBook }: { onCloseBook: (bookKey: string) => Promise<void> }) => {
+    closeBookHandlerRef.current = onCloseBook;
+    return (
+      <button type='button' onClick={() => onCloseBook('reader-key-1')}>
+        Back to Library
+      </button>
+    );
+  },
 }));
 vi.mock('@/app/reader/components/notebook/Notebook', () => ({ default: () => null }));
 vi.mock('@/app/reader/components/InlineQuestionBar', () => ({ default: () => null }));
@@ -189,6 +201,7 @@ const expectNavigationWaitsForSave = async (buttonName: string) => {
 describe('ReaderContent close position durability', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    closeBookHandlerRef.current = null;
     libraryState.library = [
       { hash: 'book-1', title: 'Reader Book', format: 'epub', deletedAt: null } as Book,
     ];
@@ -197,6 +210,7 @@ describe('ReaderContent close position durability', () => {
       bookDoc: {},
     });
     getConfigMock.mockReturnValue({ location: 'epubcfi(/6/4)', progress: [2, 10] });
+    getViewMock.mockReturnValue({ close: vi.fn(), remove: vi.fn() });
     getViewStateMock.mockReturnValue({ isPrimary: true });
     initViewStateMock.mockResolvedValue(undefined);
   });
@@ -209,5 +223,73 @@ describe('ReaderContent close position durability', () => {
 
   it('persists all open positions before sidebar library navigation', async () => {
     await expectNavigationWaitsForSave('Go to Library');
+  });
+
+  it('clears the closing gate when persistence fails', async () => {
+    const persistenceError = new Error('persistence failed');
+    saveConfigMock.mockRejectedValueOnce(persistenceError);
+    renderReader();
+
+    expect(closeBookHandlerRef.current).not.toBeNull();
+    await expect(closeBookHandlerRef.current!('reader-key-1')).rejects.toBe(persistenceError);
+
+    expect(navigateToLibrary).not.toHaveBeenCalled();
+    expect(setViewClosingMock.mock.calls).toEqual([
+      ['reader-key-1', true],
+      ['reader-key-1', false],
+    ]);
+  });
+
+  it('clears the closing gate when view teardown throws', async () => {
+    getViewMock.mockReturnValue({
+      close: vi.fn(() => {
+        throw new Error('teardown failed');
+      }),
+      remove: vi.fn(),
+    });
+    saveConfigMock.mockResolvedValue(undefined);
+
+    renderReader();
+    fireEvent.click(screen.getByRole('button', { name: 'Back to Library' }));
+    await waitFor(() => expect(navigateToLibrary).toHaveBeenCalledOnce());
+
+    expect(setViewClosingMock.mock.calls).toEqual([
+      ['reader-key-1', true],
+      ['reader-key-1', false],
+    ]);
+  });
+
+  it('reopens at the advanced position when view teardown emits a first-page relocate', async () => {
+    const advanced = { location: 'epubcfi(/6/4)', progress: [2, 10] as [number, number] };
+    const firstPage = { location: 'epubcfi(/6/2)', progress: [1, 10] as [number, number] };
+    let currentConfig = advanced;
+    let closing = false;
+    let persistedConfig: typeof advanced | null = null;
+
+    getConfigMock.mockImplementation(() => currentConfig);
+    setViewClosingMock.mockImplementation((_bookKey: string, value: boolean) => {
+      closing = value;
+    });
+    getViewMock.mockReturnValue({
+      close: vi.fn(() => {
+        if (!closing) currentConfig = firstPage;
+      }),
+      remove: vi.fn(),
+    });
+    saveConfigMock.mockImplementation(async (_env, _bookKey, config) => {
+      persistedConfig = structuredClone(config);
+    });
+
+    renderReader();
+    fireEvent.click(screen.getByRole('button', { name: 'Back to Library' }));
+    await waitFor(() => expect(navigateToLibrary).toHaveBeenCalledOnce());
+
+    expect(persistedConfig).toEqual(advanced);
+    currentConfig = structuredClone(persistedConfig!);
+    expect(getConfigMock()).toEqual(advanced);
+    expect(setViewClosingMock.mock.calls).toEqual([
+      ['reader-key-1', true],
+      ['reader-key-1', false],
+    ]);
   });
 });

@@ -95,7 +95,7 @@ interface ReaderStore {
   setViewClosing: (key: string, closing: boolean) => void;
   getGridInsets: (key: string) => Insets | null;
   setGridInsets: (key: string, insets: Insets | null) => void;
-  setViewInited: (key: string, inited: boolean) => void;
+  setViewInited: (key: string, inited: boolean, expectedView?: FoliateView) => void;
   recreateViewer: (envConfig: EnvConfigType, key: string) => void;
 }
 
@@ -370,6 +370,26 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
 
       const pagePressInfo = bookData.isFixedLayout ? section : pageinfo;
       const progress: [number, number] = [pagePressInfo.current + 1, pagePressInfo.total];
+      const viewProgress = {
+        ...viewState.progress,
+        location,
+        sectionHref: tocItem?.href,
+        sectionLabel: tocItem?.label,
+        sectionId: tocItem?.id,
+        section,
+        pageinfo,
+        timeinfo,
+        range,
+      };
+
+      if (!viewState.inited) {
+        return {
+          viewStates: {
+            ...state.viewStates,
+            [key]: { ...viewState, progress: viewProgress },
+          },
+        };
+      }
 
       // calculate progress percentage
       const progressPercentage = Math.round((progress[0] / progress[1]) * 100);
@@ -422,20 +442,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
       return {
         viewStates: {
           ...state.viewStates,
-          [key]: {
-            ...viewState,
-            progress: {
-              ...viewState.progress,
-              location,
-              sectionHref: tocItem?.href,
-              sectionLabel: tocItem?.label,
-              sectionId: tocItem?.id,
-              section,
-              pageinfo,
-              timeinfo,
-              range,
-            },
-          },
+          [key]: { ...viewState, progress: viewProgress },
         },
       };
     }),
@@ -508,16 +515,17 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
       },
     })),
 
-  setViewInited: (key: string, inited: boolean) =>
-    set((state) => ({
-      viewStates: {
-        ...state.viewStates,
-        [key]: {
-          ...state.viewStates[key]!,
-          inited,
+  setViewInited: (key: string, inited: boolean, expectedView?: FoliateView) =>
+    set((state) => {
+      const viewState = state.viewStates[key];
+      if (!viewState || (expectedView && viewState.view !== expectedView)) return state;
+      return {
+        viewStates: {
+          ...state.viewStates,
+          [key]: { ...viewState, inited },
         },
-      },
-    })),
+      };
+    }),
 
   recreateViewer: (envConfig: EnvConfigType, key: string) => {
     const id = parseBookRefFromReaderBookKey(key);

@@ -5,6 +5,8 @@ import { useReaderStore } from '@/store/readerStore';
 import type { EnvConfigType } from '@/services/environment';
 import type { Book } from '@/types/book';
 import type { AppService } from '@/types/system';
+import type { FoliateView } from '@/types/view';
+import { initializeReaderViewPosition } from '@/app/reader/utils/readerResumeAnchor';
 import { createReaderBookKey } from '@openread/types';
 
 const catalogBookHash = 'catalog:7231ff9a-24b9-4074-9369-bc7f88ffb179' as Book['hash'];
@@ -161,6 +163,97 @@ describe('readerStore close lifecycle', () => {
       bookKeys: [bookKey],
       hoveredBookKey: null,
     });
+  });
+
+  it('ignores stale initial navigation settlement after clear or same-key replacement', async () => {
+    let resolveCleared!: () => void;
+    const clearedView = {
+      init: vi.fn(() => new Promise<void>((resolve) => (resolveCleared = resolve))),
+      goToFraction: vi.fn(),
+    } as unknown as FoliateView;
+    useReaderStore.setState({
+      viewStates: {
+        [bookKey]: { ...createViewState(bookKey), view: clearedView, inited: false },
+      },
+    });
+
+    const clearedInitialization = initializeReaderViewPosition(clearedView, 'epubcfi(/6/4)', () =>
+      useReaderStore.getState().setViewInited(bookKey, true, clearedView),
+    );
+    useReaderStore.getState().clearViewState(bookKey);
+    resolveCleared();
+    await clearedInitialization;
+
+    expect(useReaderStore.getState().viewStates[bookKey]).toBeUndefined();
+
+    let resolveReplaced!: () => void;
+    const replacedView = {
+      init: vi.fn(() => new Promise<void>((resolve) => (resolveReplaced = resolve))),
+      goToFraction: vi.fn(),
+    } as unknown as FoliateView;
+    const replacementView = {} as FoliateView;
+    useReaderStore.setState({
+      viewStates: {
+        [bookKey]: { ...createViewState(bookKey), view: replacedView, inited: false },
+      },
+    });
+
+    const replacedInitialization = initializeReaderViewPosition(replacedView, 'epubcfi(/6/4)', () =>
+      useReaderStore.getState().setViewInited(bookKey, true, replacedView),
+    );
+    useReaderStore.setState({
+      viewStates: {
+        [bookKey]: { ...createViewState(bookKey), view: replacementView, inited: false },
+      },
+    });
+    resolveReplaced();
+    await replacedInitialization;
+
+    expect(useReaderStore.getState().viewStates[bookKey]).toMatchObject({
+      view: replacementView,
+      inited: false,
+    });
+  });
+
+  it('shows restore progress without persisting it, then persists genuine post-init relocates', () => {
+    useBookDataStore.setState((state) => ({
+      booksData: {
+        ...state.booksData,
+        [book.hash]: {
+          ...state.booksData[book.hash]!,
+          config: { location: 'epubcfi(/6/4)', progress: [2, 10], updatedAt: 2 },
+        },
+      },
+    }));
+    useLibraryStore.setState({
+      library: [{ ...book, progress: [2, 10] }],
+    });
+    useReaderStore.setState({
+      viewStates: {
+        [bookKey]: { ...createViewState(bookKey), inited: false },
+      },
+    });
+
+    relocate(bookKey, 'epubcfi(/6/2)', 0);
+
+    expect(useReaderStore.getState().getProgress(bookKey)).toMatchObject({
+      location: 'epubcfi(/6/2)',
+      pageinfo: { current: 0, total: 10 },
+    });
+    expect(useBookDataStore.getState().getConfig(bookKey)).toMatchObject({
+      location: 'epubcfi(/6/4)',
+      progress: [2, 10],
+    });
+    expect(useLibraryStore.getState().library[0]?.progress).toEqual([2, 10]);
+
+    useReaderStore.getState().setViewInited(bookKey, true);
+    relocate(bookKey, 'epubcfi(/6/6)', 2);
+
+    expect(useBookDataStore.getState().getConfig(bookKey)).toMatchObject({
+      location: 'epubcfi(/6/6)',
+      progress: [3, 10],
+    });
+    expect(useLibraryStore.getState().library[0]?.progress).toEqual([3, 10]);
   });
 
   it('accepts user relocates, rejects teardown relocates, and accepts again after teardown clears', () => {

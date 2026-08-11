@@ -48,6 +48,11 @@ import {
 } from '../utils/iframeEventHandlers';
 import { shouldUseNativeChapterPull } from '../utils/mobileScroll';
 import {
+  getPagedResumeLocation,
+  initializeReaderViewPosition,
+  isHorizontalLtrReaderRange,
+} from '../utils/readerResumeAnchor';
+import {
   applyReaderLayoutToRenderer,
   getEffectiveReaderChromeVisibility,
   getEffectiveReaderViewInsets,
@@ -153,9 +158,19 @@ const FoliateViewer: React.FC<{
 
   const progressRelocateHandler = (event: Event) => {
     const detail = (event as CustomEvent).detail;
+    const canDerivePagedAnchor =
+      readerLayout?.layoutMode === 'paged' &&
+      !bookData?.isFixedLayout &&
+      !viewSettings?.vertical &&
+      bookDoc.dir !== 'rtl' &&
+      viewRef.current &&
+      isHorizontalLtrReaderRange(detail.range);
+    const location = canDerivePagedAnchor
+      ? getPagedResumeLocation(viewRef.current!, detail.cfi, detail.range)
+      : detail.cfi;
     setProgress(
       bookKey,
-      detail.cfi,
+      location,
       detail.tocItem,
       detail.section,
       detail.location,
@@ -515,13 +530,9 @@ const FoliateViewer: React.FC<{
       }
       applyMarginAndGap();
 
-      const lastLocation = config.location;
-      if (lastLocation) {
-        await view.init({ lastLocation });
-      } else {
-        await view.goToFraction(0);
-      }
-      setViewInited(bookKey, true);
+      await initializeReaderViewPosition(view, config.location, () =>
+        setViewInited(bookKey, true, view),
+      );
     };
 
     openBook();

@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import {
   finalizeProductAccountDeletion,
   listAllAdminUsers,
-  listUserObjectKeys,
+  listUserObjects,
   readAccountLifecycleEnvironment,
 } from './runtime.mjs';
 
@@ -20,43 +20,43 @@ const completeEnvironment = () => ({
 describe('R2 user-prefix inventory', () => {
   it('collects every page across both exact user-owned prefixes', async () => {
     const inputs = [];
-    const keys = await listUserObjectKeys({
+    const objects = await listUserObjects({
       userId: 'marked-user',
       bucket: 'test-bucket',
       send: async (command) => {
         inputs.push(command.input);
         if (command.input.Prefix === 'users/marked-user/' && !command.input.ContinuationToken) {
           return {
-            Contents: [{ Key: 'users/marked-user/books/one.epub' }],
+            Contents: [{ Key: 'users/marked-user/books/one.epub', Size: 101 }],
             IsTruncated: true,
             NextContinuationToken: 'page-2',
           };
         }
         if (command.input.Prefix === 'users/marked-user/') {
           return {
-            Contents: [{ Key: 'users/marked-user/books/two.epub' }],
+            Contents: [{ Key: 'users/marked-user/books/two.epub', Size: 202 }],
             IsTruncated: false,
           };
         }
         if (!command.input.ContinuationToken) {
           return {
-            Contents: [{ Key: 'marked-user/Openread/Books/hash/legacy-one.epub' }],
+            Contents: [{ Key: 'marked-user/Openread/Books/hash/legacy-one.epub', Size: 303 }],
             IsTruncated: true,
             NextContinuationToken: 'legacy-page-2',
           };
         }
         return {
-          Contents: [{ Key: 'marked-user/Openread/Books/hash/legacy-two.epub' }],
+          Contents: [{ Key: 'marked-user/Openread/Books/hash/legacy-two.epub', Size: 404 }],
           IsTruncated: false,
         };
       },
     });
 
-    assert.deepEqual(keys, [
-      'users/marked-user/books/one.epub',
-      'users/marked-user/books/two.epub',
-      'marked-user/Openread/Books/hash/legacy-one.epub',
-      'marked-user/Openread/Books/hash/legacy-two.epub',
+    assert.deepEqual(objects, [
+      { key: 'users/marked-user/books/one.epub', size: 101 },
+      { key: 'users/marked-user/books/two.epub', size: 202 },
+      { key: 'marked-user/Openread/Books/hash/legacy-one.epub', size: 303 },
+      { key: 'marked-user/Openread/Books/hash/legacy-two.epub', size: 404 },
     ]);
     assert.equal(inputs[0].Prefix, 'users/marked-user/');
     assert.equal(inputs[0].ContinuationToken, undefined);
@@ -67,9 +67,26 @@ describe('R2 user-prefix inventory', () => {
     assert.equal(inputs[3].ContinuationToken, 'legacy-page-2');
   });
 
+  it('fails closed when an object has no exact byte size', async () => {
+    await assert.rejects(
+      listUserObjects({
+        userId: 'marked-user',
+        bucket: 'test-bucket',
+        send: async ({ input }) =>
+          input.Prefix === 'users/marked-user/'
+            ? {
+                Contents: [{ Key: 'users/marked-user/books/book.epub' }],
+                IsTruncated: false,
+              }
+            : { Contents: [], IsTruncated: false },
+      }),
+      /invalid size/,
+    );
+  });
+
   it('fails closed when a truncated page has no continuation token', async () => {
     await assert.rejects(
-      listUserObjectKeys({
+      listUserObjects({
         userId: 'marked-user',
         bucket: 'test-bucket',
         send: async () => ({ IsTruncated: true }),
@@ -80,7 +97,7 @@ describe('R2 user-prefix inventory', () => {
 
   it('fails closed when pagination repeats a continuation token', async () => {
     await assert.rejects(
-      listUserObjectKeys({
+      listUserObjects({
         userId: 'marked-user',
         bucket: 'test-bucket',
         send: async () => ({ IsTruncated: true, NextContinuationToken: 'repeat' }),

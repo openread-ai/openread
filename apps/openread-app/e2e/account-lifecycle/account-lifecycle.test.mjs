@@ -14,12 +14,16 @@ const createFakeRuntime = () => {
   const credentials = new Map();
   const fileRecords = new Map();
   const objects = new Set();
+  const objectSizes = new Map();
   const tableCounts = new Map();
   const calls = { adminDeleteUser: [], deleteObject: [], sequence: [] };
   let schemaInventory = ACCOUNT_DELETION_TARGETS.map((target) => ({ ...target }));
   let objectInventoryError = null;
+  let objectInventoryCalls = 0;
+  let objectInventoryInjection = null;
   let predeleteError = null;
   let predeleteLeavesRows = false;
+  let createErrorAfterCommit = null;
   let rejectedSignInError = {
     code: 'invalid_credentials',
     message: 'Invalid login credentials',
@@ -32,7 +36,7 @@ const createFakeRuntime = () => {
     randomUUID: () => `00000000-0000-4000-8000-${String(++sequence).padStart(12, '0')}`,
     makePassword: () => `Password-${sequence}-Aa1!`,
     adminCreateUser: async (attributes) => {
-      const id = `user-${sequence}`;
+      const id = attributes.id;
       const user = {
         id,
         email: attributes.email,
@@ -41,6 +45,7 @@ const createFakeRuntime = () => {
       };
       users.set(id, user);
       credentials.set(attributes.email, { password: attributes.password, userId: id });
+      if (createErrorAfterCommit) throw createErrorAfterCommit;
       return user;
     },
     adminGetUser: async (userId) => users.get(userId) ?? null,
@@ -62,11 +67,20 @@ const createFakeRuntime = () => {
       return { session: null, error: rejectedSignInError };
     },
     queryFileRecords: async (userId) => fileRecords.get(userId) ?? [],
-    listObjectKeys: async (userId) => {
+    listObjects: async (userId) => {
       if (objectInventoryError) throw objectInventoryError;
-      return [...objects].filter(
-        (key) => key.startsWith(`users/${userId}/`) || key.startsWith(`${userId}/Openread/Books/`),
-      );
+      objectInventoryCalls += 1;
+      if (objectInventoryInjection?.call === objectInventoryCalls) {
+        objects.add(objectInventoryInjection.key);
+        objectSizes.set(objectInventoryInjection.key, objectInventoryInjection.size);
+        objectInventoryInjection = null;
+      }
+      return [...objects]
+        .filter(
+          (key) =>
+            key.startsWith(`users/${userId}/`) || key.startsWith(`${userId}/Openread/Books/`),
+        )
+        .map((key) => ({ key, size: objectSizes.get(key) ?? key.length }));
     },
     deleteTableRows: async ({ table }, userId) => {
       calls.sequence.push(`predelete:${table}`);
@@ -75,11 +89,15 @@ const createFakeRuntime = () => {
     },
     queryTableCount: async ({ table }, userId) => tableCounts.get(countKey(table, userId)) ?? 0,
     queryDeletionSchemaInventory: async () => schemaInventory,
-    headObject: async (key) => objects.has(key),
+    headObject: async (key) => ({
+      exists: objects.has(key),
+      size: objects.has(key) ? (objectSizes.get(key) ?? key.length) : null,
+    }),
     deleteObject: async (key) => {
       calls.deleteObject.push(key);
       calls.sequence.push('r2-delete');
       objects.delete(key);
+      objectSizes.delete(key);
     },
   };
 
@@ -101,22 +119,34 @@ const createFakeRuntime = () => {
       credentials.set(user.email, { password: 'RealPassword1!', userId: id });
       return user;
     },
-    addArtifact(account, suffix = 'book.epub') {
+    addArtifact(account, suffix = 'book.epub', size = 189_403) {
       const key = `users/${account.userId}/books/${suffix}`;
       fileRecords.set(account.userId, [
         ...(fileRecords.get(account.userId) ?? []),
-        { file_key: key, file_type: 'book' },
+        { file_key: key, file_type: 'book', file_size: size },
       ]);
       objects.add(key);
+      objectSizes.set(key, size);
       return key;
     },
-    addLegacyArtifact(account, suffix = 'hash/book.epub') {
+    addLegacyArtifact(account, suffix = 'hash/book.epub', size = 42) {
       const key = `${account.userId}/Openread/Books/${suffix}`;
       fileRecords.set(account.userId, [
         ...(fileRecords.get(account.userId) ?? []),
-        { file_key: key, file_type: 'book' },
+        { file_key: key, file_type: 'book', file_size: size },
       ]);
       objects.add(key);
+      objectSizes.set(key, size);
+      return key;
+    },
+    addTempArtifact(account, suffix = 'upload.bin', size = 17) {
+      const key = `temp/${account.userId}/${suffix}`;
+      fileRecords.set(account.userId, [
+        ...(fileRecords.get(account.userId) ?? []),
+        { file_key: key, file_type: 'temp', file_size: null },
+      ]);
+      objects.add(key);
+      objectSizes.set(key, size);
       return key;
     },
     addRow(table, userId, count = 1) {
@@ -127,6 +157,12 @@ const createFakeRuntime = () => {
     },
     setCreatedAt(userId, value) {
       users.get(userId).created_at = new Date(value).toISOString();
+    },
+    failCreateAfterCommit(error = new Error('Supabase admin provisioning timed out')) {
+      createErrorAfterCommit = error;
+    },
+    injectObjectOnInventoryCall(call, key, size) {
+      objectInventoryInjection = { call, key, size };
     },
     failObjectInventory(error = new Error('R2 inventory failed')) {
       objectInventoryError = error;
@@ -145,7 +181,11 @@ const createFakeRuntime = () => {
     },
     async simulateProductDeletion(account, { leaveObjects = false } = {}) {
       const records = fileRecords.get(account.userId) ?? [];
-      if (!leaveObjects) records.forEach(({ file_key }) => objects.delete(file_key));
+      if (!leaveObjects)
+        records.forEach(({ file_key }) => {
+          objects.delete(file_key);
+          objectSizes.delete(file_key);
+        });
       const user = users.get(account.userId);
       if (user) credentials.delete(user.email);
       users.delete(account.userId);
@@ -166,6 +206,128 @@ describe('OpenRead E2E account lifecycle', () => {
     assert.deepEqual(await runtime.lifecycle.signIn(account), {
       access_token: `token-${account.userId}`,
     });
+  });
+
+  it('keeps an in-memory account handle across an ambiguous create response', async () => {
+    const runtime = createFakeRuntime();
+    const account = runtime.lifecycle.prepare('ambiguous-create-run');
+    runtime.failCreateAfterCommit();
+
+    await assert.rejects(runtime.lifecycle.provisionPrepared(account), /provisioning timed out/);
+    assert.equal(runtime.users.get(account.userId).app_metadata[E2E_ACCOUNT_MARKER_KEY], true);
+
+    const report = await runtime.lifecycle.cleanupPreparedAccount(account, {
+      onInventory: async () => runtime.calls.sequence.push('verdict-inventory'),
+    });
+
+    assert.equal(report.outcome, 'recovered-residue');
+    assert.equal(report.authority, 'app-metadata');
+    assert.equal(report.removedAccount, true);
+    assert.equal(runtime.users.has(account.userId), false);
+    assert.deepEqual(runtime.calls.sequence, [
+      'verdict-inventory',
+      'predelete:user_catalog_wishlist',
+      'auth-delete',
+      'verdict-inventory',
+      'verdict-inventory',
+    ]);
+  });
+
+  it('recovers auth-absent prefix residue only with the same runtime provisioning receipt', async () => {
+    const runtime = createFakeRuntime();
+    const account = await runtime.lifecycle.provision('receipt-run');
+    const objectKey = runtime.addArtifact(account, 'late.epub', 321);
+    await runtime.simulateProductDeletion(account, { leaveObjects: true });
+    const sequence = [];
+
+    const report = await runtime.lifecycle.cleanupPreparedAccount(account, {
+      onInventory: async (state) => {
+        sequence.push(`inventory:${state.objects.length}`);
+        runtime.calls.sequence.push('verdict-inventory');
+      },
+    });
+
+    assert.equal(report.outcome, 'recovered-residue');
+    assert.equal(report.authority, 'runtime-provisioning-receipt');
+    assert.deepEqual(report.removedObjects, [{ key: objectKey, size: 321 }]);
+    assert.deepEqual(sequence, ['inventory:1', 'inventory:0', 'inventory:0']);
+    assert.deepEqual(runtime.calls.sequence, [
+      'verdict-inventory',
+      'r2-delete',
+      'verdict-inventory',
+      'verdict-inventory',
+    ]);
+    assert.equal(runtime.objects.has(objectKey), false);
+
+    const reconstructed = { ...account };
+    await assert.rejects(
+      runtime.lifecycle.cleanupPreparedAccount(reconstructed),
+      /runtime's prepared account handle/,
+    );
+  });
+
+  it('reports a late prefix write before deleting it', async () => {
+    const runtime = createFakeRuntime();
+    const account = await runtime.lifecycle.provision('late-write-run');
+    await runtime.simulateProductDeletion(account);
+    const lateKey = `users/${account.userId}/books/late.epub`;
+    const inventories = [];
+
+    const report = await runtime.lifecycle.cleanupPreparedAccount(account, {
+      onInventory: async (state) => {
+        inventories.push(state.objects.map(({ key }) => key));
+        runtime.calls.sequence.push('verdict-inventory');
+        if (inventories.length === 1) runtime.objects.add(lateKey);
+      },
+    });
+
+    assert.equal(report.outcome, 'recovered-residue');
+    assert.deepEqual(report.removedObjects, [{ key: lateKey, size: lateKey.length }]);
+    assert.deepEqual(inventories.slice(0, 2), [[], [lateKey]]);
+    assert.equal(
+      runtime.calls.sequence.indexOf('verdict-inventory') <
+        runtime.calls.sequence.indexOf('r2-delete'),
+      true,
+    );
+  });
+
+  it('reclassifies and removes residue discovered by the post-proof final inventory', async () => {
+    const runtime = createFakeRuntime();
+    const account = await runtime.lifecycle.provision('post-proof-race-run');
+    await runtime.simulateProductDeletion(account);
+    const lateKey = `users/${account.userId}/books/post-proof.epub`;
+    runtime.injectObjectOnInventoryCall(3, lateKey, 777);
+    const inventories = [];
+
+    const report = await runtime.lifecycle.cleanupPreparedAccount(account, {
+      onInventory: async (state) => {
+        inventories.push(state.objects.map(({ key, size }) => ({ key, size })));
+        runtime.calls.sequence.push(`verdict-inventory:${state.objects.length}`);
+      },
+    });
+
+    assert.equal(report.outcome, 'recovered-residue');
+    assert.deepEqual(report.removedObjects, [{ key: lateKey, size: 777 }]);
+    assert.deepEqual(inventories.slice(0, 3), [[], [], [{ key: lateKey, size: 777 }]]);
+    assert.equal(
+      runtime.calls.sequence.indexOf('verdict-inventory:1') <
+        runtime.calls.sequence.indexOf('r2-delete'),
+      true,
+    );
+    assert.deepEqual(report.stateAfter.objects, []);
+  });
+
+  it('reports an already-clean product deletion without cleanup mutation', async () => {
+    const runtime = createFakeRuntime();
+    const account = await runtime.lifecycle.provision('already-clean-run');
+    await runtime.simulateProductDeletion(account);
+
+    const report = await runtime.lifecycle.cleanupPreparedAccount(account);
+
+    assert.equal(report.outcome, 'already-clean');
+    assert.deepEqual(report.removedObjects, []);
+    assert.deepEqual(runtime.calls.deleteObject, []);
+    assert.deepEqual(runtime.calls.adminDeleteUser, []);
   });
 
   it('fails closed on schema inventory or delete-rule drift before mutation', async () => {
@@ -217,6 +379,27 @@ describe('OpenRead E2E account lifecycle', () => {
     assert.equal(runtime.users.has(user.id), true);
   });
 
+  it('does not let a prepared handle authorize cleanup of a live unmarked user', async () => {
+    const runtime = createFakeRuntime();
+    const account = runtime.lifecycle.prepare('unmarked-collision-run');
+    runtime.users.set(account.userId, {
+      id: account.userId,
+      email: 'real@example.test',
+      app_metadata: {},
+      created_at: '2026-08-11T00:00:00.000Z',
+    });
+    const objectKey = `users/${account.userId}/books/real.epub`;
+    runtime.objects.add(objectKey);
+
+    await assert.rejects(
+      runtime.lifecycle.cleanupPreparedAccount(account),
+      new RegExp(UNMARKED_ACCOUNT_ERROR),
+    );
+    assert.deepEqual(runtime.calls.deleteObject, []);
+    assert.deepEqual(runtime.calls.adminDeleteUser, []);
+    assert.equal(runtime.objects.has(objectKey), true);
+  });
+
   it('finalizes a marked account and independently proves auth, DB, and R2 removal', async () => {
     const runtime = createFakeRuntime();
     const account = await runtime.lifecycle.provision('accept-run');
@@ -234,7 +417,7 @@ describe('OpenRead E2E account lifecycle', () => {
       proof.database.every(({ count }) => count === 0),
       true,
     );
-    assert.deepEqual(proof.objects, [objectKey]);
+    assert.deepEqual(proof.objects, [{ key: objectKey, size: 189_403 }]);
     assert.equal(runtime.users.has(account.userId), false);
     assert.equal(runtime.objects.has(objectKey), false);
   });
@@ -271,6 +454,7 @@ describe('OpenRead E2E account lifecycle', () => {
     const unmarked = runtime.createUnmarkedUser('unmarked-old-user');
     const oldObject = runtime.addArtifact(oldMarked, 'old.epub');
     const legacyObject = runtime.addLegacyArtifact(oldMarked);
+    const tempObject = runtime.addTempArtifact(oldMarked);
     const rowlessObject = `users/${oldMarked.userId}/books/rowless.epub`;
     const rowlessLegacyObject = `${oldMarked.userId}/Openread/Books/hash/rowless.epub`;
     runtime.objects.add(rowlessObject);
@@ -282,13 +466,24 @@ describe('OpenRead E2E account lifecycle', () => {
 
     const report = await runtime.lifecycle.reapStale({ olderThanMs: 60 * 60 * 1000 });
 
-    assert.deepEqual(report.reaped, [oldMarked.userId]);
+    assert.deepEqual(
+      report.reaped.map(({ userId }) => userId),
+      [oldMarked.userId],
+    );
+    assert.deepEqual(report.reaped[0].removedObjects, [
+      { key: oldObject, size: 189_403 },
+      { key: legacyObject, size: 42 },
+      { key: tempObject, size: 17 },
+      { key: rowlessObject, size: rowlessObject.length },
+      { key: rowlessLegacyObject, size: rowlessLegacyObject.length },
+    ]);
     assert.deepEqual(report.failures, []);
     assert.equal(report.marked, 2);
     assert.equal(report.eligible, 1);
     assert.equal(runtime.users.has(oldMarked.userId), false);
     assert.equal(runtime.objects.has(oldObject), false);
     assert.equal(runtime.objects.has(legacyObject), false);
+    assert.equal(runtime.objects.has(tempObject), false);
     assert.equal(runtime.objects.has(rowlessObject), false);
     assert.equal(runtime.objects.has(rowlessLegacyObject), false);
     assert.equal(runtime.users.has(youngMarked.userId), true);
@@ -301,8 +496,24 @@ describe('OpenRead E2E account lifecycle', () => {
       'r2-delete',
       'r2-delete',
       'r2-delete',
+      'r2-delete',
       'auth-delete',
     ]);
+  });
+
+  it('does not report janitor success until a post-auth final-inventory write is removed', async () => {
+    const runtime = createFakeRuntime();
+    const account = await runtime.lifecycle.provision('janitor-final-race-run');
+    runtime.setCreatedAt(account.userId, Date.parse('2026-08-11T00:00:00.000Z'));
+    const lateKey = `users/${account.userId}/books/janitor-post-proof.epub`;
+    runtime.injectObjectOnInventoryCall(6, lateKey, 888);
+
+    const report = await runtime.lifecycle.reapStale({ olderThanMs: 60 * 60 * 1000 });
+
+    assert.equal(report.failures.length, 0);
+    assert.deepEqual(report.reaped[0].removedObjects, [{ key: lateKey, size: 888 }]);
+    assert.deepEqual(report.reaped[0].stateAfter.objects, []);
+    assert.equal(runtime.objects.has(lateKey), false);
   });
 
   it('reports janitor predelete failure without reaching R2 or auth deletion', async () => {

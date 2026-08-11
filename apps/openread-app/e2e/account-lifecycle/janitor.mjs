@@ -20,7 +20,11 @@ console.log(
     marked: report.marked,
     eligible: report.eligible,
     skippedYoung: report.skippedYoung,
-    reaped: report.reaped.length,
+    reapedMarked: report.reaped.map(({ userId, removedAccount, removedObjects }) => ({
+      userId,
+      removedAccount,
+      removedObjects,
+    })),
     failures: report.failures,
   }),
 );

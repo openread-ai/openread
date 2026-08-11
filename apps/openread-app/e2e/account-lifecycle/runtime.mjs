@@ -88,8 +88,8 @@ export async function finalizeProductAccountDeletion({
   });
 }
 
-export async function listUserObjectKeys({ userId, bucket, send }) {
-  const keys = [];
+export async function listUserObjects({ userId, bucket, send }) {
+  const objects = [];
   for (const prefix of getUserOwnedObjectPrefixes(userId)) {
     const seenTokens = new Set();
     let continuationToken;
@@ -113,7 +113,10 @@ export async function listUserObjectKeys({ userId, bucket, send }) {
         if (typeof object.Key !== 'string' || !object.Key.startsWith(prefix)) {
           throw new Error('R2 inventory returned an empty or out-of-prefix key');
         }
-        keys.push(object.Key);
+        if (!Number.isSafeInteger(object.Size) || object.Size < 0) {
+          throw new Error(`R2 inventory returned an invalid size for ${object.Key}`);
+        }
+        objects.push(Object.freeze({ key: object.Key, size: object.Size }));
       }
       if (response.IsTruncated) {
         const nextToken = response.NextContinuationToken;
@@ -131,7 +134,7 @@ export async function listUserObjectKeys({ userId, bucket, send }) {
       }
     } while (continuationToken);
   }
-  return keys;
+  return objects;
 }
 
 export async function listAllAdminUsers(fetchPage, perPage = 1000) {
@@ -224,8 +227,8 @@ export function createLiveAccountLifecycle(env = process.env) {
       ),
     );
 
-  const listObjectKeys = (userId) =>
-    listUserObjectKeys({
+  const listObjects = (userId) =>
+    listUserObjects({
       userId,
       bucket: config.r2Bucket,
       send: (command) =>
@@ -279,7 +282,7 @@ export function createLiveAccountLifecycle(env = process.env) {
     },
     queryFileRecords: async (userId) => {
       const { data, error } = await withTimeout(
-        admin.from('files').select('file_key, file_type').eq('user_id', userId),
+        admin.from('files').select('file_key, file_type, file_size').eq('user_id', userId),
         REMOTE_OPERATION_TIMEOUT_MS,
         'File metadata query',
       );
@@ -287,7 +290,7 @@ export function createLiveAccountLifecycle(env = process.env) {
       if (!Array.isArray(data)) throw new Error('File metadata query returned no rows array');
       return data;
     },
-    listObjectKeys,
+    listObjects,
     deleteTableRows: async ({ table, ownerColumn }, userId) => {
       const { error } = await withTimeout(
         admin.from(table).delete().eq(ownerColumn, userId),
@@ -312,14 +315,17 @@ export function createLiveAccountLifecycle(env = process.env) {
     },
     headObject: async (key) => {
       try {
-        await withTimeout(
+        const result = await withTimeout(
           r2.send(new HeadObjectCommand({ Bucket: config.r2Bucket, Key: key })),
           REMOTE_OPERATION_TIMEOUT_MS,
           'R2 object verification',
         );
-        return true;
+        if (!Number.isSafeInteger(result.ContentLength) || result.ContentLength < 0) {
+          throw new Error(`R2 HEAD returned an invalid size for ${key}`);
+        }
+        return { exists: true, size: result.ContentLength };
       } catch (error) {
-        if (isR2ObjectNotFound(error)) return false;
+        if (isR2ObjectNotFound(error)) return { exists: false, size: null };
         throw new Error(
           `R2 verification failed: ${error instanceof Error ? error.message : error}`,
         );

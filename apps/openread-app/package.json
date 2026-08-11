@@ -8,7 +8,7 @@
     "build-shared-packages": "pnpm --filter @openread/types build && pnpm --filter @openread/auth build && pnpm --filter @openread/entitlements build && pnpm --filter @openread/ai-control build && pnpm --filter @openread/settings build && pnpm --filter @openread/bridge build",
     "build": "pnpm build-shared-packages && dotenv -e .env.tauri -v NEXT_PUBLIC_APP_PLATFORM=tauri -- next build",
     "start": "dotenv -e .env.tauri -v NEXT_PUBLIC_APP_PLATFORM=tauri -- next start",
-    "dev-web": "dotenv -e .env.web -v NEXT_PUBLIC_APP_PLATFORM=web -- next dev",
+    "dev-web": "pnpm build-shared-packages && dotenv -e .env.web -v NEXT_PUBLIC_APP_PLATFORM=web -- next dev",
     "build-web": "pnpm build-shared-packages && dotenv -e .env.web -v NEXT_PUBLIC_APP_PLATFORM=web -- next build",
     "start-web": "dotenv -e .env.web -v NEXT_PUBLIC_APP_PLATFORM=web -- next start",
     "build-tauri": "pnpm build-shared-packages && dotenv -e .env.tauri -v NEXT_PUBLIC_APP_PLATFORM=tauri -- next build",

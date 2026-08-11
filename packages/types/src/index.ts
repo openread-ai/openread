@@ -66,6 +66,20 @@ export {
 } from './catalog-source-verification.js';
 export type { PlatformUploadBookFormat } from './catalog-source-verification.js';
 
+// Account deletion contract
+export {
+  ACCOUNT_DELETION_CLEANUP_MODES,
+  ACCOUNT_DELETION_DELETE_RULES,
+  ACCOUNT_DELETION_TARGETS,
+  assertAccountDeletionSchemaInventory,
+} from './account-deletion.js';
+export type {
+  AccountDeletionCleanupMode,
+  AccountDeletionDeleteRule,
+  AccountDeletionSchemaInventoryRow,
+  AccountDeletionTarget,
+} from './account-deletion.js';
+
 // API request/response types
 export type {
   ListBooksQuery,

@@ -400,9 +400,45 @@ export function createLiveAccountLifecycle(env = process.env) {
     return key;
   };
 
+  const queryImportedBook = async (userId, catalogBookId) => {
+    const { data, error } = await withTimeout(
+      admin
+        .from('books')
+        .select('id, storage_path')
+        .eq('user_id', userId)
+        .eq('catalog_book_id', catalogBookId)
+        .maybeSingle(),
+      REMOTE_OPERATION_TIMEOUT_MS,
+      'Imported catalog book query',
+    );
+    if (error) throw new Error(`Imported catalog book query failed: ${error.message}`);
+    return data;
+  };
+
+  const headObject = async (key) => {
+    try {
+      const result = await withTimeout(
+        r2.send(new HeadObjectCommand({ Bucket: config.r2Bucket, Key: key })),
+        REMOTE_OPERATION_TIMEOUT_MS,
+        'Shared catalog object verification',
+      );
+      if (!Number.isSafeInteger(result.ContentLength) || result.ContentLength <= 0) {
+        throw new Error(`R2 HEAD returned an invalid size for ${key}`);
+      }
+      return { key, exists: true, size: result.ContentLength };
+    } catch (error) {
+      if (isR2ObjectNotFound(error)) return { key, exists: false, size: null };
+      throw new Error(
+        `Shared catalog object verification failed: ${error instanceof Error ? error.message : error}`,
+      );
+    }
+  };
+
   return Object.freeze({
     lifecycle,
     finalizeThroughProductApi,
     seedSentinelArtifact,
+    queryImportedBook,
+    headObject,
   });
 }

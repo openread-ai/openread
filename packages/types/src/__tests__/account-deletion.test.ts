@@ -9,7 +9,8 @@ const currentInventory = (): AccountDeletionSchemaInventoryRow[] =>
   ACCOUNT_DELETION_TARGETS.map((target) => ({ ...target }));
 
 describe('account deletion schema contract', () => {
-  it('accepts an independently supplied exact schema inventory', () => {
+  it('accepts exactly the 25 independently supplied deletion targets', () => {
+    expect(ACCOUNT_DELETION_TARGETS).toHaveLength(25);
     expect(() => assertAccountDeletionSchemaInventory(currentInventory())).not.toThrow();
   });
 

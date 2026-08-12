@@ -80,6 +80,14 @@ export type {
   AccountDeletionTarget,
 } from './account-deletion.js';
 
+// Canonical paid-subscription status contract
+export {
+  ACTIVE_IAP_STATUSES,
+  ACTIVE_STRIPE_STATUSES,
+  isActiveStripeStatus,
+} from './subscription-statuses.js';
+export type { ActiveIAPStatus, ActiveStripeStatus } from './subscription-statuses.js';
+
 // API request/response types
 export type {
   ListBooksQuery,

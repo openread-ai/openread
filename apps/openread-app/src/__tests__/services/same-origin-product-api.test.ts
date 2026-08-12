@@ -34,6 +34,7 @@ const rewriteSources = [
   '/api/books/:path*',
   '/api/admin/:path*',
   '/api/quota/:path*',
+  '/api/files',
   '/api/files/:path*',
   '/api/user/delete',
   '/api/api-keys/:path*',

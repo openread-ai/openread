@@ -1,10 +1,13 @@
 import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { OPENREAD_NODE_BASE_URL } from '@/services/constants';
 import { describe, expect, it } from 'vitest';
 
 const appRoot = resolve(process.cwd());
 const marker = '__OPENREAD_NEXT_CONFIG__';
+const require = createRequire(import.meta.url);
+const { prepareDestination } = require('next/dist/shared/lib/router/utils/prepare-destination');
 
 interface Rewrite {
   source: string;
@@ -67,6 +70,7 @@ const expectedSources = [
   '/api/books/:path*',
   '/api/admin/:path*',
   '/api/quota/:path*',
+  '/api/files',
   '/api/files/:path*',
   '/api/user/delete',
   '/api/api-keys/:path*',
@@ -107,6 +111,20 @@ describe('same-origin Fly API rewrites', () => {
     expect(config.rewrites?.afterFiles.map((rewrite) => rewrite.destination)).toEqual(
       expectedSources.map((source) => `https://platform-api.example.test${source}`),
     );
+  });
+
+  it('preserves the canonical bare files collection path in the compiled destination', () => {
+    const rewrites = loadConfig('web', 'https://platform-api.example.test').rewrites?.afterFiles;
+    const rewrite = rewrites?.find((candidate) => candidate.source === '/api/files');
+
+    expect(rewrite).toBeDefined();
+    const result = prepareDestination({
+      appendParamsToQuery: false,
+      destination: rewrite!.destination,
+      params: {},
+      query: {},
+    });
+    expect(result.parsedDestination.pathname).toBe('/api/files');
   });
 
   it('matches the bare API key collection paths', () => {

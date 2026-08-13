@@ -52,3 +52,5 @@ OPENREAD_E2E_JANITOR=1 pnpm e2e:account-janitor
 ```
 
 The live commands load existing gitignored `.env.local`, `.env.web`, and `.env.test.local` values. They fail closed when any required Supabase or R2 credential is absent.
+
+The manual GitHub Actions lifecycle workflow requires these repository secret names: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`. The production service-role key can read and delete any user's data; it is accepted temporarily for the owner-only workflow, but a dedicated CI Supabase project is required before another contributor receives write access.

@@ -148,6 +148,29 @@ The tracker is Notion-first. Do not use a local `checkpoint.json` as progress st
 
 ---
 
+## Live lifecycle proofs
+
+The disposable-account lifecycle proofs are intentionally separate from PR and release CI. They mutate the configured Supabase and R2 environment, clean up their marked test accounts, and run only through the manual **Lifecycle E2E** workflow (`.github/workflows/lifecycle-e2e.yml`) or an explicitly authorized local command.
+
+The workflow accepts `L1`, `L2`, `L6`, `L8`, or `all` and runs Chromium in web mode. It has only a `workflow_dispatch` trigger: no push, pull-request, or schedule trigger, and it is not a release gate.
+
+Configure these four GitHub Actions secrets before dispatching it:
+
+- `R2_ACCOUNT_ID`
+- `R2_ACCESS_KEY_ID`
+- `R2_SECRET_ACCESS_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+
+The public Supabase URL and anon key are static workflow configuration; the anon key is a browser credential, not privileged authority. The service-role credential has unrestricted production Supabase authority and must remain confined to the Node test runtime; use a dedicated CI Supabase project before granting a second contributor write access.
+
+Alice in Wonderland is committed at `e2e/fixtures/books/alice-in-wonderland.epub`, so upload and reader lifecycle proofs do not depend on `~/.openread-dev`.
+
+Dispatch after the secrets are configured:
+
+```sh
+gh workflow run lifecycle-e2e.yml -f lifecycle=L8
+```
+
 ## Direct Playwright runs
 
 Use direct Playwright commands for fast local debugging when Activity/Notion evidence is not needed.

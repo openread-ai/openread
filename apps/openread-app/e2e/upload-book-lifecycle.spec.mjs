@@ -1,13 +1,9 @@
 import { expect, test } from '@playwright/test';
 import { existsSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import { createLiveAccountLifecycle } from './account-lifecycle/runtime.mjs';
 
-const ALICE_EPUB = resolve(
-  homedir(),
-  '.openread-dev/fixtures/books/epub/01-prose-simple/alice-in-wonderland.epub',
-);
+const ALICE_EPUB = resolve(import.meta.dirname, 'fixtures/books/alice-in-wonderland.epub');
 const BOOK_TITLE = "Alice's Adventures in Wonderland";
 const BOOK_AUTHOR = 'Lewis Carroll';
 const BOOK_LINK_NAME = `Open ${BOOK_TITLE} by ${BOOK_AUTHOR}`;

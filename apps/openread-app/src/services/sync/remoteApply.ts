@@ -166,16 +166,34 @@ async function applyLibraryProgress(
   }
 }
 
-export async function applyRemoteBookConfigRows(
+type RemoteBookConfigApplyResult = {
+  configs: BookConfig[];
+  acceptedRecords: BookDataRecord[];
+  acceptedTombstones: SyncTombstone[];
+} & RemoteApplyDurabilityFailures;
+
+let remoteBookConfigApplyQueue: Promise<void> = Promise.resolve();
+
+export function applyRemoteBookConfigRows(
   configRows: RemoteConfigTransform[],
   tombstones: SyncTombstone[],
-): Promise<
-  {
-    configs: BookConfig[];
-    acceptedRecords: BookDataRecord[];
-    acceptedTombstones: SyncTombstone[];
-  } & RemoteApplyDurabilityFailures
-> {
+  expectedOwnerUserId: string | null = useLibraryStore.getState().libraryOwnerUserId,
+): Promise<RemoteBookConfigApplyResult> {
+  const applying = remoteBookConfigApplyQueue.then(() =>
+    applyRemoteBookConfigRowsSerial(configRows, tombstones, expectedOwnerUserId),
+  );
+  remoteBookConfigApplyQueue = applying.then(
+    () => undefined,
+    () => undefined,
+  );
+  return applying;
+}
+
+async function applyRemoteBookConfigRowsSerial(
+  configRows: RemoteConfigTransform[],
+  tombstones: SyncTombstone[],
+  expectedOwnerUserId: string | null,
+): Promise<RemoteBookConfigApplyResult> {
   const bookDataStore = useBookDataStore.getState();
   const acceptedRecords: BookDataRecord[] = [];
   const acceptedTombstones: SyncTombstone[] = [];
@@ -195,10 +213,16 @@ export async function applyRemoteBookConfigRows(
       continue;
     }
 
+    const ownerUserId = expectedOwnerUserId;
+    if (!ownerUserId || useLibraryStore.getState().libraryOwnerUserId !== ownerUserId) {
+      acceptedRecords.push(record);
+      continue;
+    }
     const previousConfig = await loadLocalConfig(book);
     const remoteConfig = sanitizeRemoteConfig(rawConfig);
     const remoteTime = latestModelTime(remoteConfig);
-    const localTime = latestModelTime(previousConfig);
+    const currentRemoteTime = latestModelTime(bookDataStore.getRemoteConfig(rawConfig.bookHash));
+    const localTime = Math.max(latestModelTime(previousConfig), currentRemoteTime);
     if (remoteTime < localTime) {
       acceptedRecords.push(record);
       continue;
@@ -212,25 +236,34 @@ export async function applyRemoteBookConfigRows(
       updatedAt: remoteConfig.updatedAt ?? previousConfig.updatedAt ?? 0,
     } as BookConfig;
 
+    if (
+      useLibraryStore.getState().libraryOwnerUserId !== ownerUserId ||
+      remoteTime < latestModelTime(bookDataStore.getRemoteConfig(rawConfig.bookHash))
+    ) {
+      acceptedRecords.push(record);
+      continue;
+    }
     const persisted = await persistBookConfig(book, merged);
     if (!persisted) {
       failedRecords.push(record);
       continue;
     }
 
-    bookDataStore.setConfig(book.hash, merged);
-    bookDataStore.setPreSyncedConfig(rawConfig.bookHash, merged);
+    const ownerIsCurrent = useLibraryStore.getState().libraryOwnerUserId === ownerUserId;
+    if (ownerIsCurrent) {
+      bookDataStore.setConfig(book.hash, merged);
+      bookDataStore.setRemoteConfig(rawConfig.bookHash, ownerUserId, merged);
+      if (merged.progress) progressUpdates.push({ hash: book.hash, progress: merged.progress });
+      appliedConfigs.push(merged);
+      emitRemoteApply({
+        type: 'bookConfig',
+        bookHash: rawConfig.bookHash,
+        metaHash: rawConfig.metaHash ?? book.metaHash,
+        config: merged,
+        previousConfig,
+      });
+    }
     acceptedRecords.push(record);
-
-    if (merged.progress) progressUpdates.push({ hash: book.hash, progress: merged.progress });
-    appliedConfigs.push(merged);
-    emitRemoteApply({
-      type: 'bookConfig',
-      bookHash: rawConfig.bookHash,
-      metaHash: rawConfig.metaHash ?? book.metaHash,
-      config: merged,
-      previousConfig,
-    });
   }
 
   for (const tombstone of tombstones) {
@@ -245,6 +278,11 @@ export async function applyRemoteBookConfigRows(
       continue;
     }
 
+    const ownerUserId = expectedOwnerUserId;
+    if (!ownerUserId || useLibraryStore.getState().libraryOwnerUserId !== ownerUserId) {
+      acceptedTombstones.push(tombstone);
+      continue;
+    }
     const previousConfig = await loadLocalConfig(book);
     const deletedAt = tombstoneTimestamp(tombstone);
     if (deletedAt < latestModelTime(previousConfig)) {
@@ -259,17 +297,20 @@ export async function applyRemoteBookConfigRows(
       continue;
     }
 
-    bookDataStore.setConfig(book.hash, patch);
-    bookDataStore.setPreSyncedConfig(bookHash, patch);
+    const ownerIsCurrent = useLibraryStore.getState().libraryOwnerUserId === ownerUserId;
+    if (ownerIsCurrent) {
+      bookDataStore.setConfig(book.hash, patch);
+      bookDataStore.setRemoteConfig(bookHash, ownerUserId, patch);
+      appliedConfigs.push(patch);
+      emitRemoteApply({
+        type: 'bookConfig',
+        bookHash,
+        metaHash: book.metaHash,
+        config: patch,
+        previousConfig,
+      });
+    }
     acceptedTombstones.push(tombstone);
-    appliedConfigs.push(patch);
-    emitRemoteApply({
-      type: 'bookConfig',
-      bookHash,
-      metaHash: book.metaHash,
-      config: patch,
-      previousConfig,
-    });
   }
 
   await applyLibraryProgress(progressUpdates);

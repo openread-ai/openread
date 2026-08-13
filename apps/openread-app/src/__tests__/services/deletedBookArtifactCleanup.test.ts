@@ -95,7 +95,9 @@ function seedBookData(...hashes: Book['hash'][]) {
         },
       ]),
     ),
-    preSyncedConfigs: Object.fromEntries(hashes.map((hash) => [hash, { updatedAt: 1 }])),
+    remoteConfigs: Object.fromEntries(
+      hashes.map((hash) => [hash, { ownerUserId, config: { updatedAt: 1 } }]),
+    ),
   });
 }
 
@@ -175,7 +177,7 @@ describe('cleanupDeletedBookArtifacts', () => {
       chatStatus: null,
       suggestions: [],
     });
-    useBookDataStore.setState({ booksData: {}, preSyncedConfigs: {} });
+    useBookDataStore.setState({ booksData: {}, remoteConfigs: {} });
     mocks.deleteBookConversations.mockReset();
     mocks.deleteBookConversations.mockImplementation(
       async (_bookHash: string, canDelete: () => boolean, onDeleteStart: () => void) => {
@@ -220,7 +222,7 @@ describe('cleanupDeletedBookArtifacts', () => {
     expect(localStorage.getItem(targetKey)).toBeNull();
     expect(localStorage.getItem(otherKey)).toBe('other');
     expect(useBookDataStore.getState().booksData[hash]).toBeUndefined();
-    expect(useBookDataStore.getState().preSyncedConfigs[hash]).toBeUndefined();
+    expect(useBookDataStore.getState().remoteConfigs[hash]).toBeUndefined();
     expect(useAIChatStore.getState()).toMatchObject({
       activeConversationId: null,
       conversations: [],

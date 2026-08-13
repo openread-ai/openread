@@ -102,7 +102,7 @@ const FoliateViewer: React.FC<{
   const { getView, setView: setFoliateView, setViewInited, setProgress } = useReaderStore();
   const { getViewState, getViewSettings, setViewSettings } = useReaderStore();
   const { getParallels } = useParallelViewStore();
-  const { getBookDataByReaderKey } = useBookDataStore();
+  const { getBookDataByReaderKey, getLatestConfig } = useBookDataStore();
   const { applyBackgroundTexture } = useBackgroundTexture();
   const { applyEinkMode } = useEinkMode();
   const bookData = getBookDataByReaderKey(bookKey);
@@ -530,7 +530,8 @@ const FoliateViewer: React.FC<{
       }
       applyMarginAndGap();
 
-      await initializeReaderViewPosition(view, config.location, () =>
+      const latestConfig = getLatestConfig(bookKey, config);
+      await initializeReaderViewPosition(view, latestConfig.location, () =>
         setViewInited(bookKey, true, view),
       );
     };

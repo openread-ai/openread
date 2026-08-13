@@ -9,6 +9,8 @@ import type { FoliateView } from '@/types/view';
 import { initializeReaderViewPosition } from '@/app/reader/utils/readerResumeAnchor';
 import { createReaderBookKey } from '@openread/types';
 
+vi.mock('@/utils/toc', () => ({ updateToc: vi.fn().mockResolvedValue(undefined) }));
+
 const catalogBookHash = 'catalog:7231ff9a-24b9-4074-9369-bc7f88ffb179' as Book['hash'];
 
 function catalogBook(storagePath: string): Book {
@@ -42,6 +44,39 @@ const createViewState = (key: string) => ({
   viewSettings: null,
 });
 
+const localLocation = 'epubcfi(/6/2)';
+const remoteLocation = 'epubcfi(/6/6)';
+
+const deferred = <T>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((settle) => {
+    resolve = settle;
+  });
+  return { promise, resolve };
+};
+
+const cachedBookData = (book: Book) => ({
+  id: book.hash,
+  book,
+  file: new File(['book'], 'book.epub'),
+  config: null,
+  bookDoc: {
+    metadata: { title: book.title, language: 'en' },
+    rendition: {},
+  },
+  isFixedLayout: false,
+});
+
+const configAt = (location: string, updatedAt: number) =>
+  ({
+    location,
+    progress: location === remoteLocation ? [3, 10] : [1, 10],
+    updatedAt,
+    viewSettings: {},
+  }) as never;
+
+const renderedPageFor = (location: string | undefined) => (location === remoteLocation ? 3 : 1);
+
 const relocate = (key: string, location: string, current: number) => {
   const page = { current, total: 10 };
   useReaderStore
@@ -60,7 +95,7 @@ const relocate = (key: string, location: string, current: number) => {
 describe('readerStore catalog open lifecycle', () => {
   beforeEach(() => {
     useLibraryStore.setState({ library: [], libraryOwnerUserId: null });
-    useBookDataStore.setState({ booksData: {}, preSyncedConfigs: {} });
+    useBookDataStore.setState({ booksData: {}, remoteConfigs: {} });
     useReaderStore.setState({ viewStates: {}, bookKeys: [], hoveredBookKey: null });
   });
 
@@ -87,6 +122,156 @@ describe('readerStore catalog open lifecycle', () => {
     );
   });
 
+  it.each([
+    {
+      window: 'before init begins',
+      arrange: async (start: () => Promise<void>, applyRemote: () => void) => {
+        applyRemote();
+        await start();
+      },
+    },
+    {
+      window: 'while loadBookConfig is pending',
+      arrange: async (
+        start: () => Promise<void>,
+        applyRemote: () => void,
+        waitUntilLoading: () => Promise<void>,
+        releaseLocal: () => void,
+      ) => {
+        const opening = start();
+        await waitUntilLoading();
+        applyRemote();
+        releaseLocal();
+        await opening;
+      },
+    },
+    {
+      window: 'after init completes but before the viewer mounts',
+      arrange: async (start: () => Promise<void>, applyRemote: () => void) => {
+        await start();
+        applyRemote();
+      },
+    },
+  ])('initializes the rendered page from remote progress arriving $window', async ({ arrange }) => {
+    const book = catalogBook('catalog/books/remote-resume.epub');
+    const localConfig = deferred<never>();
+    const appService = {
+      isMobile: false,
+      loadBookContent: vi.fn(),
+      loadBookConfig: vi.fn(() => localConfig.promise),
+    } as unknown as AppService;
+    const envConfig = {
+      getAppService: vi.fn().mockResolvedValue(appService),
+    } as unknown as EnvConfigType;
+    const bookKey = createReaderBookKey(book.hash);
+    useLibraryStore.setState({ library: [book], libraryOwnerUserId: 'account-a' });
+    useBookDataStore.setState({
+      booksData: { [book.hash]: cachedBookData(book) as never },
+      remoteConfigs: {},
+    });
+
+    let opening: Promise<void> | null = null;
+    const start = () => {
+      opening ??= useReaderStore.getState().initViewState(envConfig, book.hash, bookKey);
+      return opening;
+    };
+    const applyRemote = () => {
+      const remoteConfig = configAt(remoteLocation, 2);
+      useBookDataStore.getState().setRemoteConfig(book.hash, 'account-a', remoteConfig);
+    };
+    const waitUntilLoading = () =>
+      vi.waitFor(() => expect(appService.loadBookConfig).toHaveBeenCalled());
+    const releaseLocal = () => localConfig.resolve(configAt(localLocation, 1));
+
+    if (arrange.length < 4) releaseLocal();
+    await arrange(start, applyRemote, waitUntilLoading, releaseLocal);
+
+    const rendered = { page: 0 };
+    const view = {
+      init: async ({ lastLocation }: { lastLocation: string }) => {
+        rendered.page = renderedPageFor(lastLocation);
+      },
+      goToFraction: async () => {
+        rendered.page = 1;
+      },
+    };
+    await initializeReaderViewPosition(
+      view as never,
+      useBookDataStore
+        .getState()
+        .getLatestConfig(bookKey, useBookDataStore.getState().getConfig(bookKey)!).location,
+      () => undefined,
+    );
+    expect(rendered.page).toBe(3);
+  });
+
+  it('replays a remote config applied before viewer subscription into initial visible navigation', async () => {
+    const book = catalogBook('catalog/books/pre-mount-remote.epub');
+    const bookKey = createReaderBookKey(book.hash);
+    const localConfig = configAt(localLocation, 1);
+    useLibraryStore.setState({ library: [book], libraryOwnerUserId: 'account-a' });
+    useBookDataStore.setState({
+      booksData: {
+        [book.hash]: { ...cachedBookData(book), config: localConfig } as never,
+      },
+      remoteConfigs: {},
+    });
+
+    useBookDataStore
+      .getState()
+      .setRemoteConfig(book.hash, 'account-a', configAt(remoteLocation, 2));
+
+    const rendered = { page: 0 };
+    const view = {
+      init: async ({ lastLocation }: { lastLocation: string }) => {
+        rendered.page = renderedPageFor(lastLocation);
+      },
+      goToFraction: async () => {
+        rendered.page = 1;
+      },
+    };
+    await initializeReaderViewPosition(
+      view as never,
+      useBookDataStore.getState().getLatestConfig(bookKey, localConfig).location,
+      () => undefined,
+    );
+
+    expect(rendered.page).toBe(3);
+  });
+
+  it('keeps a newer remote config when an older remote apply settles later', () => {
+    useLibraryStore.setState({ libraryOwnerUserId: 'account-a' });
+    useBookDataStore.getState().setRemoteConfig(catalogBookHash, 'account-a', {
+      location: remoteLocation,
+      updatedAt: 3,
+    });
+    useBookDataStore.getState().setRemoteConfig(catalogBookHash, 'account-a', {
+      location: localLocation,
+      updatedAt: 2,
+    });
+
+    expect(useBookDataStore.getState().getRemoteConfig(catalogBookHash)).toMatchObject({
+      location: remoteLocation,
+      updatedAt: 3,
+    });
+  });
+
+  it('keeps remote config scoped to the active library owner', () => {
+    useLibraryStore.setState({ libraryOwnerUserId: 'account-a' });
+    useBookDataStore.getState().setRemoteConfig(catalogBookHash, 'account-a', {
+      location: remoteLocation,
+      updatedAt: 2,
+    });
+
+    expect(useBookDataStore.getState().getRemoteConfig(catalogBookHash)).toMatchObject({
+      location: remoteLocation,
+    });
+
+    useLibraryStore.setState({ libraryOwnerUserId: 'account-b' });
+
+    expect(useBookDataStore.getState().getRemoteConfig(catalogBookHash)).toBeNull();
+  });
+
   it('does not commit an account A book after account B replaces the same catalog hash', async () => {
     const bookA = catalogBook('catalog/books/account-a.epub');
     const bookB = catalogBook('catalog/books/account-b.epub');
@@ -110,7 +295,7 @@ describe('readerStore catalog open lifecycle', () => {
       getAppService: vi.fn().mockResolvedValue(appService),
     } as unknown as EnvConfigType;
     useLibraryStore.setState({ library: [bookA], libraryOwnerUserId: 'account-a' });
-    useBookDataStore.getState().setPreSyncedConfig(catalogBookHash, {
+    useBookDataStore.getState().setRemoteConfig(catalogBookHash, 'account-a', {
       location: 'epubcfi(/6/2!/4/2/1:0)',
     });
 
@@ -126,7 +311,7 @@ describe('readerStore catalog open lifecycle', () => {
     expect(appService.loadBookContent).toHaveBeenCalledTimes(1);
     expect(appService.loadBookConfig).not.toHaveBeenCalled();
     expect(useBookDataStore.getState().booksData[catalogBookHash]).toBeUndefined();
-    expect(useBookDataStore.getState().preSyncedConfigs[catalogBookHash]).toBeDefined();
+    expect(useBookDataStore.getState().remoteConfigs[catalogBookHash]).toBeDefined();
     expect(useReaderStore.getState().viewStates['catalog-open']?.inited).not.toBe(true);
   });
 });
@@ -156,7 +341,7 @@ describe('readerStore close lifecycle', () => {
           isFixedLayout: false,
         },
       },
-      preSyncedConfigs: {},
+      remoteConfigs: {},
     });
     useReaderStore.setState({
       viewStates: { [bookKey]: createViewState(bookKey) },

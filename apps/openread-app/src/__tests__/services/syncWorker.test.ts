@@ -39,7 +39,7 @@ const mocks = vi.hoisted(() => {
 
   const bookDataState = {
     configs: new Map<string, BookConfig>(),
-    preSyncedConfigs: {} as Record<string, Partial<BookConfig>>,
+    remoteConfigs: {} as Record<string, { ownerUserId: string; config: Partial<BookConfig> }>,
     getConfig: vi.fn((key: string | null) =>
       key ? (bookDataState.configs.get(key) ?? null) : null,
     ),
@@ -47,8 +47,12 @@ const mocks = vi.hoisted(() => {
       const existing = bookDataState.configs.get(key) ?? ({ updatedAt: 0 } as BookConfig);
       bookDataState.configs.set(key, { ...existing, ...partialConfig } as BookConfig);
     }),
-    setPreSyncedConfig: vi.fn((bookHash: string, config: Partial<BookConfig>) => {
-      bookDataState.preSyncedConfigs[bookHash] = config;
+    setRemoteConfig: vi.fn((bookHash: string, ownerUserId: string, config: Partial<BookConfig>) => {
+      bookDataState.remoteConfigs[bookHash] = { ownerUserId, config };
+    }),
+    getRemoteConfig: vi.fn((bookHash: string) => {
+      const remote = bookDataState.remoteConfigs[bookHash];
+      return remote?.ownerUserId === libraryState.libraryOwnerUserId ? remote.config : null;
     }),
   };
 
@@ -256,10 +260,10 @@ describe('SyncWorker book reconcile queue', () => {
       mocks.libraryState.library.filter((book) => !book.deletedAt),
     );
     mocks.bookDataState.configs.clear();
-    mocks.bookDataState.preSyncedConfigs = {};
+    mocks.bookDataState.remoteConfigs = {};
     mocks.bookDataState.getConfig.mockClear();
     mocks.bookDataState.setConfig.mockClear();
-    mocks.bookDataState.setPreSyncedConfig.mockClear();
+    mocks.bookDataState.setRemoteConfig.mockClear();
     mocks.settingsState.settings = {};
     mocks.settingsState.setSettings.mockClear();
     mocks.platformSidebarState.collections = [];
@@ -1375,7 +1379,7 @@ describe('SyncWorker book reconcile queue', () => {
       progress: [4, 10],
       location: 'epubcfi(/6/18)',
     });
-    expect(mocks.bookDataState.preSyncedConfigs[mocks.libraryBook.hash]).toMatchObject({
+    expect(mocks.bookDataState.remoteConfigs[mocks.libraryBook.hash]?.config).toMatchObject({
       progress: [4, 10],
       location: 'epubcfi(/6/18)',
     });
@@ -1384,6 +1388,73 @@ describe('SyncWorker book reconcile queue', () => {
       expect.any(Error),
     );
     consoleError.mockRestore();
+  });
+
+  it('does not advance either account cursor when owner changes during an empty config pull', async () => {
+    const { SyncWorker } = await import('@/services/sync/syncWorker');
+    const { getCanonicalSyncCursor } = await import('@/services/sync/cursors');
+    const worker = new SyncWorker();
+    (worker as unknown as { stopped: boolean; userId: string }).stopped = false;
+    (worker as unknown as { stopped: boolean; userId: string }).userId = 'user-1';
+    let releasePull!: () => void;
+    mocks.pullChanges.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releasePull = () =>
+            resolve({ configs: [], tombstones: [], cursorByEntity: { bookConfig: 2000 } });
+        }),
+    );
+
+    const pulling = worker.pullBookConfigs();
+    await vi.waitFor(() => expect(mocks.pullChanges).toHaveBeenCalled());
+    mocks.libraryState.libraryOwnerUserId = 'user-2';
+    (worker as unknown as { userId: string }).userId = 'user-2';
+    releasePull();
+    await pulling;
+
+    expect(getCanonicalSyncCursor('user-1', 'bookConfig')).toBe(0);
+    expect(getCanonicalSyncCursor('user-2', 'bookConfig')).toBe(0);
+  });
+
+  it('does not advance either account cursor when owner changes during queued config apply', async () => {
+    const { SyncWorker } = await import('@/services/sync/syncWorker');
+    const { getCanonicalSyncCursor } = await import('@/services/sync/cursors');
+    const worker = new SyncWorker();
+    (worker as unknown as { stopped: boolean; userId: string }).stopped = false;
+    (worker as unknown as { stopped: boolean; userId: string }).userId = 'user-1';
+    let releasePersistence!: () => void;
+    mocks.appService.saveBookConfig.mockImplementationOnce(
+      () => new Promise<undefined>((resolve) => (releasePersistence = () => resolve(undefined))),
+    );
+    mocks.pullChanges.mockResolvedValueOnce({
+      configs: [
+        {
+          id: 'config-owner-switch',
+          book_hash: mocks.libraryBook.hash,
+          user_id: 'user-1',
+          updated_at: 2000,
+          deleted_at: null,
+          data: {
+            bookHash: mocks.libraryBook.hash,
+            location: 'epubcfi(/6/6)',
+            progress: [3, 10],
+            updatedAt: 2000,
+          },
+        },
+      ],
+      tombstones: [],
+      cursorByEntity: { bookConfig: 2000 },
+    });
+
+    const pulling = worker.pullBookConfigs();
+    await vi.waitFor(() => expect(mocks.appService.saveBookConfig).toHaveBeenCalled());
+    mocks.libraryState.libraryOwnerUserId = 'user-2';
+    (worker as unknown as { userId: string }).userId = 'user-2';
+    releasePersistence();
+    await pulling;
+
+    expect(getCanonicalSyncCursor('user-1', 'bookConfig')).toBe(0);
+    expect(getCanonicalSyncCursor('user-2', 'bookConfig')).toBe(0);
   });
 
   it('advances the config watermark for malformed-only remote rows after logging skip', async () => {
@@ -1532,7 +1603,7 @@ describe('SyncWorker book reconcile queue', () => {
       viewSettings: undefined,
       updatedAt: 3000,
     });
-    expect(mocks.bookDataState.preSyncedConfigs[mocks.libraryBook.hash]).toMatchObject({
+    expect(mocks.bookDataState.remoteConfigs[mocks.libraryBook.hash]?.config).toMatchObject({
       bookHash: mocks.libraryBook.hash,
       updatedAt: 3000,
     });

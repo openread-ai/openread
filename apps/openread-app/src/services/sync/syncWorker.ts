@@ -1055,8 +1055,10 @@ export class SyncWorker {
     if (!useLibraryStore.getState().libraryLoaded) return [];
 
     try {
+      const expectedOwnerUserId = this.userId;
+      if (!expectedOwnerUserId || !this.isCurrentLibraryOwner(expectedOwnerUserId)) return [];
       const cursorScope = scopedBookCursor(bookHash, metaHash);
-      const currentCursor = getCanonicalSyncCursor(this.userId, 'bookConfig', cursorScope);
+      const currentCursor = getCanonicalSyncCursor(expectedOwnerUserId, 'bookConfig', cursorScope);
       const since = currentCursor + 1;
 
       const result = await pullCanonicalSyncChanges(
@@ -1069,8 +1071,9 @@ export class SyncWorker {
       const configTombstones =
         result.tombstones?.filter((tombstone) => tombstone.entity === 'bookConfig') ?? [];
       if (!dbConfigs.length && !configTombstones.length) {
+        if (!this.isCurrentLibraryOwner(expectedOwnerUserId)) return [];
         setCanonicalSyncCursor(
-          this.userId,
+          expectedOwnerUserId,
           'bookConfig',
           result.cursorByEntity?.bookConfig,
           cursorScope,
@@ -1080,7 +1083,13 @@ export class SyncWorker {
 
       const { rows: configRows, skippedRecords: skippedConfigRecords } =
         transformRemoteConfigRows(dbConfigs);
-      const applyResult = await applyRemoteBookConfigRows(configRows, configTombstones);
+      if (!this.isCurrentLibraryOwner(expectedOwnerUserId)) return [];
+      const applyResult = await applyRemoteBookConfigRows(
+        configRows,
+        configTombstones,
+        expectedOwnerUserId,
+      );
+      if (!this.isCurrentLibraryOwner(expectedOwnerUserId)) return [];
 
       const failureTimestamp = minDurabilityFailureTimestamp(applyResult);
       const maxTime = acceptedCursorTimestamp({
@@ -1091,7 +1100,7 @@ export class SyncWorker {
       });
       if (maxTime > currentCursor) {
         setCanonicalSyncCursor(
-          this.userId,
+          expectedOwnerUserId,
           'bookConfig',
           failureTimestamp == null ? (result.cursorByEntity?.bookConfig ?? maxTime) : maxTime,
           cursorScope,

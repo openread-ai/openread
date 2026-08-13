@@ -75,7 +75,7 @@ describe('reader resume persistence outcome', () => {
           isFixedLayout: false,
         },
       },
-      preSyncedConfigs: {},
+      remoteConfigs: {},
     });
     useReaderStore.setState({
       viewStates: {

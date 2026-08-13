@@ -14,13 +14,14 @@ const mocks = vi.hoisted(() => {
   } as Book;
   const libraryState = {
     library: [book] as Book[],
+    libraryOwnerUserId: 'user-1',
     setLibrary: vi.fn((books: Book[]) => {
       libraryState.library = books;
     }),
   };
   const bookDataState = {
     configs: new Map<string, BookConfig>(),
-    preSyncedConfigs: {} as Record<string, Partial<BookConfig>>,
+    remoteConfigs: {} as Record<string, { ownerUserId: string; config: Partial<BookConfig> }>,
     getConfig: vi.fn((key: string | null) =>
       key ? (bookDataState.configs.get(key) ?? null) : null,
     ),
@@ -28,8 +29,12 @@ const mocks = vi.hoisted(() => {
       const existing = bookDataState.configs.get(key) ?? ({ updatedAt: 0 } as BookConfig);
       bookDataState.configs.set(key, { ...existing, ...partialConfig } as BookConfig);
     }),
-    setPreSyncedConfig: vi.fn((bookHash: string, config: Partial<BookConfig>) => {
-      bookDataState.preSyncedConfigs[bookHash] = config;
+    setRemoteConfig: vi.fn((bookHash: string, ownerUserId: string, config: Partial<BookConfig>) => {
+      bookDataState.remoteConfigs[bookHash] = { ownerUserId, config };
+    }),
+    getRemoteConfig: vi.fn((bookHash: string) => {
+      const remote = bookDataState.remoteConfigs[bookHash];
+      return remote?.ownerUserId === libraryState.libraryOwnerUserId ? remote.config : null;
     }),
   };
   const settingsState = {
@@ -110,8 +115,9 @@ describe('remote sync apply layer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.libraryState.library = [mocks.book];
+    mocks.libraryState.libraryOwnerUserId = 'user-1';
     mocks.bookDataState.configs.clear();
-    mocks.bookDataState.preSyncedConfigs = {};
+    mocks.bookDataState.remoteConfigs = {};
     mocks.appService.loadBookConfig.mockResolvedValue({ updatedAt: 0 } as BookConfig);
     mocks.settingsState.settings = {
       keepLogin: true,
@@ -186,11 +192,144 @@ describe('remote sync apply layer', () => {
       progress: [2, 100],
       updatedAt: 2000,
     });
-    expect(mocks.bookDataState.preSyncedConfigs[mocks.book.hash]).toMatchObject({
-      location: 'epubcfi(/6/2)',
+    expect(mocks.bookDataState.remoteConfigs[mocks.book.hash]).toMatchObject({
+      ownerUserId: 'user-1',
+      config: { location: 'epubcfi(/6/2)' },
     });
     expect(events).toHaveLength(1);
     unsubscribe();
+  });
+
+  it('serializes applies so an older completion cannot overwrite newer durable or live state', async () => {
+    const { applyRemoteBookConfigRows } = await import('@/services/sync/remoteApply');
+    let releaseNewerPersistence!: () => void;
+    mocks.appService.saveBookConfig.mockImplementationOnce(
+      () =>
+        new Promise<undefined>((resolve) => (releaseNewerPersistence = () => resolve(undefined))),
+    );
+
+    const newer = applyRemoteBookConfigRows(
+      [
+        {
+          config: {
+            bookHash: mocks.book.hash,
+            location: 'epubcfi(/6/6)',
+            progress: [3, 100],
+            updatedAt: 3000,
+          } as BookConfig,
+          record: {
+            id: 'newer-config',
+            book_hash: mocks.book.hash,
+            user_id: 'user-1',
+            updated_at: 3000,
+            deleted_at: null,
+          },
+        },
+      ],
+      [],
+      'user-1',
+    );
+    await vi.waitFor(() => expect(mocks.appService.saveBookConfig).toHaveBeenCalledTimes(1));
+    const older = applyRemoteBookConfigRows(
+      [
+        {
+          config: {
+            bookHash: mocks.book.hash,
+            location: 'epubcfi(/6/2)',
+            progress: [1, 100],
+            updatedAt: 2000,
+          } as BookConfig,
+          record: {
+            id: 'older-config',
+            book_hash: mocks.book.hash,
+            user_id: 'user-1',
+            updated_at: 2000,
+            deleted_at: null,
+          },
+        },
+      ],
+      [],
+      'user-1',
+    );
+    releaseNewerPersistence();
+    await Promise.all([newer, older]);
+
+    expect(mocks.appService.saveBookConfig).toHaveBeenCalledTimes(1);
+    expect(mocks.bookDataState.configs.get(mocks.book.hash)).toMatchObject({
+      location: 'epubcfi(/6/6)',
+      updatedAt: 3000,
+    });
+    expect(mocks.bookDataState.remoteConfigs[mocks.book.hash]?.config).toMatchObject({
+      location: 'epubcfi(/6/6)',
+      updatedAt: 3000,
+    });
+  });
+
+  it('does not replay an account A config after account B becomes the active owner', async () => {
+    const { applyRemoteBookConfigRows } = await import('@/services/sync/remoteApply');
+    let releasePersistence!: () => void;
+    mocks.appService.saveBookConfig.mockImplementationOnce(
+      () => new Promise<undefined>((resolve) => (releasePersistence = () => resolve(undefined))),
+    );
+
+    const applying = applyRemoteBookConfigRows(
+      [
+        {
+          config: {
+            bookHash: mocks.book.hash,
+            location: 'epubcfi(/6/6)',
+            progress: [3, 100],
+            updatedAt: 2000,
+          } as BookConfig,
+          record: {
+            id: 'account-a-config',
+            book_hash: mocks.book.hash,
+            user_id: 'user-1',
+            updated_at: 2000,
+            deleted_at: null,
+          },
+        },
+      ],
+      [],
+      'user-1',
+    );
+    await vi.waitFor(() => expect(mocks.appService.saveBookConfig).toHaveBeenCalled());
+    mocks.libraryState.libraryOwnerUserId = 'user-2';
+    releasePersistence();
+    await applying;
+
+    expect(mocks.bookDataState.configs.get(mocks.book.hash)).toBeUndefined();
+    expect(mocks.bookDataState.remoteConfigs[mocks.book.hash]).toBeUndefined();
+  });
+
+  it('skips account A rows when account B is active before apply begins', async () => {
+    const { applyRemoteBookConfigRows } = await import('@/services/sync/remoteApply');
+    mocks.libraryState.libraryOwnerUserId = 'user-2';
+
+    await applyRemoteBookConfigRows(
+      [
+        {
+          config: {
+            bookHash: mocks.book.hash,
+            location: 'epubcfi(/6/6)',
+            updatedAt: 2000,
+          } as BookConfig,
+          record: {
+            id: 'stale-owner-config',
+            book_hash: mocks.book.hash,
+            user_id: 'user-1',
+            updated_at: 2000,
+            deleted_at: null,
+          },
+        },
+      ],
+      [],
+      'user-1',
+    );
+
+    expect(mocks.appService.saveBookConfig).not.toHaveBeenCalled();
+    expect(mocks.bookDataState.configs.get(mocks.book.hash)).toBeUndefined();
+    expect(mocks.bookDataState.remoteConfigs[mocks.book.hash]).toBeUndefined();
   });
 
   it('accepts stale and non-applicable config records for cursor advancement without applying them', async () => {

@@ -20,15 +20,30 @@ interface BookData {
   isFixedLayout: boolean;
 }
 
+type RemoteBookConfig = {
+  ownerUserId: string;
+  config: Partial<BookConfig>;
+};
+
+const latestConfigTime = (config: Partial<BookConfig> | null): number => config?.updatedAt ?? 0;
+
+export const mergeLatestBookConfig = (
+  localConfig: BookConfig,
+  remoteConfig: Partial<BookConfig> | null,
+): BookConfig =>
+  remoteConfig && latestConfigTime(remoteConfig) >= latestConfigTime(localConfig)
+    ? ({ ...localConfig, ...remoteConfig } as BookConfig)
+    : localConfig;
+
 interface BookDataState {
   booksData: { [id: string]: BookData };
-  /** Configs received from pullRemoteConfigs before the book is opened in the reader.
-   *  Keyed by bookHash. Consumed (cleared) by initViewState when the book opens. */
-  preSyncedConfigs: { [bookHash: string]: Partial<BookConfig> };
+  /** Latest durable remote config for each book, retained for initialization and mounted-view replay. */
+  remoteConfigs: { [bookHash: string]: RemoteBookConfig };
   getConfig: (key: string | null) => BookConfig | null;
   setConfig: (key: string, partialConfig: Partial<BookConfig>) => void;
-  setPreSyncedConfig: (bookHash: string, config: Partial<BookConfig>) => void;
-  consumePreSyncedConfig: (bookHash: string) => Partial<BookConfig> | null;
+  setRemoteConfig: (bookHash: string, ownerUserId: string, config: Partial<BookConfig>) => void;
+  getRemoteConfig: (bookHash: string) => Partial<BookConfig> | null;
+  getLatestConfig: (key: string, localConfig: BookConfig) => BookConfig;
   saveConfig: (
     envConfig: EnvConfigType,
     bookKey: string,
@@ -43,30 +58,32 @@ interface BookDataState {
 
 export const useBookDataStore = create<BookDataState>((set, get) => ({
   booksData: {},
-  preSyncedConfigs: {},
-  setPreSyncedConfig: (bookHash: string, config: Partial<BookConfig>) => {
+  remoteConfigs: {},
+  setRemoteConfig: (bookHash: string, ownerUserId: string, config: Partial<BookConfig>) => {
     set((state) => {
-      const updated = { ...state.preSyncedConfigs, [bookHash]: config };
-      // Cap at 50 entries to prevent unbounded growth
-      const keys = Object.keys(updated);
-      if (keys.length > 50) {
-        delete updated[keys[0]!];
+      const existing = state.remoteConfigs[bookHash];
+      if (
+        existing?.ownerUserId === ownerUserId &&
+        latestConfigTime(existing.config) > latestConfigTime(config)
+      ) {
+        return state;
       }
-      return { preSyncedConfigs: updated };
+      const updated = { ...state.remoteConfigs, [bookHash]: { ownerUserId, config } };
+      const keys = Object.keys(updated);
+      if (keys.length > 50) delete updated[keys[0]!];
+      return { remoteConfigs: updated };
     });
   },
-  consumePreSyncedConfig: (bookHash: string) => {
-    // Atomic read-and-delete inside a single set call
-    let consumed: Partial<BookConfig> | null = null;
-    set((state) => {
-      consumed = state.preSyncedConfigs[bookHash] ?? null;
-      if (consumed) {
-        const { [bookHash]: _, ...rest } = state.preSyncedConfigs;
-        return { preSyncedConfigs: rest };
-      }
-      return state;
-    });
-    return consumed;
+  getRemoteConfig: (bookHash: string) => {
+    const ownerUserId = useLibraryStore.getState().libraryOwnerUserId;
+    if (!ownerUserId) return null;
+    const remote = get().remoteConfigs[bookHash];
+    return remote?.ownerUserId === ownerUserId ? remote.config : null;
+  },
+  getLatestConfig: (key: string, localConfig: BookConfig) => {
+    const bookHash = normalizeBookReference(key) ?? parseBookRefFromReaderBookKey(key);
+    if (!bookHash) return localConfig;
+    return mergeLatestBookConfig(localConfig, get().getRemoteConfig(bookHash));
   },
   getBookDataByReaderKey: (bookKey: string | null) => {
     const id = parseBookRefFromReaderBookKey(bookKey);
@@ -86,8 +103,8 @@ export const useBookDataStore = create<BookDataState>((set, get) => ({
     }
     set((state) => {
       const { [id]: _bookData, ...booksData } = state.booksData;
-      const { [id]: _preSyncedConfig, ...preSyncedConfigs } = state.preSyncedConfigs;
-      return { booksData, preSyncedConfigs };
+      const { [id]: _remoteConfig, ...remoteConfigs } = state.remoteConfigs;
+      return { booksData, remoteConfigs };
     });
   },
   getConfig: (key: string | null) => {

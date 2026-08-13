@@ -33,12 +33,19 @@ const mocks = vi.hoisted(() => {
     syncConfigs: vi.fn(async () => []),
     getConfig: vi.fn(() => config),
     getBookDataByReaderKey: vi.fn(() => ({ book })),
-    getView: vi.fn(() => ({ renderer: { getContents: () => [] } })),
+    renderedPage: 1,
+    getView: vi.fn(() => ({
+      renderer: { getContents: () => [] },
+      goTo: vi.fn(async (location: string) => {
+        mocks.renderedPage = location === 'epubcfi(/6/6)' ? 3 : 1;
+      }),
+    })),
     getProgress: vi.fn(() => mocks.progress),
     setHoveredBookKey: vi.fn(),
     dispatch: vi.fn(),
     loggerWarn: vi.fn(),
     enqueueBookConfigForSync: vi.fn(() => Promise.resolve()),
+    remoteApplyListener: null as ((event: { type: string; config: BookConfig }) => void) | null,
   };
 });
 
@@ -93,6 +100,17 @@ vi.mock('@/services/sync/helpers', () => ({
   enqueueBookConfigForSync: mocks.enqueueBookConfigForSync,
 }));
 
+vi.mock('@/services/sync/remoteApply', () => ({
+  remoteApplyEventMatchesBook: ({ eventBookHash, bookHash }: Record<string, string>) =>
+    eventBookHash === bookHash,
+  subscribeRemoteApply: (listener: typeof mocks.remoteApplyListener) => {
+    mocks.remoteApplyListener = listener;
+    return () => {
+      mocks.remoteApplyListener = null;
+    };
+  },
+}));
+
 vi.mock('@/utils/logger', () => ({
   createLogger: () => ({
     warn: mocks.loggerWarn,
@@ -115,6 +133,8 @@ describe('useProgressSync', () => {
     mocks.syncConfigs.mockResolvedValue([]);
     mocks.enqueueBookConfigForSync.mockResolvedValue(undefined);
     mocks.loggerWarn.mockClear();
+    mocks.renderedPage = 1;
+    mocks.remoteApplyListener = null;
   });
 
   afterEach(() => {
@@ -154,6 +174,24 @@ describe('useProgressSync', () => {
     } finally {
       process.off('unhandledRejection', onUnhandledRejection);
     }
+  });
+
+  it('navigates the visible reader when remote progress arrives after subscription', async () => {
+    renderHook(() => useProgressSync(mocks.bookKey));
+
+    act(() => {
+      mocks.remoteApplyListener?.({
+        type: 'bookConfig',
+        config: {
+          ...mocks.config,
+          location: 'epubcfi(/6/6)',
+          progress: [3, 100],
+          updatedAt: 2000,
+        },
+      });
+    });
+
+    await waitFor(() => expect(mocks.renderedPage).toBe(3));
   });
 
   it('marks an empty initial scoped pull complete so later progress changes push locally', async () => {

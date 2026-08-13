@@ -211,17 +211,7 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
       );
       lifecycle.assertCurrent();
 
-      // Merge pre-synced remote config only after the captured account/book is still current.
-      const preSynced = useBookDataStore.getState().consumePreSyncedConfig(id);
-      if (
-        preSynced?.location &&
-        typeof preSynced.location === 'string' &&
-        preSynced.location.startsWith('epubcfi(') &&
-        (preSynced.updatedAt ?? 0) >= (config.updatedAt ?? 0)
-      ) {
-        config.location = preSynced.location;
-        if (preSynced.progress) config.progress = preSynced.progress;
-      }
+      const latestConfig = useBookDataStore.getState().getLatestConfig(id, config);
 
       if (!bookDoc.metadata.title) {
         bookDoc.metadata.title = getBaseFilename(file.name);
@@ -245,10 +235,10 @@ export const useReaderStore = create<ReaderStore>((set, get) => ({
       useBookDataStore.setState((state) => ({
         booksData: {
           ...state.booksData,
-          [id]: { id, book, file, config, bookDoc, isFixedLayout },
+          [id]: { id, book, file, config: latestConfig, bookDoc, isFixedLayout },
         },
       }));
-      const configViewSettings = config.viewSettings!;
+      const configViewSettings = latestConfig.viewSettings!;
       const globalViewSettings = settings.globalViewSettings;
       const viewSettings = getInitialReaderViewSettings({
         globalViewSettings,

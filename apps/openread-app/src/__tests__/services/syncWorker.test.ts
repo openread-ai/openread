@@ -3,6 +3,8 @@ import type { Book, BookConfig } from '@/types/book';
 import type { BaseDir } from '@/types/system';
 import type { StoredSyncMutation } from '@/services/sync/outbox';
 import { SyncMutationDeliveryError } from '@/services/sync/engine';
+import { deserializeConfig } from '@/utils/serializer';
+import { DEFAULT_BOOK_SEARCH_CONFIG } from '@/services/constants';
 
 type TestFileRecord = {
   id?: string;
@@ -85,7 +87,7 @@ const mocks = vi.hoisted(() => {
     downloadBookCovers: vi.fn(async () => undefined),
     generateCoverImageUrl: vi.fn(async () => null as string | null),
     saveLibraryBooks: vi.fn(),
-    loadBookConfig: vi.fn(async () => ({ updatedAt: 0 }) as BookConfig),
+    loadBookConfig: vi.fn<() => Promise<BookConfig>>(),
     saveBookConfig: vi.fn(async () => undefined),
     saveSettings: vi.fn(),
   };
@@ -264,7 +266,7 @@ describe('SyncWorker book reconcile queue', () => {
     mocks.bookDataState.getConfig.mockClear();
     mocks.bookDataState.setConfig.mockClear();
     mocks.bookDataState.setRemoteConfig.mockClear();
-    mocks.settingsState.settings = {};
+    mocks.settingsState.settings = { globalViewSettings: {} };
     mocks.settingsState.setSettings.mockClear();
     mocks.platformSidebarState.collections = [];
     mocks.platformSidebarState.setState.mockClear();
@@ -282,7 +284,13 @@ describe('SyncWorker book reconcile queue', () => {
     mocks.appService.saveLibraryBooks.mockReset();
     mocks.appService.saveLibraryBooks.mockResolvedValue(undefined);
     mocks.appService.loadBookConfig.mockReset();
-    mocks.appService.loadBookConfig.mockResolvedValue({ updatedAt: 0 } as BookConfig);
+    mocks.appService.loadBookConfig.mockImplementation(async () =>
+      deserializeConfig(
+        '{}',
+        mocks.settingsState.settings.globalViewSettings as never,
+        DEFAULT_BOOK_SEARCH_CONFIG,
+      ),
+    );
     mocks.appService.saveBookConfig.mockClear();
     mocks.appService.saveSettings.mockClear();
     mocks.aiState.currentBookHash = mocks.libraryBook.hash;
@@ -1342,6 +1350,35 @@ describe('SyncWorker book reconcile queue', () => {
     await expect(secondPull).resolves.toBeUndefined();
     await expect(firstPull).resolves.toBeUndefined();
     expect(secondSettled).toBe(true);
+  });
+
+  it('admits durable first-open config through the worker when local config is absent', async () => {
+    const { SyncWorker } = await import('@/services/sync/syncWorker');
+    const worker = new SyncWorker();
+    (worker as unknown as { stopped: boolean; userId: string }).stopped = false;
+    (worker as unknown as { stopped: boolean; userId: string }).userId = 'user-1';
+    const remoteUpdatedAt = Date.now() - 20_000;
+
+    mocks.pullChanges.mockResolvedValueOnce({
+      configs: [
+        {
+          book_hash: mocks.libraryBook.hash,
+          progress: [3, 129],
+          location: 'epubcfi(/6/6)',
+          updated_at: new Date(remoteUpdatedAt).toISOString(),
+        },
+      ],
+      cursorByEntity: { bookConfig: remoteUpdatedAt },
+    });
+
+    const configs = await worker.pullBookConfigs();
+
+    expect(configs).toHaveLength(1);
+    expect(mocks.bookDataState.remoteConfigs[mocks.libraryBook.hash]?.config).toMatchObject({
+      progress: [3, 129],
+      location: 'epubcfi(/6/6)',
+      updatedAt: remoteUpdatedAt,
+    });
   });
 
   it('skips malformed remote book config rows while applying valid first-open configs', async () => {

@@ -176,7 +176,7 @@ describe('useProgressSync', () => {
     }
   });
 
-  it('navigates the visible reader when remote progress arrives after subscription', async () => {
+  it('navigates the visible reader when admitted remote progress arrives after subscription', async () => {
     renderHook(() => useProgressSync(mocks.bookKey));
 
     act(() => {

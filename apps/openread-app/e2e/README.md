@@ -152,6 +152,8 @@ The tracker is Notion-first. Do not use a local `checkpoint.json` as progress st
 
 The disposable-account lifecycle proofs are intentionally separate from PR and release CI. They mutate the configured Supabase and R2 environment, clean up their marked test accounts, and run only through the manual **Lifecycle E2E** workflow (`.github/workflows/lifecycle-e2e.yml`) or an explicitly authorized local command.
 
+Lifecycle teardown reports distinguish product cleanup from harness recovery. `already-clean` means the scenario reached and proved its product deletion path. `recovered-residue` means an earlier assertion stopped the scenario before product deletion, so the harness removed the still-live disposable state and verified convergence; it preserves the primary RED and does not by itself identify an account-deletion defect.
+
 The workflow accepts `L1`, `L2`, `L6`, `L8`, or `all` and runs Chromium in web mode. It has only a `workflow_dispatch` trigger: no push, pull-request, or schedule trigger, and it is not a release gate.
 
 Configure these four GitHub Actions secrets before dispatching it:

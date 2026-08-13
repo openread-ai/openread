@@ -43,7 +43,9 @@ export const deserializeConfig = (
   globalViewSettings: ViewSettings,
   defaultSearchConfig: BookSearchConfig,
 ): BookConfig => {
-  const config = migrateBookConfigTombstones(JSON.parse(str) as BookConfig).value;
+  const persistedConfig = JSON.parse(str) as BookConfig;
+  const hasPersistedConfig = Object.keys(persistedConfig).length > 0;
+  const config = migrateBookConfigTombstones(persistedConfig).value;
   const { viewSettings, searchConfig } = config;
   config.viewSettings = mergeViewSettingsWithLegacyLayout(
     globalViewSettings,
@@ -53,7 +55,7 @@ export const deserializeConfig = (
     }).value.viewSettings ?? {},
   );
   config.searchConfig = { ...defaultSearchConfig, ...searchConfig };
-  config.updatedAt ??= Date.now();
+  config.updatedAt ??= hasPersistedConfig ? Date.now() : 0;
   return config;
 };
 

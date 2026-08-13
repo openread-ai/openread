@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SyncTombstone } from '@openread/sync';
 import type { MetaHash, SyncableBookRef } from '@openread/types';
 import type { Book, BookConfig, BookNote } from '@/types/book';
+import { deserializeConfig } from '@/utils/serializer';
+import { DEFAULT_BOOK_SEARCH_CONFIG } from '@/services/constants';
 
 const mocks = vi.hoisted(() => {
   const book = {
@@ -61,7 +63,7 @@ const mocks = vi.hoisted(() => {
     }),
   };
   const appService = {
-    loadBookConfig: vi.fn(async () => ({ updatedAt: 0 }) as BookConfig),
+    loadBookConfig: vi.fn<() => Promise<BookConfig>>(),
     saveBookConfig: vi.fn(async () => undefined),
     saveLibraryBooks: vi.fn(async () => undefined),
   };
@@ -118,12 +120,18 @@ describe('remote sync apply layer', () => {
     mocks.libraryState.libraryOwnerUserId = 'user-1';
     mocks.bookDataState.configs.clear();
     mocks.bookDataState.remoteConfigs = {};
-    mocks.appService.loadBookConfig.mockResolvedValue({ updatedAt: 0 } as BookConfig);
     mocks.settingsState.settings = {
       keepLogin: true,
       localBooksDir: '/local-only',
       globalViewSettings: { fontSize: 16 },
     };
+    mocks.appService.loadBookConfig.mockImplementation(async () =>
+      deserializeConfig(
+        '{}',
+        mocks.settingsState.settings.globalViewSettings as never,
+        DEFAULT_BOOK_SEARCH_CONFIG,
+      ),
+    );
     mocks.platformSidebarState.collections = [];
   });
 
@@ -152,6 +160,94 @@ describe('remote sync apply layer', () => {
         bookMetaHash: undefined,
       }),
     ).toBe(false);
+  });
+
+  it('admits durable remote progress when the local config is genuinely absent', async () => {
+    const { applyRemoteBookConfigRows, subscribeRemoteApply } =
+      await import('@/services/sync/remoteApply');
+    const remoteUpdatedAt = Date.now() - 20_000;
+    mocks.appService.loadBookConfig.mockImplementation(async () =>
+      deserializeConfig(
+        '{}',
+        mocks.settingsState.settings.globalViewSettings as never,
+        DEFAULT_BOOK_SEARCH_CONFIG,
+      ),
+    );
+    const events: unknown[] = [];
+    const unsubscribe = subscribeRemoteApply((event) => events.push(event));
+
+    await applyRemoteBookConfigRows(
+      [
+        {
+          config: {
+            bookHash: mocks.book.hash,
+            location: 'epubcfi(/6/6)',
+            progress: [3, 129],
+            updatedAt: remoteUpdatedAt,
+          } as BookConfig,
+          record: {
+            id: 'cold-config',
+            book_hash: mocks.book.hash,
+            user_id: 'user-1',
+            updated_at: remoteUpdatedAt,
+            deleted_at: null,
+          },
+        },
+      ],
+      [],
+    );
+
+    expect(mocks.bookDataState.remoteConfigs[mocks.book.hash]?.config).toMatchObject({
+      location: 'epubcfi(/6/6)',
+      progress: [3, 129],
+      updatedAt: remoteUpdatedAt,
+    });
+    expect(events).toHaveLength(1);
+    unsubscribe();
+  });
+
+  it('preserves nonempty legacy local progress when its write time is unknown', async () => {
+    const { applyRemoteBookConfigRows, subscribeRemoteApply } =
+      await import('@/services/sync/remoteApply');
+    const remoteUpdatedAt = Date.now() - 20_000;
+    mocks.appService.loadBookConfig.mockImplementation(async () =>
+      deserializeConfig(
+        JSON.stringify({
+          location: 'epubcfi(/6/20)',
+          progress: [20, 129],
+        }),
+        mocks.settingsState.settings.globalViewSettings as never,
+        DEFAULT_BOOK_SEARCH_CONFIG,
+      ),
+    );
+    const events: unknown[] = [];
+    const unsubscribe = subscribeRemoteApply((event) => events.push(event));
+
+    await applyRemoteBookConfigRows(
+      [
+        {
+          config: {
+            bookHash: mocks.book.hash,
+            location: 'epubcfi(/6/6)',
+            progress: [3, 129],
+            updatedAt: remoteUpdatedAt,
+          } as BookConfig,
+          record: {
+            id: 'legacy-config',
+            book_hash: mocks.book.hash,
+            user_id: 'user-1',
+            updated_at: remoteUpdatedAt,
+            deleted_at: null,
+          },
+        },
+      ],
+      [],
+    );
+
+    expect(mocks.appService.saveBookConfig).not.toHaveBeenCalled();
+    expect(mocks.bookDataState.remoteConfigs[mocks.book.hash]).toBeUndefined();
+    expect(events).toHaveLength(0);
+    unsubscribe();
   });
 
   it('applies the latest remote progress even when the CFI moves backward', async () => {

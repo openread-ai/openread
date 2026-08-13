@@ -14,6 +14,7 @@ const BOOK_LINK_NAME = `Open ${BOOK_TITLE} by ${BOOK_AUTHOR}`;
 const errorMessage = (error) => (error instanceof Error ? error.message : String(error));
 const isUserOwnedKey = (key, userId) =>
   key.startsWith(`users/${userId}/`) || key.startsWith(`${userId}/Openread/Books/`);
+const isCanonicalBookKey = (key, userId) => key.startsWith(`users/${userId}/books/`);
 
 if (process.env.OPENREAD_E2E_UPLOAD_LIFECYCLE_LIVE !== '1') {
   throw new Error(
@@ -129,6 +130,17 @@ test('Upload lifecycle: parses an EPUB and deletes all user-owned state', async 
         { timeout: 120_000 },
       )
       .toBe(true);
+    await page.waitForLoadState('networkidle');
+
+    const activeBookFiles = await runtime.queryActiveBookFiles(account.userId);
+    expect(activeBookFiles).toHaveLength(1);
+    expect(activeBookFiles[0]).toMatchObject({
+      book_hash: expect.stringMatching(/^[0-9a-f]{32}$/),
+      status: 'active',
+      deleted_at: null,
+    });
+    expect(isCanonicalBookKey(activeBookFiles[0].file_key, account.userId)).toBe(true);
+
     const artifacts = await runtime.lifecycle.captureArtifacts(account.userId);
     capturedKeys = artifacts.map(({ key }) => key);
     expect(capturedKeys.some((key) => key.toLowerCase().endsWith('.epub'))).toBe(true);

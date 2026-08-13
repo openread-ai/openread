@@ -400,6 +400,23 @@ export function createLiveAccountLifecycle(env = process.env) {
     return key;
   };
 
+  const queryActiveBookFiles = async (userId) => {
+    const { data, error } = await withTimeout(
+      admin
+        .from('files')
+        .select('id, book_hash, file_key, status, deleted_at')
+        .eq('user_id', userId)
+        .eq('file_type', 'book')
+        .eq('status', 'active')
+        .is('deleted_at', null),
+      REMOTE_OPERATION_TIMEOUT_MS,
+      'Active book file query',
+    );
+    if (error) throw new Error(`Active book file query failed: ${error.message}`);
+    if (!Array.isArray(data)) throw new Error('Active book file query returned no rows array');
+    return data;
+  };
+
   const queryImportedBook = async (userId, catalogBookId) => {
     const { data, error } = await withTimeout(
       admin
@@ -438,6 +455,7 @@ export function createLiveAccountLifecycle(env = process.env) {
     lifecycle,
     finalizeThroughProductApi,
     seedSentinelArtifact,
+    queryActiveBookFiles,
     queryImportedBook,
     headObject,
   });

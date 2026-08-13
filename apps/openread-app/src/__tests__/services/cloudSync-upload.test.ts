@@ -21,7 +21,10 @@ vi.mock('@/utils/misc', async (importOriginal) => ({
 
 vi.mock('@/libs/storage', () => ({
   createProgressHandler: () => () => {},
-  uploadFile: vi.fn(async () => undefined),
+  uploadFile: vi.fn(async () => ({
+    fileId: 'canonical-book-file',
+    objectKey: 'users/user-1/books/canonical.epub',
+  })),
   downloadFile: vi.fn(),
   batchGetDownloadUrls: vi.fn(),
 }));

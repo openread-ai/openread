@@ -53,7 +53,10 @@ describe('book file upload intents', () => {
 
     await expect(
       uploadFile(file, '/books/openread-e2e-mobile-fixed.pdf', undefined, 'book-hash'),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({
+      fileId: 'file-1',
+      objectKey: 'users/user-1/books/file-1.pdf',
+    });
 
     expect(file.size).toBe(911);
     expect(mockFetchWithAuth).toHaveBeenNthCalledWith(

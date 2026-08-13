@@ -6,7 +6,6 @@ import {
   type SyncableBookRef,
 } from '@openread/types';
 
-import { CLOUD_BOOKS_SUBDIR } from '@/services/constants';
 import type { AIConversation, AIMessage } from '@/services/ai/types';
 import {
   getBookNoteLegacyCfi,
@@ -14,7 +13,6 @@ import {
 } from '@/services/annotation/annotationTargetContract';
 import type { Book, BookConfig, BookNote } from '@/types/book';
 import type { SystemSettings } from '@/types/settings';
-import { getCoverFilename, getRemoteBookFilename } from '@/utils/book';
 import { extractRoamingSettings } from '@/utils/transform';
 
 export interface SyncMutationContext {
@@ -319,56 +317,4 @@ export function buildAIMessageMutation(
     ...withBase('aiMessage', `${message.conversationId}:${message.id}`, context, updatedAt),
     payload,
   };
-}
-
-export function buildFileMetadataMutation(
-  book: Book,
-  context: SyncMutationContext,
-): SyncMutation<'fileMetadata'> | null {
-  const now = context.now ?? Date.now();
-  const uploadedAt = toTimestamp(book.uploadedAt, 0);
-  if (!uploadedAt) return null;
-
-  const storageKey = `${context.userId}/${CLOUD_BOOKS_SUBDIR}/${getRemoteBookFilename(book)}`;
-  const payload: SyncPayloadByEntity['fileMetadata'] = {
-    id: storageKey,
-    bookHash: requireSyncableBookRef(book.hash, 'fileMetadata.bookHash'),
-    fileType: 'book',
-    storageKey,
-    sizeBytes: book.sizeBytes ?? null,
-    status: 'uploaded',
-    updatedAt: uploadedAt || now,
-  };
-
-  return {
-    ...withBase('fileMetadata', storageKey, context, payload.updatedAt),
-    payload,
-  };
-}
-
-export function buildFileMetadataMutationsFromBook(
-  book: Book,
-  context: SyncMutationContext,
-): SyncMutation<'fileMetadata'>[] {
-  const bookFile = buildFileMetadataMutation(book, context);
-  if (!bookFile) return [];
-
-  const coverUploadedAt = toTimestamp(book.coverDownloadedAt, 0);
-  if (!coverUploadedAt) return [bookFile];
-
-  const coverStorageKey = `${context.userId}/${CLOUD_BOOKS_SUBDIR}/${getCoverFilename(book)}`;
-  return [
-    bookFile,
-    {
-      ...withBase('fileMetadata', coverStorageKey, context, coverUploadedAt),
-      payload: {
-        id: coverStorageKey,
-        bookHash: requireSyncableBookRef(book.hash, 'fileMetadata.bookHash'),
-        fileType: 'cover',
-        storageKey: coverStorageKey,
-        status: 'uploaded',
-        updatedAt: coverUploadedAt,
-      },
-    },
-  ];
 }

@@ -13,7 +13,6 @@ import {
   buildBookMutation,
   buildBookNoteMutation,
   buildCollectionMutations,
-  buildFileMetadataMutationsFromBook,
   buildSettingsMutation,
   type CollectionSyncInput,
   type SyncMutationContext,
@@ -159,10 +158,4 @@ export async function enqueueAIMessageForSync(message: AIMessage): Promise<void>
   const context = getSyncMutationContext();
   if (!context) return;
   await enqueueCanonicalSyncMutations([buildAIMessageMutation(message, context)]);
-}
-
-export async function enqueueFileMetadataForBookUpload(book: Book): Promise<void> {
-  const context = getSyncMutationContext();
-  if (!context) return;
-  await enqueueCanonicalSyncMutations(buildFileMetadataMutationsFromBook(book, context));
 }

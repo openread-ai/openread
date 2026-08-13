@@ -66,7 +66,7 @@ const getCoverUrlForDiscord = async (
         true,
       );
 
-      if (downloadUrl) {
+      if (typeof downloadUrl === 'string') {
         coverUrlCache.set(book.hash, { url: downloadUrl, timestamp: Date.now() });
         return downloadUrl;
       }
@@ -89,7 +89,7 @@ const getCoverUrlForDiscord = async (
       true,
     );
 
-    if (downloadUrl) {
+    if (typeof downloadUrl === 'string') {
       coverUrlCache.set(book.hash, { url: downloadUrl, timestamp: Date.now() });
       return downloadUrl;
     }

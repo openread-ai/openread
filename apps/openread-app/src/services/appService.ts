@@ -841,7 +841,7 @@ export abstract class BaseAppService implements AppService {
   }
 
   async uploadBook(book: Book, onProgress?: ProgressHandler): Promise<void> {
-    return this.cloudSync.uploadBook(book, onProgress);
+    await this.cloudSync.uploadBook(book, onProgress);
   }
 
   async downloadCloudFile(lfp: string, cfp: string, onProgress: ProgressHandler) {

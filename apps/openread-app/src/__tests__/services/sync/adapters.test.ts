@@ -10,7 +10,6 @@ import {
   buildAIMessageMutation,
   buildBookNoteMutation,
   buildCollectionMutations,
-  buildFileMetadataMutationsFromBook,
   buildSettingsMutation,
 } from '@/services/sync/adapters';
 import type { AIConversation, AIMessage } from '@/services/ai/types';
@@ -258,26 +257,6 @@ describe('canonical sync mutation adapters', () => {
       entity: 'aiMessage',
       entityId: 'conversation-1:message-1',
       payload: { id: 'message-1', conversationId: 'conversation-1', content: 'What happened?' },
-    });
-  });
-
-  it('builds file metadata mutations for uploaded book and cover records without bytes', () => {
-    const mutations = buildFileMetadataMutationsFromBook(
-      book({ uploadedAt: 4_000, coverDownloadedAt: 4_100, sizeBytes: 12_345 }),
-      context,
-    );
-
-    expect(mutations).toHaveLength(2);
-    expect(mutations.every((mutation) => validateSyncMutation(mutation).ok)).toBe(true);
-    expect(mutations.map((mutation) => mutation.payload!.fileType)).toEqual(['book', 'cover']);
-    expect(mutations[0]!.payload).not.toHaveProperty('bytes');
-    expect(mutations[0]).toMatchObject({
-      entity: 'fileMetadata',
-      payload: {
-        bookHash: testSyncableBookRef('d41d8cd98f00b204e9800998ecf8427e'),
-        sizeBytes: 12_345,
-        status: 'uploaded',
-      },
     });
   });
 });

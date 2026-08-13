@@ -411,12 +411,6 @@ class TransferManager {
         await this.appService.uploadBook(book, progressHandler);
         if (!this.isTransferOwnedByCurrentUser(transfer)) return;
         await this.updateBook(book);
-        if (!this.isTransferOwnedByCurrentUser(transfer)) return;
-        void import('@/services/sync/helpers')
-          .then(({ enqueueFileMetadataForBookUpload }) => enqueueFileMetadataForBookUpload(book))
-          .catch((error) => {
-            logger.warn('Failed to enqueue uploaded file metadata sync:', error);
-          });
       } else if (transfer.type === 'download') {
         await this.appService.downloadBook(book, false, false, progressHandler);
         if (!this.isTransferOwnedByCurrentUser(transfer)) return;

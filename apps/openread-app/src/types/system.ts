@@ -149,7 +149,7 @@ export interface AppService {
     handleProgress: ProgressHandler,
     hash: string,
     temp?: boolean,
-  ): Promise<string | undefined>;
+  ): Promise<string | { fileId: string; objectKey: string } | undefined>;
   downloadBookCovers(books: Book[], redownload?: boolean): Promise<void>;
   exportBook(book: Book): Promise<boolean>;
   isBookAvailable(book: Book): Promise<boolean>;

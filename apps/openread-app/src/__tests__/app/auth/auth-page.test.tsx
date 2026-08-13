@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   push: vi.fn(),
   back: vi.fn(),
   signInWithPassword: vi.fn(),
+  signInWithOAuth: vi.fn(),
   signUp: vi.fn(),
   authStateCallback: null as null | ((event: string, session: unknown) => void),
   authCardProps: null as null | {
@@ -15,6 +16,7 @@ const mocks = vi.hoisted(() => ({
       email: string,
       password: string,
     ) => Promise<unknown>;
+    providers?: Array<{ id: string; onClick: () => void }>;
   },
   isTauri: false,
   appService: {} as Record<string, unknown>,
@@ -23,6 +25,7 @@ const mocks = vi.hoisted(() => ({
   registerOAuthUrl: vi.fn(),
   runNativeCommand: vi.fn(),
   installSession: vi.fn(),
+  beginSignIn: vi.fn(),
 }));
 
 vi.mock('next/navigation', () => ({
@@ -37,7 +40,7 @@ vi.mock('@/utils/supabase', () => ({
         return { data: { subscription: { unsubscribe: vi.fn() } } };
       }),
       signOut: vi.fn(),
-      signInWithOAuth: vi.fn(),
+      signInWithOAuth: mocks.signInWithOAuth,
       signInWithPassword: mocks.signInWithPassword,
       signInWithIdToken: vi.fn(),
       signUp: mocks.signUp,
@@ -81,7 +84,10 @@ vi.mock('@/services/bridge/bridgeService', () => ({
 }));
 
 vi.mock('@/services/auth/clientAuth', () => ({
-  clientAuth: { installSession: mocks.installSession },
+  clientAuth: {
+    installSession: mocks.installSession,
+    beginSignIn: mocks.beginSignIn,
+  },
 }));
 
 vi.mock('@/utils/logger', () => ({
@@ -106,7 +112,9 @@ vi.mock('@/components/auth/openread-auth-card', () => ({
 }));
 
 vi.mock('@/app/auth/auth-provider-actions', () => ({
-  buildAuthProviderActions: () => [],
+  buildAuthProviderActions: ({ onGoogle }: { onGoogle: () => void }) => [
+    { id: 'google', onClick: onGoogle },
+  ],
 }));
 
 import AuthPage from '@/app/auth/page';
@@ -127,6 +135,7 @@ describe('AuthPage redirects', () => {
     mocks.isTauri = false;
     mocks.appService = {};
     mocks.signInWithPassword.mockResolvedValue({ error: null });
+    mocks.signInWithOAuth.mockResolvedValue({ error: null });
     mocks.signUp.mockResolvedValue({ data: { session: { access_token: 'token' } }, error: null });
     mocks.startOAuth.mockResolvedValue(47123);
     mocks.registerOAuthUrl.mockImplementation((callback) => {
@@ -167,7 +176,18 @@ describe('AuthPage redirects', () => {
       await mocks.authCardProps?.onEmailPassword(mode, 'reader@example.com', 'password');
     });
 
+    expect(mocks.beginSignIn).toHaveBeenCalledTimes(1);
     expect(mocks.push).toHaveBeenCalledWith(expected);
+  });
+
+  it('begins a new auth generation before OAuth sign-in', async () => {
+    await renderAuthPage('/home');
+
+    await act(async () => {
+      await mocks.authCardProps?.providers?.[0]?.onClick();
+    });
+
+    expect(mocks.beginSignIn).toHaveBeenCalledTimes(1);
   });
 
   it.each([

@@ -24,6 +24,9 @@ class ClientAuthAdapter {
   private initialized = false;
   private refreshPromise: Promise<AuthSession | null> | null = null;
   private unsubscribeSupabase: (() => void) | null = null;
+  private sessionGeneration = 0;
+  private acceptsPassiveSessions = true;
+  private pendingSessionOperations = new Map<number, number>();
 
   getSnapshot(): AuthSession | null {
     if (!this.session && typeof window !== 'undefined') {
@@ -44,12 +47,7 @@ class ClientAuthAdapter {
 
     this.session = this.storage.read();
 
-    const { data: subscription } = supabase.auth.onAuthStateChange((event, supabaseSession) => {
-      const reason =
-        event === 'SIGNED_OUT' ? 'logout' : event === 'TOKEN_REFRESHED' ? 'refresh' : 'login';
-      this.acceptSupabaseSession(supabaseSession, reason);
-    });
-    this.unsubscribeSupabase = () => subscription?.subscription.unsubscribe();
+    this.bindSupabaseSubscription();
 
     void this.restoreStoredSession();
   }
@@ -66,11 +64,16 @@ class ClientAuthAdapter {
       const token = data?.session?.access_token ?? null;
       if (!token) return null;
       if (!isAccessTokenExpired(token)) return token;
-      const { data: refreshData, error } = await supabase.auth.refreshSession();
-      const refreshedToken = refreshData?.session?.access_token ?? null;
-      if (error || !refreshedToken || isAccessTokenExpired(refreshedToken)) return null;
-      this.acceptSupabaseSession(refreshData.session, 'refresh');
-      return refreshedToken;
+      const generation = this.beginSessionOperation();
+      try {
+        const { data: refreshData, error } = await supabase.auth.refreshSession();
+        const refreshedToken = refreshData?.session?.access_token ?? null;
+        if (error || !refreshedToken || isAccessTokenExpired(refreshedToken)) return null;
+        const accepted = this.acceptSupabaseSession(refreshData.session, 'refresh', generation);
+        return accepted?.accessToken ?? null;
+      } finally {
+        this.finishSessionOperation(generation);
+      }
     }
 
     const storedToken = this.getStoredAccessToken();
@@ -101,37 +104,52 @@ class ClientAuthAdapter {
     const refreshToken = isWebAppPlatform()
       ? (this.getStoredRefreshToken() ?? undefined)
       : undefined;
-    this.refreshPromise = this.refreshSession(refreshToken);
+    const refreshPromise = this.refreshSession(refreshToken);
+    this.refreshPromise = refreshPromise;
     try {
-      return await this.refreshPromise;
+      return await refreshPromise;
     } finally {
-      this.refreshPromise = null;
+      if (this.refreshPromise === refreshPromise) this.refreshPromise = null;
     }
   }
 
   async installSession(session: SupabaseLikeSession): Promise<AuthSession | null> {
     if (this.isQaForcedSignedOut()) return null;
 
-    if (session.access_token && session.refresh_token) {
-      const { data, error } = await supabase.auth.setSession({
-        access_token: session.access_token,
-        refresh_token: session.refresh_token,
-      });
-      if (error) throw error;
-      return this.acceptSupabaseSession(data.session, 'login');
-    }
+    this.beginNewSessionGeneration();
+    const generation = this.beginSessionOperation();
+    try {
+      if (session.access_token && session.refresh_token) {
+        const { data, error } = await supabase.auth.setSession({
+          access_token: session.access_token,
+          refresh_token: session.refresh_token,
+        });
+        if (error) throw error;
+        return this.acceptSupabaseSession(data.session, 'login', generation);
+      }
 
-    return this.acceptSupabaseSession(session, 'login');
+      return this.acceptSupabaseSession(session, 'login', generation);
+    } finally {
+      this.finishSessionOperation(generation);
+    }
   }
 
   async logout(): Promise<void> {
+    const generation = ++this.sessionGeneration;
+    this.acceptsPassiveSessions = false;
+    this.bindSupabaseSubscription();
+
     try {
       await supabase.auth.signOut();
     } catch (error) {
       logger.warn('Supabase sign out failed:', error);
     } finally {
-      void this.clear('logout');
+      if (this.sessionGeneration === generation) await this.clear('logout');
     }
+  }
+
+  beginSignIn(): void {
+    this.beginNewSessionGeneration();
   }
 
   async clear(reason: AuthChangeEvent['reason'] = 'clear'): Promise<void> {
@@ -167,44 +185,55 @@ class ClientAuthAdapter {
       return;
     }
 
+    const generation = this.beginSessionOperation();
     try {
       const { data, error } = await supabase.auth.setSession({
         access_token: stored.accessToken,
         refresh_token: stored.refreshToken,
       });
       if (!error && data.session) {
-        this.acceptSupabaseSession(data.session, 'initial');
+        this.acceptSupabaseSession(data.session, 'initial', generation);
         return;
       }
       logger.warn('Stored session restore failed:', error);
-      await this.clear('clear');
+      if (generation === this.sessionGeneration) await this.clear('clear');
     } catch (error) {
       logger.warn('Stored session restore error:', error);
-      await this.clear('clear');
+      if (generation === this.sessionGeneration) await this.clear('clear');
+    } finally {
+      this.finishSessionOperation(generation);
     }
   }
 
   private async refreshSession(refreshToken?: string): Promise<AuthSession | null> {
+    const generation = this.beginSessionOperation();
     try {
       const { data, error } = await supabase.auth.refreshSession(
         refreshToken ? { refresh_token: refreshToken } : undefined,
       );
       if (error || !data.session) {
+        if (generation !== this.sessionGeneration) return this.session;
         await this.clear('clear');
         return null;
       }
-      return this.acceptSupabaseSession(data.session, 'refresh');
+      return this.acceptSupabaseSession(data.session, 'refresh', generation);
     } catch (error) {
       logger.warn('Session refresh failed:', error);
+      if (generation !== this.sessionGeneration) return this.session;
       await this.clear('clear');
       return null;
+    } finally {
+      this.finishSessionOperation(generation);
     }
   }
 
   private acceptSupabaseSession(
     supabaseSession: SupabaseLikeSession | null | undefined,
     reason: AuthChangeEvent['reason'],
+    generation = this.sessionGeneration,
   ): AuthSession | null {
+    if (generation !== this.sessionGeneration) return this.session;
+
     if (this.isQaForcedSignedOut()) {
       void this.clear('clear');
       return null;
@@ -216,10 +245,58 @@ class ClientAuthAdapter {
       return null;
     }
 
+    if (!this.acceptsPassiveSessions) {
+      void this.clear('logout');
+      return null;
+    }
+
     this.session = session;
     this.storage.write(session);
     this.notify({ session, reason });
     return session;
+  }
+
+  private beginNewSessionGeneration(): void {
+    this.sessionGeneration += 1;
+    this.acceptsPassiveSessions = true;
+    this.refreshPromise = null;
+    this.bindSupabaseSubscription();
+  }
+
+  private beginSessionOperation(): number {
+    const generation = this.sessionGeneration;
+    this.pendingSessionOperations.set(
+      generation,
+      (this.pendingSessionOperations.get(generation) ?? 0) + 1,
+    );
+    return generation;
+  }
+
+  private finishSessionOperation(generation: number): void {
+    const remaining = (this.pendingSessionOperations.get(generation) ?? 1) - 1;
+    if (remaining > 0) this.pendingSessionOperations.set(generation, remaining);
+    else this.pendingSessionOperations.delete(generation);
+
+    if (!this.unsubscribeSupabase) this.bindSupabaseSubscription();
+  }
+
+  private hasOlderSessionOperation(): boolean {
+    return [...this.pendingSessionOperations].some(
+      ([generation, count]) => generation !== this.sessionGeneration && count > 0,
+    );
+  }
+
+  private bindSupabaseSubscription(): void {
+    if (!this.initialized) return;
+    this.unsubscribeSupabase?.();
+    const generation = this.sessionGeneration;
+    const { data: subscription } = supabase.auth.onAuthStateChange((event, supabaseSession) => {
+      if (this.hasOlderSessionOperation()) return;
+      const reason =
+        event === 'SIGNED_OUT' ? 'logout' : event === 'TOKEN_REFRESHED' ? 'refresh' : 'login';
+      this.acceptSupabaseSession(supabaseSession, reason, generation);
+    });
+    this.unsubscribeSupabase = () => subscription?.subscription.unsubscribe();
   }
 
   private getStoredAccessToken(): string | null {

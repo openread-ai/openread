@@ -176,7 +176,7 @@ export default function ActivityCaptureBridge() {
   );
 }
 
-async function clearQaAuth(logout: () => void) {
+async function clearQaAuth(logout: () => Promise<void>) {
   clientAuth.forceQaSignedOut();
   const storageKey = supabaseStorageKey();
   if (storageKey) localStorage.removeItem(storageKey);

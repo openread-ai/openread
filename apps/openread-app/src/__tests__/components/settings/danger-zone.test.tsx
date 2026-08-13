@@ -122,12 +122,17 @@ describe('DangerZone', () => {
   });
 
   describe('Sign Out', () => {
+    it('exposes the hydrated control as an accessible named button', () => {
+      render(<DangerZone />);
+
+      expect(screen.getByRole('button', { name: 'Sign Out' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Delete Account' })).toBeTruthy();
+    });
+
     it('should call handleLogout when Sign Out button is clicked', () => {
       render(<DangerZone />);
 
-      const signOutButtons = screen.getAllByText('Sign Out');
-      const signOutButton = signOutButtons.find((el) => el.closest('button'));
-      fireEvent.click(signOutButton!);
+      fireEvent.click(screen.getByRole('button', { name: 'Sign Out' }));
 
       expect(mockHandleLogout).toHaveBeenCalledTimes(1);
     });

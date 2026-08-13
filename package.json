@@ -13,6 +13,8 @@
     "catalog:health:doab-dry-run:check": "node scripts/ops/check-catalog-health-doab-dry-run-workflow.mjs && node scripts/ops/check-catalog-health-reverify-dry-run-report.mjs --self-test",
     "api:ownership:check": "node scripts/ops/check-api-route-ownership.mjs",
     "api:ownership:self-test": "node scripts/ops/check-api-route-ownership.mjs --self-test",
+    "api:route-capabilities:check": "node scripts/ops/check-route-capabilities.mjs",
+    "api:route-capabilities:test": "node --test scripts/ops/check-route-capabilities.test.mjs",
     "book-identity:check": "node scripts/ops/check-book-identity-ownership.mjs",
     "auth:boundary:check": "node scripts/ops/check-canonical-auth-boundary.mjs",
     "ai-control:boundary:check": "node scripts/ops/check-canonical-ai-control-boundary.mjs",

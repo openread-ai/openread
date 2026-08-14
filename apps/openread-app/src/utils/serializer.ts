@@ -6,6 +6,20 @@ import {
   stripLegacyReaderLayoutFields,
 } from '@/app/reader/utils/readerLayoutContract';
 
+const getViewSettingsOverrideKeys = (
+  viewSettings: Partial<ViewSettings>,
+  overrideKeys: readonly (keyof ViewSettings)[],
+): (keyof ViewSettings)[] =>
+  Array.from(
+    new Set(overrideKeys.filter((key) => Object.prototype.hasOwnProperty.call(viewSettings, key))),
+  );
+
+const pickViewSettingsOverrides = (
+  viewSettings: Partial<ViewSettings>,
+  overrideKeys: readonly (keyof ViewSettings)[],
+): Partial<ViewSettings> =>
+  Object.fromEntries(overrideKeys.map((key) => [key, viewSettings[key]])) as Partial<ViewSettings>;
+
 export const serializeConfig = (
   config: BookConfig,
   globalViewSettings: ViewSettings,
@@ -16,15 +30,21 @@ export const serializeConfig = (
     migrateLegacyReaderLayoutSettings(config.viewSettings ?? {}),
   );
   const searchConfig = (config.searchConfig ?? {}) as Partial<BookSearchConfig>;
-  config.viewSettings = Object.entries(viewSettings).reduce(
-    (acc: Partial<Record<keyof ViewSettings, unknown>>, [key, value]) => {
-      if (globalViewSettings[key as keyof ViewSettings] !== value) {
-        acc[key as keyof ViewSettings] = value;
-      }
-      return acc;
-    },
-    {} as Partial<Record<keyof ViewSettings, unknown>>,
-  ) as Partial<ViewSettings>;
+  if (config.viewSettingsOverrideKeys) {
+    const overrideKeys = getViewSettingsOverrideKeys(viewSettings, config.viewSettingsOverrideKeys);
+    config.viewSettingsOverrideKeys = overrideKeys;
+    config.viewSettings = pickViewSettingsOverrides(viewSettings, overrideKeys);
+  } else {
+    config.viewSettings = Object.entries(viewSettings).reduce(
+      (acc: Partial<Record<keyof ViewSettings, unknown>>, [key, value]) => {
+        if (globalViewSettings[key as keyof ViewSettings] !== value) {
+          acc[key as keyof ViewSettings] = value;
+        }
+        return acc;
+      },
+      {} as Partial<Record<keyof ViewSettings, unknown>>,
+    ) as Partial<ViewSettings>;
+  }
   config.searchConfig = Object.entries(searchConfig).reduce(
     (acc: Partial<Record<keyof BookSearchConfig, unknown>>, [key, value]) => {
       if (defaultSearchConfig[key as keyof BookSearchConfig] !== value) {
@@ -47,12 +67,20 @@ export const deserializeConfig = (
   const hasPersistedConfig = Object.keys(persistedConfig).length > 0;
   const config = migrateBookConfigTombstones(persistedConfig).value;
   const { viewSettings, searchConfig } = config;
-  config.viewSettings = mergeViewSettingsWithLegacyLayout(
-    globalViewSettings,
+  const persistedViewSettings =
     migrateBookConfigTombstones({
       ...config,
       viewSettings,
-    }).value.viewSettings ?? {},
+    }).value.viewSettings ?? {};
+  const overrideKeys = getViewSettingsOverrideKeys(
+    persistedViewSettings,
+    config.viewSettingsOverrideKeys ??
+      (Object.keys(persistedViewSettings) as (keyof ViewSettings)[]),
+  );
+  config.viewSettingsOverrideKeys = overrideKeys;
+  config.viewSettings = mergeViewSettingsWithLegacyLayout(
+    globalViewSettings,
+    pickViewSettingsOverrides(persistedViewSettings, overrideKeys),
   );
   config.searchConfig = { ...defaultSearchConfig, ...searchConfig };
   config.updatedAt ??= hasPersistedConfig ? Date.now() : 0;

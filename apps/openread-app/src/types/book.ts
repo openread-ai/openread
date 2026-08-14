@@ -396,6 +396,8 @@ export interface BookConfig {
   booknotes?: BookNote[];
   searchConfig?: Partial<BookSearchConfig>;
   viewSettings?: Partial<ViewSettings>;
+  /** Keys deliberately chosen for this book, including values that equal the global setting. */
+  viewSettingsOverrideKeys?: (keyof ViewSettings)[];
 
   updatedAt: number;
 }

@@ -30,27 +30,38 @@ export const saveViewSettings = async <K extends keyof ViewSettings>(
   const { settings, isSettingsGlobal, setSettings } = useSettingsStore.getState();
   const { bookKeys, getView, getViewState, getViewSettings, setViewSettings } =
     useReaderStore.getState();
-  const { getConfig, saveConfig } = useBookDataStore.getState();
+  const { getConfig, saveConfig, setConfig } = useBookDataStore.getState();
 
-  const applyViewSettings = async (bookKey: string) => {
+  const applyViewSettings = async (bookKey: string, isBookScopedEdit: boolean) => {
     const viewSettings = getViewSettings(bookKey);
     const viewState = getViewState(bookKey);
-    if (bookKey && viewSettings && viewSettings[key] !== value) {
-      const nextViewSettings = normalizeLegacyReaderLayoutSettings({
-        ...viewSettings,
-        [key]: value,
-      });
-      setViewSettings(bookKey, nextViewSettings);
-      if (applyStyles) {
-        const view = getView(bookKey);
-        view?.renderer.setStyles?.(getStyles(nextViewSettings));
-      }
-      const config = getConfig(bookKey);
-      if (config?.viewSettings) {
-        config.viewSettings = stripLegacyReaderLayoutFields(config.viewSettings);
+    const config = getConfig(bookKey);
+    const hasOverride = config?.viewSettingsOverrideKeys?.includes(key) ?? false;
+    const shouldUpdateView = viewSettings?.[key] !== value && (isBookScopedEdit || !hasOverride);
+    const shouldRecordOverride = isBookScopedEdit && shouldUpdateView && !hasOverride;
+
+    if (bookKey && viewSettings && (shouldUpdateView || shouldRecordOverride)) {
+      const nextViewSettings = shouldUpdateView
+        ? normalizeLegacyReaderLayoutSettings({ ...viewSettings, [key]: value })
+        : viewSettings;
+      if (shouldUpdateView) {
+        setViewSettings(bookKey, nextViewSettings);
+        if (applyStyles) {
+          const view = getView(bookKey);
+          view?.renderer.setStyles?.(getStyles(nextViewSettings));
+        }
       }
       if (viewState?.isPrimary && config) {
-        await saveConfig(envConfig, bookKey, config, settings);
+        const nextConfig = {
+          ...config,
+          viewSettings: stripLegacyReaderLayoutFields(nextViewSettings),
+          viewSettingsOverrideKeys:
+            isBookScopedEdit && shouldUpdateView
+              ? Array.from(new Set([...(config.viewSettingsOverrideKeys ?? []), key]))
+              : config.viewSettingsOverrideKeys,
+        };
+        setConfig(bookKey, nextConfig);
+        await saveConfig(envConfig, bookKey, nextConfig, settings);
       }
     }
   };
@@ -65,10 +76,10 @@ export const saveViewSettings = async <K extends keyof ViewSettings>(
     setSettings(nextSettings);
 
     for (const bookKey of bookKeys) {
-      await applyViewSettings(bookKey);
+      await applyViewSettings(bookKey, false);
     }
   } else if (bookKey) {
-    await applyViewSettings(bookKey);
+    await applyViewSettings(bookKey, true);
   }
 };
 

@@ -30,6 +30,25 @@ function jwtWithExp(expSeconds: number): string {
   return `header.${payload}.sig`;
 }
 
+function supabaseSession(accessToken: string, refreshToken: string, expiresAt: number) {
+  return {
+    access_token: accessToken,
+    refresh_token: refreshToken,
+    expires_at: expiresAt,
+    expires_in: Math.max(0, expiresAt - Math.floor(Date.now() / 1000)),
+    token_type: 'bearer',
+    user: {
+      id: 'user-1',
+      aud: 'authenticated',
+      role: 'authenticated',
+      email: 'reader@example.test',
+      app_metadata: {},
+      user_metadata: {},
+      created_at: '2026-01-01T00:00:00.000Z',
+    },
+  };
+}
+
 describe('getAccessToken', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -78,16 +97,23 @@ describe('getAccessToken', () => {
   });
 
   it('refreshes an expired non-web Supabase session', async () => {
-    const expiredToken = jwtWithExp(Math.floor(Date.now() / 1000) - 60);
-    const freshToken = jwtWithExp(Math.floor(Date.now() / 1000) + 3_600);
+    const expiredAt = Math.floor(Date.now() / 1000) - 60;
+    const freshAt = Math.floor(Date.now() / 1000) + 3_600;
+    const expiredToken = jwtWithExp(expiredAt);
+    const freshToken = jwtWithExp(freshAt);
     mocks.isWeb = false;
-    mocks.getSession.mockResolvedValue({ data: { session: { access_token: expiredToken } } });
+    mocks.getSession.mockResolvedValue({
+      data: { session: supabaseSession(expiredToken, 'refresh-old', expiredAt) },
+    });
     mocks.refreshSession.mockResolvedValue({
-      data: { session: { access_token: freshToken } },
+      data: { session: supabaseSession(freshToken, 'refresh-new', freshAt) },
       error: null,
     });
 
     await expect(getAccessToken()).resolves.toBe(freshToken);
     expect(mocks.refreshSession).toHaveBeenCalledWith();
+    expect(localStorage.getItem('token')).toBe(freshToken);
+    expect(localStorage.getItem('refresh_token')).toBe('refresh-new');
+    expect(localStorage.getItem('user')).toContain('user-1');
   });
 });

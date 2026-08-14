@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useEnv } from '@/context/EnvContext';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useReaderStore } from '@/store/readerStore';
@@ -11,20 +11,26 @@ export const useProgressAutoSave = (bookKey: string) => {
   const { getProgress } = useReaderStore();
   const progress = getProgress(bookKey);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const saveBookConfig = useCallback(
-    throttle(() => {
-      setTimeout(async () => {
-        const config = getConfig(bookKey)!;
-        const settings = useSettingsStore.getState().settings;
-        await saveConfig(envConfig, bookKey, config, settings);
-      }, 5000);
-    }, 10000),
-    [],
-  );
+  const saveContextRef = useRef({ envConfig, bookKey, getConfig, saveConfig });
 
   useEffect(() => {
-    saveBookConfig();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    saveContextRef.current = { envConfig, bookKey, getConfig, saveConfig };
+  }, [envConfig, bookKey, getConfig, saveConfig]);
+
+  const saveBookConfigRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    saveBookConfigRef.current ??= throttle(() => {
+      setTimeout(async () => {
+        const current = saveContextRef.current;
+        const config = current.getConfig(current.bookKey)!;
+        const settings = useSettingsStore.getState().settings;
+        await current.saveConfig(current.envConfig, current.bookKey, config, settings);
+      }, 5000);
+    }, 10000);
+  }, []);
+
+  useEffect(() => {
+    saveBookConfigRef.current?.();
   }, [progress, bookKey]);
 };

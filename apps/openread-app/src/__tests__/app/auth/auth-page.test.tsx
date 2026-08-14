@@ -21,11 +21,16 @@ const mocks = vi.hoisted(() => ({
   isTauri: false,
   appService: {} as Record<string, unknown>,
   onUrlCallback: null as null | ((url: string) => Promise<void>),
+  onInvalidUrlCallback: null as null | ((url: string) => void),
+  singleInstanceCallback: null as null | ((event: { event: string; payload: unknown }) => void),
   startOAuth: vi.fn(),
   registerOAuthUrl: vi.fn(),
+  registerInvalidOAuthUrl: vi.fn(),
+  listenSingleInstance: vi.fn(),
   runNativeCommand: vi.fn(),
   installSession: vi.fn(),
   beginSignIn: vi.fn(),
+  loggerInfo: vi.fn(),
 }));
 
 vi.mock('next/navigation', () => ({
@@ -70,11 +75,15 @@ vi.mock('@/services/environment', () => ({
 
 vi.mock('@tauri-apps/plugin-deep-link', () => ({ onOpenUrl: vi.fn() }));
 
+vi.mock('@tauri-apps/api/window', () => ({
+  getCurrentWindow: () => ({ listen: mocks.listenSingleInstance }),
+}));
+
 vi.mock('@fabianlars/tauri-plugin-oauth', () => ({
   start: mocks.startOAuth,
   cancel: vi.fn(),
   onUrl: mocks.registerOAuthUrl,
-  onInvalidUrl: vi.fn(),
+  onInvalidUrl: mocks.registerInvalidOAuthUrl,
 }));
 
 vi.mock('@tauri-apps/plugin-opener', () => ({ openUrl: vi.fn() }));
@@ -91,7 +100,7 @@ vi.mock('@/services/auth/clientAuth', () => ({
 }));
 
 vi.mock('@/utils/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), error: vi.fn() }),
+  createLogger: () => ({ info: mocks.loggerInfo, error: vi.fn() }),
 }));
 
 vi.mock('@/helpers/settings', () => ({ saveSysSettings: vi.fn() }));
@@ -119,9 +128,11 @@ vi.mock('@/app/auth/auth-provider-actions', () => ({
 
 import AuthPage from '@/app/auth/page';
 
-async function renderAuthPage(target: string, options?: { tauri?: boolean }) {
+async function renderAuthPage(target: string, options?: { tauri?: boolean; mobile?: boolean }) {
   mocks.isTauri = options?.tauri ?? false;
-  mocks.appService = options?.tauri ? { hasWindowBar: true, hasTrafficLight: false } : {};
+  mocks.appService = options?.tauri
+    ? { hasWindowBar: true, hasTrafficLight: false, isMobileApp: options.mobile ?? false }
+    : {};
   window.history.replaceState({}, '', `/auth?redirect=${encodeURIComponent(target)}`);
   render(<AuthPage />);
   await waitFor(() => expect(mocks.authCardProps).not.toBeNull());
@@ -132,6 +143,8 @@ describe('AuthPage redirects', () => {
     mocks.authCardProps = null;
     mocks.authStateCallback = null;
     mocks.onUrlCallback = null;
+    mocks.onInvalidUrlCallback = null;
+    mocks.singleInstanceCallback = null;
     mocks.isTauri = false;
     mocks.appService = {};
     mocks.signInWithPassword.mockResolvedValue({ error: null });
@@ -140,6 +153,13 @@ describe('AuthPage redirects', () => {
     mocks.startOAuth.mockResolvedValue(47123);
     mocks.registerOAuthUrl.mockImplementation((callback) => {
       mocks.onUrlCallback = callback;
+    });
+    mocks.registerInvalidOAuthUrl.mockImplementation((callback) => {
+      mocks.onInvalidUrlCallback = callback;
+    });
+    mocks.listenSingleInstance.mockImplementation((_event, callback) => {
+      mocks.singleInstanceCallback = callback;
+      return Promise.resolve(vi.fn());
     });
     mocks.runNativeCommand.mockResolvedValue('false');
     mocks.installSession.mockResolvedValue({ user: { id: 'user-1' } });
@@ -243,5 +263,92 @@ describe('AuthPage redirects', () => {
     });
 
     await waitFor(() => expect(mocks.push).toHaveBeenCalledWith(expected));
+  });
+
+  it.each([
+    ['a callback missing its access token', { refresh_token: 'refresh-token' }],
+    ['a callback missing its refresh token', { access_token: 'access-token' }],
+    ['an explicit provider error', { error: 'access_denied', error_description: 'Access denied' }],
+  ])('Tauri OAuth rejects %s', async (_name, params) => {
+    await renderAuthPage('/home', { tauri: true });
+    await waitFor(() => expect(mocks.onUrlCallback).not.toBeNull());
+
+    await act(async () => {
+      await mocks.onUrlCallback?.(
+        `http://localhost:47123/#${new URLSearchParams(params).toString()}`,
+      );
+    });
+
+    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith('/auth/error'));
+    expect(mocks.push).not.toHaveBeenCalledWith('/home');
+    expect(mocks.installSession).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      'token values',
+      { access_token: 'access-secret', refresh_token: 'refresh-secret' },
+      ['access-secret', 'refresh-secret'],
+    ],
+    [
+      'provider error values',
+      {
+        error: 'provider-error-secret',
+        error_code: 'provider-code-secret',
+        error_description: 'provider-description-secret',
+      },
+      ['provider-error-secret', 'provider-code-secret', 'provider-description-secret'],
+    ],
+  ] as const)('Tauri OAuth does not log raw %s', async (_name, params, secrets) => {
+    await renderAuthPage('/home', { tauri: true });
+    await waitFor(() => expect(mocks.onUrlCallback).not.toBeNull());
+
+    const callbackUrl = `http://localhost:47123/#${new URLSearchParams(params).toString()}`;
+    await act(async () => {
+      await mocks.onUrlCallback?.(callbackUrl);
+    });
+
+    const logs = JSON.stringify(mocks.loggerInfo.mock.calls);
+    expect(logs).not.toContain(callbackUrl);
+    secrets.forEach((secret) => expect(logs).not.toContain(secret));
+    expect(logs).toContain('hasAccessToken');
+    expect(logs).toContain('hasRefreshToken');
+    expect(logs).toContain('hasError');
+  });
+
+  it('does not log a raw invalid OAuth URL', async () => {
+    await renderAuthPage('/home', { tauri: true });
+    await waitFor(() => expect(mocks.onInvalidUrlCallback).not.toBeNull());
+
+    const invalidUrl = 'openread://auth-callback#error=invalid-provider-secret';
+    act(() => {
+      mocks.onInvalidUrlCallback?.(invalidUrl);
+    });
+
+    const logs = JSON.stringify(mocks.loggerInfo.mock.calls);
+    expect(logs).not.toContain(invalidUrl);
+    expect(logs).not.toContain('invalid-provider-secret');
+    expect(mocks.loggerInfo).toHaveBeenCalledWith('Received invalid OAuth URL');
+  });
+
+  it('does not log callback tokens from a mobile single-instance payload', async () => {
+    await renderAuthPage('/home', { tauri: true, mobile: true });
+    await waitFor(() => expect(mocks.singleInstanceCallback).not.toBeNull());
+
+    const callbackUrl =
+      'openread://auth-callback#access_token=single-access-secret&refresh_token=single-refresh-secret';
+    act(() => {
+      mocks.singleInstanceCallback?.({
+        event: 'single-instance',
+        payload: { args: ['openread', callbackUrl], cwd: '/safe/path' },
+      });
+    });
+
+    await waitFor(() => expect(mocks.installSession).toHaveBeenCalledOnce());
+    const logs = JSON.stringify(mocks.loggerInfo.mock.calls);
+    expect(logs).not.toContain(callbackUrl);
+    expect(logs).not.toContain('single-access-secret');
+    expect(logs).not.toContain('single-refresh-secret');
+    expect(logs).toContain('hasCallbackUrl');
   });
 });

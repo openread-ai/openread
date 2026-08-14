@@ -57,7 +57,7 @@ export function handleAuthCallback({
     }
 
     if (!accessToken || !refreshToken) {
-      navigate('/home');
+      navigate('/auth/error');
       return;
     }
 

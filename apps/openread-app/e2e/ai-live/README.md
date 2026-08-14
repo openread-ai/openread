@@ -43,14 +43,16 @@ pnpm --filter @openread/openread-app test:ai-chat-quality
 
 ## Evidence
 
-Each scenario attaches a JSON evidence payload containing:
+Each scenario attaches an allowlisted JSON evidence payload containing:
 
-- answer length and timings
+- answer length and timings, but never answer content
 - planner tier, including explicit non-`unknown` planner metadata
 - provider/model
 - request id
-- sanitized request body metadata, including the submitted latest user question, counts, and book reference but not full chapter text
+- sanitized request metadata: question-match result, question length, counts, and book reference, but never the question, raw request body, or chapter text
 - assistant message counts before/after submit so captured text is tied to the post-submit streamed response
+
+The full question, streamed answer, and latest user message remain in memory for assertions only. Attachment bodies and assertion diagnostics use the same allowlist so failure output cannot silently publish content that the JSON attachment excludes.
 
 ## Policy
 

@@ -6,6 +6,7 @@ import {
   expectNotFullPromptTier,
   expectUsefulLiveAnswer,
   importCatalogSearchResultAndOpenReader,
+  liveAiDiagnostic,
   navigateToEvalBookReader,
 } from './helpers';
 
@@ -71,9 +72,7 @@ test.describe.serial('live AI agentic Reader chat evals', () => {
     expectUsefulLiveAnswer(result);
 
     const requestBookHash = result.requestBody?.bookHash;
-    expect(String(requestBookHash), JSON.stringify({ importedBookHash, result }, null, 2)).toMatch(
-      /^catalog:[0-9a-f-]{36}$/i,
-    );
+    expect(String(requestBookHash), liveAiDiagnostic(result)).toMatch(/^catalog:[0-9a-f-]{36}$/i);
     if (importedBookHash) expect(String(requestBookHash)).toBe(importedBookHash);
   });
 });

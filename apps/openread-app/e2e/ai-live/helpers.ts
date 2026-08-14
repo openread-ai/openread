@@ -1,23 +1,9 @@
 import { expect, type Page, type TestInfo } from '@playwright/test';
 import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
+import { liveAiDiagnostic, type LiveAiChatResult } from './evidence';
 
-export type LiveAiChatResult = {
-  scenario: string;
-  question: string;
-  answer: string;
-  responseLength: number;
-  firstTokenMs: number | null;
-  completeMs: number | null;
-  tier: string;
-  provider: string;
-  model: string;
-  requestId: string;
-  requestBody: Record<string, unknown> | null;
-  userMessageCountBefore: number;
-  assistantMessageCountBefore: number;
-  assistantMessageCountAfter: number;
-};
+export { liveAiDiagnostic, publishableLiveAiResult, type LiveAiChatResult } from './evidence';
 
 export type EvalBookConfig = {
   hash: string;
@@ -52,7 +38,7 @@ export async function attachLiveEvalResult(
     { type: `${result.scenario}-request-id`, description: result.requestId },
   );
 
-  const body = JSON.stringify(result, null, 2);
+  const body = liveAiDiagnostic(result);
   const artifactDir =
     process.env.AI_EVAL_ARTIFACT_DIR ?? join(process.cwd(), 'test-results', 'ai-live-evidence');
   await mkdir(artifactDir, { recursive: true });
@@ -234,29 +220,37 @@ export async function askLiveReaderQuestion(
 }
 
 export function expectUsefulLiveAnswer(result: LiveAiChatResult) {
-  expect(result.responseLength).toBeGreaterThan(80);
-  expect(result.responseLength).toBeLessThan(8_000);
-  expect(result.answer).toMatch(/[a-zA-Z]{4,}/);
-  expect(result.answer).not.toMatch(
-    /\b(I (do not|don't|cannot|can't) (have|access|see)|no book context|unable to access)\b/i,
-  );
+  const diagnostic = liveAiDiagnostic(result);
+  const lastUserMessage = String(result.requestBody?.lastUserMessage ?? '');
+
+  expect(result.responseLength, diagnostic).toBeGreaterThan(80);
+  expect(result.responseLength, diagnostic).toBeLessThan(8_000);
+  expect(/[a-zA-Z]{4,}/.test(result.answer), diagnostic).toBe(true);
   expect(
-    String(result.requestBody?.lastUserMessage ?? ''),
-    JSON.stringify(result, null, 2),
-  ).toContain(result.question);
-  expect(result.firstTokenMs).not.toBeNull();
-  if (result.firstTokenMs !== null) expect(result.firstTokenMs).toBeLessThan(45_000);
-  expect(result.completeMs, JSON.stringify(result, null, 2)).not.toBeNull();
-  expect(result.provider).not.toBe('unknown');
-  expect(result.model).not.toBe('unknown');
-  expect(result.requestId).not.toBe('unknown');
-  expect(result.tier).not.toBe('unknown');
-  expect(result.assistantMessageCountAfter).toBeGreaterThan(result.assistantMessageCountBefore);
+    /\b(I (do not|don't|cannot|can't) (have|access|see)|no book context|unable to access)\b/i.test(
+      result.answer,
+    ),
+    diagnostic,
+  ).toBe(false);
+  expect(lastUserMessage.includes(result.question), diagnostic).toBe(true);
+  expect(result.firstTokenMs, diagnostic).not.toBeNull();
+  if (result.firstTokenMs !== null) {
+    expect(result.firstTokenMs, diagnostic).toBeLessThan(45_000);
+  }
+  expect(result.completeMs, diagnostic).not.toBeNull();
+  expect(result.provider, diagnostic).not.toBe('unknown');
+  expect(result.model, diagnostic).not.toBe('unknown');
+  expect(result.requestId, diagnostic).not.toBe('unknown');
+  expect(result.tier, diagnostic).not.toBe('unknown');
+  expect(result.assistantMessageCountAfter, diagnostic).toBeGreaterThan(
+    result.assistantMessageCountBefore,
+  );
 }
 
 export function expectNotFullPromptTier(result: LiveAiChatResult) {
-  expect(result.tier, JSON.stringify(result, null, 2)).not.toBe('unknown');
-  expect(result.tier, JSON.stringify(result, null, 2)).not.toBe('full');
+  const diagnostic = liveAiDiagnostic(result);
+  expect(result.tier, diagnostic).not.toBe('unknown');
+  expect(result.tier, diagnostic).not.toBe('full');
 }
 
 function summarizeRequestBody(

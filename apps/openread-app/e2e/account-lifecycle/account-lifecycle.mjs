@@ -1,4 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import { assertUserOwnedObjectKey } from '@openread/storage';
 import { ACCOUNT_DELETION_TARGETS, assertAccountDeletionSchemaInventory } from '@openread/types';
 
@@ -39,13 +40,24 @@ const validateRunId = (runId) => {
   return runId.toLowerCase();
 };
 
-const validateAccountHandle = (account) => {
+const validateAccountCredentials = (credentials) => {
   if (
-    !account ||
-    typeof account.userId !== 'string' ||
-    typeof account.email !== 'string' ||
-    typeof account.password !== 'string'
+    !credentials ||
+    typeof credentials.email !== 'string' ||
+    !credentials.email ||
+    typeof credentials.password !== 'string' ||
+    !credentials.password ||
+    typeof credentials.createdAt !== 'string'
   ) {
+    throw new Error(
+      'Prepared account credentials with email, password, and createdAt are required',
+    );
+  }
+};
+
+const validateAccountHandle = (account) => {
+  validateAccountCredentials(account);
+  if (typeof account.userId !== 'string' || !account.userId) {
     throw new Error('A provisioned account handle with userId, email, and password is required');
   }
 };
@@ -106,6 +118,7 @@ const userCreatedAt = (user) => {
 export function createAccountLifecycle(dependencies) {
   const adminCreateUser = requiredFunction(dependencies, 'adminCreateUser');
   const adminGetUser = requiredFunction(dependencies, 'adminGetUser');
+  const adminUpdateUser = requiredFunction(dependencies, 'adminUpdateUser');
   const adminDeleteUser = requiredFunction(dependencies, 'adminDeleteUser');
   const listUsers = requiredFunction(dependencies, 'listUsers');
   const signInWithPassword = requiredFunction(dependencies, 'signInWithPassword');
@@ -123,6 +136,7 @@ export function createAccountLifecycle(dependencies) {
   const uuid = dependencies.randomUUID ?? randomUUID;
   const makePassword = dependencies.makePassword ?? accountPassword;
   const preparedAccounts = new WeakSet();
+  const preparedSignupCredentials = new WeakSet();
   const verifiedAccounts = new WeakSet();
 
   const requirePreparedAccount = (account) => {
@@ -330,6 +344,70 @@ export function createAccountLifecycle(dependencies) {
     return account;
   };
 
+  const prepareSignup = (runId) => {
+    const safeRunId = validateRunId(runId).slice(0, 24);
+    const nonce = uuid().replaceAll('-', '').slice(0, 12);
+    const credentials = Object.freeze({
+      email: `e2e-signup-${safeRunId}-${nonce}@qa.openread.invalid`,
+      password: makePassword(),
+      createdAt: new Date(now()).toISOString(),
+    });
+    preparedSignupCredentials.add(credentials);
+    return credentials;
+  };
+
+  const adoptSignupAccount = (credentials, userId) => {
+    validateAccountCredentials(credentials);
+    if (!preparedSignupCredentials.has(credentials)) {
+      throw new Error("Refusing signup adoption without this runtime's prepared credentials");
+    }
+    if (typeof userId !== 'string' || !userId) throw new Error('Public signup returned no user id');
+    const account = Object.freeze({ ...credentials, userId });
+    preparedAccounts.add(account);
+    return account;
+  };
+
+  const stampSignupAccount = async (account) => {
+    requirePreparedAccount(account);
+    const existing = await adminGetUser(account.userId);
+    if (!existing) throw new Error('Public signup user was not visible to the service role');
+    if (existing.email?.toLowerCase() !== account.email.toLowerCase()) {
+      throw new Error('Public signup user email did not match the prepared credentials');
+    }
+    if (
+      existing.app_metadata !== undefined &&
+      (existing.app_metadata === null ||
+        typeof existing.app_metadata !== 'object' ||
+        Array.isArray(existing.app_metadata))
+    ) {
+      throw new Error('Public signup user returned malformed app metadata');
+    }
+
+    const appMetadata = {
+      ...(existing.app_metadata ?? {}),
+      [E2E_ACCOUNT_MARKER_KEY]: E2E_ACCOUNT_MARKER_VALUE,
+    };
+    const updated = await adminUpdateUser(account.userId, { app_metadata: appMetadata });
+    if (updated?.id !== account.userId) {
+      throw new Error('Supabase admin marker update returned an unexpected user id');
+    }
+
+    const verified = await adminGetUser(account.userId);
+    if (!verified) throw new Error('Stamped signup user was not visible on re-read');
+    if (verified.email?.toLowerCase() !== account.email.toLowerCase()) {
+      throw new Error('Stamped signup user email changed before marker verification');
+    }
+    assertE2EAccountMarker(verified);
+    for (const [key, value] of Object.entries(existing.app_metadata ?? {})) {
+      if (key === E2E_ACCOUNT_MARKER_KEY) continue;
+      if (!isDeepStrictEqual(verified.app_metadata?.[key], value)) {
+        throw new Error(`Signup marker update did not preserve existing app metadata: ${key}`);
+      }
+    }
+    verifiedAccounts.add(account);
+    return verified;
+  };
+
   const provisionPrepared = async (account) => {
     requirePreparedAccount(account);
     await verifyDeletionSchemaContract();
@@ -489,6 +567,9 @@ export function createAccountLifecycle(dependencies) {
 
   return Object.freeze({
     prepare,
+    prepareSignup,
+    adoptSignupAccount,
+    stampSignupAccount,
     provisionPrepared,
     provision,
     signIn,

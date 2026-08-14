@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { createAccountLifecycle } from './account-lifecycle.mjs';
 
 const DEFAULT_PRODUCT_API_BASE_URL = 'https://api.openread.ai/api';
+const DEFAULT_WEB_BASE_URL = 'https://app.openread.ai';
 const REMOTE_OPERATION_TIMEOUT_MS = 30_000;
 
 const requiredEnv = (env, ...names) => {
@@ -56,6 +57,7 @@ export function readAccountLifecycleEnvironment(env = process.env) {
     r2Bucket: requiredEnv(env, 'R2_BUCKET', 'R2_BUCKET_NAME'),
     productApiBaseUrl:
       env.OPENREAD_E2E_PRODUCT_API_BASE_URL?.replace(/\/+$/, '') ?? DEFAULT_PRODUCT_API_BASE_URL,
+    webBaseUrl: env.OPENREAD_E2E_WEB_BASE_URL?.replace(/\/+$/, '') ?? DEFAULT_WEB_BASE_URL,
   });
 }
 
@@ -246,6 +248,15 @@ export function createLiveAccountLifecycle(env = process.env) {
       return data.user;
     },
     adminGetUser,
+    adminUpdateUser: async (userId, attributes) => {
+      const { data, error } = await withTimeout(
+        admin.auth.admin.updateUserById(userId, attributes),
+        REMOTE_OPERATION_TIMEOUT_MS,
+        'Supabase admin user update',
+      );
+      if (error) throw new Error(`Supabase admin user update failed: ${error.message}`);
+      return data.user;
+    },
     adminDeleteUser: async (userId) => {
       const { error } = await withTimeout(
         admin.auth.admin.deleteUser(userId),
@@ -339,6 +350,33 @@ export function createLiveAccountLifecycle(env = process.env) {
       );
     },
   });
+
+  const assertSignupEmailAbsent = async (email) => {
+    const users = await listUsers();
+    if (users.some((user) => user.email?.toLowerCase() === email.toLowerCase())) {
+      throw new Error('Prepared signup email already exists');
+    }
+  };
+
+  const publicSignUp = async ({ email, password, emailRedirectTo }) => {
+    const { data, error } = await withTimeout(
+      anon.auth.signUp({ email, password, options: { emailRedirectTo } }),
+      REMOTE_OPERATION_TIMEOUT_MS,
+      'Supabase public signup',
+    );
+    if (error) throw new Error(`Supabase public signup failed: ${error.message}`);
+    return data;
+  };
+
+  const getAuthenticatedIdentity = async (accessToken) => {
+    const { data, error } = await withTimeout(
+      anon.auth.getUser(accessToken),
+      REMOTE_OPERATION_TIMEOUT_MS,
+      'Supabase authenticated identity lookup',
+    );
+    if (error) throw new Error(`Supabase authenticated identity lookup failed: ${error.message}`);
+    return data.user;
+  };
 
   const finalizeThroughProductApi = (account, accessToken) =>
     finalizeProductAccountDeletion({
@@ -453,6 +491,10 @@ export function createLiveAccountLifecycle(env = process.env) {
 
   return Object.freeze({
     lifecycle,
+    signupRedirectTo: new URL('/auth/callback', `${config.webBaseUrl}/`).toString(),
+    assertSignupEmailAbsent,
+    publicSignUp,
+    getAuthenticatedIdentity,
     finalizeThroughProductApi,
     seedSentinelArtifact,
     queryActiveBookFiles,

@@ -16,7 +16,13 @@ const createFakeRuntime = () => {
   const objects = new Set();
   const objectSizes = new Map();
   const tableCounts = new Map();
-  const calls = { adminDeleteUser: [], deleteObject: [], sequence: [] };
+  const calls = {
+    adminDeleteUser: [],
+    adminGetUser: [],
+    adminUpdateUser: [],
+    deleteObject: [],
+    sequence: [],
+  };
   let schemaInventory = ACCOUNT_DELETION_TARGETS.map((target) => ({ ...target }));
   let objectInventoryError = null;
   let objectInventoryCalls = 0;
@@ -48,7 +54,18 @@ const createFakeRuntime = () => {
       if (createErrorAfterCommit) throw createErrorAfterCommit;
       return user;
     },
-    adminGetUser: async (userId) => users.get(userId) ?? null,
+    adminGetUser: async (userId) => {
+      calls.adminGetUser.push(userId);
+      return users.get(userId) ?? null;
+    },
+    adminUpdateUser: async (userId, attributes) => {
+      calls.adminUpdateUser.push({ userId, attributes });
+      const user = users.get(userId);
+      if (!user) return null;
+      const updated = { ...user, app_metadata: attributes.app_metadata };
+      users.set(userId, updated);
+      return updated;
+    },
     adminDeleteUser: async (userId) => {
       calls.adminDeleteUser.push(userId);
       calls.sequence.push('auth-delete');
@@ -117,6 +134,18 @@ const createFakeRuntime = () => {
       };
       users.set(id, user);
       credentials.set(user.email, { password: 'RealPassword1!', userId: id });
+      return user;
+    },
+    createSignupUser(credentialsHandle, id = 'signup-user', appMetadata = {}) {
+      const user = {
+        id,
+        email: credentialsHandle.email,
+        app_metadata: appMetadata,
+        created_at: new Date(clock).toISOString(),
+      };
+      users.set(id, user);
+      const { password } = credentialsHandle;
+      credentials.set(user.email, { password, userId: id });
       return user;
     },
     addArtifact(account, suffix = 'book.epub', size = 189_403) {
@@ -206,6 +235,48 @@ describe('OpenRead E2E account lifecycle', () => {
     assert.deepEqual(await runtime.lifecycle.signIn(account), {
       access_token: `token-${account.userId}`,
     });
+  });
+
+  it('adopts a public-signup user and preserves existing app metadata while stamping', async () => {
+    const runtime = createFakeRuntime();
+    const credentials = runtime.lifecycle.prepareSignup('public-signup-run');
+    runtime.createSignupUser(credentials, 'signed-up-user', {
+      provider: 'email',
+      tenant: { id: 'existing-tenant' },
+    });
+
+    const account = runtime.lifecycle.adoptSignupAccount(credentials, 'signed-up-user');
+    const markedUser = await runtime.lifecycle.stampSignupAccount(account);
+
+    assert.equal(markedUser.app_metadata[E2E_ACCOUNT_MARKER_KEY], true);
+    assert.deepEqual(markedUser.app_metadata.tenant, { id: 'existing-tenant' });
+    assert.deepEqual(runtime.calls.adminUpdateUser, [
+      {
+        userId: 'signed-up-user',
+        attributes: {
+          app_metadata: {
+            provider: 'email',
+            tenant: { id: 'existing-tenant' },
+            [E2E_ACCOUNT_MARKER_KEY]: true,
+          },
+        },
+      },
+    ]);
+    assert.deepEqual(runtime.calls.adminGetUser.slice(0, 2), ['signed-up-user', 'signed-up-user']);
+  });
+
+  it('refuses to clean an adopted public-signup user until the marker is verified', async () => {
+    const runtime = createFakeRuntime();
+    const credentials = runtime.lifecycle.prepareSignup('unmarked-signup-run');
+    runtime.createSignupUser(credentials, 'unmarked-signup-user');
+    const account = runtime.lifecycle.adoptSignupAccount(credentials, 'unmarked-signup-user');
+
+    await assert.rejects(
+      runtime.lifecycle.cleanupPreparedAccount(account),
+      new RegExp(UNMARKED_ACCOUNT_ERROR),
+    );
+    assert.deepEqual(runtime.calls.adminDeleteUser, []);
+    assert.deepEqual(runtime.calls.deleteObject, []);
   });
 
   it('keeps an in-memory account handle across an ambiguous create response', async () => {

@@ -152,9 +152,9 @@ The tracker is Notion-first. Do not use a local `checkpoint.json` as progress st
 
 The disposable-account lifecycle proofs are intentionally separate from PR and release CI. They mutate the configured Supabase and R2 environment, clean up their marked test accounts, and run only through the manual **Lifecycle E2E** workflow (`.github/workflows/lifecycle-e2e.yml`) or an explicitly authorized local command.
 
-Lifecycle teardown reports distinguish product cleanup from harness recovery. `already-clean` means the scenario reached and proved its product deletion path. `recovered-residue` means an earlier assertion stopped the scenario before product deletion, so the harness removed the still-live disposable state and verified convergence; it preserves the primary RED and does not by itself identify an account-deletion defect.
+Lifecycle teardown reports distinguish planned cleanup from harness recovery. `already-clean` means the scenario reached and proved its planned deletion path. `recovered-residue` means an earlier assertion stopped the scenario first, so the harness removed marked disposable state and verified convergence; it preserves the primary RED and is not a passing outcome.
 
-The workflow accepts `L1`, `L2`, `L6`, `L8`, or `all` and runs Chromium in web mode. It has only a `workflow_dispatch` trigger: no push, pull-request, or schedule trigger, and it is not a release gate.
+The workflow accepts `L1`, `L2`, `L3a`, `L6`, `L8`, or `all`. L3a is a Node-only immediate-session public-signup proof; the other listed product lifecycles run Chromium in web mode. The workflow has only a `workflow_dispatch` trigger: no push, pull-request, or schedule trigger, and it is not a release gate.
 
 Configure these four GitHub Actions secrets before dispatching it:
 
@@ -165,7 +165,7 @@ Configure these four GitHub Actions secrets before dispatching it:
 
 The public Supabase URL and anon key are static workflow configuration; the anon key is a browser credential, not privileged authority. The service-role credential has unrestricted production Supabase authority and must remain confined to the Node test runtime; use a dedicated CI Supabase project before granting a second contributor write access.
 
-Alice in Wonderland is committed at `e2e/fixtures/books/alice-in-wonderland.epub`, so upload and reader lifecycle proofs do not depend on `~/.openread-dev`.
+Alice in Wonderland is committed at `e2e/fixtures/books/alice-in-wonderland.epub`, so upload and reader lifecycle proofs do not depend on `~/.openread-dev`. L3a uses no filesystem fixture and resolves nothing from `HOME`.
 
 Dispatch after the secrets are configured:
 

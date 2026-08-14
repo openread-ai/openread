@@ -34,11 +34,14 @@ const mocks = vi.hoisted(() => {
     getConfig: vi.fn(() => config),
     getBookDataByReaderKey: vi.fn(() => ({ book })),
     renderedPage: 1,
+    goTo: vi.fn(async (location: string) => {
+      mocks.renderedPage = location === 'epubcfi(/6/6)' ? 3 : 1;
+    }),
+    historyClear: vi.fn(),
     getView: vi.fn(() => ({
       renderer: { getContents: () => [] },
-      goTo: vi.fn(async (location: string) => {
-        mocks.renderedPage = location === 'epubcfi(/6/6)' ? 3 : 1;
-      }),
+      history: { clear: mocks.historyClear },
+      goTo: mocks.goTo,
     })),
     getProgress: vi.fn(() => mocks.progress),
     setHoveredBookKey: vi.fn(),
@@ -134,6 +137,8 @@ describe('useProgressSync', () => {
     mocks.enqueueBookConfigForSync.mockResolvedValue(undefined);
     mocks.loggerWarn.mockClear();
     mocks.renderedPage = 1;
+    mocks.goTo.mockClear();
+    mocks.historyClear.mockClear();
     mocks.remoteApplyListener = null;
   });
 
@@ -176,7 +181,7 @@ describe('useProgressSync', () => {
     }
   });
 
-  it('navigates the visible reader when admitted remote progress arrives after subscription', async () => {
+  it('navigates the visible reader without creating Go Back history when admitted remote progress arrives', async () => {
     renderHook(() => useProgressSync(mocks.bookKey));
 
     act(() => {
@@ -192,6 +197,31 @@ describe('useProgressSync', () => {
     });
 
     await waitFor(() => expect(mocks.renderedPage).toBe(3));
+    expect(mocks.historyClear).toHaveBeenCalledOnce();
+    expect(mocks.goTo).toHaveBeenCalledWith('epubcfi(/6/6)');
+  });
+
+  it('does not clear reader history when remote progress first arrives after an empty initial pull', async () => {
+    mocks.progress = { location: 'epubcfi(/6/2)' };
+    renderHook(() => useProgressSync(mocks.bookKey));
+
+    await waitFor(() => {
+      expect(mocks.syncConfigs).toHaveBeenCalledWith([], mocks.bookHash, mocks.metaHash, 'pull');
+    });
+    await act(async () => {
+      await mocks.goTo('epubcfi(/6/4)');
+    });
+    mocks.goTo.mockClear();
+
+    act(() => {
+      mocks.remoteApplyListener?.({
+        type: 'bookConfig',
+        config: { ...mocks.config, location: 'epubcfi(/6/8)', updatedAt: 3000 },
+      });
+    });
+
+    await waitFor(() => expect(mocks.goTo).toHaveBeenCalledWith('epubcfi(/6/8)'));
+    expect(mocks.historyClear).not.toHaveBeenCalled();
   });
 
   it('marks an empty initial scoped pull complete so later progress changes push locally', async () => {

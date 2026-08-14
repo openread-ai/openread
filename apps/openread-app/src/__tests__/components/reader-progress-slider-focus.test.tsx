@@ -2,7 +2,12 @@ import React from 'react';
 import { cleanup, createEvent, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import DesktopFooterBar from '@/app/reader/components/footerbar/DesktopFooterBar';
+import { navigateReaderToAppliedProgress } from '@/app/reader/utils/readerNavigationHistory';
 import useShortcuts from '@/hooks/useShortcuts';
+import type { FoliateView } from '@/types/view';
+import { View } from '../../../../../packages/foliate-js/view.js';
+
+const readerMocks = vi.hoisted(() => ({ view: null as unknown }));
 
 vi.mock('@/hooks/useTranslation', () => ({
   useTranslation: () => (key: string) => key,
@@ -25,10 +30,7 @@ vi.mock('@/services/settings/settingsLocalAdapter', () => ({
 vi.mock('@/store/readerStore', () => ({
   useReaderStore: () => ({
     hoveredBookKey: 'book-1',
-    getView: () => ({
-      renderer: { atEnd: false },
-      history: { canGoBack: false, canGoForward: false },
-    }),
+    getView: () => readerMocks.view,
     getViewState: () => ({ ttsEnabled: false }),
     getProgress: () => ({
       section: { current: 0, total: 1 },
@@ -60,7 +62,11 @@ vi.mock('@/store/bookDataStore', () => ({
 }));
 
 vi.mock('@/components/Button', () => ({
-  default: ({ label }: { label: string }) => <button type='button'>{label}</button>,
+  default: ({ label, disabled }: { label: string; disabled?: boolean }) => (
+    <button type='button' disabled={disabled}>
+      {label}
+    </button>
+  ),
 }));
 
 type NavigationHandlers = React.ComponentProps<typeof DesktopFooterBar>['navigationHandlers'];
@@ -105,6 +111,10 @@ function SliderShortcutHarness({
 beforeEach(() => {
   Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1280 });
   Object.defineProperty(window, 'innerHeight', { configurable: true, value: 800 });
+  readerMocks.view = {
+    renderer: { atEnd: false },
+    history: { canGoBack: false, canGoForward: false },
+  };
 });
 
 afterEach(() => {
@@ -171,5 +181,58 @@ describe('desktop reader progress slider focus', () => {
     fireEvent(slider, touchPointerUp);
 
     expect(document.activeElement).toBe(slider);
+  });
+});
+
+const createInitializedView = async () => {
+  const view = new View() as unknown as FoliateView & {
+    resolveNavigation: (target: string) => string;
+  };
+  view.resolveNavigation = (target: string) => target;
+  view.renderer = {
+    goTo: vi.fn().mockResolvedValue(undefined),
+  } as unknown as FoliateView['renderer'];
+  await view.init({ lastLocation: 'epubcfi(/6/2)' });
+  readerMocks.view = view;
+  return view;
+};
+
+const renderGoBackButton = () => {
+  render(
+    <SliderShortcutHarness
+      onGoRight={vi.fn()}
+      navigationHandlers={createNavigationHandlers()}
+      progressFraction={0}
+    />,
+  );
+  return screen.getByRole('button', { name: 'Go Back' }) as HTMLButtonElement;
+};
+
+describe('reader navigation history', () => {
+  it('keeps Go Back unavailable when a cold reader applies restored progress', async () => {
+    const view = await createInitializedView();
+
+    await navigateReaderToAppliedProgress(view, 'epubcfi(/6/6)', true);
+
+    expect(renderGoBackButton().disabled).toBe(true);
+  });
+
+  it('makes Go Back available after genuine navigation from a restored position', async () => {
+    const view = await createInitializedView();
+    await navigateReaderToAppliedProgress(view, 'epubcfi(/6/6)', true);
+
+    await view.goTo('epubcfi(/6/8)');
+
+    expect(renderGoBackButton().disabled).toBe(false);
+  });
+
+  it('keeps genuine back history when remote progress arrives mid-session', async () => {
+    const view = await createInitializedView();
+    await navigateReaderToAppliedProgress(view, 'epubcfi(/6/6)', true);
+    await view.goTo('epubcfi(/6/8)');
+
+    await navigateReaderToAppliedProgress(view, 'epubcfi(/6/10)', false);
+
+    expect(renderGoBackButton().disabled).toBe(false);
   });
 });

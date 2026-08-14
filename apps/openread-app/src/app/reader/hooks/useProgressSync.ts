@@ -14,6 +14,7 @@ import { getCFIFromXPointer, getXPointerFromCFI, normalizeProgressXPointer } fro
 import { createLogger } from '@/utils/logger';
 import { enqueueBookConfigForSync } from '@/services/sync/helpers';
 import { remoteApplyEventMatchesBook, subscribeRemoteApply } from '@/services/sync/remoteApply';
+import { navigateReaderToAppliedProgress } from '@/app/reader/utils/readerNavigationHistory';
 import { parseBookRefFromReaderBookKey } from '@openread/types';
 import { parseSyncableBookRef } from '@openread/types';
 
@@ -30,6 +31,7 @@ export const useProgressSync = (bookKey: string) => {
 
   const configPulled = useRef(false);
   const hasPulledConfigOnce = useRef(false);
+  const isColdRestorePending = useRef(true);
 
   const pushConfig = async (bookKey: string, config: BookConfig | null) => {
     const book = getBookDataByReaderKey(bookKey)?.book;
@@ -53,6 +55,7 @@ export const useProgressSync = (bookKey: string) => {
     const metaHash = book.metaHash;
     await syncConfigs([], bookHash, metaHash, 'pull');
     configPulled.current = true;
+    isColdRestorePending.current = false;
   };
 
   const syncConfig = async () => {
@@ -175,7 +178,7 @@ export const useProgressSync = (bookKey: string) => {
   );
 
   const navigateToAppliedRemoteProgress = useCallback(
-    async (remoteConfig: BookConfig) => {
+    async (remoteConfig: BookConfig, isColdRestore: boolean) => {
       if (!remoteConfigMatchesCurrentBook(remoteConfig)) return;
 
       let remoteCFILocation = remoteConfig.location;
@@ -197,7 +200,7 @@ export const useProgressSync = (bookKey: string) => {
 
       if (!remoteCFILocation || !view) return;
       try {
-        await view.goTo(remoteCFILocation);
+        await navigateReaderToAppliedProgress(view, remoteCFILocation, isColdRestore);
         setHoveredBookKey(null);
         eventDispatcher.dispatch('hint', {
           bookKey,
@@ -221,8 +224,10 @@ export const useProgressSync = (bookKey: string) => {
     return subscribeRemoteApply((event) => {
       if (event.type !== 'bookConfig') return;
       if (!remoteConfigMatchesCurrentBook(event.config)) return;
+      const isColdRestore = isColdRestorePending.current;
+      isColdRestorePending.current = false;
       configPulled.current = true;
-      navigateToAppliedRemoteProgress(event.config).catch((error) => {
+      navigateToAppliedRemoteProgress(event.config, isColdRestore).catch((error) => {
         logger.error('Failed to navigate to applied remote progress', error);
       });
     });

@@ -44,6 +44,7 @@ const isLiveAiEvalRun = process.env.LIVE_AI_EVALS === '1';
 const liveAiEvalBaseURL = isLiveAiEvalRun ? process.env.AI_EVAL_BASE_URL : undefined;
 const configuredBaseURL = liveAiEvalBaseURL ?? 'http://localhost:3000';
 const shouldStartWebServer = !liveAiEvalBaseURL;
+const isStorageLifecycleRun = process.env.OPENREAD_E2E_STORAGE_LIFECYCLE_LIVE === '1';
 const screenshotMode =
   process.env.OPENREAD_PLAYWRIGHT_SCREENSHOT === 'on' ? 'on' : 'only-on-failure';
 
@@ -52,6 +53,18 @@ type VideoMode = (typeof videoModes)[number];
 const videoMode: VideoMode = videoModes.includes(process.env.OPENREAD_PLAYWRIGHT_VIDEO as VideoMode)
   ? (process.env.OPENREAD_PLAYWRIGHT_VIDEO as VideoMode)
   : 'retain-on-failure';
+const trace = isStorageLifecycleRun
+  ? {
+      mode: 'on' as const,
+      attachments: false,
+      screenshots: false,
+      snapshots: false,
+      sources: false,
+    }
+  : ('retain-on-failure' as const);
+const video = isStorageLifecycleRun
+  ? { mode: videoMode, size: { width: 1280, height: 720 } }
+  : videoMode;
 
 export default defineConfig({
   testDir: './e2e',
@@ -73,8 +86,8 @@ export default defineConfig({
 
   use: {
     baseURL: configuredBaseURL,
-    trace: 'retain-on-failure',
-    video: videoMode,
+    trace,
+    video,
     // Diff output path is controlled by snapshotPathTemplate above, not by
     // the screenshot option (which in recent @playwright/test no longer
     // accepts a `path` field on the object form). Per-project snapshot

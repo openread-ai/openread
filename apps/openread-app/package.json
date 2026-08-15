@@ -88,6 +88,7 @@
     "test:e2e:account-lifecycle": "pnpm build:e2e:account-lifecycle && node --test e2e/account-lifecycle/*.test.mjs",
     "test:e2e:account-lifecycle:schema": "pnpm build:e2e:account-lifecycle && dotenv -e .env.local -e .env.web -e .env.test.local -- node --test e2e/account-lifecycle/schema-contract.integration.mjs",
     "test:e2e:account-lifecycle:live": "pnpm build:e2e:account-lifecycle && dotenv -e .env.local -e .env.web -e .env.test.local -- node e2e/account-lifecycle/live-verification.mjs",
+    "test:e2e:storage-lifecycle:live": "OPENREAD_PLAYWRIGHT_VIDEO=on playwright test --project=chromium --workers=1 --retries=0 e2e/storage-lifecycle.spec.mjs",
     "test:e2e:signup-lifecycle:live": "pnpm build:e2e:account-lifecycle && dotenv -e .env.local -e .env.web -e .env.test.local -- node e2e/signup-lifecycle.mjs",
     "e2e:account-janitor": "pnpm build:e2e:account-lifecycle && dotenv -e .env.local -e .env.web -e .env.test.local -- node e2e/account-lifecycle/janitor.mjs",
     "test:e2e:chromium": "dotenv -e .env.local -e .env.web -e .env.test.local -v NEXT_PUBLIC_APP_PLATFORM=web -- playwright test --project=chromium e2e/tests",

@@ -25,6 +25,8 @@
     "compatibility:tombstones:check": "node scripts/ops/check-compatibility-tombstones.mjs",
     "dist:untracked:check": "node scripts/ops/check-untracked-package-dist.mjs",
     "dist:untracked:test": "node --test scripts/ops/check-untracked-package-dist.test.mjs",
+    "environment:manifest:check": "node scripts/ops/check-environment-manifest.mjs",
+    "environment:manifest:test": "node --test scripts/ops/check-environment-manifest.test.mjs",
     "tauri": "pnpm --filter @openread/openread-app tauri",
     "dev-web": "pnpm --filter @openread/openread-app dev-web",
     "format": "prettier --write \"**/*.{js,jsx,ts,tsx,css,json,md,html,yml}\"",

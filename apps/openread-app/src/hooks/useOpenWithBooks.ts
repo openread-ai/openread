@@ -11,6 +11,7 @@ import { navigateToLibrary, showLibraryWindow } from '@/utils/nav';
 import { eventDispatcher } from '@/utils/event';
 import { createLogger } from '@/utils/logger';
 import { isActivityCaptureUrl } from '@/helpers/activityCapture';
+import { redactUrlFragment } from '@/utils/redact-url-fragment';
 
 const logger = createLogger('openWithBooks');
 
@@ -41,7 +42,7 @@ export function useOpenWithBooks() {
   };
 
   const handleOpenWithFileUrl = async (urls: string[]) => {
-    logger.info('Handle Open with URL:', urls);
+    logger.info('Handle Open with URL:', urls.map(redactUrlFragment));
     const filePaths = [];
     for (let url of urls) {
       if (isActivityCaptureUrl(url)) continue;
@@ -83,7 +84,9 @@ export function useOpenWithBooks() {
       'native-bridge',
       'shared-intent',
       (payload) => {
-        logger.info('Received shared intent:', payload);
+        logger.info('Received shared intent:', {
+          urls: payload.urls.map(redactUrlFragment),
+        });
         const { urls } = payload;
         handleOpenWithFileUrl(urls);
       },
@@ -99,8 +102,11 @@ export function useOpenWithBooks() {
     const unlistenDeeplink = getCurrentWindow().listen<SingleInstancePayload>(
       'single-instance',
       ({ payload }) => {
-        logger.info('Received deep link:', payload);
         const { args } = payload;
+        logger.info('Received deep link:', {
+          args: args.map(redactUrlFragment),
+          cwd: payload.cwd,
+        });
         if (args?.[1]) {
           handleOpenWithFileUrl([args[1]]);
         }

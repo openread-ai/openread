@@ -169,7 +169,10 @@ pub async fn auth_with_safari<R: Runtime>(
                     nsstring_to_string(abs_str)
                 };
 
-                log::info!("Auth session callback URL: {}", url_string_value);
+                log::info!(
+                    "Auth session callback URL: {}",
+                    crate::url_redact::redact_url_fragment(&url_string_value)
+                );
 
                 if let Some(session) = &auth_session.auth_session {
                     unsafe {

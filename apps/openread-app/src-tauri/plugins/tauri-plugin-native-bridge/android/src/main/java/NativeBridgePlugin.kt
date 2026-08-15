@@ -139,6 +139,14 @@ class NativeBridgePlugin(private val activity: Activity): Plugin(activity) {
         var pendingFolderPickerInvoke: Invoke? = null
         private var instance: NativeBridgePlugin? = null
         fun getInstance(): NativeBridgePlugin? = instance
+
+        internal fun redactUrlFragment(url: String): String {
+            val hashIndex = url.indexOf('#')
+            if (hashIndex == -1) {
+                return url
+            }
+            return url.substring(0, hashIndex) + "#<redacted>"
+        }
     }
 
     override fun load(webView: WebView) {
@@ -154,7 +162,7 @@ class NativeBridgePlugin(private val activity: Activity): Plugin(activity) {
 
     private fun handleIntent(intent: Intent?) {
         val uri = intent?.data ?: return
-        Log.e("NativeBridgePlugin", "Received intent: $uri")
+        Log.e("NativeBridgePlugin", "Received intent: ${redactUrlFragment(uri.toString())}")
         when {
           uri.scheme == "openread" && uri.host == "auth-callback" -> {
               val result = JSObject().apply {
@@ -185,7 +193,7 @@ class NativeBridgePlugin(private val activity: Activity): Plugin(activity) {
         val customTabsIntent = CustomTabsIntent.Builder().build()
         customTabsIntent.intent.flags = Intent.FLAG_ACTIVITY_NO_HISTORY
 
-        Log.d("NativeBridgePlugin", "Launching OAuth URL: ${args.authUrl}")
+        Log.d("NativeBridgePlugin", "Launching OAuth URL: ${redactUrlFragment(args.authUrl)}")
         customTabsIntent.launchUrl(activity, uri)
 
         pendingInvoke = invoke

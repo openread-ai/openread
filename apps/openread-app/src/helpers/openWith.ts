@@ -3,6 +3,7 @@ import { AppService } from '@/types/system';
 import { getCurrent } from '@tauri-apps/plugin-deep-link';
 import { createLogger } from '@/utils/logger';
 import { isActivityCaptureUrl } from '@/helpers/activityCapture';
+import { redactUrlFragment } from '@/utils/redact-url-fragment';
 
 const logger = createLogger('openWith');
 
@@ -43,7 +44,7 @@ const parseCLIOpenWithFiles = async () => {
 const parseIntentOpenWithFiles = async (appService: AppService | null) => {
   const urls = await getCurrent();
   if (urls && urls.length > 0) {
-    logger.info('Intent Open with URL:', urls);
+    logger.info('Intent Open with URL:', urls.map(redactUrlFragment));
     return urls
       .map((url) => {
         if (isActivityCaptureUrl(url)) {
@@ -58,7 +59,7 @@ const parseIntentOpenWithFiles = async (appService: AppService | null) => {
         } else if (url.startsWith('content://')) {
           return url;
         } else {
-          logger.info('Skip non-file URL:', url);
+          logger.info('Skip non-file URL:', redactUrlFragment(url));
           return null;
         }
       })

@@ -30,6 +30,8 @@ mod macos;
 #[cfg(desktop)]
 mod native_sentry;
 mod transfer_file;
+#[cfg(target_os = "macos")]
+mod url_redact;
 use tauri::{command, Emitter, WebviewUrl, WebviewWindowBuilder, Window};
 #[cfg(target_os = "android")]
 use tauri_plugin_native_bridge::register_select_directory_callback;

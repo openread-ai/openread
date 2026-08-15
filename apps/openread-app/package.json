@@ -5,8 +5,8 @@
   "license": "AGPL-3.0-only",
   "scripts": {
     "dev": "pnpm build-shared-packages && dotenv -e .env.tauri -v NEXT_PUBLIC_APP_PLATFORM=tauri -- next dev",
-    "build-shared-packages": "pnpm --workspace-root exec turbo run build --only --filter=@openread/types --filter=@openread/auth --filter=@openread/entitlements --filter=@openread/ai-control --filter=@openread/settings --filter=@openread/bridge",
-    "//build-shared-packages": "--only is load-bearing: without it turbo expands 6->7 packages and restores the warm build cost. Removal fails silently; no test, lint or CI check fails.",
+    "build-shared-packages": "pnpm --workspace-root exec turbo run build --only --filter=@openread/types --filter=@openread/auth --filter=@openread/entitlements --filter=@openread/ai-control --filter=@openread/settings --filter=@openread/bridge --filter=@openread/sdk",
+    "//build-shared-packages": "--only is load-bearing: without it turbo expands 7->8 packages and restores the warm build cost. Removal fails silently; no test, lint or CI check fails.",
     "build": "pnpm build-shared-packages && dotenv -e .env.tauri -v NEXT_PUBLIC_APP_PLATFORM=tauri -- next build",
     "start": "dotenv -e .env.tauri -v NEXT_PUBLIC_APP_PLATFORM=tauri -- next start",
     "dev-web": "pnpm build-shared-packages && dotenv -e .env.web -v NEXT_PUBLIC_APP_PLATFORM=web -- next dev",

@@ -23,6 +23,8 @@
     "persistence:check": "node scripts/ops/check-local-persistence-registry.mjs",
     "sync:check": "node scripts/ops/check-canonical-sync-cleanup.mjs",
     "compatibility:tombstones:check": "node scripts/ops/check-compatibility-tombstones.mjs",
+    "dist:untracked:check": "node scripts/ops/check-untracked-package-dist.mjs",
+    "dist:untracked:test": "node --test scripts/ops/check-untracked-package-dist.test.mjs",
     "tauri": "pnpm --filter @openread/openread-app tauri",
     "dev-web": "pnpm --filter @openread/openread-app dev-web",
     "format": "prettier --write \"**/*.{js,jsx,ts,tsx,css,json,md,html,yml}\"",

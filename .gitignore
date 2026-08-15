@@ -46,8 +46,11 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# build output
+# Generated workspace package output. Never commit these directories.
+# Tracked copies caused repeated stale-artefact incidents (#541).
+# Enforced by scripts/ops/check-untracked-package-dist.mjs
 packages/*/dist
+packages/*/dist/
 
 # Rust build
 target

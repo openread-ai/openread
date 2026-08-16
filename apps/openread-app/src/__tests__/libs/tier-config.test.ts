@@ -8,7 +8,7 @@ const mockOrder = vi.fn(() => ({ limit: mockLimit }));
 const mockSelect = vi.fn(() => ({ order: mockOrder }));
 const mockFrom = vi.fn(() => ({ select: mockSelect }));
 
-vi.mock('@/utils/supabase', () => ({
+vi.mock('@/utils/supabase-admin.server', () => ({
   createSupabaseAdminClient: vi.fn(() => ({ from: mockFrom })),
 }));
 

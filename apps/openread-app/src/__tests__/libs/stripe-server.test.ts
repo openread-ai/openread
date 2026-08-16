@@ -27,7 +27,7 @@ vi.mock('stripe', () => ({
 }));
 
 const mockSupabaseFrom = vi.fn();
-vi.mock('@/utils/supabase', () => ({
+vi.mock('@/utils/supabase-admin.server', () => ({
   createSupabaseAdminClient: vi.fn(() => ({ from: mockSupabaseFrom })),
 }));
 

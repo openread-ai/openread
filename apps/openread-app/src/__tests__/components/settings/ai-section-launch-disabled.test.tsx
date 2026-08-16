@@ -20,7 +20,7 @@ vi.mock('@/context/EnvContext', () => ({
   useEnv: () => ({ envConfig: {} }),
 }));
 
-vi.mock('@/utils/supabase', () => ({
+vi.mock('@/utils/supabase-admin.server', () => ({
   createSupabaseAdminClient: vi.fn(() => ({ from: vi.fn() })),
 }));
 

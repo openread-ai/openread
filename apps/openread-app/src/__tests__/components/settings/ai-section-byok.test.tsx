@@ -23,7 +23,7 @@ vi.mock('@/context/EnvContext', () => ({
 }));
 
 // Mock tier-config transitive dependencies (supabase, logger)
-vi.mock('@/utils/supabase', () => ({
+vi.mock('@/utils/supabase-admin.server', () => ({
   createSupabaseAdminClient: vi.fn(() => ({ from: vi.fn() })),
 }));
 vi.mock('@/utils/logger', () => ({

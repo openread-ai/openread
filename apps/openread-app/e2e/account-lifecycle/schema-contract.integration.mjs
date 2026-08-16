@@ -28,7 +28,7 @@ const withTimeout = async (promise, timeoutMs) => {
 test('queries the database schema at runtime and matches the deletion contract', async () => {
   const supabase = createClient(
     requiredEnv('SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_URL'),
-    requiredEnv('SUPABASE_SERVICE_ROLE_KEY'),
+    requiredEnv('SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_ADMIN_KEY'),
     { auth: { autoRefreshToken: false, persistSession: false } },
   );
 

@@ -9,7 +9,7 @@ vi.mock('@/utils/logger', () => ({
   }),
 }));
 
-vi.mock('@/utils/supabase', () => ({
+vi.mock('@/utils/supabase-admin.server', () => ({
   createSupabaseAdminClient: () => ({ from: mockFrom }),
 }));
 

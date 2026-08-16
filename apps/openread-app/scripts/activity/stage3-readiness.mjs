@@ -144,12 +144,12 @@ if (capturePlan?.fixtures?.book?.mode === 'any-library-book') {
 }
 
 if (capturePlan?.target?.screen === 'reader' && capturePlan?.fixtures?.auth === 'authenticated') {
-  for (const envName of [
-    'SUPABASE_SERVICE_ROLE_KEY',
-    'R2_ACCESS_KEY_ID',
-    'R2_SECRET_ACCESS_KEY',
-    'R2_ACCOUNT_ID',
-  ]) {
+  checks.push({
+    label: 'SUPABASE_SERVICE_ROLE_KEY is available for authenticated reader capture',
+    severity: 'error',
+    ok: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ADMIN_KEY),
+  });
+  for (const envName of ['R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_ACCOUNT_ID']) {
     checks.push({
       label: `${envName} is available for authenticated reader capture`,
       severity: 'error',

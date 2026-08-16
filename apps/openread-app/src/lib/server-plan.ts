@@ -1,5 +1,5 @@
 import { createLogger } from '@/utils/logger';
-import { createSupabaseAdminClient } from '@/utils/supabase';
+import { createSupabaseAdminClient } from '@/utils/supabase-admin.server';
 import { normalizeUserPlan } from '@/lib/user-plan';
 import type { UserPlan } from '@/types/quota';
 

@@ -50,7 +50,7 @@ export function readAccountLifecycleEnvironment(env = process.env) {
   return Object.freeze({
     supabaseUrl: requiredEnv(env, 'SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_URL'),
     supabaseAnonKey: requiredEnv(env, 'SUPABASE_ANON_KEY', 'NEXT_PUBLIC_SUPABASE_ANON_KEY'),
-    supabaseServiceRoleKey: requiredEnv(env, 'SUPABASE_SERVICE_ROLE_KEY'),
+    supabaseServiceRoleKey: requiredEnv(env, 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_ADMIN_KEY'),
     r2AccountId: requiredEnv(env, 'R2_ACCOUNT_ID'),
     r2AccessKeyId: requiredEnv(env, 'R2_ACCESS_KEY_ID'),
     r2SecretAccessKey: requiredEnv(env, 'R2_SECRET_ACCESS_KEY'),

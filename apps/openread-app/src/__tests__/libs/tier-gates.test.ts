@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 
 // Mock tier-config's transitive dependencies (supabase, logger)
-vi.mock('@/utils/supabase', () => ({
+vi.mock('@/utils/supabase-admin.server', () => ({
   createSupabaseAdminClient: vi.fn(() => ({ from: vi.fn() })),
 }));
 vi.mock('@/utils/logger', () => ({

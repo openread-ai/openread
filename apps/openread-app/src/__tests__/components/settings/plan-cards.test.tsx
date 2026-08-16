@@ -43,7 +43,7 @@ vi.mock('@/utils/logger', () => ({
 }));
 
 // Mock supabase (needed by tier-config)
-vi.mock('@/utils/supabase', () => ({
+vi.mock('@/utils/supabase-admin.server', () => ({
   createSupabaseAdminClient: vi.fn(() => ({
     from: vi.fn(),
   })),

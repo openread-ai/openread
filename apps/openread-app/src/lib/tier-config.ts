@@ -11,7 +11,7 @@
 import type { UserPlan } from '@/types/quota';
 import type { TierConfig, TierDefinition, RegionalPricingEntry } from '@/lib/tier-types';
 import { FALLBACK_CONFIG } from '@/lib/tier-defaults';
-import { createSupabaseAdminClient } from '@/utils/supabase';
+import { createSupabaseAdminClient } from '@/utils/supabase-admin.server';
 import { createLogger } from '@/utils/logger';
 
 export type {

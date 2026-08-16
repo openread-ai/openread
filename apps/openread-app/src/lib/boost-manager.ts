@@ -7,7 +7,7 @@
  * Available only to tiers with can_boost = true. Gen 3 v3 disables boosts by default.
  */
 
-import { createSupabaseAdminClient } from '@/utils/supabase';
+import { createSupabaseAdminClient } from '@/utils/supabase-admin.server';
 import { createLogger } from '@/utils/logger';
 
 const log = createLogger('boost-manager');

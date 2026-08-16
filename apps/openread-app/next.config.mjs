@@ -2,7 +2,11 @@ import path from 'node:path';
 import { withSentryConfig } from '@sentry/nextjs';
 import withSerwistInit from '@serwist/next';
 import withBundleAnalyzer from '@next/bundle-analyzer';
-import { resolveSentryEnvironment, resolveSentryRelease } from './sentry-shared.mjs';
+import {
+  resolvePublicStripeKeyMode,
+  resolveSentryEnvironment,
+  resolveSentryRelease,
+} from './sentry-shared.mjs';
 
 const isDev = process.env['NODE_ENV'] === 'development';
 const appPlatform = process.env['NEXT_PUBLIC_APP_PLATFORM'];
@@ -18,6 +22,7 @@ const OPENREAD_NODE_BASE_URL = 'https://api.openread.ai';
 
 const sentryEnvironment = resolveSentryEnvironment();
 const sentryRelease = resolveSentryRelease();
+const publicStripeKeyMode = resolvePublicStripeKeyMode();
 
 const flyOwnedApiRewriteSources = [
   '/api/books/:path*',
@@ -97,6 +102,7 @@ const nextConfig = {
       process.env['NEXT_PUBLIC_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE'],
     NEXT_PUBLIC_SENTRY_ENVIRONMENT: sentryEnvironment,
     NEXT_PUBLIC_SENTRY_RELEASE: sentryRelease,
+    NEXT_PUBLIC_STRIPE_KEY_MODE: publicStripeKeyMode,
   },
   webpack: (config) => {
     config.resolve.alias = {

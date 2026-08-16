@@ -7,6 +7,7 @@ function getDeploymentEnvironmentSignal() {
   return {
     VERCEL_ENV: process.env['VERCEL_ENV'],
     NODE_ENV: process.env['NODE_ENV'],
+    NEXT_PUBLIC_APP_PLATFORM: process.env['NEXT_PUBLIC_APP_PLATFORM'],
   };
 }
 
@@ -36,6 +37,26 @@ export function resolveDeploymentEnvironment(env = getDeploymentEnvironmentSigna
   throw new Error(
     'VERCEL_ENV is required unless NODE_ENV identifies an actual local development server.',
   );
+}
+
+/**
+ * Resolve the Stripe.js key mode injected by Next at build time.
+ *
+ * Vercel is authoritative when present. Production Tauri builds use Stripe for
+ * desktop billing; local, test, and unclassified web builds remain test-only.
+ * Mobile Tauri builds use IAP, so the injected Stripe mode is not consumed.
+ *
+ * @param {Record<string, string | undefined>} [env]
+ * @returns {'live' | 'test'}
+ */
+export function resolvePublicStripeKeyMode(env = getDeploymentEnvironmentSignal()) {
+  if (env['VERCEL_ENV'] !== undefined) {
+    return resolveDeploymentEnvironment(env) === 'production' ? 'live' : 'test';
+  }
+
+  return env['NEXT_PUBLIC_APP_PLATFORM'] === 'tauri' && env['NODE_ENV'] === 'production'
+    ? 'live'
+    : 'test';
 }
 
 /**

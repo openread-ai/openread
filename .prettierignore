@@ -31,6 +31,13 @@ apps/openread-app/public/vendor
 # Enterprise Planning Docs (external)
 docs/planning/enterprise
 
+# Verbatim historical evidence records (path-exact)
+docs/reviews/evidence/2026-08-15/launch-readiness-2026-08-13.md
+docs/reviews/evidence/2026-08-15/diagnostic-leakage-and-key-resolution.md
+docs/reviews/evidence/2026-08-15/foliate-submodule-pin-reachability.md
+docs/reviews/evidence/2026-08-15/pr-593-account-deletion-contract.md
+docs/reviews/evidence/2026-08-15/reader-settings-l11-packets.md
+
 # Environment & Editor
 .env
 .env.*

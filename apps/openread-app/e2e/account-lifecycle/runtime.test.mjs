@@ -260,11 +260,38 @@ describe('product account deletion binding', () => {
 });
 
 describe('account lifecycle environment boundary', () => {
-  it('accepts the existing server-only Supabase and R2 environment', () => {
+  it('accepts the legacy R2 bucket name during the alias window', () => {
     const config = readAccountLifecycleEnvironment(completeEnvironment());
 
     assert.equal(config.supabaseServiceRoleKey, 'server-only-service-role');
     assert.equal(config.r2Bucket, 'r2-bucket');
+  });
+
+  it('accepts the canonical R2 bucket name', () => {
+    const env = completeEnvironment();
+    delete env.R2_BUCKET_NAME;
+    const config = readAccountLifecycleEnvironment({ ...env, R2_BUCKET: 'canonical-bucket' });
+
+    assert.equal(config.r2Bucket, 'canonical-bucket');
+  });
+
+  it('prefers the canonical R2 bucket name when both names are set', () => {
+    const config = readAccountLifecycleEnvironment({
+      ...completeEnvironment(),
+      R2_BUCKET: 'canonical-bucket',
+    });
+
+    assert.equal(config.r2Bucket, 'canonical-bucket');
+  });
+
+  it('fails closed when neither R2 bucket name is set', () => {
+    const env = completeEnvironment();
+    delete env.R2_BUCKET_NAME;
+
+    assert.throws(
+      () => readAccountLifecycleEnvironment(env),
+      /Missing required account lifecycle environment: R2_BUCKET or R2_BUCKET_NAME/,
+    );
   });
 
   it('refuses a missing service-role key even when a NEXT_PUBLIC variant exists', () => {

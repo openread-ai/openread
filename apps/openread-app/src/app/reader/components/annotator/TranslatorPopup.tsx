@@ -8,7 +8,6 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useTranslator } from '@/hooks/useTranslator';
 import { TRANSLATOR_LANGS } from '@/services/constants';
-import { UseTranslatorOptions, getTranslators } from '@/services/translators';
 import Select from '@/components/Select';
 import { createLogger } from '@/utils/logger';
 
@@ -33,11 +32,6 @@ interface TranslatorPopupProps {
   onDismiss?: () => void;
 }
 
-interface TranslatorType {
-  name: string;
-  label: string;
-}
-
 const TranslatorPopup: React.FC<TranslatorPopupProps> = ({
   text,
   position,
@@ -50,20 +44,17 @@ const TranslatorPopup: React.FC<TranslatorPopupProps> = ({
   const { token } = useAuth();
   const { envConfig } = useEnv();
   const { settings, setSettings } = useSettingsStore();
-  const [providers, setProviders] = useState<TranslatorType[]>([]);
   const [sourceLang, setSourceLang] = useState('AUTO');
   const [targetLang, setTargetLang] = useState(settings.globalReadSettings.translateTargetLang);
-  const [provider, setProvider] = useState(settings.globalReadSettings.translationProvider);
   const [translation, setTranslation] = useState<string | null>(null);
   const [detectedSourceLang, setDetectedSourceLang] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { translate, translators } = useTranslator({
-    provider,
+  const { translate } = useTranslator({
     sourceLang,
     targetLang,
-  } as UseTranslatorOptions);
+  });
 
   const handleSourceLangChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     setSourceLang(event.target.value);
@@ -79,38 +70,6 @@ const TranslatorPopup: React.FC<TranslatorPopupProps> = ({
       }))
       .then(setSettings);
   };
-
-  const handleProviderChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
-    const requestedProvider = event.target.value;
-    const availableTranslators = getTranslators().filter(
-      (t) => (t.authRequired ? !!token : true) && !t.quotaExceeded,
-    );
-    const selectedTranslator =
-      availableTranslators.find((t) => t.name === requestedProvider) || availableTranslators[0]!;
-    if (selectedTranslator) {
-      setProvider(selectedTranslator.name);
-      void settingsService
-        .updateGlobalReadSettings(envConfig, settings, (globalReadSettings) => ({
-          ...globalReadSettings,
-          translationProvider: selectedTranslator.name,
-        }))
-        .then(setSettings);
-    }
-  };
-
-  useEffect(() => {
-    const availableProviders = translators.map((t) => {
-      let label = t.label;
-      if (t.authRequired && !token) {
-        label = `${label} (${_('Login Required')})`;
-      } else if (t.quotaExceeded) {
-        label = `${label} (${_('Quota Exceeded')})`;
-      }
-      return { name: t.name, label };
-    });
-    setProviders(availableProviders);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [translators]);
 
   useEffect(() => {
     setLoading(true);
@@ -146,7 +105,7 @@ const TranslatorPopup: React.FC<TranslatorPopupProps> = ({
 
     fetchTranslation();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [text, token, sourceLang, targetLang, provider, translate]);
+  }, [text, token, sourceLang, targetLang, translate]);
 
   return (
     <div>
@@ -215,22 +174,6 @@ const TranslatorPopup: React.FC<TranslatorPopupProps> = ({
               )}
             </div>
           )}
-        </div>
-        <div className='absolute bottom-0 flex h-8 w-full items-center justify-between px-4'>
-          <div className='line-clamp-1 text-xs opacity-60'>
-            {provider &&
-              !loading &&
-              !error &&
-              _('Translated by {{provider}}.', {
-                provider: providers.find((p) => p.name === provider)?.label,
-              })}
-          </div>
-          <Select
-            className='not-eink:bg-gray-600 not-eink:text-white eink:bg-base-100'
-            value={provider}
-            onChange={handleProviderChange}
-            options={providers.map(({ name: value, label }) => ({ value, label }))}
-          />
         </div>
       </Popup>
     </div>

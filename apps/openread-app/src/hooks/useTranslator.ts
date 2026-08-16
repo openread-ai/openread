@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { ErrorCodes, getTranslator, getTranslators, TranslatorName } from '@/services/translators';
+import { ErrorCodes, getTranslator, getTranslators } from '@/services/translators';
 import { getFromCache, storeInCache, UseTranslatorOptions } from '@/services/translators';
 import { polish, preprocess } from '@/services/translators';
 import { eventDispatcher } from '@/utils/event';
@@ -8,8 +8,9 @@ import { getLocale } from '@/utils/misc';
 import { useTranslation } from './useTranslation';
 import { LAUNCH_TRANSLATION_ENABLED } from '@/services/launchFeatures';
 
+const TRANSLATOR_NAME = 'google';
+
 export function useTranslator({
-  provider = 'deepl',
   sourceLang = 'AUTO',
   targetLang = 'EN',
   enablePolishing = true,
@@ -18,35 +19,12 @@ export function useTranslator({
   const _ = useTranslation();
   const { token } = useAuth();
   const [loading, setLoading] = useState(false);
-  const [selectedProvider, setSelectedProvider] = useState(provider);
-  const [translator, setTransltor] = useState(() => getTranslator(provider));
+  const [translator] = useState(() => getTranslator(TRANSLATOR_NAME));
   const [translators] = useState(() => getTranslators());
 
   useEffect(() => {
     setLoading(false);
-  }, [provider, sourceLang, targetLang]);
-
-  useEffect(() => {
-    if (!LAUNCH_TRANSLATION_ENABLED) {
-      setLoading(false);
-      setTransltor(undefined);
-      return;
-    }
-
-    const availableTranslators = getTranslators().filter(
-      (t) => (t.authRequired ? !!token : true) && !t.quotaExceeded,
-    );
-    const selectedTranslator =
-      availableTranslators.find((t) => t.name === provider) || availableTranslators[0];
-    if (!selectedTranslator) {
-      setTransltor(undefined);
-      return;
-    }
-    const selectedProviderName = selectedTranslator.name as TranslatorName;
-    setTransltor(getTranslator(selectedProviderName));
-    setSelectedProvider(selectedProviderName);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [provider]);
+  }, [sourceLang, targetLang]);
 
   const translate = useCallback(
     async (
@@ -75,7 +53,7 @@ export function useTranslator({
             text,
             sourceLanguage,
             targetLanguage,
-            selectedProvider,
+            TRANSLATOR_NAME,
           );
           if (cachedTranslation) return;
 
@@ -87,7 +65,7 @@ export function useTranslator({
       if (textsNeedingTranslation.length === 0) {
         const results = await Promise.all(
           textsToTranslate.map((text) =>
-            getFromCache(text, sourceLanguage, targetLanguage, selectedProvider).then(
+            getFromCache(text, sourceLanguage, targetLanguage, TRANSLATOR_NAME).then(
               (cached) => cached || text,
             ),
           ),
@@ -99,9 +77,9 @@ export function useTranslator({
       setLoading(true);
 
       try {
-        const translator = translators.find((t) => t.name === selectedProvider);
+        const translator = translators.find((t) => t.name === TRANSLATOR_NAME);
         if (!translator) {
-          throw new Error(`No translator found for provider: ${selectedProvider}`);
+          throw new Error(`No translator found for provider: ${TRANSLATOR_NAME}`);
         }
         const translatedTexts = await translator.translate(
           textsNeedingTranslation,
@@ -118,7 +96,7 @@ export function useTranslator({
               translatedTexts[index] || '',
               sourceLanguage,
               targetLanguage,
-              selectedProvider,
+              TRANSLATOR_NAME,
             );
           }),
         );
@@ -138,7 +116,7 @@ export function useTranslator({
                 originalText,
                 sourceLanguage,
                 targetLanguage,
-                selectedProvider,
+                TRANSLATOR_NAME,
               );
 
               if (cachedTranslation) {
@@ -159,14 +137,13 @@ export function useTranslator({
             ),
             type: 'error',
           });
-          setSelectedProvider('azure');
         }
         setLoading(false);
         throw err instanceof Error ? err : new Error(String(err));
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selectedProvider, sourceLang, targetLang, translator, token],
+    [sourceLang, targetLang, translator, token],
   );
 
   return {

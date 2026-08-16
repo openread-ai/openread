@@ -99,7 +99,7 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   const [showAnnotationActionsSheet, setShowAnnotationActionsSheet] = useState(false);
   const [showWiktionaryPopup, setShowWiktionaryPopup] = useState(false);
   const [showWikipediaPopup, setShowWikipediaPopup] = useState(false);
-  const [showDeepLPopup, setShowDeepLPopup] = useState(false);
+  const [showTranslationPopup, setShowTranslationPopup] = useState(false);
   const [showProofreadPopup, setShowProofreadPopup] = useState(false);
   const [trianglePosition, setTrianglePosition] = useState<Position>();
   const [annotPopupPosition, setAnnotPopupPosition] = useState<Position>();
@@ -129,7 +129,7 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     showAnnotationActionsSheet ||
     showWiktionaryPopup ||
     showWikipediaPopup ||
-    showDeepLPopup ||
+    showTranslationPopup ||
     showProofreadPopup;
 
   const popupPadding = useResponsiveSize(10);
@@ -231,7 +231,7 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
       setShowAnnotationActionsSheet(false);
       setShowWiktionaryPopup(false);
       setShowWikipediaPopup(false);
-      setShowDeepLPopup(false);
+      setShowTranslationPopup(false);
       setShowProofreadPopup(false);
       setEditingAnnotation(null);
     }, 500),
@@ -350,7 +350,7 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
               });
               if (action === 'open-translation') {
                 setShowAnnotPopup(false);
-                setShowDeepLPopup(true);
+                setShowTranslationPopup(true);
                 setShowWiktionaryPopup(false);
                 setShowWikipediaPopup(false);
               }
@@ -662,7 +662,7 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
       containerRef.current?.focus();
       setShowAnnotationActionsSheet(true);
       setShowAnnotPopup(false);
-      setShowDeepLPopup(false);
+      setShowTranslationPopup(false);
       setShowWiktionaryPopup(false);
       setShowWikipediaPopup(false);
       return;
@@ -675,7 +675,7 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     containerRef.current?.focus();
     setShowAnnotationActionsSheet(false);
     setShowAnnotPopup(true);
-    setShowDeepLPopup(false);
+    setShowTranslationPopup(false);
     setShowWiktionaryPopup(false);
     setShowWikipediaPopup(false);
   };
@@ -906,7 +906,7 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   const handleTranslation = () => {
     if (!LAUNCH_TRANSLATION_ENABLED || !selection || !selection.text) return;
     setShowAnnotPopup(false);
-    setShowDeepLPopup(true);
+    setShowTranslationPopup(true);
   };
 
   const handleSpeakText = async (oneTime = false) => {
@@ -1122,7 +1122,7 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
         />
       )}
       {LAUNCH_TRANSLATION_ENABLED &&
-        showDeepLPopup &&
+        showTranslationPopup &&
         trianglePosition &&
         translatorPopupPosition && (
           <TranslatorPopup

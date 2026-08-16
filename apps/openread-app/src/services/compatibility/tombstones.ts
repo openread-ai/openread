@@ -118,6 +118,7 @@ export function migrateViewSettingsTombstones<T extends Partial<ViewSettings>>(
   const removedFields: string[] = [];
   let changed = false;
 
+  changed = deleteField(record, 'translationProvider', removedFields) || changed;
   changed =
     migrateSingleMarginField(record, 'marginPx', DIRECTIONAL_MARGIN_FIELDS, removedFields) ||
     changed;
@@ -156,14 +157,26 @@ export function migrateSystemSettingsTombstones(
   input: SystemSettings,
 ): TombstoneMigrationResult<SystemSettings> {
   const viewResult = migrateViewSettingsTombstones(input.globalViewSettings);
-  if (!viewResult.changed) return { value: input, changed: false, removedFields: [] };
+  const globalReadSettings = isRecord(input.globalReadSettings)
+    ? { ...input.globalReadSettings }
+    : {};
+  const readSettingsRemovedFields: string[] = [];
+  const readSettingsChanged = deleteField(
+    globalReadSettings,
+    'translationProvider',
+    readSettingsRemovedFields,
+  );
+  if (!viewResult.changed && !readSettingsChanged) {
+    return { value: input, changed: false, removedFields: [] };
+  }
 
   return {
     value: {
       ...input,
+      globalReadSettings: globalReadSettings as unknown as SystemSettings['globalReadSettings'],
       globalViewSettings: viewResult.value as ViewSettings,
     },
     changed: true,
-    removedFields: viewResult.removedFields,
+    removedFields: unique([...viewResult.removedFields, ...readSettingsRemovedFields]),
   };
 }

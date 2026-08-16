@@ -20,7 +20,6 @@ Built with [Next.js](https://github.com/vercel/next.js) and [Tauri](https://gith
 | **Annotations & Highlighting** | Highlights, bookmarks, and notes                            |
 | **Full-Text Search**           | Search across the entire book                               |
 | **Parallel Read**              | Split-screen view for two books side by side                |
-| **Translate**                  | DeepL and Yandex translation — sentences or full books      |
 | **Text-to-Speech**             | Multilingual narration                                      |
 | **Sync**                       | Reading progress, notes, and bookmarks across all platforms |
 | **AI-Powered Reading**         | Chat with your books, summaries, and Q&A                    |

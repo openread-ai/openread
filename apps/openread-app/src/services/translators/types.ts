@@ -1,5 +1,3 @@
-import { TranslatorName } from './providers';
-
 export interface TranslationProvider {
   name: string;
   label: string;
@@ -19,7 +17,6 @@ export interface TranslationCache {
 }
 
 export interface UseTranslatorOptions {
-  provider?: TranslatorName;
   sourceLang?: string;
   targetLang?: string;
   enablePolishing?: boolean;
@@ -28,7 +25,6 @@ export interface UseTranslatorOptions {
 
 export const ErrorCodes = {
   UNAUTHORIZED: 'Unauthorized',
-  DEEPL_API_ERROR: 'DeepL API Error',
   DAILY_QUOTA_EXCEEDED: 'Daily Quota Exceeded',
   INTERNAL_SERVER_ERROR: 'Internal Server Error',
 };

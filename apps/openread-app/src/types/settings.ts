@@ -37,7 +37,6 @@ export interface ReadSettings {
   isNotebookPinned: boolean;
   notebookActiveTab: NotebookTab;
   autohideCursor: boolean;
-  translationProvider: string;
   translateTargetLang: string;
 
   highlightStyle: HighlightStyle;

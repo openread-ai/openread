@@ -78,6 +78,28 @@ describe('tombstone compatibility migrations', () => {
     expect(result.value).not.toHaveProperty('compactMarginPx');
   });
 
+  it('removes retired translation provider persistence without selecting a fallback', () => {
+    const viewResult = migrateViewSettingsTombstones({
+      ...canonicalViewSettings,
+      translationProvider: 'deepl',
+    } as Partial<ViewSettings> & { translationProvider: string });
+    const settingsResult = migrateSystemSettingsTombstones({
+      globalViewSettings: {
+        ...canonicalViewSettings,
+        translationProvider: 'deepl',
+      },
+      globalReadSettings: {
+        translationProvider: 'deepl',
+      },
+    } as unknown as SystemSettings);
+
+    expect(viewResult.changed).toBe(true);
+    expect(viewResult.value).not.toHaveProperty('translationProvider');
+    expect(settingsResult.changed).toBe(true);
+    expect(settingsResult.value.globalViewSettings).not.toHaveProperty('translationProvider');
+    expect(settingsResult.value.globalReadSettings).not.toHaveProperty('translationProvider');
+  });
+
   it('migrates nested book config view settings', () => {
     const result = migrateBookConfigTombstones({
       bookHash: testSyncableBookRef('book-config-tombstone'),

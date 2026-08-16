@@ -459,8 +459,7 @@
         "Reader: New option to customize book foreground and background colors",
         "Reader: Fixed an issue where images appeared too small in some EPUBs",
         "EPUB: Improved cover image detection for certain EPUB files",
-        "TTS: Improved background playback stability on iOS devices",
-        "Translation: Introduced a daily DeepL translation quota to ensure long-term availability"
+        "TTS: Improved background playback stability on iOS devices"
       ]
     },
     "0.9.52": {
@@ -806,7 +805,7 @@
     },
     "0.9.6": {
       "date": "2025-01-18",
-      "notes": ["Various enhancements for mobile platforms", "Fix DeepL translation API"]
+      "notes": ["Various enhancements for mobile platforms"]
     },
     "0.9.5": {
       "date": "2025-01-15",

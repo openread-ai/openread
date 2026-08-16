@@ -1,12 +1,10 @@
 import clsx from 'clsx';
 import React, { useEffect, useState } from 'react';
 import { useEnv } from '@/context/EnvContext';
-import { useAuth } from '@/context/AuthContext';
 import { useReaderStore } from '@/store/readerStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useSettingsStore } from '@/store/settingsStore';
 import { saveViewSettings } from '@/helpers/settings';
-import { getTranslators } from '@/services/translators';
 import { useResetViewSettings } from '@/hooks/useResetSettings';
 import { TRANSLATED_LANGS, TRANSLATOR_LANGS } from '@/services/constants';
 import { ConvertChineseVariant } from '@/types/book';
@@ -17,7 +15,6 @@ import Select from '@/components/Select';
 
 const LangPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset }) => {
   const _ = useTranslation();
-  const { token } = useAuth();
   const { envConfig } = useEnv();
   const { settings, applyUILanguage } = useSettingsStore();
   const { getView, getViewSettings, setViewSettings, recreateViewer } = useReaderStore();
@@ -26,7 +23,6 @@ const LangPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
 
   const [uiLanguage, setUILanguage] = useState(viewSettings.uiLanguage);
   const [translationEnabled, setTranslationEnabled] = useState(viewSettings.translationEnabled);
-  const [translationProvider, setTranslationProvider] = useState(viewSettings.translationProvider);
   const [translateTargetLang, setTranslateTargetLang] = useState(viewSettings.translateTargetLang);
   const [showTranslateSource, setShowTranslateSource] = useState(viewSettings.showTranslateSource);
   const [ttsReadAloudText, setTtsReadAloudText] = useState(viewSettings.ttsReadAloudText);
@@ -43,7 +39,6 @@ const LangPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
     resetToDefaults({
       uiLanguage: setUILanguage,
       translationEnabled: setTranslationEnabled,
-      translationProvider: setTranslationProvider,
       translateTargetLang: setTranslateTargetLang,
       showTranslateSource: setShowTranslateSource,
       ttsReadAloudText: setTtsReadAloudText,
@@ -77,40 +72,6 @@ const LangPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
   const handleSelectUILang = (event: React.ChangeEvent<HTMLSelectElement>) => {
     const option = event.target.value;
     setUILanguage(option);
-  };
-
-  const getTranslationProviderOptions = () => {
-    const translators = getTranslators();
-    const availableProviders = translators.map((t) => {
-      let label = t.label;
-      if (t.authRequired && !token) {
-        label = `${label} (${_('Login Required')})`;
-      } else if (t.quotaExceeded) {
-        label = `${label} (${_('Quota Exceeded')})`;
-      }
-      return { value: t.name, label };
-    });
-    return availableProviders;
-  };
-
-  const getCurrentTranslationProviderOption = () => {
-    const value = translationProvider;
-    const allProviders = getTranslationProviderOptions();
-    const availableTranslators = getTranslators().filter(
-      (t) => (t.authRequired ? !!token : true) && !t.quotaExceeded,
-    );
-    const currentProvider = availableTranslators.find((t) => t.name === value)
-      ? value
-      : availableTranslators[0]?.name;
-    return allProviders.find((p) => p.value === currentProvider) || allProviders[0]!;
-  };
-
-  const handleSelectTranslationProvider = (event: React.ChangeEvent<HTMLSelectElement>) => {
-    const option = event.target.value;
-    setTranslationProvider(option);
-    saveViewSettings(envConfig, bookKey, 'translationProvider', option, false, false);
-    viewSettings.translationProvider = option;
-    setViewSettings(bookKey, { ...viewSettings });
   };
 
   const getCurrentTargetLangOption = () => {
@@ -292,15 +253,6 @@ const LangPanel: React.FC<SettingsPanelPanelProp> = ({ bookKey, onRegisterReset 
                   value={ttsReadAloudText}
                   onChange={handleSelectTTSText}
                   options={getTTSTextOptions()}
-                />
-              </div>
-
-              <div className='config-item' data-setting-id='settings.language.translationProvider'>
-                <span className=''>{_('Translation Service')}</span>
-                <Select
-                  value={getCurrentTranslationProviderOption().value}
-                  onChange={handleSelectTranslationProvider}
-                  options={getTranslationProviderOptions()}
                 />
               </div>
 

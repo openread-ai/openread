@@ -497,12 +497,6 @@ const languagePanelItems = [
           section: 'Translation',
         },
         {
-          id: 'settings.language.translationProvider',
-          labelKey: _('Translation Service'),
-          keywords: ['translation', 'provider', 'google', 'deepl', 'service'],
-          section: 'Translation',
-        },
-        {
           id: 'settings.language.targetLanguage',
           labelKey: _('Translate To'),
           keywords: ['target', 'language', 'translation', 'destination'],

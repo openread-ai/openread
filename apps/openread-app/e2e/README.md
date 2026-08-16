@@ -152,6 +152,36 @@ The tracker is Notion-first. Do not use a local `checkpoint.json` as progress st
 
 The disposable-account lifecycle proofs are intentionally separate from PR and release CI. They mutate the configured Supabase and R2 environment, clean up their marked test accounts, and run only through the manual **Lifecycle E2E** workflow (`.github/workflows/lifecycle-e2e.yml`) or an explicitly authorized local command.
 
+### Transcript-safe local environment loading
+
+Local production lifecycle runs use the privileged dotenv file at
+`/Users/trp/.openread-dev/env/openread-app.env.local`. From the repository root, select the app
+package explicitly so `pnpm exec` cannot resolve an unrelated global `dotenv` binary:
+
+```sh
+pnpm --filter @openread/openread-app exec dotenv \
+  -e /Users/trp/.openread-dev/env/openread-app.env.local -- \
+  env OPENREAD_E2E_<LIFECYCLE>_LIVE=1 pnpm <lifecycle-command>
+```
+
+Do not source, copy, symlink, print, echo, hash, or pass any value as a command argument.
+The dotenv file is input to one child process only. Shell sourcing is forbidden because a dotenv
+file is not shell syntax and shell diagnostics can persist values in transcripts.
+
+Check prerequisites with key names only:
+
+```sh
+pnpm --filter @openread/openread-app exec dotenv \
+  -e /Users/trp/.openread-dev/env/openread-app.env.local -- \
+  env node ../../scripts/ops/diagnose-privileged-env.mjs \
+  CATALOG_SESSION_POOLER_DATABASE_URL
+```
+
+The diagnostic prints only `<KEY>: present` or `<KEY>: absent` and exits nonzero when a requested
+key is absent or malformed. It never prints a value, prefix, length, masked form, or hash. This is
+local tooling and CI policy only: web runtime, Tauri desktop, iOS/iPadOS, and Android behavior are
+unchanged.
+
 Lifecycle teardown reports distinguish planned cleanup from harness recovery. `already-clean` means the scenario reached and proved its planned deletion path. `recovered-residue` means an earlier assertion stopped the scenario first, so the harness removed marked disposable state and verified convergence; it preserves the primary RED and is not a passing outcome.
 
 The workflow accepts `L1`, `L2`, `L3a`, `L6`, `L8`, or `all`. L3a is a Node-only immediate-session public-signup proof; the other listed product lifecycles run Chromium in web mode. The workflow has only a `workflow_dispatch` trigger: no push, pull-request, or schedule trigger, and it is not a release gate.

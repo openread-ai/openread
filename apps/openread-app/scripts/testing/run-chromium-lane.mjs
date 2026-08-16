@@ -3,6 +3,7 @@ import { existsSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { getNotionToken } from '../notion-env.mjs';
 import {
   ensureDir,
   getActivityConfig,
@@ -60,7 +61,7 @@ const runLabel = resolveRunLabel({
   scenario: args.scenario ?? args.label ?? grep,
 });
 const qaEvidence = qaEvidenceForLane(lane, { runLevel, manualCase, runLabel });
-const notionToken = process.env.NOTION_TOKEN ?? process.env.NOTION_API_KEY;
+const notionToken = getNotionToken();
 const trackerSectionPath = 'Chromium';
 const summarySectionPath = 'Run Summary/Platforms/Chromium';
 const trackerEnabled =

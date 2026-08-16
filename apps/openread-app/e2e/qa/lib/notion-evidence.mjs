@@ -8,6 +8,7 @@ import {
   readJsonIfExists,
   updateActivity,
 } from './common.mjs';
+import { resolveNotionToken } from '../../../scripts/notion-env.mjs';
 import { contractIdsFromEvidenceValue, parseQaContract } from './contracts.mjs';
 
 const NOTION_API_VERSION = '2022-06-28';
@@ -977,9 +978,7 @@ function gitBranch() {
 }
 
 function notionTokenOrThrow() {
-  const credential = process.env.NOTION_TOKEN ?? process.env.NOTION_API_KEY;
-  if (!credential) throw new Error('NOTION_TOKEN or NOTION_API_KEY is required.');
-  return credential;
+  return resolveNotionToken();
 }
 
 function activityLogDatabaseIdOrThrow(activityId) {

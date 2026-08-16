@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { resolveNotionToken } from '../notion-env.mjs';
 import {
   getActivityConfig,
   loadActivityEnv,
@@ -118,17 +119,21 @@ const activityLogDatabaseId =
   args.database ??
   process.env.OPENREAD_NOTION_ACTIVITY_LOG_DATABASE ??
   notionConfig?.activityLogDatabaseId;
-const notionToken = process.env.NOTION_TOKEN ?? process.env.NOTION_API_KEY;
 
 if (!config.activityId || config.activityId === 'sandbox-activity') {
-  fail('Activity ID is required. Initialize one with pnpm activity:init or pass --activity ACT-...');
+  fail(
+    'Activity ID is required. Initialize one with pnpm activity:init or pass --activity ACT-...',
+  );
 }
 
 const expectations = STAGE_EXPECTATIONS[stage];
 if (!expectations) fail(`Unknown stage: ${stage}`);
 if (!activityLogDatabaseId)
   fail('Activity Log database ID is required. Run activity:notion-create-log first.');
-if (!notionToken) fail('NOTION_TOKEN or NOTION_API_KEY is required to read Activity Log context.');
+const notionToken = resolveNotionToken(
+  undefined,
+  'NOTION_TOKEN or legacy NOTION_API_KEY is required to read Activity Log context.',
+);
 
 const activityPage = await findActivityPage({
   notionToken,
@@ -136,7 +141,9 @@ const activityPage = await findActivityPage({
   activityId: config.activityId,
 });
 if (!activityPage)
-  fail(`Activity Log row not found for ${config.activityId}. Verify the Activity ID and synced Activity state.`);
+  fail(
+    `Activity Log row not found for ${config.activityId}. Verify the Activity ID and synced Activity state.`,
+  );
 
 const context = {
   schemaVersion: 1,

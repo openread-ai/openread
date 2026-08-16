@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
+import { resolveNotionToken } from '../notion-env.mjs';
 import { ensureDir, parseArgs, writeJson } from './common.mjs';
 
 const DEFAULT_OPENREAD_ROOT_PAGE = '34c159c7f71980b99fdbf952588a4f50';
@@ -15,11 +16,10 @@ const artifactRoot = resolve(
     process.env.OPENREAD_ACTIVITY_ARTIFACT_ROOT ??
     resolve(homedir(), '.openread-dev/activity-artifacts'),
 );
-const notionToken = process.env.NOTION_TOKEN ?? process.env.NOTION_API_KEY;
-
-if (!notionToken) {
-  fail('NOTION_TOKEN or NOTION_API_KEY is required to create the Activity Log database.');
-}
+const notionToken = resolveNotionToken(
+  undefined,
+  'NOTION_TOKEN or legacy NOTION_API_KEY is required to create the Activity Log database.',
+);
 
 const response = await fetch('https://api.notion.com/v1/databases', {
   method: 'POST',

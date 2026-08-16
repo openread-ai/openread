@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync, statSync } from 'node:fs';
 import { basename, extname, relative, resolve } from 'node:path';
+import { getNotionToken } from '../notion-env.mjs';
 import { ensureDir, getActivityConfig, loadActivityEnv, parseArgs, writeJson } from './common.mjs';
 
 const NOTION_FILE_UPLOAD_VERSION = '2026-03-11';
@@ -17,7 +18,7 @@ const config = getActivityConfig(argv);
 const startedAtMs = Date.now();
 const startedAt = new Date(startedAtMs).toISOString();
 const artifactDir = resolve(config.attemptDir, 'notion-file-upload');
-const notionToken = process.env.NOTION_TOKEN ?? process.env.NOTION_API_KEY;
+const notionToken = getNotionToken();
 const filePaths = resolveFilePaths(args);
 
 ensureDir(artifactDir);
@@ -39,7 +40,8 @@ if (!notionToken) {
     result: String(args.requireToken ?? 'false') === 'true' ? 'failed' : 'partial',
     mode: 'no-token',
     files: files.map(fileSummary),
-    nextAction: 'Set NOTION_TOKEN or NOTION_API_KEY to create and send Notion File Uploads.',
+    nextAction:
+      'Set NOTION_TOKEN (or legacy NOTION_API_KEY during the alias window) to create and send Notion File Uploads.',
   });
   writeJson(resolve(artifactDir, 'notion-file-upload-report.json'), report);
   console.log(JSON.stringify(report, null, 2));

@@ -3,6 +3,7 @@ import { existsSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { resolveNotionToken } from '../notion-env.mjs';
 import {
   formatActivityTimestamp,
   getActivityConfig,
@@ -119,8 +120,10 @@ if (dryRun) {
   process.exit(0);
 }
 
-const notionToken = process.env.NOTION_TOKEN ?? process.env.NOTION_API_KEY;
-if (!notionToken) fail('NOTION_TOKEN or NOTION_API_KEY is required when --write is passed.');
+const notionToken = resolveNotionToken(
+  undefined,
+  'NOTION_TOKEN or legacy NOTION_API_KEY is required when --write is passed.',
+);
 if (!activityLogDatabaseId)
   fail('Activity Log database ID is required. Run activity:notion-create-log first.');
 

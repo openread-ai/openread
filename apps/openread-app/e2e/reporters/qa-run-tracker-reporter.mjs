@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { basename } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { getNotionToken } from '../../scripts/notion-env.mjs';
 import {
   appendQaRunTrackerEntry,
   classifyScenario,
@@ -9,7 +10,7 @@ import {
 
 class QaRunTrackerReporter {
   constructor() {
-    this.notionToken = process.env.NOTION_TOKEN ?? process.env.NOTION_API_KEY;
+    this.notionToken = getNotionToken();
     this.pageId = process.env.OPENREAD_QA_TRACKER_PAGE_ID;
     this.platformSection = process.env.OPENREAD_QA_TRACKER_SECTION_PATH ?? 'Chromium';
     this.enabled =

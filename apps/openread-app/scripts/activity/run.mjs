@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
+import { getNotionToken } from '../notion-env.mjs';
 import {
   ensureDir,
   formatActivityTimestamp,
@@ -104,7 +105,7 @@ function latestAttemptReport(relativePath) {
 }
 
 async function loadNotionState() {
-  const notionToken = process.env.NOTION_TOKEN ?? process.env.NOTION_API_KEY;
+  const notionToken = getNotionToken();
   const notionConfig =
     readJsonIfExists(resolve(config.artifactRoot, 'notion-activity-log.json')) ??
     readJsonIfExists(

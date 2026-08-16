@@ -40,6 +40,100 @@ vi.mock('@/utils/logger', () => ({
   })),
 }));
 
+describe('stripe server credential selection', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('selects the non-production key for preview even when NODE_ENV is production', async () => {
+    const { resolveStripeSecretKey } = await import('@/libs/payment/stripe/server');
+
+    expect(
+      resolveStripeSecretKey({
+        VERCEL_ENV: 'preview',
+        NODE_ENV: 'production',
+        STRIPE_SECRET_KEY: 'sk_live_production',
+        STRIPE_SECRET_KEY_DEV: 'sk_test_preview',
+      }),
+    ).toBe('sk_test_preview');
+    expect(MockStripe).not.toHaveBeenCalled();
+  });
+
+  it('selects the production key only for a production Vercel deployment', async () => {
+    const { resolveStripeSecretKey } = await import('@/libs/payment/stripe/server');
+
+    expect(
+      resolveStripeSecretKey({
+        VERCEL_ENV: 'production',
+        NODE_ENV: 'development',
+        STRIPE_SECRET_KEY: 'sk_live_production',
+        STRIPE_SECRET_KEY_DEV: 'sk_test_local',
+      }),
+    ).toBe('sk_live_production');
+    expect(MockStripe).not.toHaveBeenCalled();
+  });
+
+  it('selects the non-production key for actual local development without VERCEL_ENV', async () => {
+    const { resolveStripeSecretKey } = await import('@/libs/payment/stripe/server');
+
+    expect(
+      resolveStripeSecretKey({
+        NODE_ENV: 'development',
+        STRIPE_SECRET_KEY: 'sk_live_production',
+        STRIPE_SECRET_KEY_DEV: 'sk_test_local',
+      }),
+    ).toBe('sk_test_local');
+    expect(MockStripe).not.toHaveBeenCalled();
+  });
+
+  it('constructs local Stripe routes with the non-production key when VERCEL_ENV is absent', async () => {
+    const previousVercelEnvironment = process.env['VERCEL_ENV'];
+
+    delete process.env['VERCEL_ENV'];
+    vi.stubEnv('NODE_ENV', 'development');
+    vi.stubEnv('STRIPE_SECRET_KEY', 'sk_live_production');
+    vi.stubEnv('STRIPE_SECRET_KEY_DEV', 'sk_test_local');
+
+    try {
+      const { createStripeClient } = await import('@/libs/payment/stripe/server');
+      createStripeClient();
+
+      expect(MockStripe).toHaveBeenCalledWith('sk_test_local', {
+        httpClient: expect.anything(),
+      });
+    } finally {
+      vi.unstubAllEnvs();
+      if (previousVercelEnvironment === undefined) delete process.env['VERCEL_ENV'];
+      else process.env['VERCEL_ENV'] = previousVercelEnvironment;
+    }
+  });
+
+  it('throws when a production build has no deployment signal', async () => {
+    const { resolveStripeSecretKey } = await import('@/libs/payment/stripe/server');
+
+    expect(() =>
+      resolveStripeSecretKey({
+        NODE_ENV: 'production',
+        STRIPE_SECRET_KEY: 'sk_live_production',
+        STRIPE_SECRET_KEY_DEV: 'sk_test_preview',
+      }),
+    ).toThrow(/VERCEL_ENV/);
+    expect(MockStripe).not.toHaveBeenCalled();
+  });
+
+  it('throws for a missing selected key before constructing the Stripe client', async () => {
+    const { createStripeClient } = await import('@/libs/payment/stripe/server');
+
+    expect(() =>
+      createStripeClient({
+        VERCEL_ENV: 'preview',
+        STRIPE_SECRET_KEY: 'sk_live_production',
+      }),
+    ).toThrow(/STRIPE_SECRET_KEY_DEV/);
+    expect(MockStripe).not.toHaveBeenCalled();
+  });
+});
+
 function tableMock(table: string) {
   if (table === 'subscriptions') {
     return {
@@ -86,6 +180,7 @@ function tableMock(table: string) {
 describe('stripe server billing persistence', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env['VERCEL_ENV'] = 'development';
     process.env['STRIPE_SECRET_KEY_DEV'] = 'sk_test_local';
     mockSupabaseFrom.mockImplementation(tableMock);
   });

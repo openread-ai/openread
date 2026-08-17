@@ -1,5 +1,9 @@
 #!/bin/bash
-set -e
+set -euo pipefail
+
+: "${APPLE_API_KEY:?APPLE_API_KEY is required}"
+: "${APPLE_API_ISSUER:?APPLE_API_ISSUER is required}"
+: "${APPLE_INSTALLER_SIGNING_IDENTITY:?APPLE_INSTALLER_SIGNING_IDENTITY is required}"
 
 echo "Updating bundleVersion in tauri.appstore.conf.json..."
 
@@ -12,7 +16,8 @@ if [ ! -f "$CONFIG_FILE" ]; then
 fi
 
 TMP_FILE=$(mktemp)
-cat "$CONFIG_FILE" | jq --arg version "$CURRENT_DATE" '.bundle.macOS.bundleVersion = $version' > "$TMP_FILE"
+trap 'rm -f "$TMP_FILE"' EXIT
+jq --arg version "$CURRENT_DATE" '.bundle.macOS.bundleVersion = $version' "$CONFIG_FILE" > "$TMP_FILE"
 mv "$TMP_FILE" "$CONFIG_FILE"
 echo "Updated bundleVersion to $CURRENT_DATE"
 
@@ -20,8 +25,17 @@ echo "Building macOS universal app for App Store..."
 pnpm run build-macos-universial-appstore
 
 BUNDLE_DIR=../../target/universal-apple-darwin/release/bundle/macos
-APP_BUNDLE=$BUNDLE_DIR/Openread.app
-INSTALLER_BUNDLE=$BUNDLE_DIR/Openread.pkg
+APP_BUNDLE="$BUNDLE_DIR/Openread.app"
+INSTALLER_BUNDLE="$BUNDLE_DIR/Openread.pkg"
 
-xcrun productbuild --sign "$APPLE_INSTALLER_SIGNING_IDENTITY" --component $APP_BUNDLE /Applications $INSTALLER_BUNDLE
-xcrun altool --upload-app --type macos --file $INSTALLER_BUNDLE --apiKey $APPLE_API_KEY --apiIssuer $APPLE_API_ISSUER
+xcrun productbuild \
+  --sign "$APPLE_INSTALLER_SIGNING_IDENTITY" \
+  --component "$APP_BUNDLE" \
+  /Applications \
+  "$INSTALLER_BUNDLE"
+xcrun altool \
+  --upload-app \
+  --type macos \
+  --file "$INSTALLER_BUNDLE" \
+  --apiKey "$APPLE_API_KEY" \
+  --apiIssuer "$APPLE_API_ISSUER"

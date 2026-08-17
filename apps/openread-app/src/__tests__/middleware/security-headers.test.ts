@@ -169,9 +169,8 @@ describe('Security Headers - Next.js Config', () => {
       'fonts.gstatic.com',
       'cdnjs.cloudflare.com',
       'cdn.jsdelivr.net',
-      'cdn.openread.com',
-      'storage.openread.com',
       '*.r2.cloudflarestorage.com',
+      'releases.openread.ai',
       'speech.platform.bing.com',
       '*.googleapis.com',
     ];
@@ -179,6 +178,8 @@ describe('Security Headers - Next.js Config', () => {
     for (const domain of requiredDomains) {
       expect(configContent).toContain(domain);
     }
+
+    expect(configContent).not.toContain('*.githubusercontent.com');
   });
 
   it('should include required CSP special sources in config', () => {

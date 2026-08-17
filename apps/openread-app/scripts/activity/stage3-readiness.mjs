@@ -159,7 +159,7 @@ if (capturePlan?.target?.screen === 'reader' && capturePlan?.fixtures?.auth === 
   checks.push({
     label: 'R2 bucket is configured for authenticated reader capture',
     severity: 'error',
-    ok: Boolean(process.env.R2_BUCKET || process.env.R2_BUCKET_NAME),
+    ok: Boolean(process.env.R2_BUCKET),
   });
 }
 

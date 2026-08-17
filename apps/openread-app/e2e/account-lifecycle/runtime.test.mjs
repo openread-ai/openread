@@ -14,7 +14,7 @@ const completeEnvironment = () => ({
   R2_ACCOUNT_ID: 'r2-account',
   R2_ACCESS_KEY_ID: 'r2-access',
   R2_SECRET_ACCESS_KEY: 'r2-secret',
-  R2_BUCKET_NAME: 'r2-bucket',
+  R2_BUCKET: 'r2-bucket',
 });
 
 describe('R2 user-prefix inventory', () => {
@@ -268,14 +268,6 @@ describe('account lifecycle environment boundary', () => {
   });
 
   it('accepts the canonical R2 bucket name', () => {
-    const env = completeEnvironment();
-    delete env.R2_BUCKET_NAME;
-    const config = readAccountLifecycleEnvironment({ ...env, R2_BUCKET: 'canonical-bucket' });
-
-    assert.equal(config.r2Bucket, 'canonical-bucket');
-  });
-
-  it('prefers the canonical R2 bucket name when both names are set', () => {
     const config = readAccountLifecycleEnvironment({
       ...completeEnvironment(),
       R2_BUCKET: 'canonical-bucket',
@@ -284,13 +276,13 @@ describe('account lifecycle environment boundary', () => {
     assert.equal(config.r2Bucket, 'canonical-bucket');
   });
 
-  it('fails closed when neither R2 bucket name is set', () => {
+  it('fails closed when the canonical R2 bucket name is missing', () => {
     const env = completeEnvironment();
-    delete env.R2_BUCKET_NAME;
+    delete env.R2_BUCKET;
 
     assert.throws(
       () => readAccountLifecycleEnvironment(env),
-      /Missing required account lifecycle environment: R2_BUCKET or R2_BUCKET_NAME/,
+      /Missing required account lifecycle environment: R2_BUCKET/,
     );
   });
 

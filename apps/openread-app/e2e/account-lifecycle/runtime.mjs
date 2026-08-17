@@ -54,7 +54,7 @@ export function readAccountLifecycleEnvironment(env = process.env) {
     r2AccountId: requiredEnv(env, 'R2_ACCOUNT_ID'),
     r2AccessKeyId: requiredEnv(env, 'R2_ACCESS_KEY_ID'),
     r2SecretAccessKey: requiredEnv(env, 'R2_SECRET_ACCESS_KEY'),
-    r2Bucket: requiredEnv(env, 'R2_BUCKET', 'R2_BUCKET_NAME'),
+    r2Bucket: requiredEnv(env, 'R2_BUCKET'),
     productApiBaseUrl:
       env.OPENREAD_E2E_PRODUCT_API_BASE_URL?.replace(/\/+$/, '') ?? DEFAULT_PRODUCT_API_BASE_URL,
     webBaseUrl: env.OPENREAD_E2E_WEB_BASE_URL?.replace(/\/+$/, '') ?? DEFAULT_WEB_BASE_URL,

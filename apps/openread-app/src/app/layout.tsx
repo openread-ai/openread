@@ -13,7 +13,7 @@ const description =
   'Enjoy seamless access to your digital library, powerful tools for highlighting, bookmarking, ' +
   'and note-taking, and support for multiple book views. ' +
   'Perfect for deep reading, analysis, and understanding. Explore now!';
-const previewImage = 'https://cdn.openread.com/images/open_graph_preview_read_now.png';
+const previewImage = '/icon.png';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://app.openread.ai'),

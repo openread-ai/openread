@@ -649,18 +649,16 @@ export const CJK_FONTS_PATTENS = new RegExp(
 
 export const BOOK_IDS_SEPARATOR = '+';
 
-export const DOWNLOAD_OPENREAD_URL = 'https://openread.com?utm_source=openread_web';
+export const DOWNLOAD_OPENREAD_URL = 'https://openread.ai?utm_source=openread_web';
 
 export const OPENREAD_WEB_BASE_URL = 'https://app.openread.ai';
 export const OPENREAD_NODE_BASE_URL = 'https://api.openread.ai';
 
-const LATEST_DOWNLOAD_BASE_URL = 'https://download.openread.com/releases';
+const LATEST_DOWNLOAD_BASE_URL = 'https://releases.openread.ai';
 
 export const OPENREAD_UPDATER_FILE = `${LATEST_DOWNLOAD_BASE_URL}/latest.json`;
 
 export const OPENREAD_CHANGELOG_FILE = `${LATEST_DOWNLOAD_BASE_URL}/release-notes.json`;
-
-export const OPENREAD_PUBLIC_STORAGE_BASE_URL = 'https://storage.openread.com';
 
 export const CATALOG_API_BASE_URL =
   process.env['NEXT_PUBLIC_CATALOG_API_URL'] ||

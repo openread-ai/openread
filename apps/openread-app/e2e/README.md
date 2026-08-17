@@ -174,7 +174,7 @@ Check prerequisites with key names only:
 pnpm --filter @openread/openread-app exec dotenv \
   -e /Users/trp/.openread-dev/env/openread-app.env.local -- \
   env node ../../scripts/ops/diagnose-privileged-env.mjs \
-  CATALOG_SESSION_POOLER_DATABASE_URL
+  SUPABASE_DB_URL
 ```
 
 The diagnostic prints only `<KEY>: present` or `<KEY>: absent` and exits nonzero when a requested

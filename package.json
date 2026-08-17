@@ -27,7 +27,7 @@
     "dist:untracked:check": "node scripts/ops/check-untracked-package-dist.mjs",
     "dist:untracked:test": "node --test scripts/ops/check-untracked-package-dist.test.mjs",
     "environment:manifest:check": "node scripts/ops/check-environment-manifest.mjs",
-    "environment:manifest:test": "node --test scripts/ops/notion-env.test.mjs scripts/ops/check-environment-manifest.test.mjs scripts/ops/check-release-distribution.test.mjs scripts/ops/check-supabase-schema-snapshot-workflow.test.mjs scripts/db/run-local-supabase.test.mjs scripts/release/build-release-manifest.test.mjs scripts/env/run-with-env.test.mjs",
+    "environment:manifest:test": "node --test scripts/ops/notion-env.test.mjs scripts/ops/check-environment-manifest.test.mjs scripts/ops/check-key-encryption-compatibility.test.mjs scripts/ops/check-release-distribution.test.mjs scripts/ops/check-supabase-schema-snapshot-workflow.test.mjs scripts/db/run-local-supabase.test.mjs scripts/release/build-release-manifest.test.mjs scripts/env/run-with-env.test.mjs",
     "env:bootstrap": "node scripts/env/run-with-env.mjs bootstrap --target development/local",
     "env:check": "node scripts/env/run-with-env.mjs check --target development/local --service web",
     "env:test": "node --test scripts/env/run-with-env.test.mjs",

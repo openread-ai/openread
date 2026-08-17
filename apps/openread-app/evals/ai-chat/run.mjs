@@ -78,8 +78,6 @@ function requireEnv(name) {
 }
 
 async function resolveAccessToken() {
-  if (process.env.AI_EVAL_ACCESS_TOKEN) return process.env.AI_EVAL_ACCESS_TOKEN;
-
   const supabase = createClient(
     requireEnv('NEXT_PUBLIC_SUPABASE_URL'),
     requireEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY'),

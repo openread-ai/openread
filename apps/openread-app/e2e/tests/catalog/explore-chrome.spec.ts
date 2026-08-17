@@ -195,25 +195,6 @@ function libraryBookLinkByHash(page: Page, bookHash: string) {
   return page.locator(`a[href*="${rawHash}"], a[href*="${encodedHash}"]`).first();
 }
 
-async function installE2ERateLimitIsolation(page: Page, testInfo: TestInfo) {
-  if (process.env['OPENREAD_E2E_RATE_LIMIT_ISOLATION'] !== 'enabled') return;
-  const secret = process.env['OPENREAD_E2E_RATE_LIMIT_SECRET'];
-  if (!secret) return;
-
-  const runId =
-    process.env['OPENREAD_E2E_RATE_LIMIT_RUN_ID'] ??
-    `lane3-${testInfo.workerIndex}-${Date.now().toString(36)}`;
-
-  await page.route(/\/api\/catalog\/books\/[^/]+\/import(?:\?.*)?$/, (route) => {
-    const headers = {
-      ...route.request().headers(),
-      'x-openread-e2e-rate-limit-run-id': runId,
-      'x-openread-e2e-rate-limit-secret': secret,
-    };
-    return route.continue({ headers });
-  });
-}
-
 interface SyncDeletionTarget {
   entity: string;
   entityId: string;
@@ -887,7 +868,6 @@ test.describe('Chromium Explore catalog', () => {
       let finalImportedTitle = '';
       let primaryError: unknown = null;
       try {
-        await installE2ERateLimitIsolation(page, testInfo);
         skipIfTierConfigBlocked(await gotoExploreWithAddPrereqs(page), testInfo);
 
         const sheet = await openFirstCatalogBook(page);

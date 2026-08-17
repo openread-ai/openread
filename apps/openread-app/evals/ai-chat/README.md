@@ -15,7 +15,6 @@ Required env:
 
 - `TEST_USER_EMAIL` / `TEST_USER_PASSWORD`
 - `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- Optional `AI_EVAL_ACCESS_TOKEN` to skip Supabase password auth.
 
 ## Contract
 

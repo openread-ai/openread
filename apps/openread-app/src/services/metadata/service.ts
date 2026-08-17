@@ -5,7 +5,7 @@ import { createLogger } from '@/utils/logger';
 const logger = createLogger('metadataService');
 
 interface MetadataServiceConfig {
-  googleBooksApiKeys?: string;
+  googleBooksApiKey?: string;
   providers?: MetadataProvider[];
 }
 
@@ -15,8 +15,8 @@ export class MetadataService {
   constructor(config: MetadataServiceConfig = {}) {
     this.providers.push(new OpenLibraryProvider());
 
-    if (config.googleBooksApiKeys) {
-      this.providers.push(new GoogleBooksProvider(config.googleBooksApiKeys));
+    if (config.googleBooksApiKey) {
+      this.providers.push(new GoogleBooksProvider(config.googleBooksApiKey));
     }
 
     if (config.providers) {
@@ -31,8 +31,8 @@ export class MetadataService {
       try {
         const results = await provider.search(request);
         return results || [];
-      } catch (error) {
-        logger.warn(`Provider ${provider.name} failed:`, error);
+      } catch {
+        logger.warn(`Provider ${provider.name} failed`);
         return [];
       }
     });

@@ -37,24 +37,25 @@ export class GoogleBooksProvider extends BaseMetadataProvider {
   name = 'googlebooks';
   label = _('Google Books');
   private baseUrl = 'https://www.googleapis.com/books/v1';
-  private apiKeys: string[];
+  private apiKey: string;
 
-  constructor(apiKeys: string) {
+  constructor(apiKey: string) {
     super();
 
-    if (!apiKeys) {
-      throw new Error('Google Books API keys are required');
+    if (
+      apiKey !== apiKey.trim() ||
+      apiKey.length < 20 ||
+      apiKey.length > 256 ||
+      /[\s,]/.test(apiKey)
+    ) {
+      throw new Error('Invalid Google Books API key configuration');
     }
 
-    this.apiKeys = apiKeys.split(',').map((key) => key.trim());
+    this.apiKey = apiKey;
   }
 
   protected override getProviderConfidenceBonus(): number {
     return 10;
-  }
-
-  private get apiKey(): string {
-    return this.apiKeys[Math.floor(Math.random() * this.apiKeys.length)]!;
   }
 
   protected async searchByISBN(isbn: string): Promise<Metadata[]> {
@@ -63,9 +64,9 @@ export class GoogleBooksProvider extends BaseMetadataProvider {
     }
 
     try {
-      const response = await fetchWithTimeout(
-        `${this.baseUrl}/volumes?q=isbn:${isbn}&key=${this.apiKey}`,
-      );
+      const response = await fetchWithTimeout(`${this.baseUrl}/volumes?q=isbn:${isbn}`, {
+        headers: { 'x-goog-api-key': this.apiKey },
+      });
 
       if (!response.ok) {
         if (response.status === 429) {
@@ -87,7 +88,7 @@ export class GoogleBooksProvider extends BaseMetadataProvider {
         .slice(0, this.maxResults)
         .map((item: GoogleBooksItem) => this.formatBookData(item.volumeInfo));
     } catch (error) {
-      logger.error('Google Books ISBN search failed:', error);
+      logger.error('Google Books ISBN search failed');
       throw error;
     }
   }
@@ -111,7 +112,8 @@ export class GoogleBooksProvider extends BaseMetadataProvider {
       }
 
       const response = await fetchWithTimeout(
-        `${this.baseUrl}/volumes?q=${encodeURIComponent(query)}&key=${this.apiKey}`,
+        `${this.baseUrl}/volumes?q=${encodeURIComponent(query)}`,
+        { headers: { 'x-goog-api-key': this.apiKey } },
       );
 
       if (!response.ok) {
@@ -134,7 +136,7 @@ export class GoogleBooksProvider extends BaseMetadataProvider {
         .slice(0, this.maxResults)
         .map((item: GoogleBooksItem) => this.formatBookData(item.volumeInfo));
     } catch (error) {
-      logger.error('Google Books title search failed:', error);
+      logger.error('Google Books title search failed');
       throw error;
     }
   }

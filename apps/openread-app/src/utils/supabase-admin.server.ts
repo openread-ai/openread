@@ -8,10 +8,10 @@ const NON_PERSISTENT_AUTH = {
 } as const;
 
 export const createSupabaseAdminClient = () => {
-  const supabaseAdminKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ADMIN_KEY;
+  const supabaseAdminKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!supabaseAdminKey) {
     throw new Error(
-      'SUPABASE_SERVICE_ROLE_KEY or legacy SUPABASE_ADMIN_KEY is not set. This function can only be called on the server.',
+      'SUPABASE_SERVICE_ROLE_KEY is not set. This function can only be called on the server.',
     );
   }
   return createClient(supabaseUrl, supabaseAdminKey, {

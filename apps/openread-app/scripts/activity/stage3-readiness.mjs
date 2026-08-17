@@ -147,7 +147,7 @@ if (capturePlan?.target?.screen === 'reader' && capturePlan?.fixtures?.auth === 
   checks.push({
     label: 'SUPABASE_SERVICE_ROLE_KEY is available for authenticated reader capture',
     severity: 'error',
-    ok: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ADMIN_KEY),
+    ok: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
   });
   for (const envName of ['R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_ACCOUNT_ID']) {
     checks.push({

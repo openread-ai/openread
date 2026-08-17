@@ -132,7 +132,7 @@ if (!activityLogDatabaseId)
   fail('Activity Log database ID is required. Run activity:notion-create-log first.');
 const notionToken = resolveNotionToken(
   undefined,
-  'NOTION_TOKEN or legacy NOTION_API_KEY is required to read Activity Log context.',
+  'NOTION_TOKEN is required to read Activity Log context.',
 );
 
 const activityPage = await findActivityPage({

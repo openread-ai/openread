@@ -122,7 +122,7 @@ if (dryRun) {
 
 const notionToken = resolveNotionToken(
   undefined,
-  'NOTION_TOKEN or legacy NOTION_API_KEY is required when --write is passed.',
+  'NOTION_TOKEN is required when --write is passed.',
 );
 if (!activityLogDatabaseId)
   fail('Activity Log database ID is required. Run activity:notion-create-log first.');

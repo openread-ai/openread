@@ -590,10 +590,7 @@ function activityLogDatabaseIdOrThrow(activityId) {
 }
 
 function notionTokenOrThrow() {
-  return resolveNotionToken(
-    undefined,
-    'NOTION_TOKEN or legacy NOTION_API_KEY is required unless --local-only is set.',
-  );
+  return resolveNotionToken(undefined, 'NOTION_TOKEN is required unless --local-only is set.');
 }
 
 async function notionRequest({ notionToken, path, method, body, version = NOTION_API_VERSION }) {

@@ -18,7 +18,7 @@ const artifactRoot = resolve(
 );
 const notionToken = resolveNotionToken(
   undefined,
-  'NOTION_TOKEN or legacy NOTION_API_KEY is required to create the Activity Log database.',
+  'NOTION_TOKEN is required to create the Activity Log database.',
 );
 
 const response = await fetch('https://api.notion.com/v1/databases', {

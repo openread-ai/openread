@@ -40,8 +40,7 @@ if (!notionToken) {
     result: String(args.requireToken ?? 'false') === 'true' ? 'failed' : 'partial',
     mode: 'no-token',
     files: files.map(fileSummary),
-    nextAction:
-      'Set NOTION_TOKEN (or legacy NOTION_API_KEY during the alias window) to create and send Notion File Uploads.',
+    nextAction: 'Set NOTION_TOKEN to create and send Notion File Uploads.',
   });
   writeJson(resolve(artifactDir, 'notion-file-upload-report.json'), report);
   console.log(JSON.stringify(report, null, 2));

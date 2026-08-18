@@ -28,21 +28,8 @@ packages
 apps/openread-app/public/*.js
 apps/openread-app/public/vendor
 
-# Enterprise Planning Docs (external)
-docs/planning/enterprise
-
 # Verbatim evidence records (path-exact)
-docs/reviews/evidence/2026-08-15/launch-readiness-2026-08-13.md
-docs/reviews/evidence/2026-08-15/diagnostic-leakage-and-key-resolution.md
-docs/reviews/evidence/2026-08-15/foliate-submodule-pin-reachability.md
-docs/reviews/evidence/2026-08-15/pr-593-account-deletion-contract.md
-docs/reviews/evidence/2026-08-15/reader-settings-l11-packets.md
-docs/reviews/coordination-failure-modes-2026-08-15.md
-docs/reviews/FINDING-stalled-workers-unbindable.md
 docs/ops/PACKET-stage2-guarded-write-enforcement.md
-docs/reviews/FINDING-562-ordering-and-advisory-lock.md
-docs/reviews/cv2-skill-inventory.md
-docs/reviews/FINDING-604-config-key-reference-inventory.md
 
 # Environment & Editor
 .env

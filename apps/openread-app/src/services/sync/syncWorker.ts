@@ -805,7 +805,7 @@ export class SyncWorker {
       await this.reconcileCatalogContent(reconcileUserId);
 
       // Download covers AFTER all store mutations are complete.
-      // Must be sequential — see docs/epics/sync-fixes/005_cover_sync_race_condition.md
+      // Must be sequential — see https://github.com/openread-ai/openread-docs/blob/47b77940a7e41a13f98f5398856af0407812caaf/epics/sync-fixes/005_cover_sync_race_condition.md
       await this.downloadMissingCovers();
       this.updateStatus({ syncing: false, error: null, lastSyncAt: Date.now() });
     } catch (error) {

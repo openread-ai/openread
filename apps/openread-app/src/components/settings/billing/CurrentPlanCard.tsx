@@ -43,6 +43,7 @@ const statusStyles: Record<Subscription['status'], string> = {
   trialing: 'bg-info/10 text-info',
   canceled: 'bg-warning/10 text-warning',
   past_due: 'bg-error/10 text-error',
+  in_grace_period: 'bg-warning/10 text-warning',
 };
 
 export function CurrentPlanCard({
@@ -128,7 +129,11 @@ export function CurrentPlanCard({
                 statusStyles[subscription.status],
               )}
             >
-              {subscription.status === 'trialing' ? _('Trial') : _(subscription.status)}
+              {subscription.status === 'trialing'
+                ? _('Trial')
+                : subscription.status === 'in_grace_period'
+                  ? _('Grace period')
+                  : _(subscription.status)}
             </span>
           </div>
         </CardHeader>

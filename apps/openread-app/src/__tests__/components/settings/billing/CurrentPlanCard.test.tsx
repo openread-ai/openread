@@ -173,4 +173,15 @@ describe('CurrentPlanCard', () => {
 
     expect(screen.getByTestId('cancel-dialog').getAttribute('data-plan-id')).toBe('reader');
   });
+
+  // #570 regression: a provider grace-period subscription remains a paid plan
+  // and renders safely with its provider and a readable status label.
+  it('renders an IAP grace-period subscription as a paid plan', () => {
+    const sub = makeSubscription({ status: 'in_grace_period', source: 'apple' });
+    render(<CurrentPlanCard subscription={sub} onManagePlan={mockOnManage} />);
+
+    expect(screen.getByText('Reader')).toBeTruthy();
+    expect(screen.getByText('Grace period')).toBeTruthy();
+    expect(screen.queryByText('in_grace_period')).toBeNull();
+  });
 });

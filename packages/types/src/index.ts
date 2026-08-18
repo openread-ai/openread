@@ -84,9 +84,17 @@ export type {
 export {
   ACTIVE_IAP_STATUSES,
   ACTIVE_STRIPE_STATUSES,
+  FUTURE_BILLING_IAP_STATUSES,
+  REVOCABLE_IAP_STATUSES,
+  isActiveIAPStatus,
   isActiveStripeStatus,
+  isRevocableIAPStatus,
 } from './subscription-statuses.js';
-export type { ActiveIAPStatus, ActiveStripeStatus } from './subscription-statuses.js';
+export type {
+  ActiveIAPStatus,
+  ActiveStripeStatus,
+  RevocableIAPStatus,
+} from './subscription-statuses.js';
 
 // API request/response types
 export type {

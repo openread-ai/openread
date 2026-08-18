@@ -68,6 +68,9 @@ result*
 .claude/worktrees/
 .claude/*.local.md
 
+# Skills are machine-level, never repo-tracked
+.claude/skills/
+
 # Session telemetry (per-machine)
 docs/analytics/
 apps/api/docs/analytics/

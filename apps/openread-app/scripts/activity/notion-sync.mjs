@@ -715,7 +715,7 @@ async function ensureQaCoverageNode({ notionToken, parentId, node }) {
 function manualQaCoverageTemplateBlocks() {
   return [
     paragraph(
-      'Manual QA baseline: docs/testing/manual-qa-checklist.md. Map every scoped scenario to Chromium automated, manual-only, native-lane later, deferred tier/config, or not-applicable before validation starts.',
+      'Manual QA baseline: https://github.com/openread-ai/openread-docs/blob/main/testing/manual-qa-checklist.md. Map every scoped scenario to Chromium automated, manual-only, native-lane later, deferred tier/config, or not-applicable before validation starts.',
     ),
     bulleted(
       'Chromium-first lanes: library, reader, settings, and Explore/catalog should stabilize selectors and non-destructive flows before expanding to WebKit, Edge, mobile web, Tauri, or native.',

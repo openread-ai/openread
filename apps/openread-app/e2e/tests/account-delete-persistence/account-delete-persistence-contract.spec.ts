@@ -307,7 +307,8 @@ test.describe('Account/book-delete/persistence contract red baseline', () => {
       {
         target: QA_TARGET,
         canonicalRunner: 'apps/openread-app/e2e/qa/cli.mjs',
-        canonicalContractSource: 'docs/testing/everything-current-state-and-qa-baseline.md',
+        canonicalContractSource:
+          'apps/openread-app/e2e/qa/registry/everything-current-state-and-qa-baseline.md',
         targetGated: true,
         defaultCiGreen: true,
         setupResetRequired: [

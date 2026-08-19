@@ -4,7 +4,7 @@ import { REPO_ROOT } from './common.mjs';
 
 export const QA_CONTRACT_PATH = resolve(
   REPO_ROOT,
-  'docs/testing/everything-current-state-and-qa-baseline.md',
+  'apps/openread-app/e2e/qa/registry/everything-current-state-and-qa-baseline.md',
 );
 
 export const DEFAULT_CONTRACT_PLATFORM_ALIASES = Object.freeze({

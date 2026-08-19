@@ -12,7 +12,7 @@
       "runLevel": "feature",
       "specs": ["e2e/tests/account-delete-persistence"],
       "description": "Live, non-mocked account A/B isolation and book-delete propagation/persistence baseline. Green evidence requires QA A/B accounts, disposable book fixtures, SQL verification, and R2/storage audit.",
-      "defaultExpectedOutcome": "Account/book-delete/persistence behavior should match ACCT/DEL/PAR contracts in docs/testing/everything-current-state-and-qa-baseline.md.",
+      "defaultExpectedOutcome": "Account/book-delete/persistence behavior should match ACCT/DEL/PAR contracts in the canonical QA registry contract.",
       "expectedOutcomes": {
         "ACCT-001/ACCT-002/ACCT-003 captures env-blocked A/B account isolation baseline slot": {
           "scenarioId": "ACCT-001/ACCT-002/ACCT-003",

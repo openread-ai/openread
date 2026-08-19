@@ -155,12 +155,12 @@ The disposable-account lifecycle proofs are intentionally separate from PR and r
 ### Transcript-safe local environment loading
 
 Local production lifecycle runs use the privileged dotenv file at
-`/Users/trp/.openread-dev/env/openread-app.env.local`. From the repository root, select the app
-package explicitly so `pnpm exec` cannot resolve an unrelated global `dotenv` binary:
+`$HOME/.openread-dev/env/openread-app.env.local`. From the repository root, select the app package
+explicitly so `pnpm exec` cannot resolve an unrelated global `dotenv` binary:
 
 ```sh
 pnpm --filter @openread/openread-app exec dotenv \
-  -e /Users/trp/.openread-dev/env/openread-app.env.local -- \
+  -e "$HOME/.openread-dev/env/openread-app.env.local" -- \
   env OPENREAD_E2E_<LIFECYCLE>_LIVE=1 pnpm <lifecycle-command>
 ```
 
@@ -172,7 +172,7 @@ Check prerequisites with key names only:
 
 ```sh
 pnpm --filter @openread/openread-app exec dotenv \
-  -e /Users/trp/.openread-dev/env/openread-app.env.local -- \
+  -e "$HOME/.openread-dev/env/openread-app.env.local" -- \
   env node ../../scripts/ops/diagnose-privileged-env.mjs \
   SUPABASE_DB_URL
 ```

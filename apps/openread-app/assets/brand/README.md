@@ -2,11 +2,7 @@
 
 `openread-icon-manifest.json` is the canonical app-icon generation manifest. It references the flat app icon source plus Android foreground/monochrome sources used to generate OpenRead launcher, PWA, package, and store icon derivatives.
 
-Source selected from the local brandpack:
-
-```text
-/Users/trp/Downloads/OpenRead Brandpack/Logo pack/Icon with BG/TRANSPARENT PNG/Icon with BG_Black on white PNG.png
-```
+The checked-in source artwork and manifest are canonical; no external machine path is required.
 
 Derivative assets are checked in because platform build systems consume fixed file names and sizes.
 Regenerate Tauri/native derivatives from the app package with:

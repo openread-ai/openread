@@ -817,13 +817,13 @@ Current CI/CD workflow inventory
 - Distribution effect: publishes hosted web app at `app.openread.ai`.
 - Watch items: deployment is not represented as a GitHub Actions workflow here; production status, preview links, rollback evidence, and failed-deploy evidence must be captured from Vercel.
 
-#### Fly.io API deploy
+#### Fly.io Catalog Service and API deploy
 
-- Workflow: `.github/workflows/deploy-api.yml`
+- Workflow: `.github/workflows/deploy-services.yml`
 - Trigger: separately authorized manual dispatch only; no push-triggered production deploy.
-- Purpose: validates one exact current-`main` SHA and primary-schema state, deploys only `openread-api`, proves the public edge serves the target revision with database and private Catalog connectivity, and restores the incumbent immutable image plus semantic Machine configuration if deployment or validation fails.
-- Distribution effect: updates the public API consumer. The private producer is independently deployed from `openread-ai/openread-catalog`; Platform cannot mutate it.
-- Watch items: the canonical pre-live gate is manual `workflow_dispatch` from `main`, one exact current-`main` SHA, and the explicit deployment confirmation before Fly access. Only the deploy job uses `environment: production`, strictly for the canonical app-scoped `FLY_API_TOKEN`. The workflow rejects indeterminate Catalog-access probes, requires classified authorization denial, pins external actions and flyctl, snapshots both incumbent Machines with immutable digests, and validates complete rollback semantics plus public revision/readiness. A runner or provider failure that prevents rollback proof blocks retry until read-only incident evidence and new authorization are recorded. Vercel's independent `main` auto-deploy remains a distinct authorization-control gap.
+- Purpose: validates one exact current-`main` SHA, builds and pins Catalog Service plus API images from that commit, deploys Catalog first and API second, and reverses that order for rollback.
+- Distribution effect: updates the private Catalog producer and public API consumer as one version-compatible service pair.
+- Watch items: the canonical pre-live gate is manual `workflow_dispatch` from `main`, one exact current-`main` SHA, and the explicit deployment confirmation before GHCR or Fly access. The build job revalidates `main` before GHCR; only the deploy job uses `environment: production`, strictly for Fly secret scoping and audit metadata rather than environment approval. External actions and flyctl are immutable-version pinned; raw proxy bytes are reduced to aggregate safe categories with adversarial leakage tests; stage/digest records support interruption forensics, but runner loss can bypass rollback and prohibits retry until read-only incident proof plus new authorization. Private service smokes do not replace separately authorized public-edge proof. Vercel's independent `main` auto-deploy remains a distinct authorization-control gap.
 
 #### Openread release workflow
 

@@ -1,6 +1,6 @@
 /**
  * Converter between EPUB CFI and CREngine XPointer
- * Converts between Openread (foliate-js) CFI format and KOReader CREngine XPointer format
+ * Converts between Openread (foliate-js) CFI format and CREngine XPointer format
  */
 
 import { BookDoc } from '@/libs/document';
@@ -542,8 +542,8 @@ export const getXPointerFromCFI = async (
   return xpointer;
 };
 
-// Koreader sometimes cannot recognize totally valid XPointer.
-// Workaround this by cleaning up any trailing /text().N segments.
+// Normalize valid XPointer variants for consumers with stricter parsers.
+// Clean up any trailing /text().N segments.
 // Also remove any trailing .N suffixes after node steps.
 // This has neglectable effect on position accuracy as the XPointer still point to the correct element
 // while offset within the text node is usually ignored by pagination.

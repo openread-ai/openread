@@ -628,8 +628,7 @@ Current distribution structure
 │  └─ Storage/CDN/download assets
 └─ Integration/package surfaces
    ├─ MCP server
-   ├─ TypeScript SDK
-   └─ KOReader plugin source (deprecated; not distributed in current releases)
+   └─ TypeScript SDK
 ```
 
 #### Web desktop
@@ -723,13 +722,6 @@ Current distribution structure
 - Release/update model: npm package release.
 - Watch items: current publish status, version policy, and API compatibility guarantees need audit.
 
-#### KOReader plugin
-
-- User access: deprecated; no current release-distributed plugin install path.
-- Repo/build structure: legacy source remains under `apps/openread.koplugin` with Lua plugin files.
-- Release/update model: excluded from `.github/workflows/release.yml`; no KOReader plugin zip is generated, attached, checksummed, or mirrored to R2 for current releases.
-- Watch items: if KOReader plugin distribution is revived, restore an explicit release asset job, add it to checksum/R2 gates, and document packaging, install instructions, compatibility matrix, and ownership before shipping.
-
 <a id="cicd-and-release-process"></a>
 
 ### CI/CD and release process
@@ -752,7 +744,6 @@ CI/CD and distribution flow
 │  ├─ GitHub release published or manual release workflow dispatch
 │  ├─ Native matrix builds Android, Linux, macOS, Windows artifacts
 │  ├─ latest.json, release-notes.json, signatures, and checksums are attached
-│  └─ KOReader plugin zip is deprecated and intentionally not produced
 ├─ 4. Store release paths
 │  ├─ macOS App Store upload uses app-store-specific script/config
 │  ├─ iOS App Store upload uses Tauri iOS App Store export + altool
@@ -817,13 +808,13 @@ Current CI/CD workflow inventory
 - Distribution effect: publishes hosted web app at `app.openread.ai`.
 - Watch items: deployment is not represented as a GitHub Actions workflow here; production status, preview links, rollback evidence, and failed-deploy evidence must be captured from Vercel.
 
-#### Fly.io Catalog Service and API deploy
+#### Fly.io API deploy
 
-- Workflow: `.github/workflows/deploy-services.yml`
+- Workflow: `.github/workflows/deploy-api.yml`
 - Trigger: separately authorized manual dispatch only; no push-triggered production deploy.
-- Purpose: validates one exact current-`main` SHA, builds and pins Catalog Service plus API images from that commit, deploys Catalog first and API second, and reverses that order for rollback.
-- Distribution effect: updates the private Catalog producer and public API consumer as one version-compatible service pair.
-- Watch items: the canonical pre-live gate is manual `workflow_dispatch` from `main`, one exact current-`main` SHA, and the explicit deployment confirmation before GHCR or Fly access. The build job revalidates `main` before GHCR; only the deploy job uses `environment: production`, strictly for Fly secret scoping and audit metadata rather than environment approval. External actions and flyctl are immutable-version pinned; raw proxy bytes are reduced to aggregate safe categories with adversarial leakage tests; stage/digest records support interruption forensics, but runner loss can bypass rollback and prohibits retry until read-only incident proof plus new authorization. Private service smokes do not replace separately authorized public-edge proof. Vercel's independent `main` auto-deploy remains a distinct authorization-control gap.
+- Purpose: validates one exact current-`main` SHA and primary-schema state, deploys only `openread-api`, proves the public edge serves the target revision with database and private Catalog connectivity, and restores the incumbent immutable image plus semantic Machine configuration if deployment or validation fails.
+- Distribution effect: updates the public API consumer. The private producer is independently deployed from `openread-ai/openread-catalog`; Platform cannot mutate it.
+- Watch items: the canonical pre-live gate is manual `workflow_dispatch` from `main`, one exact current-`main` SHA, and the explicit deployment confirmation before Fly access. Only the deploy job uses `environment: production`, strictly for the canonical app-scoped `FLY_API_TOKEN`. The workflow rejects indeterminate Catalog-access probes, requires classified authorization denial, pins external actions and flyctl, snapshots both incumbent Machines with immutable digests, and validates complete rollback semantics plus public revision/readiness. A runner or provider failure that prevents rollback proof blocks retry until read-only incident evidence and new authorization are recorded. Vercel's independent `main` auto-deploy remains a distinct authorization-control gap.
 
 #### Openread release workflow
 
@@ -831,7 +822,6 @@ Current CI/CD workflow inventory
 - Trigger: GitHub Release published, or manual dispatch.
 - Purpose: updates release notes, builds native artifacts, signs artifacts, updates `latest.json`, uploads release notes, generates checksums, and calls R2 upload.
 - Distribution effect: stages artifacts on a published release in the private `platform` repository, then publishes direct/native update assets through `releases.openread.ai`.
-- Deprecated/excluded assets: KOReader plugin zip distribution is deprecated; the release workflow intentionally does not build, attach, checksum, or mirror `*.koplugin.zip` assets.
 - Watch items: if a new release asset-producing job is added, include it in the `generate-checksums` dependency boundary before relying on native release automation.
 
 #### Publish MCP server
@@ -1233,9 +1223,8 @@ Reader current controls
 - [ ] Sidebar header controls: mobile Close, desktop Go to Library, Show/Hide Search Bar, Book Menu, Pin/Unpin Sidebar, resize slider/drag handles, and overlay dismiss.
 - [ ] Book card control: More Info opens Book Details.
 - [ ] Book Menu visible controls: Parallel Read submenu, Enter Parallel Read, Exit Parallel Read, Export Annotations, Sort TOC by Page, and Reload Page.
-- [ ] Book Menu disabled/commented controls are not visible: KOReader Sync, Push/Pull Progress, Show on Discord, Proofread, Download Openread, About Openread.
-- [ ] Mounted but unreachable/hidden reader dialogs remain tracked: KOReader Sync Settings, Proofread Replacement Rules, About Openread, and Updater window.
-- [ ] KOReader auto-conflict dialog controls: Sync Conflict, Local Progress, Remote Progress, close, and preview text for current/remote progress.
+- [ ] Book Menu disabled/commented controls are not visible: Show on Discord, Proofread, Download Openread, About Openread.
+- [ ] Mounted but unreachable/hidden reader dialogs remain tracked: Proofread Replacement Rules, About Openread, and Updater window.
 - [ ] Search bar controls: mobile Back/Close, input, Clear search, Search Options dropdown, history chips, and Clear search history.
 - [ ] Search options: Book, Chapter, Match Case, Match Whole Words, and Match Diacritics.
 - [ ] Search results controls: result row click/Enter/Space, progress bar while searching, Show Search Results, Previous Result, Next Result, and Close Search.
@@ -1419,8 +1408,8 @@ Reader platform lanes
 - [ ] Closing one book in multi-book grid leaves remaining books readable and updates sidebar target.
 - [ ] Closing the last book returns to Library on main window.
 - [ ] Closing the last book closes the separate Tauri reader window when appropriate.
-- [ ] Browser Back / Android Back / window close attempt to flush progress, notes, KOSync, TTS stop, and settings; beforeunload/window-close paths are best-effort and must be verified per platform.
-- [ ] Reader close on primary book dispatches sync progress and flushes KOSync before clearing state.
+- [ ] Browser Back / Android Back / window close attempt to flush progress, notes, stop TTS, and save settings; beforeunload/window-close paths are best-effort and must be verified per platform.
+- [ ] Reader close on primary book dispatches progress sync before clearing state.
 - [ ] Closing a desktop primary reader clears Discord presence when enabled/currently active.
 
 #### 2. Chrome visibility and input model
@@ -1602,16 +1591,7 @@ Applies to `native-ios` only.
 - [ ] Export Annotations opens export dialog or friendly empty-state toast.
 - [ ] Sort TOC by Page toggles checkmark and changes TOC order.
 - [ ] Reload Page reloads reader and restores current book state.
-- [ ] Disabled/commented menu items — KOReader Sync, Push Progress, Pull Progress, Show on Discord, Proofread, Download Openread, About Openread — are not visible unless intentionally re-enabled.
-
-##### KOReader sync surfaces
-
-- [ ] KOReader Sync Settings dialog is mounted but the Book Menu entry is currently disabled/commented; verify it is not user-visible unless intentionally re-enabled.
-- [ ] If invoked through future wiring/custom event, connection controls include Server URL, Username, Password, Connect, and connection error text.
-- [ ] Connected controls include Sync Server Connected toggle/disconnect, Sync Strategy, Checksum Method, and Device Name.
-- [ ] Sync Strategy options include Ask on conflict, Always use latest, Send changes only, Receive changes only.
-- [ ] Checksum Method options include File Content (recommended) and disabled File Name.
-- [ ] Sync Conflict resolver can appear automatically during reader sync and exposes close, Local Progress, Remote Progress, remote device name, and progress preview text.
+- [ ] Disabled/commented menu items — Show on Discord, Proofread, Download Openread, About Openread — are not visible unless intentionally re-enabled.
 
 ##### Search
 
@@ -2004,7 +1984,7 @@ These are not declared product bugs yet; they are high-value QA probes found whi
 - [ ] Multiple open instances of the same book should save progress/notes without duplicate-primary corruption.
 - [ ] Native iOS footer visible/active-tab messages should not force footer visible when active tab changes during hide.
 - [ ] Shortcut conflicts should not trigger multiple actions unexpectedly; current shortcut map includes duplicates for Shift+J, Ctrl/Cmd+F, Ctrl/Cmd+D, Ctrl/Cmd+W, Shift+ArrowLeft/Right, and Shift+ArrowUp/Down.
-- [ ] Mounted-but-hidden dialogs (KOReader Sync Settings, Proofread Replacement Rules, About, Updater) should either remain intentionally unreachable or gain visible entry points with QA coverage.
+- [ ] Mounted-but-hidden dialogs (Proofread Replacement Rules, About, Updater) should either remain intentionally unreachable or gain visible entry points with QA coverage.
 
 #### 17. Evidence and signoff per platform
 
@@ -7764,7 +7744,7 @@ Initial references:
 - [ ] Native bridges: `apps/openread-app/src-tauri/plugins/`
 - [ ] API: `apps/api/`
 - [ ] MCP package: `packages/mcp/`
-- [ ] Catalog pipeline: `packages/catalog/`
+- [ ] Catalog pipeline: private `openread-ai/openread-catalog` repository
 - [ ] Shared DB schema: `packages/db/`
 - [ ] E2E tests: `apps/openread-app/e2e/`
 - [ ] Manual QA docs: `https://github.com/openread-ai/openread-docs/tree/main/testing`

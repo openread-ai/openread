@@ -391,7 +391,7 @@ export interface BookConfig {
   metaHash?: MetaHash | null;
   progress?: [number, number]; // [current pagenum, total pagenum], 1-based page number
   location?: string; // CFI of the current location
-  xpointer?: string; // XPointer of the current location (for Koreader interoperability)
+  xpointer?: string; // XPointer of the current location
   booknotes?: BookNote[];
   searchConfig?: Partial<BookSearchConfig>;
   viewSettings?: Partial<ViewSettings>;

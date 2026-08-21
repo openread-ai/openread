@@ -21,7 +21,6 @@ describe('canonical settings registry', () => {
     expect(getSettingDefinition('globalReadSettings')?.scope).toBe('syncable');
     expect(getSettingDefinition('aiSettings')?.scope).toBe('syncable');
     expect(getSettingDefinition('themeMode')?.scope).toBe('local-only');
-    expect(getSettingDefinition('kosync')?.scope).toBe('local-only');
     expect(LOCAL_ONLY_SETTINGS_KEYS).toContain('customFonts');
     expect(LOCAL_ONLY_SETTINGS_KEYS).toContain('customTextures');
   });
@@ -42,7 +41,6 @@ describe('settings sync adapter', () => {
       libraryColumns: 5,
       localBooksDir: '/local/books',
       themeMode: 'dark',
-      kosync: { enabled: false },
       customFonts: [{ name: 'Local Font' }],
       globalReadSettings: { theme: 'light' },
       globalViewSettings: { layoutMode: 'continuous' },
@@ -57,7 +55,6 @@ describe('settings sync adapter', () => {
     );
     expect(payload.localBooksDir).toBeUndefined();
     expect(payload.themeMode).toBeUndefined();
-    expect(payload.kosync).toBeUndefined();
     expect(payload.customFonts).toBeUndefined();
 
     const merged = applySyncableSettings(local, {

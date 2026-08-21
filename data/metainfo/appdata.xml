@@ -162,7 +162,6 @@
         <ul>
           <li>Bookshelf: Added support for nested groups to organize your books more flexibly</li>
           <li>Sync: Improved reliability by automatically retrying failed book syncs</li>
-          <li>Sync: Improved token refresh so login sessions stay active longer on KOReader</li>
           <li>E-Ink: Enhanced readability on the library page for E-Ink devices</li>
           <li>UI: Storage capacity is now displayed with precise values in the user profile</li>
           <li>Reader: You can now import files directly into the currently selected book group</li>

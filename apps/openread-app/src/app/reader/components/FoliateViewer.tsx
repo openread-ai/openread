@@ -19,7 +19,6 @@ import { useBackgroundTexture } from '@/hooks/useBackgroundTexture';
 import { useAutoFocus } from '@/hooks/useAutoFocus';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useEinkMode } from '@/hooks/useEinkMode';
-import { useKOSync } from '../hooks/useKOSync';
 import {
   applyFixedlayoutStyles,
   applyImageStyle,
@@ -75,7 +74,6 @@ import { removeTabIndex } from '@/utils/a11y';
 import { isCJKLang } from '@/utils/lang';
 import { getLocale } from '@/utils/misc';
 import Spinner from '@/components/Spinner';
-import KOSyncConflictResolver from './KOSyncResolver';
 import { ParagraphControl } from './paragraph';
 import { createLogger } from '@/utils/logger';
 
@@ -152,7 +150,6 @@ const FoliateViewer: React.FC<{
   useProgressSync(bookKey);
   useProgressAutoSave(bookKey);
   useBookCoverAutoSave(bookKey);
-  const { syncState, conflictDetails, resolveWithLocal, resolveWithRemote } = useKOSync(bookKey);
   // Launch holdback: keep translation hook code present, but do not activate it for launch.
   useTextTranslation(bookKey, LAUNCH_TRANSLATION_ENABLED ? viewRef.current : null);
 
@@ -691,14 +688,6 @@ const FoliateViewer: React.FC<{
       />
       <ParagraphControl bookKey={bookKey} viewRef={viewRef} gridInsets={gridInsets} />
       {!docLoaded.current && loading && <Spinner loading={true} />}
-      {syncState === 'conflict' && conflictDetails && (
-        <KOSyncConflictResolver
-          details={conflictDetails}
-          onResolveWithLocal={resolveWithLocal}
-          onResolveWithRemote={resolveWithRemote}
-          onClose={resolveWithLocal}
-        />
-      )}
     </>
   );
 };

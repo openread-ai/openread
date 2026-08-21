@@ -12,7 +12,6 @@ vi.mock('@/store/settingsStore', () => {
     settings: {
       globalViewSettings: { proofreadRules: [] },
       globalReadSettings: {},
-      kosync: { enabled: false },
     },
     setSettings: vi.fn(),
     saveSettings: vi.fn(),

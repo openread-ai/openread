@@ -27,9 +27,6 @@ export type LibraryGroupByType = (typeof LibraryGroupByType)[keyof typeof Librar
 
 export type LibraryCoverFitType = 'crop' | 'fit';
 
-export type KOSyncChecksumMethod = 'binary' | 'filename';
-export type KOSyncStrategy = 'prompt' | 'silent' | 'send' | 'receive';
-
 export interface ReadSettings {
   sideBarWidth: string;
   isSideBarPinned: boolean;
@@ -45,17 +42,6 @@ export interface ReadSettings {
   userHighlightColors: string[];
   customTtsHighlightColors: string[];
   customThemes: CustomTheme[];
-}
-
-export interface KOSyncSettings {
-  enabled: boolean;
-  serverUrl: string;
-  username: string;
-  userkey: string;
-  deviceId: string;
-  deviceName: string;
-  checksumMethod: KOSyncChecksumMethod;
-  strategy: KOSyncStrategy;
 }
 
 export interface SystemSettings {
@@ -90,8 +76,6 @@ export interface SystemSettings {
   librarySidebarWidth: string;
   customFonts: CustomFont[];
   customTextures: CustomTexture[];
-
-  kosync: KOSyncSettings;
 
   migrationVersion: number;
 

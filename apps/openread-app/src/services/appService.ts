@@ -1,4 +1,3 @@
-import { v4 as uuidv4 } from 'uuid';
 import { SystemSettings } from '@/types/settings';
 import {
   AppPlatform,
@@ -407,7 +406,6 @@ export abstract class BaseAppService implements AppService {
       ...(this.isMobile ? DEFAULT_MOBILE_SYSTEM_SETTINGS : {}),
       version: SYSTEM_SETTINGS_VERSION,
       localBooksDir: await this.fs.getPrefix('Books'),
-      koreaderSyncDeviceId: uuidv4(),
       globalReadSettings: {
         ...DEFAULT_READSETTINGS,
         ...(this.isMobile ? DEFAULT_MOBILE_READSETTINGS : {}),
@@ -450,10 +448,7 @@ export abstract class BaseAppService implements AppService {
     const migrationResult = migrateSystemSettingsTombstones(settings);
     settings = migrationResult.value;
 
-    if (!settings.kosync.deviceId) {
-      settings.kosync.deviceId = uuidv4();
-      await this.saveSettings(settings);
-    } else if (migrationResult.changed || hadLegacyGlobalViewSettings) {
+    if (migrationResult.changed || hadLegacyGlobalViewSettings) {
       await this.saveSettings(settings);
     }
 

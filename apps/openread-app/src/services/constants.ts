@@ -16,7 +16,7 @@ import {
   ViewConfig,
   ViewSettings,
 } from '@/types/book';
-import { KOSyncSettings, ReadSettings, SystemSettings } from '@/types/settings';
+import { ReadSettings, SystemSettings } from '@/types/settings';
 import { getDefaultMaxBlockSize, getDefaultMaxInlineSize } from '@/utils/config';
 import { stubTranslation as _ } from '@/utils/misc';
 import { DEFAULT_AI_SETTINGS } from './ai/constants';
@@ -37,17 +37,6 @@ export const BOOK_UNGROUPED_ID = '';
 
 export const SUPPORTED_IMAGE_EXTS = ['png', 'jpg', 'jpeg'];
 export const IMAGE_ACCEPT_FORMATS = SUPPORTED_IMAGE_EXTS.map((ext) => `.${ext}`).join(', ');
-
-export const DEFAULT_KOSYNC_SETTINGS = {
-  serverUrl: 'https://sync.koreader.rocks/', // https://kosync.ak-team.com:3042/
-  username: '',
-  userkey: '',
-  deviceId: '',
-  deviceName: '',
-  checksumMethod: 'binary',
-  strategy: 'prompt',
-  enabled: false,
-} as KOSyncSettings;
 
 export const DEFAULT_SYSTEM_SETTINGS: Partial<SystemSettings> = {
   keepLogin: false,
@@ -73,7 +62,6 @@ export const DEFAULT_SYSTEM_SETTINGS: Partial<SystemSettings> = {
   libraryAutoColumns: true,
   libraryColumns: 6,
 
-  kosync: DEFAULT_KOSYNC_SETTINGS,
   aiSettings: DEFAULT_AI_SETTINGS,
 };
 

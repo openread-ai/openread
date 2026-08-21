@@ -18,7 +18,6 @@ import { getParallelReadMenuBooks } from '../../utils/parallelReadEligibility';
 // import { DOWNLOAD_OPENREAD_URL } from '@/services/constants'; // disabled: Download Openread
 // import { navigateToLogin } from '@/utils/nav'; // disabled: Discord
 // import { saveSysSettings } from '@/helpers/settings'; // disabled: Discord
-// import { setKOSyncSettingsWindowVisible } from '@/app/reader/components/KOSyncSettings'; // disabled: KOReader
 // import { setProofreadRulesVisibility } from '@/app/reader/components/ProofreadRules'; // disabled: Proofread
 // import { setAboutDialogVisible } from '@/components/AboutWindow'; // disabled: About
 import { useBookDataStore } from '@/store/bookDataStore';
@@ -107,11 +106,8 @@ export const BookMenuItems: React.FC<BookMenuItemsProps> = ({ bookKey, setIsDrop
     unsetParallel(bookKeys);
     setIsDropdownOpen?.(false);
   };
-  // disabled: KOReader Sync, Proofread, Discord — can be considered for future
-  // const showKoSyncSettingsWindow = () => { setKOSyncSettingsWindowVisible(true); setIsDropdownOpen?.(false); };
+  // disabled: Proofread and Discord — can be considered for future
   // const showProofreadRulesWindow = () => { setProofreadRulesVisibility(true); setIsDropdownOpen?.(false); };
-  // const handlePullKOSync = () => { eventDispatcher.dispatch('pull-kosync', { bookKey: activeBookKey }); setIsDropdownOpen?.(false); };
-  // const handlePushKOSync = () => { eventDispatcher.dispatch('push-kosync', { bookKey: activeBookKey }); setIsDropdownOpen?.(false); };
   // const toggleDiscordPresence = () => { ... };
 
   return (
@@ -160,15 +156,6 @@ export const BookMenuItems: React.FC<BookMenuItemsProps> = ({ bookKey, setIsDrop
         ) : (
           <MenuItem label={_('Enter Parallel Read')} onClick={handleSetParallel} />
         ))}
-      {/* KOReader Sync — can be considered for future, now disabled */}
-      {/* <hr aria-hidden='true' className='border-base-200 my-1' />
-      <MenuItem label={_('KOReader Sync')} onClick={showKoSyncSettingsWindow} />
-      {settings.kosync.enabled && (
-        <>
-          <MenuItem label={_('Push Progress')} onClick={handlePushKOSync} />
-          <MenuItem label={_('Pull Progress')} onClick={handlePullKOSync} />
-        </>
-      )} */}
       {/* Show on Discord — can be considered for future, now disabled */}
       {/* {appService?.isDesktopApp && (
         <>

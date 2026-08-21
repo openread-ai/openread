@@ -98,7 +98,6 @@
       "notes": [
         "Bookshelf: Added support for nested groups to organize your books more flexibly",
         "Sync: Improved reliability by automatically retrying failed book syncs",
-        "Sync: Improved token refresh so login sessions stay active longer on KOReader",
         "E-Ink: Enhanced readability on the library page for E-Ink devices",
         "UI: Storage capacity is now displayed with precise values in the user profile",
         "Reader: You can now import files directly into the currently selected book group",
@@ -161,8 +160,6 @@
       "notes": [
         "Reader: Added support for per-book background image customization",
         "Reader: Added option to override book language metadata for improved hyphenation accuracy",
-        "Sync: Openread sync in KOReader can now be triggered using gesture controls",
-        "Sync: Fixed a crash in KOReader that occurred when syncing progress without an open book",
         "Sync: Improved upload performance with concurrent upload support"
       ]
     },
@@ -182,7 +179,6 @@
     "0.9.82": {
       "date": "2025-10-01",
       "notes": [
-        "Sync: More reliable syncing between KOReader and Openread",
         "MOBI: Fixed an issue where some footnotes in MOBI/AZW files were not parsed correctly",
         "Storage: Added support for changing data location on Windows, macOS, Linux, and Android",
         "Windows: Portable EXE version now stores all reading data in the directory of the executable",
@@ -221,7 +217,6 @@
         "TTS: Added previous/next sentence navigation controls in the TTS bar",
         "TTS: Added media control support on iOS lock screen and AirPods",
         "TTS: Fixed an issue where headings could not be highlighted for TTS",
-        "Sync: Fixed occasional sync failures between KOReader and Openread",
         "Fonts: Grouped font styles into custom font families for easier selection",
         "Reader: Improved text selection sensitivity when using a stylus",
         "Reader: Books can now be properly closed using the system back button on Android",
@@ -235,9 +230,6 @@
     "0.9.76": {
       "date": "2025-08-30",
       "notes": [
-        "Sync: Moved KOReader sync controls into the reader sidebar with a manual push/pull option",
-        "Sync: Improved tolerance and reliability for KOReader sync operations",
-        "Sync: Added support for more KOReader server implementations",
         "Fonts: Added support for importing multiple styles within a font family",
         "Reader: Fixed an issue where footnotes are empty in some EPUB files",
         "Theme: Applied theme background color for PDFs on macOS",
@@ -265,14 +257,12 @@
       "notes": [
         "Fixed Edge TTS voice playback for EPUBs",
         "Reduced accidental page flips when toggling toolbars",
-        "Fixed images with background colors not displaying correctly in some books",
-        "Added support for custom KOReader Sync Servers on your local network (LAN)"
+        "Fixed images with background colors not displaying correctly in some books"
       ]
     },
     "0.9.71": {
       "date": "2025-08-13",
       "notes": [
-        "Sync: Added two ways to sync reading progress with KOReader devices",
         "EPUB: Applied monospace font settings",
         "EPUB: Fixed initial text alignment for some EPUB files",
         "PDF: Fixed issue opening large PDF files on Android",
